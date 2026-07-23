@@ -1,0 +1,247 @@
+/* ============================================
+   工具确认对话框样式
+   ============================================ */
+
+.tool-confirm-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100dvw;
+    height: 100dvh;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: tc-fade-in 0.2s ease;
+}
+
+@keyframes tc-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.tool-confirm-dialog {
+    background: #fff;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 620px;
+    max-height: 80dvh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.14);
+    animation: tc-slide-up 0.25s ease;
+    overflow: hidden;
+    outline: none;
+}
+
+@keyframes tc-slide-up {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- header ---- */
+.tool-confirm-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 22px 26px 16px 26px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.tool-confirm-icon-wrap {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.tool-confirm-icon-wrap i {
+    width: 24px;
+    height: 24px;
+    color: #e67e22;
+}
+
+.tool-confirm-header-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tool-confirm-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: #333;
+}
+
+.tool-confirm-subtitle {
+    font-size: 13px;
+    color: #999;
+}
+
+/* ---- body ---- */
+.tool-confirm-body {
+    padding: 18px 26px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    max-height: 50dvh;
+    font-size: 14px;
+    color: #444;
+    line-height: 1.7;
+}
+
+/* 滚动条与 message-area-list 保持一致 */
+.tool-confirm-body::-webkit-scrollbar {
+    width: 5px;
+}
+.tool-confirm-body::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 8px;
+}
+.tool-confirm-body::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+}
+
+/* ---- progress bar ---- */
+.tool-confirm-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 26px 6px 26px;
+}
+
+.tool-confirm-progress-track {
+    flex: 1;
+    height: 6px;
+    background: #eee;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.tool-confirm-progress-bar {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--main-color, lightsalmon);
+    transition: width 0.9s linear;
+}
+.tool-confirm-progress-bar.is-warning {
+    background: #fa8c16;
+}
+.tool-confirm-progress-bar.is-danger {
+    background: #ff4d4f;
+}
+
+.tool-confirm-progress-text {
+    font-size: 12px;
+    color: #bbb;
+    white-space: nowrap;
+    min-width: 90px;
+    text-align: right;
+}
+
+/* ---- footer ---- */
+.tool-confirm-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 26px 20px 26px;
+    border-top: 1px solid #f5f5f5;
+}
+
+.tool-confirm-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 24px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.tool-confirm-btn-cancel {
+    background: #f5f5f5;
+    color: #666;
+}
+.tool-confirm-btn-cancel:hover {
+    background: #e8e8e8;
+    color: #333;
+}
+
+.tool-confirm-btn-accept {
+    background: var(--main-color, lightsalmon);
+    color: #fff;
+}
+.tool-confirm-btn-accept:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 3px 14px rgba(255, 160, 122, 0.35);
+}
+
+/* ============================================
+   移动端适配
+   ============================================ */
+@media (max-width: 768px) {
+    .tool-confirm-dialog {
+        width: 96%;
+        max-width: 96%;
+        max-height: 85dvh;
+        border-radius: 14px;
+    }
+
+    .tool-confirm-header {
+        padding: 14px 14px 10px;
+        gap: 10px;
+    }
+
+    .tool-confirm-icon-wrap {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+    }
+
+    .tool-confirm-icon-wrap i {
+        width: 20px;
+        height: 20px;
+    }
+
+    .tool-confirm-title {
+        font-size: 15px;
+    }
+
+    .tool-confirm-subtitle {
+        font-size: 12px;
+    }
+
+    .tool-confirm-body {
+        padding: 10px 14px;
+        max-height: 40dvh;
+        font-size: 13px;
+    }
+
+    .tool-confirm-progress {
+        padding: 0 14px 4px;
+    }
+
+    .tool-confirm-footer {
+        padding: 10px 14px 14px;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .tool-confirm-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 12px 20px;
+        font-size: 14px;
+    }
+}

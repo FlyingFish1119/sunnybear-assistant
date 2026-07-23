@@ -1,0 +1,144 @@
+﻿server:
+  port: 11451
+
+spring:
+  application:
+    name: assistant
+  datasource:
+    url: jdbc:sqlite:${assistant.file.base-path}assistant.db
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 1              # SQLite 仅支持单写，连接池设为 1
+      connection-timeout: 5000
+      idle-timeout: 300000
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  sql:
+    init:
+      mode: always                      # 每次启动执行 schema.sql
+      schema-locations:
+        - classpath:sql/schema.sql
+        - classpath:sql/character_schema.sql
+
+# 助手业务配置
+assistant:
+  file:
+    base-path: data/
+  cache:
+    max-size: 1000
+    expire-minutes: 10
+  chat:
+    async:
+      core-pool-size: 4
+      max-pool-size: 10
+      queue-capacity: 100
+      thread-name-prefix: chat-async-
+
+# QQ Bot（OneBot）配置
+plug:
+  qq:
+    bot:
+      api-url: http://127.0.0.1:3000
+      replay-ids:
+        - 978993313
+  android:
+    tool:
+      enable: true
+
+engine:
+  tool:
+    extension:
+      dir: tool-extension
+    os:
+      enable: true
+    net:
+      enable: true
+    file:
+      enable: true
+    image:
+      enable: true
+    calc:
+      enable: true
+    bot:
+      enable: true
+    browser:
+      enable: true
+    memory:
+      enable: true
+    knowledge:
+      enable: true
+    task:
+      enable: true
+    flow:
+      enable: true
+    session:
+      enable: true
+  adapter-register:
+    register:
+      # Kimi（Moonshot）流式
+      - apiName: moonshot
+        baseUrl: https://api.moonshot.cn/v1/chat/completions
+        apiKey: ${MOONSHOT_API_KEY}
+        stream: true
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.StandardStreamAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.chat.StandardAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.chat.StandardStreamAIResponse
+
+      # Kimi（Moonshot）非流式
+      - apiName: moonshot
+        baseUrl: https://api.moonshot.cn/v1/chat/completions
+        apiKey: ${MOONSHOT_API_KEY}
+        stream: false
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.StandardAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.chat.StandardAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.chat.StandardAIResponse
+
+      # DeepSeek 非流式
+      - apiName: deepseek
+        baseUrl: https://api.deepseek.com/chat/completions
+        apiKey: ${DEEPSEEK_API_KEY}
+        stream: false
+        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextAIResponse
+
+      # DeepSeek 流式
+      - apiName: deepseek
+        baseUrl: https://api.deepseek.com/chat/completions
+        apiKey: ${DEEPSEEK_API_KEY}
+        stream: true
+        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextStreamAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextStreamAIResponse
+
+      # siliconflow 非流式
+      - apiName: siliconflow
+        baseUrl: https://api.siliconflow.cn/v1/chat/completions
+        apiKey: ${SILICONFLOW_API_KEY}
+        stream: false
+        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextAIResponse
+
+      # siliconflow 流式
+      - apiName: siliconflow
+        baseUrl: https://api.siliconflow.cn/v1/chat/completions
+        apiKey: ${SILICONFLOW_API_KEY}
+        stream: true
+        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextStreamAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextStreamAIResponse

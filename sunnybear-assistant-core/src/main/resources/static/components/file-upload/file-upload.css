@@ -1,0 +1,99 @@
+/* ============================================
+   File Upload — 文件上传组件
+   文件 chips、隐藏选择器、拖拽遮罩
+   ============================================ */
+
+/* ---- 文件 chips 区域 ---- */
+.file-chips-area {
+    width: calc(50% + 100px);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 20px;
+    font-size: 13px;
+    color: #333;
+    transition: all 0.2s;
+}
+.file-chip:hover { background: #e8e8e8; }
+.file-chip-name {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.file-chip-remove {
+    cursor: pointer;
+    display: flex;
+    color: #999;
+    border-radius: 50%;
+    padding: 2px;
+    transition: all 0.2s;
+}
+.file-chip-remove:hover { color: #ff4d4f; background: rgba(255, 77, 79, 0.1); }
+
+.file-chip-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px dashed #ccc;
+    color: #999;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.file-chip-add:hover { border-color: var(--main-color); color: var(--main-color); background: rgba(0,0,0,0.03); }
+
+/* ---- 拖拽遮罩（仍由父级渲染，样式保留在此以便管理） ---- */
+.drag-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.12);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+.drag-overlay-content {
+    background: #fff;
+    border: 3px dashed var(--main-color, lightsalmon);
+    border-radius: 16px;
+    padding: 40px 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--main-color, lightsalmon);
+    font-size: 18px;
+    font-weight: 600;
+}
+.drag-overlay-content i { width: 48px; height: 48px; }
+
+/* ============================================
+   移动端适配
+   ============================================ */
+@media (max-width: 768px) {
+    .file-chips-area {
+        width: calc(70% + 65px);
+    }
+
+    .drag-overlay-content {
+        padding: 24px 32px;
+        font-size: 16px;
+    }
+
+    .drag-overlay-content i { width: 36px; height: 36px; }
+}

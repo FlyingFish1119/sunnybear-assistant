@@ -1,0 +1,21 @@
+# ===== IDE =====
+**/.idea/
+*.iml
+.vscode/
+
+# ===== 构建产物 =====
+**/target/
+**/build/
+**/out/
+*.class
+
+# Gradle Wrapper jar 例外（Android 编译必需）
+!**/gradle/wrapper/gradle-wrapper.jar
+
+# ===== OS 杂项 =====
+.DS_Store
+Thumbs.db
+
+# ===== 日志 =====
+**/logs/
+*.log

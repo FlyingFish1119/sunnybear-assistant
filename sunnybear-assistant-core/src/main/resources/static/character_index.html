@@ -1,0 +1,1514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover">
+    <title>角色扮演 — Assistant</title>
+    <!-- Element Plus 样式 -->
+    <link rel="stylesheet" href="lib/element-plus.css">
+    <!-- Vue 3 -->
+    <script src="lib/vue.global.prod.js"></script>
+    <!-- Element Plus 组件库 -->
+    <script src="lib/element-plus.full.min.js"></script>
+    <!-- lucide 图标 -->
+    <script src="lib/lucide.min.js"></script>
+    <script src="lib/marked.min.js"></script>
+    <script src="lib/highlight.min.js"></script>
+    <!-- KaTeX 数学公式渲染 -->
+    <link rel="stylesheet" href="lib/katex.min.css">
+    <script src="lib/katex.min.js"></script>
+    <!-- Mermaid 图表渲染 -->
+    <script src="lib/mermaid.min.js"></script>
+    <!-- 项目本地封装 -->
+    <script src="api.js"></script>
+    <script src="utils/render-markdown.js"></script>
+    <script src="utils/color.js"></script>
+    <script src="utils/mermaid.js"></script>
+    <script src="utils/file-url.js"></script>
+    <script src="directives/auto-follow.js"></script>
+    <script src="components/tool-confirm/tool-confirm.js"></script>
+    <script src="components/battle-panel/battle-panel.js"></script>
+    <script src="components/confirm-dialog/confirm-dialog.js"></script>
+    <script src="components/session-name/session-name.js"></script>
+    <script src="components/character-sidebar/character-sidebar.js"></script>
+    <script src="components/file-upload/file-upload.js"></script>
+    <script src="components/connection-indicator/connection-indicator.js"></script>
+    <script src="components/auto-resize-textarea/auto-resize-textarea.js"></script>
+    <script src="components/command-suggest/command-suggest.js"></script>
+    <!-- 样式 -->
+    <link rel="stylesheet" href="css/scrollbar.css"/>
+    <link rel="stylesheet" href="css/layout.css"/>
+    <!-- 三大板块样式：侧边栏 | 消息栏 | 发送栏 -->
+    <link rel="stylesheet" href="components/character-sidebar/character-sidebar.css"/>
+    <link rel="stylesheet" href="css/message-area.css"/>
+    <link rel="stylesheet" href="components/session-name/session-name.css"/>
+    <link rel="stylesheet" href="css/send-area.css"/>
+    <link rel="stylesheet" href="components/file-upload/file-upload.css"/>
+    <link rel="stylesheet" href="css/markdown.css"/>
+    <link rel="stylesheet" href="components/tool-confirm/tool-confirm.css"/>
+    <link rel="stylesheet" href="components/battle-panel/battle-panel.css"/>
+    <link rel="stylesheet" href="components/confirm-dialog/confirm-dialog.css"/>
+    <link rel="stylesheet" href="components/connection-indicator/connection-indicator.css"/>
+    <link rel="stylesheet" href="components/auto-resize-textarea/auto-resize-textarea.css"/>
+    <link rel="stylesheet" href="components/command-suggest/command-suggest.css"/>
+    <!-- highlight.js 代码高亮样式 -->
+    <link rel="stylesheet" href="lib/highlight-github-dark.min.css">
+</head>
+<body>
+<div id="in-loading">
+</div>
+<div id="app" :style="{'--main-color': mainColor, '--bg-user': userBubbleBg}">
+    <character-sidebar ref="sidebar"
+        :current-session="currentSession"
+        :main-color="mainColor"
+        :collapsed="sidebarCollapsed"
+        :character-id="characterId"
+        @select-session="selectSession"
+        @create-session="createSession"
+        @on-delete-session="onDeleteSession"
+        @go-settings="goSettings"
+        @toggle-collapsed="sidebarCollapsed = !sidebarCollapsed"
+    ></character-sidebar>
+    <div class="message-area-wrapper" :class="{ 'expanded': sidebarCollapsed }">
+        <!-- 拖拽上传遮罩 -->
+        <div class="drag-overlay" v-show="dragOver">
+            <div :style="{'--main-color': mainColor}" class="drag-overlay-content">
+                <i data-lucide="upload-cloud"></i>
+                <span>释放文件以上传</span>
+            </div>
+        </div>
+        <div class="message-area-background" :style="backgroundStyle"></div>
+        <div class="message-area-top">
+            <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+                <button class="sidebar-toggle-btn" @click="toggleSidebar" title="展开/收起侧边栏">
+                    <i data-lucide="menu" style="width: 18px; height: 18px;"></i>
+                </button>
+                <span v-if="characterInfo" :style="{'--main-color': mainColor}" style="font-weight:600;color:var(--main-color);white-space:nowrap">{{ characterInfo.name }}</span>
+                <span v-if="characterInfo" style="color:#999">·</span>
+                {{ chatModel }} ·
+                <session-name
+                    :current-session="currentSession"
+                    :main-color="mainColor"
+                    @update-session-name="n => currentSession.name = n">
+                </session-name>
+            </div>
+            <connection-indicator
+                :ws-url="wsUrl"
+                @connected="ws = $event; ws.onmessage = (e) => handleStreamChunk(e)"
+                @disconnected="ws = null">
+            </connection-indicator>
+        </div>
+        <div class="message-area-panel" :class="{ 'is-new-chat': !currentSessionId && currentMessages.length === 0 }">
+            <!-- 新对话时的问候语横幅 -->
+            <div v-if="!currentSessionId && currentMessages.length === 0" class="greeting-banner" :style="{'--main-color': mainColor}">
+                <template v-if="characterInfo">
+                    <img v-if="characterInfo.avatar" :src="characterInfo.avatar" class="greeting-icon" style="width:48px;height:48px;border-radius:50%;object-fit:cover" />
+                    <i v-else :data-lucide="greetingIcon" class="greeting-icon"></i>
+                    <span>{{ characterInfo.name }} · {{ greetingText || '输入内容开始对话' }}</span>
+                </template>
+                <template v-else>
+                    <i data-lucide="users" class="greeting-icon"></i>
+                    <span>请从角色设置中选择一个角色开始对话</span>
+                </template>
+            </div>
+            <!-- 消息列表：新对话时隐藏 -->
+            <div v-show="currentSessionId || currentMessages.length > 0" class="message-area-list" v-auto-follow>
+                <div :style="{'--main-color': mainColor}" class="message-area-list-loading" v-if="sessionSelectLoading">
+                    <div class="loading-spinner">
+                        <i data-lucide="loader-circle" class="loading-icon"></i>
+                    </div>
+                    <span class="loading-text">加载中</span>
+                    <span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>
+                </div>
+                <div v-for="msg in currentMessages" :key="msg.id" :class="['message-area-row', msg.role]">
+                    <div v-if="msg.role !== 'tool'" class="message-area-col">
+                        <!-- 头像 + 名称时间 同一行 -->
+                        <div class="message-header-row">
+                            <img v-if="getMessageAvatar(msg)"
+                                 :src="getMessageAvatar(msg)"
+                                 class="message-avatar-top"
+                                 :alt="msg.name + '头像'"
+                                 @error="msg.role === 'user' ? userAvatarError = true : assistantAvatarError = true">
+                            <div v-else class="message-avatar-top message-avatar-default"
+                                 :class="msg.role === 'user' ? 'user-avatar-default' : 'assistant-avatar-default'">
+                                <span>{{ getAvatarInitial(msg) }}</span>
+                            </div>
+                            <span class="message-header-meta">{{ msg.name }} · {{ msg.createTime }}</span>
+                        </div>
+                        <div class="message-area-bubble" :style="msg.role === 'user' ? {'background-color': userBubbleBg} : {}">
+                            <div v-if="msg.reasoningContent !== null && msg.reasoningContent.length > 0">
+                                <div class="message-area-bubble-meta reasoning-header" @click="toggleCollapse(msg.id, 'thinking')">
+                                    <i style="width: 10px; height: 10px" data-lucide="sparkle"></i>
+                                    <span>思考过程:</span>
+                                    <i :class="['reasoning-chevron', { collapsed: isCollapsed(msg.id, 'thinking') }]" style="width: 14px; height: 14px" data-lucide="chevron-down"></i>
+                                </div>
+                                <div :class="['collapsible-content', { collapsed: isCollapsed(msg.id, 'thinking') }]" :data-collapse-key="msg.id + '_thinking'">
+                                    <div class="message-area-reasoning markdown-body" v-html="$md.render(msg.reasoningContent)"></div>
+                                </div>
+                            </div>
+                            <!-- 编辑模式：显示 textarea -->
+                            <div v-if="currentEditId === msg.id">
+                                <auto-resize-textarea
+                                    class="message-edit-textarea"
+                                    :main-color="mainColor"
+                                    v-model="editDraft"
+                                    :max-height="300"
+                                    :min-height="65"
+                                    @submit="editTargetRole === 'assistant' ? confirmAssistantEdit(msg) : confirmEdit(msg)"
+                                    @cancel="editTargetRole === 'assistant' ? cancelAssistantEdit() : cancelEdit()"
+                                ></auto-resize-textarea>
+                            </div>
+                            <!-- 正常模式：显示内容 -->
+                            <div v-else v-for="(content, idx) in msg.contents" :key="idx">
+                                <div v-if="content.type === 'text'" class="markdown-body" v-html="$md.render(content.content)"></div>
+                                <div v-else-if="content.type === 'image'" class="message-attachment-image">
+                                    <img :src="$fileUrl.proxy(content.url)" @click.stop="$fileUrl.previewImage(content.url)" />
+                                </div>
+                                <div v-else-if="content.type === 'audio'" class="message-attachment-audio">
+                                    <audio :src="$fileUrl.proxy(content.url)" controls preload="metadata"></audio>
+                                </div>
+                                <div v-else-if="content.type === 'video'" class="message-attachment-video">
+                                    <video :src="$fileUrl.proxy(content.url)" controls preload="metadata"></video>
+                                </div>
+                                <div v-else-if="content.type === 'file'" class="message-attachment-file">
+                                    <a :href="$fileUrl.proxy(content.url)" target="_blank">
+                                        <i data-lucide="file" style="width:18px;height:18px"></i>
+                                        <span>{{ $fileUrl.fileName(content.url) }}</span>
+                                    </a>
+                                </div>
+                            </div>
+                            <div v-if="msg.toolCalls && msg.toolCalls.length > 0" :class="['tool-calls-block', { collapsed: isCollapsed(msg.id, 'toolcalls') }]">
+                                <div class="message-area-bubble-tools-header" @click="toggleCollapse(msg.id, 'toolcalls')">
+                                    <i :class="['tool-chevron', { collapsed: isCollapsed(msg.id, 'toolcalls') }]" style="width: 14px; height: 14px" data-lucide="chevron-right"></i>
+                                    <span>工具调用: {{ msg.toolCalls.map(t => t.name).join(', ') }}</span>
+                                </div>
+                                <div :class="['message-area-bubble-tools-wrap', { collapsed: isCollapsed(msg.id, 'toolcalls') }]" :data-collapse-key="msg.id + '_toolcalls'">
+                                    <div class="message-area-bubble-tools">
+                                        工具调用: {{ msg.toolCalls.map(t => t.name + (t.arguments ? ': ' + t.arguments : '')).join(', ') }}
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- streaming 时空占位，防止高度抽搐 -->
+                            <div v-if="(msg.siblingCount > 1 || msg.role === 'assistant' || msg.role === 'user') && isStreaming"
+                                 class="message-area-bubble-actions" style="visibility: hidden;"></div>
+                            <!-- 编辑模式：确认/取消按钮，始终可见 -->
+                            <div v-else-if="currentEditId === msg.id" class="message-area-bubble-actions" style="opacity: 1;">
+                                <span class="branch-switch-arrow"
+                                      @click.stop="editTargetRole === 'assistant' ? confirmAssistantEdit(msg) : confirmEdit(msg)"
+                                      title="确认编辑">
+                                    <i style="width: 14px; height: 14px" data-lucide="check"></i>
+                                </span>
+                                <span class="branch-switch-arrow"
+                                      @click.stop="editTargetRole === 'assistant' ? cancelAssistantEdit() : cancelEdit()"
+                                      title="取消编辑">
+                                    <i style="width: 14px; height: 14px" data-lucide="x"></i>
+                                </span>
+                            </div>
+                            <!-- 真实按钮区，当前消息不在编辑模式时显示 -->
+                            <div v-else-if="(msg.siblingCount > 1 || msg.role === 'assistant' || msg.role === 'user') && currentEditId !== msg.id" class="message-area-bubble-actions">
+                                <span v-if="msg.siblingCount > 1" class="branch-switch-arrow"
+                                      :class="{ disabled: msg.siblingIndex === 0 }"
+                                      @click.stop="switchBranch(msg, 'left')"
+                                      title="切换到上一个分支">
+                                    <i style="width: 14px; height: 14px" data-lucide="chevron-left"></i>
+                                </span>
+                                <span v-if="msg.siblingCount > 1" class="branch-switch-counter">{{ msg.siblingIndex + 1 }} / {{ msg.siblingCount }}</span>
+                                <span v-if="msg.siblingCount > 1" class="branch-switch-arrow"
+                                      :class="{ disabled: msg.siblingIndex === msg.siblingCount - 1 }"
+                                      @click.stop="switchBranch(msg, 'right')"
+                                      title="切换到下一个分支">
+                                    <i style="width: 14px; height: 14px" data-lucide="chevron-right"></i>
+                                </span>
+                                <span v-if="msg.role === 'assistant'" class="branch-switch-arrow"
+                                      @click.stop="replaceBranch(msg)"
+                                      title="重新生成回复">
+                                    <i style="width: 14px; height: 14px" data-lucide="rotate-ccw"></i>
+                                </span>
+                                <span v-if="msg.role === 'assistant'" class="branch-switch-arrow"
+                                      @click.stop="copyMessage(msg)"
+                                      title="复制消息">
+                                    <i style="width: 14px; height: 14px" data-lucide="copy"></i>
+                                </span>
+                                <span v-if="msg.role === 'assistant'" class="branch-switch-arrow"
+                                      @click.stop="startAssistantEdit(msg)"
+                                      title="编辑消息">
+                                    <i style="width: 14px; height: 14px" data-lucide="pencil"></i>
+                                </span>
+                                <span v-if="msg.role === 'user'" class="branch-switch-arrow"
+                                      @click.stop="startEdit(msg)"
+                                      title="编辑消息">
+                                    <i style="width: 14px; height: 14px" data-lucide="pencil"></i>
+                                </span>
+                                <span v-if="msg.role === 'user'" class="branch-switch-arrow"
+                                      @click.stop="copyMessage(msg)"
+                                      title="复制消息">
+                                    <i style="width: 14px; height: 14px" data-lucide="copy"></i>
+                                </span>
+                                <span v-if="msg.role === 'user'" class="branch-switch-arrow"
+                                      @click.stop="deleteUserMessage(msg)"
+                                      title="删除消息">
+                                    <i style="width: 14px; height: 14px" data-lucide="trash-2"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-else-if="msg.role === 'tool'" class="message-area-bubble">
+                        <div class="message-area-bubble-meta tool-meta-header" @click="toggleCollapse(msg.id, 'tool')">
+                            <i :class="['tool-chevron', { collapsed: isCollapsed(msg.id, 'tool') }]" style="width: 14px; height: 14px" data-lucide="chevron-right"></i>
+                            <span>{{ msg.name }} · {{ msg.createTime }}</span>
+                            <span class="tool-status-inline" :style="{color: $toolStatus(msg).color}">
+                                <i style="width: 12px; height: 12px" :data-lucide="$toolStatus(msg).icon"></i>
+                                <span style="padding-left: 2px">{{ $toolStatus(msg).text }}</span>
+                            </span>
+                        </div>
+                        <div :class="['collapsible-content', { collapsed: isCollapsed(msg.id, 'tool') }]" :data-collapse-key="msg.id + '_tool'">
+                            <div v-for="(content, idx) in msg.contents" :key="idx">
+                                <div v-if="content.type === 'text'">
+                                    <span v-if="$toolParsed(content).succeed" class="message-area-bubble-tools-meta">
+                                        <i style="width: 12px; height: 12px; color: #52c41a" data-lucide="circle-check"></i>
+                                        <span style="padding: 0 0 1px 4px; color: #52c41a">[{{msg.name}}]执行成功</span>
+                                    </span>
+                                    <div v-else class="message-area-bubble-tools-meta">
+                                        <i style="width: 12px; height: 12px; color: #ff4d4f" data-lucide="circle-x"></i>
+                                        <div style="padding: 0 0 1px 4px; color: #ff4d4f">[{{msg.name}}]执行失败</div>
+                                    </div>
+                                    <div class="markdown-body" v-html="$md.render($toolParsed(content).result)"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="send-area-container" :style="{'--main-color': mainColor}" style="position: relative;">
+            <command-suggest
+                :commands="filteredCommands"
+                :active-index="commandActiveIndex"
+                :visible="commandSuggestVisible"
+                :main-color="mainColor"
+                :sub-options="subOptions"
+                :sub-title="'选择一个会话'"
+                @select="onCommandSelect"
+                @sub-select="onSubSelect"
+                @back="onCommandBack"
+                @update:active-index="idx => commandActiveIndex = idx"
+            ></command-suggest>
+            <file-upload ref="fileUpload"
+                drop-zone=".message-area-wrapper"
+                :files="uploadedFiles"
+                :enable-paste="true"
+                :main-color="mainColor"
+                @update-files="files => uploadedFiles = files"
+                @drag-over-change="isChange => dragOver = isChange">
+            </file-upload>
+            <div class="send-area-input-row">
+                <button class="send-area-attach-button" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
+                    <i data-lucide="paperclip" style="width:18px;height:18px"></i>
+                </button>
+                <auto-resize-textarea
+                    class="send-area-textarea"
+                    :main-color="mainColor"
+                    v-model="inputText"
+                    :placeholder="characterId ? '输入消息，Ctrl+Enter 发送，Enter 换行' : '请先从角色设置中选择一个角色'"
+                    :max-height="180"
+                    :min-height="85"
+                    @submit="sendMessage"
+                    @cancel="onTextareaCancel"
+                    @keydown="onTextareaKeydown"
+                ></auto-resize-textarea>
+                <!-- 这里不要合并两个按钮，否则icon会出现问题 -->
+                <button v-if="isStreaming"
+                    class="send-area-submit-button"
+                    @click="stopStreaming()"
+                    :disabled="isStreaming && !currentSessionId"
+                >
+                    <i style="margin-top: 5px; margin-left: -5px" data-lucide="square"></i>
+                </button>
+                <button v-else
+                        class="send-area-submit-button"
+                        @click="sendMessage()"
+                        :disabled="!characterId || (!isStreaming && !inputText && uploadedFiles.length === 0)"
+                >
+                    <i style="margin-top: 5px; margin-left: -5px" data-lucide="send"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 工具确认对话框（组件） -->
+        <tool-confirm
+            ref="toolConfirm"
+            :main-color="mainColor">
+        </tool-confirm>
+
+        <!-- 战斗面板（组件） -->
+        <battle-panel
+            ref="battlePanel"
+            :main-color="mainColor"
+            :session-id="currentSessionId">
+        </battle-panel>
+    </div>
+</div>
+
+<script>
+    const Utils = {
+        getLast(arr) {
+            if (arr === null || arr.length === 0) {
+                return null;
+            }
+            return arr[arr.length - 1];
+        },
+
+        getDefaultAssistantMessage(sessionId, parentId) {
+            return  {
+                id: 'streaming_' + Date.now(),
+                sessionId: sessionId,
+                parentId: parentId,
+                role: 'assistant',
+                reasoningContent: "",
+                contents: [{
+                type: 'text',
+                content: ""
+            }],
+                toolCalls: []
+            }
+        }
+    }
+
+    /* ========== 斜杠指令注册表 ==========
+     * 每项: { name, desc, usage, icon }
+     * icon 使用 lucide 图标名，见 https://lucide.dev/icons/
+     * 添加新指令只需在此数组中追加一项即可，框架自动生效。
+     */
+    const SLASH_COMMANDS = [
+        // TODO 后续构思角色专用指令
+    ];
+
+    const app = Vue.createApp({
+        data() {
+            return {
+                mainColor: "lightsalmon",
+                userSettings: { background: '', opacity: 0.3 },
+                assistantSettings: { avatar: '', assistantName: '' },
+                // 角色扮演相关
+                characterId: null,
+                characterInfo: null,
+                userAvatarError: false,
+                assistantAvatarError: false,
+                // 标记 app 是否已完成加载并可见，避免在 #app display:none 期间
+                // 设置 background-image 导致浏览器跳过图片请求
+                loaded: false,
+                sessionSelectLoading: false,
+                ws: null,
+                chatModel: null,
+
+                // 输入框内容
+                inputText: '',
+                // 当前正在处理的 session，对象应该直接引用 sessions 里的对象
+                currentSession: {},
+                // 当前正在展示的 messages
+                currentMessages: [],
+                // 正在处理的message，存储 sessionId，isStreaming, message
+                streamingMessages: [],
+
+                // 消息编辑状态
+                currentEditId: null,
+                editDraft: '',
+                editTargetRole: null,
+                // 问候语
+                greetingText: '',
+                // 桌面端侧边栏折叠
+                sidebarCollapsed: false,
+                // 折叠状态：key = msgId_section, value = true(折叠)/false(展开)
+                collapsedState: {},
+                // 文件上传
+                // 斜杠指令候选
+                commandActiveIndex: 0,
+                commandSubMode: null,
+                commandParentCmd: null,
+                uploadedFiles: [],   // [{name, data}] — 对应后端 FileData
+                dragOver: false,
+            }
+        },
+
+        computed : {
+            wsUrl: function () {
+                return API.ws.characterUrl;
+            },
+            isStreaming: function () {
+                let streamingMessage = this.streamingMessages.find(m => this.currentSessionId === m.sessionId)
+                return streamingMessage !== undefined && streamingMessage !== null;
+            },
+            isNewSession() {
+                return this.currentSessionId === undefined;
+            },
+            currentSessionId () {
+                return this.currentSession.id;
+            },
+             greetingIcon() {
+                const hour = new Date().getHours();
+                if (hour >= 6 && hour < 12) return 'sunrise';
+                if (hour >= 12 && hour < 18) return 'sun';
+                if (hour >= 18 && hour < 22) return 'sunset';
+                return 'moon';
+            },
+            // 斜杠指令候选面板是否可见
+            commandSuggestVisible() {
+                if (this.commandSubMode && this.subOptions.length > 0) return true;
+                return this.inputText.startsWith('/') && this.filteredCommands.length > 0;
+            },
+            // 根据当前输入过滤匹配的指令
+            filteredCommands() {
+                if (!this.inputText || !this.inputText.startsWith('/')) return [];
+                const lower = this.inputText.toLowerCase().split(' ')[0];
+                return SLASH_COMMANDS.filter(c => c.name.startsWith(lower) || c.name.includes(lower));
+            },
+            // 二级选项（如会话列表）
+            subOptions() {
+                if (this.commandSubMode === 'sessions') {
+                    const sessions = this.$refs.sidebar ? (this.$refs.sidebar.sessions || []) : [];
+                    return sessions.map(s => ({
+                        id: s.id,
+                        label: s.name || s.id,
+                        desc: ''
+                    }));
+                }
+                return [];
+            },
+            // 用户消息气泡背景色：跟随主色自动变浅
+            userBubbleBg() {
+                return ColorUtils.lighten(this.mainColor, 0.25);
+            },
+            backgroundStyle() {
+                const bg = this.userSettings.background;
+                // loaded 为 false 时 #app 仍是 display:none，
+                // 此时设置 background-image 浏览器不会发起请求
+                if (!bg || !this.loaded) return { display: 'none' };
+                // 如果不是 http(s) 协议，则走服务端本地文件代理
+                let url = bg;
+                if (!/^https?:\/\//i.test(bg)) {
+                    url = API.fileProxyUrl(bg);
+                }
+                return {
+                    backgroundImage: "url('" + url + "')",
+                    opacity: this.userSettings.opacity != null ? this.userSettings.opacity : 0.3
+                };
+            },
+        },
+
+        methods: {
+
+            /**
+             * 将根路径转换为相对路径（相对当前目录）
+             * @param {string} path - 不带前导 / 的路径
+             * @returns {string} 带 BASE_PATH 前缀的完整路径
+             */
+            $api(path) {
+                return API.BASE_PATH + path;
+            },
+
+            /**
+             * 带缓存的工具结果 JSON 解析（模板中使用）。
+             * 避免每次 Vue 更新都对同一 content 重复 JSON.parse。
+             * @param {object} content - 消息的 content 对象
+             * @returns {object} 解析后的工具结果
+             */
+            $toolParsed(content) {
+                let raw = content.content;
+                if (content._rawJson !== raw) {
+                    content._rawJson = raw;
+                    content._parsed = JSON.parse(raw);
+                }
+                return content._parsed;
+            },
+
+            /**
+             * 获取工具消息的聚合执行状态（模板中使用）。
+             * 在折叠的头部显示成功/失败图标和颜色。
+             * @param {object} msg - 工具消息对象
+             * @returns {{ succeed: boolean, icon: string, color: string, text: string }}
+             */
+            $toolStatus(msg) {
+                if (!msg.contents || msg.contents.length === 0) {
+                    return { succeed: true, icon: 'circle-check', color: '#52c41a', text: '执行成功' };
+                }
+                // 检查所有 content：只要有一个失败，整体就算失败
+                let allSucceed = true;
+                for (let content of msg.contents) {
+                    if (content.type === 'text') {
+                        try {
+                            let parsed = this.$toolParsed(content);
+                            if (!parsed.succeed) {
+                                allSucceed = false;
+                                break;
+                            }
+                        } catch (e) {
+                            allSucceed = false;
+                            break;
+                        }
+                    }
+                }
+                return allSucceed
+                    ? { succeed: true, icon: 'circle-check', color: '#52c41a', text: '执行成功' }
+                    : { succeed: false, icon: 'circle-x', color: '#ff4d4f', text: '执行失败' };
+            },
+
+            /**
+             * 获取消息对应的头像 URL
+             */
+            getMessageAvatar(msg) {
+                if (msg.role === 'user' && this.userAvatarError) return '';
+                if (msg.role === 'assistant' && this.assistantAvatarError) return '';
+                const avatar = msg.role === 'user'
+                    ? this.userSettings.avatar
+                    : this.assistantSettings.avatar;
+                if (!avatar) return '';
+                if (avatar.startsWith('data:')) return avatar;
+                if (!/^https?:\/\//i.test(avatar)) {
+                    return API.fileProxyUrl(avatar);
+                }
+                return avatar;
+            },
+
+            /**
+             * 获取消息头像的默认首字母
+             */
+            getAvatarInitial(msg) {
+                if (msg.role === 'user') {
+                    return (this.userSettings.username || 'U').charAt(0);
+                }
+                return (this.assistantSettings.assistantName || 'A').charAt(0);
+            },
+
+            inLoading() {
+                document.getElementById("app").style.display = "none";
+                document.getElementById("in-loading").style.display = "block";
+            },
+
+            outLoading() {
+                document.getElementById("in-loading").style.display = "none";
+                let appStyle = document.getElementById("app").style;
+                appStyle.transition = "all 0.5s ease";
+                appStyle.opacity = "0";
+                appStyle.width = "50dvw";
+                appStyle.display = "flex";
+                // 此时 #app 已可见，通知 Vue 可以设置 background-image 了
+                // 这样浏览器才会真正发起背景图请求
+                this.loaded = true;
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        appStyle.transition = "all 1s ease";
+                        appStyle.opacity = "1";
+                        appStyle.width = "100dvw";
+                    })
+                });
+            },
+
+            async init() {
+                this.inLoading();
+                // 从 URL 参数中读取 characterId
+                const params = new URLSearchParams(window.location.search);
+                this.characterId = params.get('characterId') || null;
+                if (this.characterId) {
+                    await this.fetchCharacterInfo();
+                }
+                await this.fetchUserSettings();
+                await this.fetchAssistantSettings();
+                await this.getChatSettings();
+                await this.fetchGreeting();
+                // characterId 加载完成后刷新侧边栏会话列表
+                if (this.characterId) {
+                    this.$refs.sidebar.refresh();
+                }
+                this.outLoading();
+            },
+
+            /** 获取当前角色信息 */
+            async fetchCharacterInfo() {
+                if (!this.characterId) return;
+                try {
+                    const result = await API.character.get(this.characterId);
+                    if (result.status === 200) {
+                        this.characterInfo = result.data;
+                    }
+                } catch (error) {
+                    console.error('获取角色信息失败:', error);
+                }
+            },
+
+            async fetchUserSettings() {
+                try {
+                    const result = await API.settings.user.get();
+                    if (result.status === 200) {
+                        this.userSettings = result.data || { background: '', opacity: 0.3 };
+                        // 从服务端获取主题色
+                        if (this.userSettings.mainColor) {
+                            this.mainColor = this.userSettings.mainColor;
+                        }
+                    }
+                } catch (error) {
+                    console.error('获取用户设置失败:', error);
+                }
+                // 服务端没有则回退到 localStorage
+                if (!this.userSettings.mainColor) {
+                    try {
+                        const saved = localStorage.getItem('assistant-mainColor');
+                        if (saved) {
+                            this.mainColor = saved;
+                        }
+                    } catch (e) {}
+                }
+            },
+
+            async fetchAssistantSettings() {
+                try {
+                    const result = await API.settings.assistant.get();
+                    if (result.status === 200) {
+                        this.assistantSettings = result.data || { avatar: '', assistantName: '' };
+                    }
+                } catch (error) {
+                    console.error('获取助手设置失败:', error);
+                }
+            },
+
+            async getChatSettings() {
+                try {
+                    const result = await API.settings.chat.get();
+                    if (result.status === 200) {
+                        this.chatModel = result.data.model;
+                    } else {
+                        ElementPlus.ElMessage.error(result.message || '获取聊天设置失败');
+                    }
+                } catch (error) {
+                    ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
+                    console.error('获取聊天设置失败:', error);
+                }
+            },
+
+            /**
+             * 获取随机问候语
+             */
+            async fetchGreeting() {
+                try {
+                    const result = await API.greeting.random();
+                    if (result.status === 200 && result.data) {
+                        this.greetingText = result.data.text;
+                    } else {
+                        this.greetingText = '你好！今天有什么可以帮你的吗？';
+                    }
+                } catch (error) {
+                    console.error('获取问候语失败:', error);
+                }
+            },
+
+            selectSession(session) {
+                this.closeSidebar();
+                this.$md.clearCache();
+                this.sessionSelectLoading = true;
+                this.currentSession = session;
+                API.message.getHistory(session.id).then(result => {
+                    if (result.status === 200) {
+                        this.currentMessages = result.data;
+                        let streamingMessage = this.streamingMessages.find(m => m.sessionId === session.id);
+                        if (streamingMessage) {
+                            this.currentMessages.push(streamingMessage);
+                        }
+                        this.scrollToBottom(true);
+                    } else {
+                        ElementPlus.ElMessage.error(result.message || '获取会话历史消息失败');
+                    }
+                    this.$nextTick(() => {
+                        MermaidUtils.renderAll();
+                    });
+                }).catch(error => {
+                    ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
+                    console.error('获取会话历史消息失败:', error);
+                }).finally(() => {
+                    this.sessionSelectLoading = false;
+                });
+            },
+
+            /**
+             * 斜杠指令面板键盘导航。
+             * 由 auto-resize-textarea 的 @keydown 事件触发。
+             */
+            /** Esc 键：优先关闭指令面板，否则走默认行为 */
+            onTextareaCancel(event) {
+                if (this.commandSubMode) {
+                    this.onCommandBack();
+                    return;
+                }
+                if (this.commandSuggestVisible) {
+                    this.inputText = '';
+                    return;
+                }
+                this.currentEditId = null;
+                this.editDraft = '';
+                this.editTargetRole = null;
+            },
+
+            onTextareaKeydown(event) {
+                if (!this.commandSuggestVisible) return;
+
+                // 二级面板模式
+                if (this.commandSubMode) {
+                    const len = this.subOptions.length;
+                    if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        this.commandActiveIndex = (this.commandActiveIndex + 1) % len;
+                    } else if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        this.commandActiveIndex = (this.commandActiveIndex - 1 + len) % len;
+                    } else if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey) {
+                        event.preventDefault();
+                        const opt = this.subOptions[this.commandActiveIndex];
+                        if (opt) this.onSubSelect(opt);
+                    } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        this.onCommandBack();
+                    }
+                    return;
+                }
+
+                // 一级面板模式
+                const len = this.filteredCommands.length;
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    this.commandActiveIndex = (this.commandActiveIndex + 1) % len;
+                } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    this.commandActiveIndex = (this.commandActiveIndex - 1 + len) % len;
+                } else if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey) {
+                    event.preventDefault();
+                    const cmd = this.filteredCommands[this.commandActiveIndex];
+                    if (cmd) this.onCommandSelect(cmd);
+                } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    this.inputText = '';
+                }
+            },
+
+            /**
+             * 选中一级指令：有 subCommand 则进入二级面板，否则直接替换输入框。
+             */
+            onCommandSelect(cmd) {
+                this.inputText = cmd.name + ' ';
+                if (cmd.subCommand) {
+                    this.commandSubMode = cmd.subCommand;
+                    this.commandParentCmd = cmd;
+                    this.commandActiveIndex = 0;
+                    return;
+                }
+                this.commandActiveIndex = 0;
+                this.$nextTick(() => {
+                    const ta = document.querySelector('.send-area-textarea');
+                    if (ta) ta.focus();
+                });
+            },
+
+            /** 选中二级选项（如会话） → 拼出最终指令 */
+            onSubSelect(opt) {
+                if (this.commandParentCmd && this.commandParentCmd.name === '/look') {
+                    this.inputText = '/look ' + opt.id + ' ';
+                }
+                this.commandSubMode = null;
+                this.commandParentCmd = null;
+                this.commandActiveIndex = 0;
+                this.$nextTick(() => {
+                    const ta = document.querySelector('.send-area-textarea');
+                    if (ta) ta.focus();
+                });
+            },
+
+            /** 从二级面板返回一级 */
+            onCommandBack() {
+                this.commandSubMode = null;
+                this.commandParentCmd = null;
+                this.commandActiveIndex = 0;
+            },
+
+            /**
+             * 发送消息
+             * 根据是否已选中会话自动选择 create / append 模式
+             */
+            async sendMessage() {
+                if (!this.characterId) {
+                    ElementPlus.ElMessage.warning('请先从角色设置中选择一个角色');
+                    return;
+                }
+                let mode = this.currentSessionId ? 'append' : 'create';
+                let request = {
+                    mode: mode,
+                    sessionId: this.currentSessionId,
+                    content: this.inputText
+                };
+                if (this.uploadedFiles.length > 0) {
+                    request.files = this.uploadedFiles;
+                }
+                this.ws.send(JSON.stringify(request));
+                this.inputText = '';
+                this.uploadedFiles = [];
+            },
+
+            /** 将会话绑定到当前角色 */
+            async bindSessionToCharacter(sessionId) {
+                try {
+                    await API.character.bindSession({ sessionId: sessionId, characterId: this.characterId });
+                } catch (error) {
+                    console.error('绑定会话到角色失败:', error);
+                }
+            },
+
+            /**
+             * 中止当前流式传输
+             */
+            stopStreaming() {
+                console.log('Abort streaming')
+                if (!this.isStreaming || !this.currentSessionId) return;
+                API.chat.stop({ sessionId: this.currentSessionId })
+                    .catch(err => console.error('中止请求发送失败:', err));
+            },
+
+            /**
+             * 处理服务端流式推送的每一个 chunk
+             * 通过 sessionId 匹配到对应 session 的消息列表后进行处理
+             */
+            handleStreamChunk(event) {
+                if (event.data.startsWith('###START###')) {
+                    this.$refs.sidebar.refresh();
+                    return;
+                }
+                if (event.data.startsWith('###TOOL_ASK###')) {
+                    let commandConfirm = JSON.parse(event.data.split('###TOOL_ASK###')[1]);
+                    this.$refs.toolConfirm.show(commandConfirm);
+                    return;
+                }
+                if (event.data.startsWith('###BATTLE_TURN###')) {
+                    let battleData = JSON.parse(event.data.split('###BATTLE_TURN###')[1]);
+                    this.$refs.battlePanel.show(battleData);
+                    return;
+                }
+                if (event.data.startsWith('###BATTLE_END###')) {
+                    let endingNarrative = event.data.split('###BATTLE_END###')[1];
+                    this.$refs.battlePanel.end(endingNarrative);
+                    return;
+                }
+                if (event.data.startsWith('###END###')) {
+                    // 结束流式传输，从 streamingMessages 中移除当前会话的流式消息
+                    let sessionId = event.data.split('###END###')[1];
+                    let index = this.streamingMessages.findIndex(m => m.sessionId === sessionId);
+                    if (index !== -1) {
+                        this.streamingMessages.splice(index, 1);
+                    }
+                    // 如果 init_assistant 已经清理过，这里 findIndex 返回 -1，无副作用
+                    this.$nextTick(() => {
+                        MermaidUtils.renderAll();
+                    });
+                    return;
+                }
+                if (event.data.startsWith('###UPDATE_SESSION###')) {
+                    let sessionJson = event.data.split('###UPDATE_SESSION###')[1];
+                    console.log('update session', sessionJson)
+                    let session = JSON.parse(sessionJson);
+                    let ref = this.$refs.sidebar.upsert(session);
+                    if (session.id === this.currentSessionId) {
+                        this.currentSession = ref;
+                    }
+                    return;
+                }
+
+                let response = JSON.parse(event.data);
+
+                let last = Utils.getLast(response.messages);
+                let streamingMessage = this.streamingMessages.find(m => m.sessionId === response.sessionId);
+
+                switch (response.status) {
+                    case 'init_user': {
+                        console.log('init_user', response)
+                        if (!this.currentSession.id) {
+                            this.currentSession.id = response.sessionId;
+                            // 新会话创建后，绑定到当前角色
+                            if (this.characterId && response.sessionId) {
+                                this.bindSessionToCharacter(response.sessionId);
+                            }
+                        }
+
+                        this.currentMessages.push(...response.messages);
+
+                        // 生成临时 ID，避免 :key 为 undefined
+                        let assistantMessage = Utils.getDefaultAssistantMessage(response.sessionId, last.id);
+                        this.streamingMessages.push(assistantMessage);
+                        if (response.sessionId === this.currentSessionId) {
+                            this.currentMessages.push(assistantMessage);
+                        }
+                        this.scrollToBottom(true);
+                        break;
+                    }
+                    case 'tool_response': {
+                        this.currentMessages.push(...response.messages);
+                        let index = this.streamingMessages.findIndex(m => m.sessionId === response.sessionId);
+                        if (index !== -1) {
+                            this.streamingMessages.splice(index, 1);
+                        }
+                        let assistantMessage = Utils.getDefaultAssistantMessage(response.sessionId, last.id);
+                        this.streamingMessages.push(assistantMessage);
+                        if (response.sessionId === this.currentSessionId) {
+                            this.currentMessages.push(assistantMessage);
+                        }
+                        break;
+                    }
+                    case 'done':
+                    case 'chunk': {
+                        if (!streamingMessage) {
+                            console.warn('未找到对应的 streamingMessage, sessionId:', this.currentSessionId);
+                            return;
+                        }
+
+                        // 追加思维过程（修复 null/undefined 拼接为 "null"/"undefined" 的问题）
+                        if (response.reasoningContent) {
+                            streamingMessage.reasoningContent += response.reasoningContent;
+                        }
+                        // 追加内容（修复 null 拼接为 "null" 的问题）
+                        if (response.text) {
+                            let lastContent = Utils.getLast(streamingMessage.contents);
+                            if (lastContent) {
+                                lastContent.content += response.text;
+                            }
+                        }
+                        // 追加工具调用（修复 for 循环条件：.length 缺失）
+                        if (response.messages && response.messages.length > 0) {
+                            let currentToolId = '';
+                            for (let index = 0; index < response.messages.length; index++) {
+                                let message = response.messages[index];
+                                if (message.sessionId) streamingMessage.sessionId = message.sessionId;
+                                if (message.parentId) streamingMessage.parentId = message.parentId;
+                                if (message.name) streamingMessage.name = message.name;
+                                if (message.role) streamingMessage.role = message.role;
+
+                                if (message.toolCalls && message.toolCalls.length > 0) {
+                                    for (let i = 0; i < message.toolCalls.length; i++) {
+                                        let eventToolCall = message.toolCalls[i];
+                                        if (eventToolCall.id) {
+                                            currentToolId = eventToolCall.id;
+                                        }
+                                        let toolCall = streamingMessage.toolCalls.find(tc => tc.id === currentToolId);
+                                        if (!toolCall) {
+                                            // 新工具调用，创建条目
+                                            toolCall = { id: currentToolId, name: '', arguments: '' };
+                                            streamingMessage.toolCalls.push(toolCall);
+                                        }
+                                        if (eventToolCall.name) {
+                                            toolCall.name = eventToolCall.name;
+                                        }
+                                        if (eventToolCall.arguments) {
+                                            toolCall.arguments += eventToolCall.arguments;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // 流式传输中自动跟随滚动
+                        this.scrollToBottom();
+                        break
+                    }
+                    case "init_assistant": {
+                        // 只同步元数据属性，保留已累积的 contents / reasoningContent / toolCalls
+                        const serverMsg = response.messages[0];
+                        if (serverMsg.id) streamingMessage.id = serverMsg.id;
+                        if (serverMsg.sessionId) streamingMessage.sessionId = serverMsg.sessionId;
+                        if (serverMsg.parentId) streamingMessage.parentId = serverMsg.parentId;
+                        if (serverMsg.name) streamingMessage.name = serverMsg.name;
+                        if (serverMsg.role) streamingMessage.role = serverMsg.role;
+                        if (serverMsg.createTime) streamingMessage.createTime = serverMsg.createTime;
+                        if (serverMsg.siblingCount != null) streamingMessage.siblingCount = serverMsg.siblingCount;
+                        if (serverMsg.siblingIndex != null) streamingMessage.siblingIndex = serverMsg.siblingIndex;
+                        // 斜杠指令等场景：没有 chunk 流，文字直接附在 init_assistant 里
+                        if (response.text) {
+                            let lastContent = Utils.getLast(streamingMessage.contents);
+                            if (lastContent && !lastContent.content) {
+                                lastContent.content = response.text;
+                            }
+                        }
+                        break;
+                    }
+                    case "error": {
+                        console.error('AI 对话错误:', response);
+                        // 清理该会话的流式消息，避免界面卡在"等待回复"状态
+                        if (response.sessionId) {
+                            let idx = this.streamingMessages.findIndex(m => m.sessionId === response.sessionId);
+                            if (idx !== -1) {
+                                this.streamingMessages.splice(idx, 1);
+                            }
+                        }
+                        // 提取错误文本并提示用户
+                        let errText = (response.messages && response.messages.length > 0)
+                            ? response.messages[0].contents?.map(c => c.content).join('')
+                            : 'AI 服务返回了一个错误，请稍后重试';
+                        ElementPlus.ElMessage.error(errText || '未知错误');
+                    }
+                }
+            },
+
+            /**
+             * 滚动消息列表到底部
+             * @param {boolean} force - 为 true 时无视 _autoFollowPaused 强制滚动
+             */
+            scrollToBottom(force = false) {
+                if (!force) {
+                    var listEl = document.querySelector('.message-area-list');
+                    if (listEl && listEl._autoFollowPaused) return;
+                }
+                this.$nextTick(() => {
+                    requestAnimationFrame(() => {
+                        var el = document.querySelector('.message-area-list');
+                        if (el) {
+                            el.scrollTop = el.scrollHeight;
+                        }
+                    });
+                });
+            },
+
+            /**
+             * 跳转到设置页面
+             */
+            goSettings() {
+                window.location.href = this.$api('character_settings.html');
+            },
+
+            /**
+             * 切换侧边栏：桌面端折叠/展开，移动端滑出抽屉
+             */
+            toggleSidebar() {
+                this.$refs.sidebar.toggle();
+            },
+
+            /**
+             * 关闭侧边栏（移动端抽屉 + 桌面端折叠通用）
+             */
+            closeSidebar() {
+                this.$refs.sidebar.close();
+            },
+
+            /**
+             * 创建会话
+             */
+            createSession() {
+                this.closeSidebar();
+                this.$md.clearCache();
+                this.currentSession = {};
+                this.currentMessages = [];
+            },
+
+            /**
+             * 使用 requestAnimationFrame 合并图标刷新，避免流式传输时频繁全量扫描 DOM
+             */
+            _scheduleIconRefresh() {
+                if (this._iconRefreshScheduled) return;
+                this._iconRefreshScheduled = true;
+                requestAnimationFrame(() => {
+                    lucide.createIcons();
+                    this._iconRefreshScheduled = false;
+                });
+            },
+
+            /**
+             * 左右切换兄弟分支
+             * @param {object} msg - 当前消息对象
+             * @param {string} direction - 'left' 或 'right'
+             */
+            async switchBranch(msg, direction) {
+                try {
+                    const result = await API.message.switchBranch(msg.id, direction);
+                    if (result.status === 200) {
+                        if (this.currentSessionId) {
+                            await this.selectSession(this.currentSession);
+                        }
+                    } else {
+                        ElementPlus.ElMessage.error(result.message || '切换分支失败');
+                    }
+                } catch (error) {
+                    ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
+                    console.error('切换分支失败:', error);
+                }
+            },
+
+            /**
+             * 重新生成助手回复（replace 模式）
+             * 找到当前助手消息对应的父用户消息，重新发起对话
+             * @param {object} msg - 助手消息对象
+             */
+            replaceBranch(msg) {
+                // 找到父用户消息
+                const parentMsg = this.currentMessages.find(m => m.id === msg.parentId);
+                if (!parentMsg) {
+                    ElementPlus.ElMessage.error('未找到对应的用户消息');
+                    return;
+                }
+                // 提取用户消息的文本内容
+                let userText = '';
+                if (parentMsg.contents && parentMsg.contents.length > 0) {
+                    userText = parentMsg.contents
+                        .filter(c => c.type === 'text')
+                        .map(c => c.content)
+                        .join('\n');
+                }
+                if (!userText) {
+                    ElementPlus.ElMessage.error('用户消息内容为空');
+                    return;
+                }
+                // 通过 WebSocket 发送 replace 请求
+                const request = {
+                    mode: 'replace',
+                    sessionId: this.currentSessionId,
+                    replaceMessageId: msg.id,
+                    content: userText
+                };
+                this.ws.send(JSON.stringify(request));
+                let assistantMsg = Utils.getDefaultAssistantMessage(msg.sessionId, msg.parentId)
+                this.streamingMessages.push(assistantMsg)
+                if (msg.sessionId === this.currentSessionId) {
+                    let index = this.currentMessages.findIndex(m => m.id === msg.id);
+                    // splice(index) 原地删除从 index 开始的所有消息（旧分支）
+                    this.currentMessages.splice(index)
+                    this.currentMessages.push(assistantMsg)
+                }
+            },
+
+            /**
+             * 进入编辑模式：设置 currentEditId 并初始化草稿
+             * @param {object} msg - 用户消息对象
+             */
+            startEdit(msg) {
+                // 提取消息文本
+                let userText = '';
+                if (msg.contents && msg.contents.length > 0) {
+                    userText = msg.contents
+                        .filter(c => c.type === 'text')
+                        .map(c => c.content)
+                        .join('\n');
+                }
+                this.currentEditId = msg.id;
+                this.editTargetRole = 'user';
+                this.editDraft = userText;
+                // 双重 rAF 确保 DOM 完全就绪且 lucide 图标刷新不影响 focus
+                this.$nextTick(() => {
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            const el = document.querySelector('.message-edit-textarea');
+                            if (el) {
+                                el.focus();
+                            }
+                        });
+                    });
+                });
+            },
+
+            /**
+             * 确认编辑：发送 edit 请求，移除旧分支
+             * @param {object} msg - 用户消息对象
+             */
+            confirmEdit(msg) {
+                if (!this.editDraft.trim()) {
+                    ElementPlus.ElMessage.error('消息内容不能为空');
+                    return;
+                }
+                // 找到该用户消息在当前消息列表中的位置，移除旧分支
+                const index = this.currentMessages.findIndex(m => m.id === msg.id);
+                if (index !== -1) {
+                    this.currentMessages.splice(index);
+                }
+                // 通过 WebSocket 发送 edit 请求
+                const request = {
+                    mode: 'edit',
+                    sessionId: this.currentSessionId,
+                    editMessageId: msg.id,
+                    content: this.editDraft
+                };
+                this.ws.send(JSON.stringify(request));
+                // 清除编辑状态
+                this.currentEditId = null;
+                this.editDraft = '';
+                this.editTargetRole = null;
+            },
+
+            /**
+             * 取消编辑
+             */
+            cancelEdit() {
+                this.currentEditId = null;
+                this.editDraft = '';
+                this.editTargetRole = null;
+            },
+
+            /**
+             * 删除用户消息及其所有子孙消息
+             * @param {object} msg - 用户消息对象
+             */
+            async deleteUserMessage(msg) {
+                try {
+                    const result = await API.message.deleteUser(msg.id);
+                    if (result.status === 200) {
+                        ElementPlus.ElMessage.success('消息已删除');
+                        await this.selectSession(this.currentSession);
+                    } else {
+                        ElementPlus.ElMessage.error(result.message || '删除消息失败');
+                    }
+                } catch (error) {
+                    ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
+                    console.error('删除消息失败:', error);
+                }
+            },
+
+            /**
+             * 进入助手消息编辑模式
+             * @param {object} msg - 助手消息对象
+             */
+            startAssistantEdit(msg) {
+                let assistantText = '';
+                if (msg.contents && msg.contents.length > 0) {
+                    assistantText = msg.contents
+                        .filter(c => c.type === 'text')
+                        .map(c => c.content)
+                        .join('\n');
+                }
+                this.currentEditId = msg.id;
+                this.editTargetRole = 'assistant';
+                this.editDraft = assistantText;
+                // 双重 rAF 确保 DOM 完全就绪且 lucide 图标刷新不影响 focus
+                this.$nextTick(() => {
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            const el = document.querySelector('.message-edit-textarea');
+                            if (el) {
+                                el.focus();
+                            }
+                        });
+                    });
+                });
+            },
+
+            /**
+             * 确认编辑助手消息
+             * @param {object} msg - 助手消息对象
+             */
+            async confirmAssistantEdit(msg) {
+                if (!this.editDraft.trim()) {
+                    ElementPlus.ElMessage.error('消息内容不能为空');
+                    return;
+                }
+                try {
+                    const result = await API.message.editAssistant({ id: msg.id, content: this.editDraft });
+                    if (result.status === 200) {
+                        // 更新当前消息列表中该消息的文本
+                        const targetMsg = this.currentMessages.find(m => m.id === msg.id);
+                        if (targetMsg && targetMsg.contents && targetMsg.contents.length > 0) {
+                            const textContent = targetMsg.contents.find(c => c.type === 'text');
+                            if (textContent) {
+                                textContent.content = this.editDraft;
+                            } else {
+                                targetMsg.contents.push({ type: 'text', content: this.editDraft });
+                            }
+                        }
+                        ElementPlus.ElMessage.success('消息已更新');
+                    } else {
+                        ElementPlus.ElMessage.error(result.message || '更新消息失败');
+                    }
+                } catch (error) {
+                    ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
+                    console.error('更新消息失败:', error);
+                } finally {
+                    this.currentEditId = null;
+                    this.editDraft = '';
+                    this.editTargetRole = null;
+                }
+            },
+
+            /**
+             * 取消助手消息编辑
+             */
+            cancelAssistantEdit() {
+                this.currentEditId = null;
+                this.editDraft = '';
+                this.editTargetRole = null;
+            },
+
+            /**
+             * 复制消息的原始文本到剪贴板
+             * @param {object} msg - 消息对象
+             */
+            copyMessage(msg) {
+                let text = '';
+                if (msg.contents && msg.contents.length > 0) {
+                    text = msg.contents
+                        .filter(c => c.type === 'text')
+                        .map(c => c.content)
+                        .join('\n');
+                }
+                if (msg.role === 'assistant' && msg.reasoningContent) {
+                    text = '思考过程:\n' + msg.reasoningContent + (text ? '\n\n' + text : '');
+                }
+                this.writeToClipboard(text);
+            },
+
+            /**
+             * 写入剪贴板，优先使用现代 API，失败则降级到临时 textarea
+             * @param {string} text - 要复制的文本
+             */
+            async writeToClipboard(text) {
+                try {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        await navigator.clipboard.writeText(text);
+                        ElementPlus.ElMessage.success('已复制到剪贴板');
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('navigator.clipboard.writeText 失败，尝试降级方案', e);
+                }
+                try {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.left = '-9999px';
+                    textarea.style.top = '-9999px';
+                    document.body.appendChild(textarea);
+                    textarea.focus();
+                    textarea.select();
+                    const success = document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    if (success) {
+                        ElementPlus.ElMessage.success('已复制到剪贴板');
+                    } else {
+                        ElementPlus.ElMessage.error('复制失败，请手动复制');
+                    }
+                } catch (e) {
+                    console.error('降级复制方案也失败', e);
+                    ElementPlus.ElMessage.error('复制失败，请手动复制');
+                }
+            },
+
+            /**
+             * 侧边栏通知某会话已被删除，清理本地 state
+             * @param session - 删除的会话对象
+             */
+            onDeleteSession(session) {
+                // 侧边栏已从内部数组移除，父组件只需清理当前视图
+                if (this.currentSession === session) {
+                    this.currentSession = {};
+                    this.currentMessages = [];
+                }
+            },
+
+            /* ---------- 折叠/展开 ---------- */
+
+            /**
+             * 判断指定消息的指定区域是否处于折叠状态
+             * @param {string} msgId - 消息 ID
+             * @param {string} section - 区域标识：'thinking' | 'tool' | 'toolcalls'
+             * @returns {boolean} 是否折叠
+             */
+            isCollapsed(msgId, section) {
+                const key = msgId + '_' + section;
+                if (this.collapsedState[key] !== undefined) {
+                    return this.collapsedState[key];
+                }
+                // 默认：思考过程展开，工具信息和工具调用折叠
+                return section === 'tool' || section === 'toolcalls';
+            },
+
+            /**
+             * 切换指定消息指定区域的折叠/展开状态
+             * @param {string} msgId - 消息 ID
+             * @param {string} section - 区域标识
+             */
+            toggleCollapse(msgId, section) {
+                const key = msgId + '_' + section;
+                const currentlyCollapsed = this.isCollapsed(msgId, section);
+
+                const el = document.querySelector(`[data-collapse-key="${key}"]`);
+                if (!el) {
+                    this.collapsedState[key] = !currentlyCollapsed;
+                    return;
+                }
+
+                if (currentlyCollapsed) {
+                    // === 展开 ===
+                    // scrollHeight 不受 max-height 裁剪影响，折叠状态下也能正确测量
+                    el.style.transition = 'none';
+                    const targetHeight = el.scrollHeight;
+                    el.style.maxHeight = '0px';
+
+                    // 更新状态 → Vue 移除 collapsed class；inline 0px 接管保持隐藏
+                    this.collapsedState[key] = false;
+
+                    this.$nextTick(() => {
+                        el.offsetHeight; // 强制重排
+                        el.style.transition = '';
+                        el.style.maxHeight = targetHeight + 'px';
+
+                        const onEnd = () => {
+                            el.style.maxHeight = '';
+                            el.style.transition = '';
+                            el.removeEventListener('transitionend', onEnd);
+                        };
+                        el.addEventListener('transitionend', onEnd);
+                    });
+                } else {
+                    // === 收起 ===
+                    // 在 Vue 添加 collapsed class 之前，先锁定当前高度作为动画起点
+                    el.style.transition = 'none';
+                    el.style.maxHeight = el.scrollHeight + 'px';
+
+                    // 更新状态 → Vue 添加 collapsed class；inline style 覆盖 CSS 保持起点高度
+                    this.collapsedState[key] = true;
+
+                    this.$nextTick(() => {
+                        el.offsetHeight; // 强制重排
+                        el.style.transition = '';
+                        el.style.maxHeight = '0px';
+                    });
+                }
+            },
+
+        },
+
+        mounted() {
+            lucide.createIcons();
+            this.init();
+        },
+
+        watch: {
+            filteredCommands() {
+                this.commandActiveIndex = 0;
+            },
+            inputText(val) {
+                if (!val || !val.startsWith('/')) {
+                    this.commandSubMode = null;
+                    this.commandParentCmd = null;
+                }
+            }
+        },
+
+        updated() {
+            this._scheduleIconRefresh();
+        },
+    });
+
+    // 注册全局工具 & 指令
+    app.config.globalProperties.$fileUrl = FileUrlUtils;
+    app.config.globalProperties.$md = MarkdownUtils;
+    app.use(AutoFollow);
+    // 注册组件库
+    app.component('tool-confirm', ToolConfirm);
+    app.component('battle-panel', BattlePanel);
+    app.component('confirm-dialog', ConfirmDialog);
+    app.component('session-name', SessionName);
+    app.component('character-sidebar', CharacterSidebar);
+    app.component('file-upload', FileUpload);
+    app.component('connection-indicator', ConnectionIndicator);
+    app.component('auto-resize-textarea', AutoResizeTextarea);
+    app.component('command-suggest', CommandSuggest);
+
+    app.use(ElementPlus);
+    app.mount('#app');
+</script>
+</body>
+</html>

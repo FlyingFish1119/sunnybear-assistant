@@ -1,0 +1,13 @@
+/* ---- 自适应文本域：功能基础样式 ---- */
+.auto-resize-textarea {
+    resize: none;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+/* ---- hover / focus 统一：左边框高亮为主题色 ---- */
+.auto-resize-textarea:hover,
+.auto-resize-textarea:focus {
+    border-radius: 0;
+    border-left: 4px solid var(--main-color);
+}

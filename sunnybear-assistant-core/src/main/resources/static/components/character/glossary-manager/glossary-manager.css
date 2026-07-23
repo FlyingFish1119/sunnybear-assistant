@@ -1,0 +1,262 @@
+/* ==================== Glossary Manager Dialog ==================== */
+
+.glossary-dialog {
+    --el-dialog-border-radius: 16px;
+}
+.glossary-dialog .el-dialog__body {
+    padding: 0 20px 20px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* ---- Toolbar ---- */
+.glossary-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.glossary-toolbar .glossary-count {
+    font-size: 13px;
+    color: var(--text-muted, #909399);
+}
+
+.glossary-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 16px;
+    border: 1px solid var(--main-color, lightsalmon);
+    background: #fff;
+    color: var(--main-color, lightsalmon);
+    border-radius: var(--radius-sm, 6px);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+.glossary-btn:hover {
+    background: var(--main-color, lightsalmon);
+    color: #fff;
+}
+.glossary-btn i {
+    width: 16px;
+    height: 16px;
+}
+
+.glossary-btn-danger {
+    border-color: #f56c6c;
+    color: #f56c6c;
+}
+.glossary-btn-danger:hover {
+    background: #f56c6c;
+    color: #fff;
+}
+
+.glossary-btn-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+    gap: 3px;
+}
+.glossary-btn-sm i {
+    width: 14px;
+    height: 14px;
+}
+
+/* ---- Inline Form ---- */
+.glossary-form-wrap {
+    background: #fafafa;
+    border: 1px solid #ebeef5;
+    border-radius: var(--radius-md, 10px);
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.glossary-form-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+.glossary-form-row:last-child {
+    margin-bottom: 0;
+}
+
+.glossary-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.glossary-form-field label {
+    font-size: 12px;
+    color: var(--text-secondary, #606266);
+    font-weight: 500;
+}
+.glossary-form-field input,
+.glossary-form-field textarea {
+    padding: 8px 10px;
+    border: 1px solid #dcdfe6;
+    border-radius: var(--radius-sm, 6px);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+.glossary-form-field input:focus,
+.glossary-form-field textarea:focus {
+    border-color: var(--main-color, lightsalmon);
+}
+.glossary-form-field textarea {
+    resize: vertical;
+    min-height: 70px;
+}
+
+.field-keyword { flex: 0 0 160px; }
+.field-desc    { flex: 1 1 auto; min-width: 150px; }
+.field-content { width: 100%; }
+
+.glossary-form-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+
+/* ---- Card list ---- */
+.glossary-cards {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+.glossary-card {
+    background: #fff;
+    border: 1px solid #ebeef5;
+    border-radius: var(--radius-md, 10px);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+}
+.glossary-card .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.glossary-card .card-keyword {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--main-color, lightsalmon);
+    word-break: break-all;
+}
+.glossary-card .card-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.glossary-card .card-desc {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary, #606266);
+    margin-bottom: 6px;
+    line-height: 1.5;
+}
+.glossary-card .card-content {
+    font-size: 13px;
+    color: var(--text-primary, #303133);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 120px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+}
+
+/* ---- Empty state ---- */
+.glossary-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted, #909399);
+    font-size: 14px;
+}
+.glossary-empty i {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 10px;
+    display: block;
+    opacity: 0.4;
+}
+
+/* ---- Loading ---- */
+.glossary-loading {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted, #909399);
+}
+
+/* ---- Dialog header icon alignment ---- */
+.glossary-dialog .dialog-header-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ==================== Mobile fullscreen ==================== */
+@media (max-width: 768px) {
+    .glossary-dialog .el-dialog__wrapper {
+        overflow: hidden;
+    }
+    .glossary-dialog {
+        display: flex;
+        flex-direction: column;
+        height: 100% !important;
+        max-height: 100dvh !important;
+        width: 100% !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        --el-dialog-border-radius: 0;
+        top: 0 !important;
+        left: 0 !important;
+    }
+    .glossary-dialog .el-dialog__header {
+        padding: 16px;
+        flex-shrink: 0;
+    }
+    .glossary-dialog .el-dialog__body {
+        flex: 1 1 auto;
+        max-height: none;
+        padding: 0 16px 16px;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+    .glossary-dialog .el-dialog__footer {
+        padding: 12px 16px;
+        flex-shrink: 0;
+    }
+    .glossary-dialog .dialog-footer {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .glossary-dialog .dialog-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 12px 20px;
+        font-size: 14px;
+    }
+
+    .field-keyword { flex: 1 1 100%; }
+    .field-desc    { flex: 1 1 100%; }
+
+    .glossary-form-wrap {
+        padding: 12px;
+    }
+    .glossary-toolbar {
+        margin-bottom: 12px;
+    }
+}

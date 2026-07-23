@@ -1,0 +1,241 @@
+/* ============================================
+   Send Area — 发送区
+   容器、输入框、提交按钮、响应式
+   ============================================ */
+
+/* ---- 底部发送区容器（wrapper 直接子元素，固定于底部） ---- */
+.send-area-container {
+    flex: none;
+    width: 95%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 0;
+    gap: 8px;
+}
+
+/* ---- 发送行（textarea + button） ---- */
+.send-area-input-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ---- 上传按钮（左侧，参考发送按钮但更窄） ---- */
+.send-area-attach-button {
+    width: 48px;
+    background: var(--main-color);
+    color: #fff;
+    border: none;
+    border-top-left-radius: var(--radius-md, 10px);
+    border-bottom-left-radius: var(--radius-md, 10px);
+    cursor: pointer;
+    align-self: stretch;
+    transition: all var(--transition-normal, 0.3s ease);
+}
+.send-area-attach-button:hover {
+    filter: brightness(0.85);
+}
+
+/* ---- 消息输入框 ---- */
+.send-area-textarea {
+    width: 50%;
+    resize: none;
+    box-sizing: border-box;
+    border: 2px solid var(--border-color, #ddd);
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+    padding: 8px 12px;
+    min-height: 85px;
+    max-height: 180px;
+    font-size: var(--text-md, 14px);
+    line-height: 1.5;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    outline: none;
+    font-family: inherit;
+    background: #fff;
+    transition: all var(--transition-normal, 0.3s ease);
+}
+
+.send-area-textarea::-webkit-scrollbar {
+    display: none;
+}
+
+/* ---- 发送/停止按钮 ---- */
+.send-area-submit-button {
+    height: auto;
+    width: 100px;
+    background: var(--main-color);
+    color: #fff;
+    border: none;
+    border-top-right-radius: var(--radius-md, 10px);
+    border-bottom-right-radius: var(--radius-md, 10px);
+    cursor: pointer;
+    align-self: stretch;
+    transition: all var(--transition-normal, 0.3s ease);
+}
+
+.send-area-submit-button:hover {
+    filter: brightness(0.85);
+}
+
+.send-area-submit-button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+/* ---- 文件 chips 区域（宽度与 textarea+button 一致，确保左对齐） ---- */
+.file-chips-area {
+    width: calc(50% + 100px + 48px); /* textarea + send btn + attach btn */
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 20px;
+    font-size: 13px;
+    color: #333;
+    transition: all 0.2s;
+}
+.file-chip:hover { background: #e8e8e8; }
+.file-chip-name {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.file-chip-remove {
+    cursor: pointer;
+    display: flex;
+    color: #999;
+    border-radius: 50%;
+    padding: 2px;
+    transition: all 0.2s;
+}
+.file-chip-remove:hover { color: #ff4d4f; background: rgba(255, 77, 79, 0.1); }
+
+.file-chip-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px dashed #ccc;
+    color: #999;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.file-chip-add:hover { border-color: var(--main-color); color: var(--main-color); background: rgba(0,0,0,0.03); }
+
+/* ---- 拖拽遮罩 ---- */
+.drag-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.12);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+.drag-overlay-content {
+    background: #fff;
+    border: 3px dashed var(--main-color, lightsalmon);
+    border-radius: 16px;
+    padding: 40px 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--main-color, lightsalmon);
+    font-size: 18px;
+    font-weight: 600;
+}
+.drag-overlay-content i { width: 48px; height: 48px; }
+
+/* ---- 消息内附件 ---- */
+.message-attachment-image img {
+    max-width: 200px;
+    max-height: 200px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin: 4px 0;
+}
+.message-attachment-audio audio,
+.message-attachment-video video {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 8px;
+    margin: 4px 0;
+}
+.message-attachment-file a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(0,0,0,0.04);
+    border-radius: 8px;
+    text-decoration: none;
+    color: #333;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+.message-attachment-file a:hover { background: rgba(0,0,0,0.08); }
+
+/* ============================================
+   移动端适配
+   ============================================ */
+@media (max-width: 768px) {
+    .send-area-attach-button {
+        width: 34px;
+        min-width: 34px;
+    }
+
+    .send-area-textarea {
+        width: 70%;
+        min-height: 70px;
+        max-height: 140px;
+        font-size: var(--text-md, 14px);
+    }
+
+    .send-area-submit-button {
+        width: 65px;
+        min-width: 50px;
+    }
+
+    .send-area-container {
+        width: 92%;
+        padding: 8px 0;
+    }
+
+    .file-chips-area {
+        width: calc(70% + 65px + 34px);
+    }
+
+    .drag-overlay-content {
+        padding: 24px 32px;
+        font-size: 16px;
+    }
+
+    .drag-overlay-content i { width: 36px; height: 36px; }
+
+    .message-attachment-image img {
+        max-width: 150px;
+        max-height: 150px;
+    }
+}

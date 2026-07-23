@@ -1,0 +1,43 @@
+
+/* 1. 针对 Webkit 浏览器 (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+    width: 8px;  /* 纵向滚动条宽度 */
+    height: 8px; /* 横向滚动条高度 */
+}
+
+/* 滚动条轨道 */
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* 滚动条滑块 (Thumb) */
+::-webkit-scrollbar-thumb {
+    /* 使用半透明背景，实现悬浮感 */
+    background-color: rgba(144, 147, 153, 0.5);
+    border-radius: 10px;
+    /* 关键：设置透明边框并使用 background-clip，让滑块看起来与边缘有间隙 */
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background-color 0.3s ease;
+}
+
+/* 滑块悬停效果 */
+::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(144, 147, 153, 0.6);
+}
+
+/* 滑块激活/点击效果 */
+::-webkit-scrollbar-thumb:active {
+    background-color: rgba(144, 147, 153, 0.7);
+}
+
+/* 2. 针对 Firefox 浏览器 (目前支持度有限，只能改粗细和颜色) */
+* {
+    scrollbar-width: thin; /* 设为细滚动条 */
+    scrollbar-color: rgba(144, 147, 153, 0.5) transparent; /* 滑块颜色 轨道颜色 */
+}
+
+/* 3. 优化容器布局：防止滚动条出现时页面跳动 (可选) */
+html, body {
+    scrollbar-gutter: stable;
+}

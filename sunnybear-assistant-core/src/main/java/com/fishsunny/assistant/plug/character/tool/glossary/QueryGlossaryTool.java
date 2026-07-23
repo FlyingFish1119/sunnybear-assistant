@@ -1,0 +1,112 @@
+package com.fishsunny.assistant.plug.character.tool.glossary;
+
+/*
+ * @Usage 角色词条查询工具 —— AI 通过 keyword 查询词条，返回 Markdown 格式的关键词、描述和完整内容，要求 AI 遇到相关话题主动查询
+ *
+ * @Project sunnybear-assistant
+ * @Author FlyingFish-SunnyBear
+ * @Date 2026/7/13
+ */
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
+import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
+import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
+import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
+import com.fishsunny.assistant.plug.character.entity.CharacterSessionMapping;
+import com.fishsunny.assistant.plug.character.service.CharacterGlossaryService;
+import com.fishsunny.assistant.plug.character.service.CharacterSessionMappingService;
+import lombok.Data;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.util.StringUtils;
+
+import java.util.List;
+import java.util.Map;
+
+@ToolKitComponent(CharacterGlossaryToolKit.class)
+@ConditionalOnExpression("${plug.character.tool.glossary.enable:false} && ${plug.character.tool.glossary.query-glossary.enable:true}")
+public class QueryGlossaryTool implements ToolHandler {
+
+    public static final String NAME = "character_glossary_query_tool";
+
+    private final ToolRegister register;
+    private final ObjectMapper objectMapper;
+    private final CharacterGlossaryService glossaryService;
+
+    public QueryGlossaryTool(ObjectMapper objectMapper,
+                              CharacterGlossaryService glossaryService
+                              ) {
+        this.objectMapper = objectMapper;
+        this.glossaryService = glossaryService;
+
+        register = new ToolRegister()
+                .setName(NAME)
+                .setDescription("""
+                        查询当前角色绑定的词条内容。根据关键词精确匹配，返回该词条的关键词、描述和完整内容。\
+                        在对话中，只要涉及到可能与任何词条相关联的话题（如角色名、地名、组织名、事件、术语、设定等），你必须主动调用此工具进行查询，以获取准确的角色设定信息。\
+                        绝对禁止在未查询词条的情况下捏造该词条的内容。""")
+                .setRequired(List.of("keyword"))
+                .setParameters(List.of(
+                        new ToolRegister.Parameters("keyword", "string", "要查询的词条关键词，精确匹配。例如角色名、地名、组织名、术语等。")
+                ));
+    }
+
+    @Override
+    public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
+        Arguments arguments;
+        try {
+            arguments = objectMapper.readValue(argumentsJson, Arguments.class);
+        } catch (Exception e) {
+            throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
+        }
+
+        if (!StringUtils.hasText(arguments.getKeyword())) {
+            throw new ToolExecutor.ToolExecuteException("参数 keyword 不能为空");
+        }
+
+        // 从上下文获取当前会话
+        ChatSession chatSession = (ChatSession) context.get("chatSession");
+        if (chatSession == null) {
+            throw new ToolExecutor.ToolExecuteException("无法获取当前会话信息");
+        }
+
+        // 按角色 + 关键词查询词条
+        CharacterInfo characterInfo = (CharacterInfo) context.get("character");
+        if (characterInfo == null) {
+            throw new ToolExecutor.ToolExecuteException("无法获取当前角色信息");
+        }
+
+        CharacterGlossary glossary = glossaryService.getByCharacterIdAndKeyword(
+                characterInfo.getId(), arguments.getKeyword().trim());
+        if (glossary == null) {
+            return new ToolExecutor.ToolExecuteResponse(NAME,
+                    "当前角色没有关键词为 `" + arguments.getKeyword().trim() + "` 的词条。");
+        }
+
+        StringBuilder result = new StringBuilder();
+        result.append("## ").append(glossary.getKeyword()).append("\n\n");
+        if (StringUtils.hasText(glossary.getDesc())) {
+            result.append("> ").append(glossary.getDesc()).append("\n\n");
+        }
+        result.append(glossary.getContent());
+        return new ToolExecutor.ToolExecuteResponse(NAME, result.toString());
+    }
+
+    @Override
+    public String name() {
+        return NAME;
+    }
+
+    @Override
+    public ToolRegister getRegister() {
+        return register;
+    }
+
+    @Data
+    private static class Arguments {
+        private String keyword;
+    }
+}
