@@ -1,0 +1,27 @@
+# ===== IDE =====
+**/.idea/
+*.iml
+.vscode/
+
+# ===== 构建产物 =====
+**/target/
+**/build/
+**/out/
+*.class
+*.jar
+*.war
+
+# ===== 运行时数据（含敏感信息，绝不提交）=====
+sunnybear-assistant-core/data/
+sunnybear-assistant-core/settings/
+
+# ===== 部署配置（需人工审核）=====
+sunnybear-assistant-core/deploy/
+
+# ===== OS 杂项 =====
+.DS_Store
+Thumbs.db
+
+# ===== 日志 =====
+**/logs/
+*.log

@@ -1,0 +1,43 @@
+/* ============================================
+   会话名称组件样式（显示 + 编辑）
+   ============================================ */
+
+/* ---- 显示状态：可编辑视觉提示 ---- */
+.session-name-editable {
+    cursor: pointer;
+    border: 3px dashed transparent;
+    padding: 4px;
+    border-radius: var(--radius-sm, 6px);
+}
+
+.session-name-editable:hover {
+    border: 3px dashed var(--main-color);
+    transition: all 0.3s ease;
+}
+
+/* ---- 编辑状态：行内输入框 ---- */
+.session-name-input {
+    font-size: inherit;
+    font-family: inherit;
+    color: inherit;
+    background: #fff;
+    border: 2px solid var(--border-color, #ddd);
+    border-radius: var(--radius-md, 10px);
+    outline: none;
+    padding: 4px 10px;
+    min-width: 80px;
+    width: auto;
+    transition: all var(--transition-normal, 0.3s ease);
+    overflow: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.session-name-input:focus {
+    border-radius: 0;
+    border-left: 4px solid var(--main-color);
+}
+
+.session-name-input::-webkit-scrollbar {
+    display: none;
+}

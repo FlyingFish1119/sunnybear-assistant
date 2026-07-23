@@ -1,0 +1,80 @@
+name: project-stats
+description: 统计当前项目的文件数量、代码行数和按类型分布（支持 Java/JS/Python/Go 等常见源码）
+type: powershell
+parameters:
+  - name: path
+    type: string
+    description: 要扫描的项目根目录，默认为当前目录
+    required: false
+script: |
+  chcp 65001 > $null
+  $root = "{{path}}"
+  if (-not $root) { $root = "." }
+  $root = Resolve-Path $root
+
+  Write-Host "📁 项目路径: $root"
+  Write-Host ""
+
+  # 常见源码扩展名
+  $codeExts = @(".java",".kt",".scala",".py",".js",".ts",".jsx",".tsx",".go",".rs",".cpp",".c",".h",".hpp",".cs",".php",".rb",".swift",".m",".mm",".xml",".json",".yaml",".yml",".sql",".sh",".ps1",".md")
+
+  $allFiles = Get-ChildItem -Path $root -Recurse -File | Where-Object {
+      # 排除常见构建/依赖目录
+      $full = $_.FullName
+      -not ($full -match "\\(target|build|dist|node_modules|\.git|\.idea|\.vscode|out|bin|obj)\\")
+  }
+
+  $totalFiles = $allFiles.Count
+  $totalSizeKB = [math]::Round(($allFiles | Measure-Object -Property Length -Sum).Sum / 1KB, 2)
+
+  Write-Host "=== 总体概览 ==="
+  Write-Host "总文件数: $totalFiles"
+  Write-Host "总大小: ${totalSizeKB} KB"
+  Write-Host ""
+
+  # 按扩展名统计
+  $extStats = $allFiles | Group-Object Extension | ForEach-Object {
+      [PSCustomObject]@{
+          扩展名 = if ($_.Name) { $_.Name } else { "(无扩展名)" }
+          文件数 = $_.Count
+          总大小KB = [math]::Round(($_.Group | Measure-Object -Property Length -Sum).Sum / 1KB, 2)
+      }
+  } | Sort-Object 文件数 -Descending
+
+  Write-Host "=== 文件类型分布（Top 15）==="
+  $extStats | Select-Object -First 15 | Format-Table -AutoSize | Out-String | Write-Host
+
+  # 源码文件行数统计（仅对文本类源码）
+  $codeFiles = $allFiles | Where-Object { $codeExts -contains $_.Extension.ToLower() }
+  $totalLines = 0
+  $lineStats = @()
+
+  foreach ($file in $codeFiles) {
+      try {
+          $lines = (Get-Content $file.FullName | Measure-Object).Count
+          $totalLines += $lines
+          $lineStats += [PSCustomObject]@{
+              扩展名 = $file.Extension.ToLower()
+              行数 = $lines
+          }
+      } catch {
+          # 跳过无法读取的文件
+      }
+  }
+
+  $groupedLines = $lineStats | Group-Object 扩展名 | ForEach-Object {
+      [PSCustomObject]@{
+          扩展名 = $_.Name
+          文件数 = $_.Count
+          代码行数 = ($_.Group | Measure-Object -Property 行数 -Sum).Sum
+      }
+  } | Sort-Object 代码行数 -Descending
+
+  Write-Host "=== 源码行数统计 ==="
+  Write-Host "源码文件数: $($codeFiles.Count)"
+  Write-Host "估算总行数: $totalLines"
+  Write-Host ""
+  Write-Host "按类型分布:"
+  $groupedLines | Format-Table -AutoSize | Out-String | Write-Host
+
+  Write-Host "✅ 统计完成"

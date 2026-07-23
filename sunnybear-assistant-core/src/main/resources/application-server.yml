@@ -1,0 +1,30 @@
+engine:
+  tool:
+    extension:
+      dir: tool-extension
+    os:
+      enable: true
+    net:
+      enable: true
+    file:
+      enable: true
+    image:
+      enable: true
+      screen-capture:
+        enable: false
+    calc:
+      enable: true
+    bot:
+      enable: false
+    browser:
+      enable: true
+    memory:
+      enable: true
+    knowledge:
+      enable: true
+    task:
+      enable: true
+    flow:
+      enable: true
+    session:
+      enable: true

@@ -1,0 +1,218 @@
+/* ============================================
+   通用确认弹窗样式（与 tool-confirm 风格一致）
+   ============================================ */
+
+.confirm-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100dvw;
+    height: 100dvh;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: cf-fade-in 0.2s ease;
+}
+
+@keyframes cf-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.confirm-dialog {
+    background: #fff;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 440px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.14);
+    animation: cf-slide-up 0.25s ease;
+    overflow: hidden;
+    outline: none;
+}
+
+@keyframes cf-slide-up {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- header ---- */
+.confirm-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 24px 26px 6px 26px;
+}
+
+.confirm-icon-wrap {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.confirm-icon-wrap i {
+    width: 24px;
+    height: 24px;
+}
+
+/* 各类型图标配色 */
+.confirm-icon--warning {
+    background: linear-gradient(135deg, #fff7e6, #ffe7ba);
+}
+.confirm-icon--warning i {
+    color: #fa8c16;
+}
+
+.confirm-icon--danger {
+    background: linear-gradient(135deg, #fff1f0, #ffccc7);
+}
+.confirm-icon--danger i {
+    color: #ff4d4f;
+}
+
+.confirm-icon--info {
+    background: linear-gradient(135deg, #e6f7ff, #bae7ff);
+}
+.confirm-icon--info i {
+    color: #1890ff;
+}
+
+.confirm-header-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 2px;
+}
+
+.confirm-title {
+    font-size: 17px;
+    font-weight: 600;
+    color: #333;
+    line-height: 1.4;
+}
+
+.confirm-subtitle {
+    font-size: 14px;
+    color: #666;
+    line-height: 1.6;
+}
+
+/* ---- footer ---- */
+.confirm-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 18px 26px 20px 26px;
+    border-top: 1px solid #f5f5f5;
+    margin-top: 6px;
+}
+
+.confirm-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 22px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+    user-select: none;
+    min-width: 80px;
+}
+
+.confirm-btn-cancel {
+    background: #f5f5f5;
+    color: #666;
+}
+.confirm-btn-cancel:hover {
+    background: #e8e8e8;
+    color: #333;
+}
+
+.confirm-btn-accept {
+    color: #fff;
+}
+
+/* 各类型确认按钮配色 */
+.confirm-btn--warning {
+    background: #fa8c16;
+}
+.confirm-btn--warning:hover {
+    background: #e07b0e;
+    box-shadow: 0 3px 14px rgba(250, 140, 22, 0.35);
+}
+
+.confirm-btn--danger {
+    background: #ff4d4f;
+}
+.confirm-btn--danger:hover {
+    background: #e04345;
+    box-shadow: 0 3px 14px rgba(255, 77, 79, 0.35);
+}
+
+.confirm-btn--info {
+    background: var(--main-color, lightsalmon);
+}
+.confirm-btn--info:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 3px 14px rgba(255, 160, 122, 0.35);
+}
+
+/* ============================================
+   移动端适配
+   ============================================ */
+@media (max-width: 768px) {
+    .confirm-dialog {
+        width: 92%;
+        max-width: 92%;
+        border-radius: 14px;
+    }
+
+    .confirm-header {
+        padding: 16px 16px 4px;
+        gap: 10px;
+    }
+
+    .confirm-icon-wrap {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+    }
+
+    .confirm-icon-wrap i {
+        width: 20px;
+        height: 20px;
+    }
+
+    .confirm-title {
+        font-size: 15px;
+    }
+
+    .confirm-subtitle {
+        font-size: 13px;
+    }
+
+    .confirm-footer {
+        padding: 12px 16px 16px;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .confirm-btn {
+        width: 100%;
+        padding: 12px 20px;
+        font-size: 14px;
+    }
+}

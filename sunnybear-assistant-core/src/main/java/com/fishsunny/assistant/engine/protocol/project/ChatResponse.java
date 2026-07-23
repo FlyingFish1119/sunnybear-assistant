@@ -1,0 +1,77 @@
+package com.fishsunny.assistant.engine.protocol.project;
+
+/*
+ * @Usage
+ *
+ * @Project Assistant
+ * @Author FlyingFish-SunnyBear
+ * @Date 2026/6/28 16:33
+ */
+
+import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
+import lombok.Data;
+import lombok.experimental.Accessors;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Data
+@Accessors(chain = true)
+public class ChatResponse implements AIResponse {
+
+    public final static String STATUS_INIT_USER = "init_user";
+    public final static String STATUS_INIT_ASSISTANT = "init_assistant";
+    public final static String STATUS_TOOL_RESPONSE = "tool_response";
+    public final static String STATUS_CHUNK = "chunk";
+    public final static String STATUS_DONE = "done";
+    public final static String STATUS_ERROR = "error";
+
+    private String sessionId;
+
+    private String status;
+
+    private List<ChatMessage> messages = new ArrayList<>();
+
+    private Map<String, Object> metadata = new HashMap<>();
+
+    public ChatResponse() {
+    }
+
+    public String getText() {
+        StringBuilder stringBuilder = new StringBuilder();
+        for (ChatMessage message : messages) {
+            for (MessageContent content : message.getContents()) {
+                // 注意：不能用 StringUtils.hasText() 过滤，否则流式传输时纯空白 chunk（如 \n\n 段落分隔）会被丢弃
+                if (content instanceof TextContent textContent && textContent.getContent() != null) {
+                    stringBuilder.append(textContent.getContent());
+                }
+            }
+        }
+        return stringBuilder.isEmpty() ? null : stringBuilder.toString();
+    }
+
+    public void appendTextAtStart(String text) {
+        for (ChatMessage message : messages) {
+            for (MessageContent content : message.getContents()) {
+                if (content instanceof TextContent textContent && textContent.getContent() != null) {
+                    textContent.setContent(text + textContent.getContent());
+                }
+            }
+        }
+    }
+
+    public String getReasoningContent() {
+        StringBuilder stringBuilder = new StringBuilder();
+        for (ChatMessage message : messages) {
+            if (message.getReasoningContent() != null) {
+                stringBuilder.append(message.getReasoningContent());
+            }
+        }
+        return stringBuilder.isEmpty() ? null : stringBuilder.toString();
+    }
+}

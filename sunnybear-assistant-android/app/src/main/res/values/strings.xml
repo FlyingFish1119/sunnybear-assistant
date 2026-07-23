@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SunnyBear Agent</string>
+    <string name="accessibility_description">
+        SunnyBear Agent 无障碍服务。
+        本服务用于接收远程 AI 助手的指令，执行屏幕点击、滑动、输入等自动化操作。
+        仅用于辅助用户完成手机操作的自动化任务。
+    </string>
+</resources>

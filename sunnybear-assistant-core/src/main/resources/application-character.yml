@@ -1,0 +1,38 @@
+engine:
+  tool:
+    extension:
+      dir: tool-extension
+    os:
+      enable: false
+    net:
+      enable: false
+    file:
+      enable: false
+    image:
+      enable: false
+    calc:
+      enable: true
+    bot:
+      enable: false
+    memory:
+      enable: false
+    knowledge:
+      enable: false
+    task:
+      enable: false
+    flow:
+      enable: false
+    session:
+      enable: false
+
+plug:
+  character:
+    tool:
+      glossary:
+        enable: true
+      sql:
+        enable: true
+      dice:
+        enable: true
+      battle:
+        enable: true

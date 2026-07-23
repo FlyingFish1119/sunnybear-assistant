@@ -1,0 +1,197 @@
+/* ============================================
+   Character Sidebar — 角色扮演页侧边栏
+   容器、新建对话按钮、会话列表、右键菜单、切换按钮
+   ============================================ */
+
+/* ---- 侧边栏容器 ---- */
+.app-sidebar {
+    flex: 0 0 var(--sidebar-width, 275px);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    align-items: center;
+    overflow: hidden;
+}
+
+/* ---- 新建对话按钮 ---- */
+.sidebar-new-chat-button {
+    margin-top: 15px;
+    border-radius: 12px;
+    width: 200px;
+    height: 50px;
+    font-size: 20px;
+}
+
+/* ---- 会话列表容器 ---- */
+.sidebar-session-list {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    overflow-y: auto;
+}
+
+/* ---- 单个会话条目 ---- */
+.sidebar-session-item {
+    flex: none;
+    font-size: 18px;
+    width: 90%;
+    min-height: 40px;
+    border-bottom: 4px solid rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    justify-content: end;
+    transition: all var(--transition-normal, 0.3s ease);
+}
+
+.sidebar-session-item:hover {
+    border-bottom-color: white;
+    background-color: white;
+    border-radius: var(--radius-md, 10px);
+    padding: 5px 5px 15px 5px;
+    cursor: pointer;
+}
+
+.sidebar-footer {
+    width: 100%;
+    display: flex;
+}
+
+/* ---- 设置按钮 ---- */
+.sidebar-settings {
+    margin: 10px;
+    align-self: start;
+}
+
+.sidebar-settings-icon:hover {
+    color: #666;
+    transition: all var(--transition-fast, 0.2s ease);
+}
+
+/* ============================================
+   右键上下文菜单
+   ============================================ */
+
+.session-context-menu {
+    position: fixed;
+    z-index: 2000;
+    background: #fff;
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    padding: 4px 0;
+    min-width: 140px;
+}
+
+.session-context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    font-size: 14px;
+    color: var(--text-primary, #333);
+    cursor: pointer;
+    transition: background-color var(--transition-fast, 0.2s ease);
+}
+
+.session-context-menu-item:hover {
+    background-color: #f5f7fa;
+}
+
+.session-context-menu-item span {
+    white-space: nowrap;
+}
+
+/* ============================================
+   侧边栏切换按钮（全端可见）
+   ============================================ */
+
+.sidebar-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin-left: -6px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #555;
+    transition: all var(--transition-fast, 0.2s);
+    flex-shrink: 0;
+}
+
+.sidebar-toggle-btn:hover {
+    background: #f0f0f0;
+    color: var(--text-primary, #333);
+}
+
+/* ---- 侧边栏遮罩（仅移动端） ---- */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 999;
+    transition: opacity var(--transition-normal, 0.3s ease);
+}
+
+.sidebar-overlay.visible {
+    display: block;
+}
+
+/* ============================================
+   桌面端 — 侧边栏折叠/展开
+   ============================================ */
+@media (min-width: 769px) {
+    .app-sidebar {
+        transition: flex-basis var(--transition-normal, 0.3s ease);
+    }
+
+    .app-sidebar.collapsed {
+        flex-basis: 0;
+        min-width: 0;
+    }
+
+    /* 折叠时隐藏内部元素 */
+    .app-sidebar.collapsed > * {
+        opacity: 0;
+        pointer-events: none;
+    }
+}
+
+/* ============================================
+   移动端 — 侧边栏变为滑出抽屉
+   ============================================ */
+@media (max-width: 768px) {
+    .app-sidebar {
+        position: fixed;
+        left: -285px;
+        top: 0;
+        width: var(--sidebar-width, 275px);
+        height: 100dvh;
+        /* 为移动端浏览器底部导航栏预留安全区域 */
+        padding-bottom: env(safe-area-inset-bottom);
+        z-index: 1000;
+        transition: left var(--transition-normal, 0.3s ease);
+        box-shadow: none;
+    }
+
+    .app-sidebar.mobile-open {
+        left: 0;
+        box-shadow: 4px 0 20px rgba(0, 0, 0, 0.18);
+    }
+
+    .sidebar-new-chat-button {
+        width: 180px;
+        font-size: 18px;
+    }
+
+    .sidebar-session-item {
+        font-size: 16px;
+    }
+}

@@ -1,0 +1,651 @@
+/* ============================================
+   Message Area — 消息区域
+   外层容器、消息面板、消息列表、聊天气泡、头像、响应式
+   ============================================ */
+
+/* ---- 消息区外层容器（flex:1 自动填充剩余空间，3 段式：顶部栏 | 消息面板 | 发送区） ---- */
+.message-area-wrapper {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+}
+
+/* ---- 顶部信息栏 ---- */
+.message-area-top {
+    width: 95%;
+    height: 40px;
+    padding: 5px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.message-area-top-info {
+    display: flex;
+}
+
+/* ============================================
+   连接状态指示器
+   ============================================ */
+
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    user-select: none;
+}
+
+.connection-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: background-color var(--transition-normal, 0.3s ease);
+}
+
+.connection-text {
+    white-space: nowrap;
+}
+
+/* 已连接 — 绿色 */
+.connection-status.connected .connection-dot {
+    background-color: #52c41a;
+    box-shadow: 0 0 4px rgba(82, 196, 26, 0.5);
+}
+.connection-status.connected .connection-text {
+    color: #52c41a;
+}
+
+/* 连接中 — 橘色 */
+.connection-status.connecting .connection-dot {
+    background-color: #fa8c16;
+    box-shadow: 0 0 4px rgba(250, 140, 22, 0.5);
+    animation: connection-pulse 1.2s ease-in-out infinite;
+}
+.connection-status.connecting .connection-text {
+    color: #fa8c16;
+}
+
+/* 已断开 — 红色 */
+.connection-status.disconnected .connection-dot {
+    background-color: #ff4d4f;
+    box-shadow: 0 0 4px rgba(255, 77, 79, 0.5);
+}
+.connection-status.disconnected .connection-text {
+    color: #ff4d4f;
+}
+
+@keyframes connection-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ============================================
+   消息面板（仅含问候语 + 消息列表，flex:1 填充中间区域）
+   ============================================ */
+
+.message-area-panel {
+    flex: 1;
+    min-height: 0;
+    width: 95%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 新对话状态：垂直居中 */
+.message-area-panel.is-new-chat {
+    flex: none;
+    height: 50%;
+    justify-content: end;
+}
+.message-area-panel.is-new-chat .greeting-banner {
+    align-self: center;
+}
+
+/* ---- 滚动列表 ---- */
+.message-area-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* ---- 加载状态 ---- */
+.message-area-list-loading {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px 0;
+    animation: loading-fade-in 0.4s ease;
+    user-select: none;
+}
+
+.loading-spinner {
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.loading-icon {
+    width: 32px;
+    height: 32px;
+    color: var(--main-color);
+    animation: loading-spin 1s linear infinite;
+}
+
+.loading-text {
+    font-size: var(--text-md);
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+}
+
+/* 三个点依次跳动 */
+.loading-dots {
+    display: inline-flex;
+    gap: 1px;
+    margin-left: 1px;
+}
+.loading-dots span {
+    font-size: var(--text-md);
+    color: var(--text-muted);
+    animation: loading-dot-bounce 1.4s ease-in-out infinite;
+}
+.loading-dots span:nth-child(1) { animation-delay: 0s; }
+.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes loading-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+@keyframes loading-fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes loading-dot-bounce {
+    0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
+    40%           { opacity: 1;   transform: translateY(-3px); }
+}
+
+/* ---- 问候语横幅 ---- */
+.greeting-banner {
+    color: #555;
+    text-align: center;
+    padding: 24px 36px;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.8;
+    background: linear-gradient(135deg, #fff 0%, color-mix(in srgb, var(--main-color) 10%, white) 100%);
+    border-left: 6px solid var(--main-color);
+    border-radius: 12px;
+    animation: greeting-fade-in 0.6s ease;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.greeting-banner .greeting-icon {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    color: var(--main-color);
+}
+
+@keyframes greeting-fade-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================
+   消息行 & 气泡
+   ============================================ */
+
+/* ---- 消息行：assistant 靠左 / user 靠右 / tool 居中 ---- */
+.message-area-row {
+    display: flex;
+    width: 100%;
+}
+
+.message-area-row.assistant { justify-content: flex-start; }
+.message-area-row.user      { justify-content: flex-end; }
+.message-area-row.tool      { justify-content: center; }
+
+/* ---- 消息气泡（基础） ---- */
+.message-area-bubble {
+    max-width: 70%;
+    padding: 10px 14px;
+    border-radius: var(--radius-md, 10px);
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.message-area-row.assistant .message-area-bubble {
+    background-color: var(--bg-assistant, #f0f0f0);
+    color: var(--text-primary, #333);
+}
+
+.message-area-row.user .message-area-bubble {
+    background-color: var(--main-color, lightsalmon);
+    color: var(--text-primary, #333);
+}
+
+.message-area-row.tool .message-area-bubble {
+    width: 70%;
+    background: var(--bg-tool, #fafafa);
+    color: var(--text-secondary, #666);
+    font-size: 13px;
+    border: 2px dashed var(--border-color, #ddd);
+}
+
+/* ---- 气泡内元信息（仅 tool 消息使用） ---- */
+.message-area-bubble-meta {
+    font-size: var(--text-sm, 12px);
+    margin-bottom: 4px;
+    opacity: 0.7;
+    display: flex;
+    align-items: center;
+}
+
+/* ---- 气泡底部操作区 ---- */
+.message-area-bubble-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 22px;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    opacity: 0;
+    transition: opacity var(--transition-fast, 0.2s);
+}
+
+.message-area-bubble:hover .message-area-bubble-actions {
+    opacity: 1;
+}
+
+/* ---- 分支切换按钮 ---- */
+.branch-switch-arrow {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    color: var(--text-secondary, #666);
+    transition: background var(--transition-fast, 0.15s), color var(--transition-fast, 0.15s);
+}
+
+.branch-switch-arrow:hover:not(.disabled) {
+    background: rgba(0, 0, 0, 0.08);
+    color: var(--text-primary, #333);
+}
+
+.branch-switch-arrow.disabled {
+    cursor: default;
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.branch-switch-counter {
+    font-size: var(--text-sm, 12px);
+    color: var(--text-muted, #999);
+    user-select: none;
+    min-width: 28px;
+    text-align: center;
+}
+
+/* ---- 编辑 textarea ---- */
+.message-edit-textarea {
+    width: 100%;
+    min-width: 280px;
+    min-height: 65px;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 8px 12px;
+    border: 2px solid #bbb;
+    border-radius: var(--radius-md, 10px);
+    font-size: var(--text-md, 14px);
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+    transition: all 0.5s ease;
+    box-sizing: border-box;
+    font-family: inherit;
+    background: #fff;
+}
+
+/* ---- 推理/思维链 ---- */
+.message-area-reasoning {
+    font-size: var(--text-sm, 12px);
+    margin-bottom: 4px;
+    opacity: 0.8;
+}
+
+/* 思维链折叠容器 — 承接左边的日志竖线 */
+.reasoning-header + .collapsible-content {
+    border-left: 3px solid rgba(0, 0, 0, 0.25);
+    padding-left: 8px;
+}
+
+/* ---- 思维链可折叠头部 ---- */
+.reasoning-header {
+    cursor: pointer;
+    user-select: none;
+    gap: 4px;
+    transition: opacity var(--transition-fast, 0.2s);
+}
+.reasoning-header:hover {
+    opacity: 1;
+}
+
+/* ---- 思维链折叠箭头 ---- */
+.reasoning-chevron {
+    margin-left: 4px;
+    transition: transform var(--transition-normal, 0.3s ease);
+    flex-shrink: 0;
+}
+.reasoning-chevron.collapsed {
+    transform: rotate(-90deg);
+}
+
+/* ---- 工具调用信息 ---- */
+.message-area-bubble-tools {
+    font-size: var(--text-sm, 12px);
+    padding: 4px 8px;
+    border-radius: 0 0 4px 4px;
+    background: rgba(0, 0, 0, 0.08);
+}
+
+/* ---- 工具调用可折叠头部 ---- */
+.message-area-bubble-tools-header {
+    margin-top: 8px;
+    font-size: var(--text-sm, 12px);
+    padding: 4px 8px;
+    border-radius: 4px 4px 0 0;
+    background: rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: background var(--transition-fast, 0.15s);
+}
+.message-area-bubble-tools-header:hover {
+    background: rgba(0, 0, 0, 0.12);
+}
+
+/* 折叠状态下 header 单独显示，恢复完整圆角 */
+.tool-calls-block.collapsed .message-area-bubble-tools-header {
+    border-radius: 4px;
+}
+
+/* ---- 工具元信息可折叠头部 ---- */
+.tool-meta-header {
+    cursor: pointer;
+    user-select: none;
+    gap: 4px;
+    transition: opacity var(--transition-fast, 0.2s);
+}
+.tool-meta-header:hover {
+    opacity: 1;
+}
+
+/* ---- 工具状态（折叠头部内联显示） ---- */
+.tool-status-inline {
+    display: inline-flex;
+    align-items: center;
+    font-size: var(--text-xs, 11px);
+    margin-left: 6px;
+    flex-shrink: 0;
+}
+
+/* ---- 折叠箭头通用 ---- */
+.tool-chevron {
+    flex-shrink: 0;
+    transition: transform var(--transition-normal, 0.3s ease);
+}
+.tool-chevron.collapsed {
+    transform: rotate(0deg);
+}
+.tool-chevron:not(.collapsed) {
+    transform: rotate(90deg);
+}
+
+/* ---- 可折叠内容过渡（max-height 由 JS 动态设置以驱动卷轴动画） ---- */
+.collapsible-content {
+    overflow: hidden;
+    transition: max-height 0.45s ease-out;
+}
+.collapsible-content.collapsed {
+    max-height: 0;
+}
+
+/* 工具调用详情包装（保留原有背景/间距，过渡生效） */
+.message-area-bubble-tools-wrap {
+    overflow: hidden;
+    transition: max-height 0.45s ease-out;
+}
+.message-area-bubble-tools-wrap.collapsed {
+    max-height: 0;
+}
+
+.message-area-bubble-tools-meta {
+    margin-right: 8px;
+    display: flex;
+    align-items: center;
+}
+
+/* ============================================
+   头像 + 名称时间（消息上方，同一行）
+   ============================================ */
+
+/* 消息列：header-row + 气泡垂直排列，固定宽度 70% */
+.message-area-col {
+    display: flex;
+    flex-direction: column;
+    width: 70%;
+}
+
+.message-area-row.assistant .message-area-col { align-items: flex-start; }
+.message-area-row.user .message-area-col      { align-items: flex-end; }
+
+/* ---- 头部行：头像 + 名称时间 ---- */
+.message-header-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+/* 用户消息：头像在名称右侧 */
+.message-area-row.user .message-header-row {
+    flex-direction: row-reverse;
+}
+
+/* ---- 名称 + 时间文字 ---- */
+.message-header-meta {
+    font-size: var(--text-sm, 12px);
+    opacity: 0.7;
+    white-space: nowrap;
+}
+
+/* ---- 头像（在 header-row 内） ---- */
+.message-avatar-top {
+    display: block;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    max-width: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+/* 列内的气泡填满列宽，清除基础 max-width 限制 */
+.message-area-col .message-area-bubble {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+}
+
+/* ---- 旧侧边头像（兼容保留） ---- */
+.message-avatar-wrap {
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    padding-top: 4px;
+}
+
+.message-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+}
+
+.message-area-row.assistant .message-avatar-wrap {
+    margin-right: 10px;
+    margin-left: 4px;
+}
+
+.message-area-row.user .message-avatar-wrap {
+    margin-left: 10px;
+    margin-right: 4px;
+}
+
+/* ---- 默认头像（首字母） ---- */
+.message-avatar-default {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    user-select: none;
+}
+
+.assistant-avatar-default {
+    background: linear-gradient(135deg, #ffa07a 0%, #ff7f50 100%);
+}
+
+.user-avatar-default {
+    background: linear-gradient(135deg, #87ceeb 0%, #6495ed 100%);
+}
+
+/* ============================================
+   移动端适配
+   ============================================ */
+@media (max-width: 768px) {
+    .message-area-wrapper {
+        width: 100%;
+        /* 为移动端浏览器底部导航栏预留安全区域 */
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .message-area-top {
+        width: 92%;
+        font-size: var(--text-md, 14px);
+    }
+
+    .connection-text {
+        width: 0;
+        overflow: hidden;
+    }
+
+    .message-area-panel {
+        width: 92%;
+    }
+
+    .message-area-bubble {
+        width: 88%;
+        font-size: var(--text-md, 14px);
+        padding: 8px 10px;
+    }
+
+    .message-area-col {
+        width: 88%;
+    }
+
+    .message-avatar-top {
+        width: 24px;
+        height: 24px;
+        min-width: 24px;
+        max-width: 24px;
+    }
+
+    .message-avatar {
+        width: 32px;
+        height: 32px;
+    }
+
+    .message-avatar-default {
+        font-size: var(--text-sm, 12px);
+    }
+
+    .message-header-meta {
+        font-size: var(--text-xs, 11px);
+    }
+
+    .message-area-row.assistant .message-avatar-wrap {
+        margin-right: 6px;
+        margin-left: 2px;
+    }
+
+    .message-area-row.user .message-avatar-wrap {
+        margin-left: 6px;
+        margin-right: 2px;
+    }
+
+    .message-area-bubble-meta {
+        font-size: var(--text-xs, 11px);
+    }
+
+    .greeting-banner {
+        font-size: 16px;
+        padding: 14px 16px;
+        margin: 0 8px;
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }
+
+    .greeting-banner .greeting-icon {
+        width: 28px;
+        height: 28px;
+    }
+
+    .message-edit-textarea {
+        min-width: 200px;
+        font-size: 13px;
+    }
+
+    .message-area-reasoning {
+        font-size: var(--text-xs, 11px);
+    }
+
+    .message-area-bubble-actions {
+        gap: 2px;
+        margin-top: 6px;
+        padding-top: 4px;
+        opacity: 1;
+    }
+}

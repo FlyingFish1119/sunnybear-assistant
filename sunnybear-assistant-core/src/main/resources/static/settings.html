@@ -1,0 +1,1957 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设置 — Assistant</title>
+    <link rel="stylesheet" href="lib/element-plus.css">
+    <script src="lib/vue.global.prod.js"></script>
+    <script src="lib/element-plus.full.min.js"></script>
+    <script src="lib/lucide.min.js"></script>
+    <script src="api.js"></script>
+    <script src="components/confirm-dialog/confirm-dialog.js"></script>
+    <link rel="stylesheet" href="css/scrollbar.css"/>
+    <link rel="stylesheet" href="css/settings.css"/>
+    <link rel="stylesheet" href="components/confirm-dialog/confirm-dialog.css"/>
+</head>
+<body style="margin: 0; overflow: hidden">
+<div id="app" :style="{'--main-color': mainColor}">
+    <!-- 顶部导航 -->
+    <div class="settings-topbar">
+        <button type="button" class="back-btn" @click="goBack" title="返回">
+            <i data-lucide="arrow-left" style="width:20px;height:20px"></i>
+        </button>
+        <span class="topbar-title">设置</span>
+        <span class="topbar-subtitle">调整你的 Assistant</span>
+    </div>
+
+    <!-- 主体 -->
+    <div class="settings-body-wrapper">
+        <div class="settings-body">
+
+        <!-- ==================== 用户与助手 ==================== -->
+        <div class="settings-section-title">用户与助手</div>
+
+        <div class="settings-card">
+            <div class="settings-card-header">
+                <i data-lucide="user-circle" style="width:18px;height:18px"></i>
+                <span>用户设置</span>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-item" @click="openDialog('user')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="user" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">个人信息</span>
+                            <span class="settings-item-desc">用户名、头像、背景图</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ userSettings.username || '未设置' }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-card">
+            <div class="settings-card-header">
+                <i data-lucide="bot" style="width:18px;height:18px"></i>
+                <span>助手设置</span>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-item" @click="openDialog('assistant')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="sparkles" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">助手信息</span>
+                            <span class="settings-item-desc">助手名称、头像</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ assistantSettings.assistantName || '未设置' }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== AI 模型配置 ==================== -->
+        <div class="settings-section-title">AI 模型配置</div>
+
+        <div class="settings-card">
+            <div class="settings-card-header">
+                <i data-lucide="cpu" style="width:18px;height:18px"></i>
+                <span>AI 模型</span>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-item" @click="openDialog('ai', 'chat')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="message-circle" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">对话模型</span>
+                            <span class="settings-item-desc">{{ getAiSummary('chat') }}</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getAiShort('chat') }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('ai', 'chat_pro')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="zap" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">高级对话模型</span>
+                            <span class="settings-item-desc">{{ getAiSummary('chat_pro') }} · 提示词复用对话模型</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getAiShort('chat_pro') }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('ai', 'summary')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="file-text" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">摘要模型</span>
+                            <span class="settings-item-desc">{{ getAiSummary('summary') }}</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getAiShort('summary') }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('ai', 'title')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="heading" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">标题模型</span>
+                            <span class="settings-item-desc">{{ getAiSummary('title') }}</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getAiShort('title') }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('ai', 'ocr')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="scan-eye" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">OCR 模型</span>
+                            <span class="settings-item-desc">{{ getAiSummary('ocr') }}</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getAiShort('ocr') }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('ai', 'mission')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="target" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">任务模型</span>
+                            <span class="settings-item-desc">{{ getAiSummary('mission') }}</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getAiShort('mission') }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('ai', 'task')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="list-checks" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">TaskAI 模型</span>
+                            <span class="settings-item-desc">{{ getAiSummary('task') }}</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getAiShort('task') }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 工具配置 ==================== -->
+        <div class="settings-section-title">工具配置</div>
+
+        <div class="settings-card">
+            <div class="settings-card-header">
+                <i data-lucide="wrench" style="width:18px;height:18px"></i>
+                <span>工具</span>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-item" @click="openDialog('command')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="terminal" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">命令执行</span>
+                            <span class="settings-item-desc">模式: {{ commandSettings.mode || 'auto' }}，超时: {{ commandSettings.timeout || '-' }}s</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getModeLabel(commandSettings.mode) }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('websearch')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="search" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">网络搜索</span>
+                            <span class="settings-item-desc">API Key 配置</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ webSearchSettings.apiKey ? '已配置' : '未配置' }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('filewrite')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="file-pen-line" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">文件写入</span>
+                            <span class="settings-item-desc">控制文件写入的权限策略</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getModeLabel(fileWriteSettings.mode) }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('fileedit')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="file-code" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">文件编辑</span>
+                            <span class="settings-item-desc">控制文件编辑的权限策略</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getModeLabel(fileEditSettings.mode) }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('filedelete')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="trash-2" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">文件删除</span>
+                            <span class="settings-item-desc">控制文件删除的权限策略</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getModeLabel(fileDeleteSettings.mode) }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('filedownload')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="download" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">文件下载</span>
+                            <span class="settings-item-desc">控制文件下载的权限策略</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ getModeLabel(fileDownloadSettings.mode) }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('extensionscript')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="puzzle" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">扩展脚本</span>
+                            <span class="settings-item-desc">超时: {{ extensionScriptSettings.timeout || '-' }}s · 最大输出: {{ formatSize(extensionScriptSettings.maxOutputSize) }}</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ extensionScriptSettings.timeout || '-' }}s</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('imagecaption')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="image" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">图片识别</span>
+                            <span class="settings-item-desc">最大文本长度限制</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ imageCaptionSettings.maxLength || '-' }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('webreadertool')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="globe" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">网页阅读</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ webReaderSettings.defaultMode === 'quality' ? '质量优先' : '快速模式' }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 知识库 ==================== -->
+        <div class="settings-section-title">知识库</div>
+
+        <div class="settings-card">
+            <div class="settings-card-header">
+                <i data-lucide="database" style="width:18px;height:18px"></i>
+                <span>知识库</span>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-item" @click="openDialog('knowledgeapi')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="link" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">知识库 API</span>
+                            <span class="settings-item-desc">{{ knowledgeApiSettings.model || '未配置' }}{{ knowledgeApiSettings.url ? ' · ' + knowledgeApiSettings.url : '' }}</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ knowledgeApiSettings.model || '未配置' }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('knowledgesettings')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="sliders-horizontal" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">知识库 参数</span>
+                            <span class="settings-item-desc">{{ knowledgeSettings.enable ? '已启用' : '已禁用' }} · 阈值: {{ knowledgeSettings.similarityThreshold || '-' }}</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ knowledgeSettings.enable ? '开启' : '关闭' }}</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+                <div class="settings-item" @click="openDialog('knowledgemanage')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="book-open" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">管理知识条目</span>
+                            <span class="settings-item-desc">共 {{ knowledgeList.length }} 条知识 · 添加、编辑、删除</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ knowledgeList.length }} 条</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 记忆管理 ==================== -->
+        <div class="settings-section-title">记忆管理</div>
+
+        <div class="settings-card">
+            <div class="settings-card-header">
+                <i data-lucide="brain" style="width:18px;height:18px"></i>
+                <span>记忆</span>
+            </div>
+            <div class="settings-card-body">
+                <div class="settings-item" @click="openDialog('memorymanage')">
+                    <div class="settings-item-left">
+                        <div class="settings-item-icon"><i data-lucide="list" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-info">
+                            <span class="settings-item-label">管理记忆</span>
+                            <span class="settings-item-desc">共 {{ memoryList.length }} 条记忆 · 添加、编辑、删除</span>
+                        </div>
+                    </div>
+                    <div class="settings-item-right">
+                        <span class="settings-item-value">{{ memoryList.length }} 条</span>
+                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    </div>
+
+    <!-- ==================== 对话框：用户设置 ==================== -->
+    <el-dialog v-model="dialogs.user" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="user-circle" style="width:20px;height:20px"></i>
+                <span>用户设置</span>
+            </div>
+        </template>
+        <el-form :model="userForm" label-width="80px" label-position="left">
+            <el-form-item label="用户名">
+                <input class="settings-input" v-model="userForm.username" placeholder="输入用户名" maxlength="30">
+            </el-form-item>
+            <el-form-item label="头像">
+                <div class="char-avatar-row">
+                    <div class="char-avatar-preview" @click="triggerUserAvatarUpload" title="点击上传头像">
+                        <img v-show="userForm.avatar" :src="userAvatarPreviewUrl" />
+                        <div v-show="!userForm.avatar" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">
+                            <i data-lucide="camera" style="width:24px;height:24px;color:#c0c4cc"></i>
+                        </div>
+                    </div>
+                    <div class="char-avatar-actions">
+                        <button type="button" class="char-avatar-btn" @click="triggerUserAvatarUpload">
+                            {{ userForm.avatar ? '更换图片' : '上传图片' }}
+                        </button>
+                        <button type="button" v-show="userForm.avatar" class="char-avatar-btn danger"
+                            @click="clearUserAvatar">清除</button>
+                    </div>
+                </div>
+                <input ref="userAvatarInput" type="file" accept="image/*" style="display:none"
+                    @change="onUserAvatarFileChange">
+            </el-form-item>
+            <el-form-item label="背景图">
+                <div class="background-preview" @click="triggerUserBackgroundUpload" title="点击上传背景图">
+                    <img v-show="userForm.background" :src="userBackgroundPreviewUrl" />
+                    <div v-show="!userForm.background" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">
+                        <i data-lucide="image" style="width:28px;height:28px;color:#c0c4cc"></i>
+                    </div>
+                </div>
+                <div class="char-avatar-row">
+                    <button type="button" class="char-avatar-btn" @click="triggerUserBackgroundUpload">
+                        {{ userForm.background ? '更换图片' : '上传图片' }}
+                    </button>
+                    <button type="button" v-show="userForm.background" class="char-avatar-btn danger"
+                        @click="clearUserBackground">清除</button>
+                </div>
+                <input ref="userBgInput" type="file" accept="image/*" style="display:none"
+                    @change="onUserBackgroundFileChange">
+            </el-form-item>
+            <el-form-item label="透明度">
+                <el-slider v-model="userForm.opacity" :min="0" :max="1" :step="0.05" show-input :format-tooltip="v => v.toFixed(2)" style="width: calc(100% - 80px)"></el-slider>
+            </el-form-item>
+            <el-form-item label="主题色">
+                <el-color-picker v-model="userForm.mainColor" show-alpha :predefine="predefineColors"></el-color-picker>
+                <span style="margin-left: 12px; color: #909399; font-size: 13px;">选择应用的主题颜色</span>
+            </el-form-item>
+            <el-form-item label="自动切换模型">
+                <el-switch v-model="userForm.enableAutoSwitchModel" active-text="开启" inactive-text="关闭"></el-switch>
+                <span style="margin-left: 12px; color: #909399; font-size: 13px;">自动判断问题复杂度并切换高级模型</span>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.user = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveUser" :disabled="saving.user">
+                    <span v-if="saving.user" class="btn-spinner"></span>
+                    <span>{{ saving.user ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：助手设置 ==================== -->
+    <el-dialog v-model="dialogs.assistant" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="bot" style="width:20px;height:20px"></i>
+                <span>助手设置</span>
+            </div>
+        </template>
+        <el-form :model="assistantForm" label-width="80px" label-position="left">
+            <el-form-item label="助手名称">
+                <input class="settings-input" v-model="assistantForm.assistantName" placeholder="输入助手名称" maxlength="30">
+            </el-form-item>
+            <el-form-item label="助手头像">
+                <div class="char-avatar-row">
+                    <div class="char-avatar-preview" @click="triggerAssistantAvatarUpload" title="点击上传头像">
+                        <img v-show="assistantForm.avatar" :src="assistantAvatarPreviewUrl" />
+                        <div v-show="!assistantForm.avatar" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">
+                            <i data-lucide="camera" style="width:24px;height:24px;color:#c0c4cc"></i>
+                        </div>
+                    </div>
+                    <div class="char-avatar-actions">
+                        <button type="button" class="char-avatar-btn" @click="triggerAssistantAvatarUpload">
+                            {{ assistantForm.avatar ? '更换图片' : '上传图片' }}
+                        </button>
+                        <button type="button" v-show="assistantForm.avatar" class="char-avatar-btn danger"
+                            @click="clearAssistantAvatar">清除</button>
+                    </div>
+                </div>
+                <input ref="assistantAvatarInput" type="file" accept="image/*" style="display:none"
+                    @change="onAssistantAvatarFileChange">
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.assistant = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveAssistant" :disabled="saving.assistant">
+                    <span v-if="saving.assistant" class="btn-spinner"></span>
+                    <span>{{ saving.assistant ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：AI 模型（通用） ==================== -->
+    <el-dialog v-model="dialogs.ai" title="" width="760px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="cpu" style="width:20px;height:20px"></i>
+                <span>{{ aiDialogTitle }}</span>
+            </div>
+        </template>
+        <el-form :model="aiForm" label-width="110px" label-position="left">
+            <div class="form-group-title">基础配置</div>
+            <el-form-item label="适配器名称">
+                <select class="settings-select" v-model="aiForm.adapterName">
+                    <option value="" disabled>请选择适配器</option>
+                    <option v-for="name in adapterList" :key="name" :value="name">{{ name }}</option>
+                </select>
+            </el-form-item>
+            <el-form-item label="模型">
+                <input class="settings-input" v-model="aiForm.model" placeholder="例如: gpt-4o, qwen-plus">
+            </el-form-item>
+            <el-form-item label="System Prompt" v-if="aiDialogType !== 'chat_pro'">
+                <textarea class="settings-textarea" v-model="aiForm.prompt" rows="3" placeholder="系统提示词（可选）"></textarea>
+            </el-form-item>
+            <el-form-item label="流式输出">
+                <el-switch v-model="aiForm.stream" active-text="开启" inactive-text="关闭"></el-switch>
+            </el-form-item>
+            <el-form-item label="思考模式">
+                <el-switch v-model="aiForm.thinking" active-text="开启" inactive-text="关闭"></el-switch>
+            </el-form-item>
+
+            <!-- 高级参数（可折叠） -->
+            <div class="form-group-title" @click="toggleAiAdvanced" style="cursor:pointer;user-select:none;display:flex;align-items:center">
+                <span>高级参数</span>
+                <span style="font-size:12px;color:#c0c4cc;margin-left:4px">温度、Top P、惩罚等</span>
+                <i data-lucide="chevron-down" style="width:14px;height:14px;margin-left:auto;transition:transform 0.25s"
+                   :style="{ transform: showAiAdvanced ? 'rotate(180deg)' : '' }"></i>
+            </div>
+            <div class="advanced-params" :class="{ expanded: showAiAdvanced }">
+                <div class="advanced-params-inner">
+                    <el-form-item label="温度 (Temperature)">
+                        <el-slider v-model="aiForm.temperature" :min="0" :max="2" :step="0.1" show-input :format-tooltip="v => v.toFixed(1)" style="width: calc(100% - 110px)"></el-slider>
+                    </el-form-item>
+                    <el-form-item label="Top P">
+                        <el-slider v-model="aiForm.top_p" :min="0" :max="1" :step="0.05" show-input :format-tooltip="v => v.toFixed(2)" style="width: calc(100% - 110px)"></el-slider>
+                    </el-form-item>
+                    <el-form-item label="最大 Token 数">
+                        <input class="settings-input-number" type="number" v-model.number="aiForm.maxTokens" min="1" max="8192" step="256">
+                    </el-form-item>
+                    <el-form-item label="频率惩罚">
+                        <el-slider v-model="aiForm.frequencyPenalty" :min="-2" :max="2" :step="0.1" show-input :format-tooltip="v => v.toFixed(1)" style="width: calc(100% - 110px)"></el-slider>
+                    </el-form-item>
+                    <el-form-item label="存在惩罚">
+                        <el-slider v-model="aiForm.presencePenalty" :min="-2" :max="2" :step="0.1" show-input :format-tooltip="v => v.toFixed(1)" style="width: calc(100% - 110px)"></el-slider>
+                    </el-form-item>
+                    <el-form-item label="推理深度">
+                        <el-slider v-model="aiForm.reasoningEffort" :min="0" :max="2" :step="1" show-stops :marks="{0:'低',1:'高',2:'最深'}" :format-tooltip="v => ['低 (low)','高 (high)','最深 (max)'][v]" style="width: calc(100% - 110px)"></el-slider>
+                    </el-form-item>
+                </div>
+            </div>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.ai = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveAi" :disabled="saving.ai">
+                    <span v-if="saving.ai" class="btn-spinner"></span>
+                    <span>{{ saving.ai ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：命令执行工具 ==================== -->
+    <el-dialog v-model="dialogs.command" title="" width="760px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="terminal" style="width:20px;height:20px"></i>
+                <span>命令执行</span>
+            </div>
+        </template>
+        <el-form :model="commandForm" label-width="110px" label-position="left">
+            <el-form-item label="执行模式">
+                <select class="settings-select" v-model="commandForm.mode">
+                    <option value="auto">🔧 自动 — 白名单免检，黑名单强制询问</option>
+                    <option value="alwaysAsked">❓ 始终询问 — 每次执行都需用户确认</option>
+                    <option value="alwaysRejectDanger">🛡 始终拒绝危险 — 自动拒绝危险命令</option>
+                    <option value="neverAsked">⚡ 从不询问 — 直接执行不询问</option>
+                </select>
+            </el-form-item>
+            <el-form-item label="超时 (秒)">
+                <input class="settings-input-number" type="number" v-model.number="commandForm.timeout" min="1" max="3600">
+            </el-form-item>
+            <el-form-item label="安全输出大小 (B)">
+                <input class="settings-input-number" type="number" v-model.number="commandForm.safetyOutputSize" min="0" step="1024">
+            </el-form-item>
+            <el-form-item label="最大输出大小 (B)">
+                <input class="settings-input-number" type="number" v-model.number="commandForm.maxOutputSize" min="0" step="1024">
+            </el-form-item>
+            <el-form-item label="白名单">
+                <textarea class="settings-textarea" v-model="commandForm.whiteListStr" rows="3" placeholder="每行一个命令，命中则跳过危险检测"></textarea>
+            </el-form-item>
+            <el-form-item label="黑名单">
+                <textarea class="settings-textarea" v-model="commandForm.blackListStr" rows="3" placeholder="每行一个命令，命中则强制询问用户"></textarea>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.command = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveCommand" :disabled="saving.command">
+                    <span v-if="saving.command" class="btn-spinner"></span>
+                    <span>{{ saving.command ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：网络搜索工具 ==================== -->
+    <el-dialog v-model="dialogs.websearch" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="search" style="width:20px;height:20px"></i>
+                <span>网络搜索</span>
+            </div>
+        </template>
+        <el-form :model="webSearchForm" label-width="80px" label-position="left">
+            <el-form-item label="API Key">
+                <input class="settings-input" v-model="webSearchForm.apiKey" placeholder="输入 API Key">
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.websearch = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveWebSearch" :disabled="saving.websearch">
+                    <span v-if="saving.websearch" class="btn-spinner"></span>
+                    <span>{{ saving.websearch ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：文件写入工具 ==================== -->
+    <el-dialog v-model="dialogs.filewrite" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="file-pen-line" style="width:20px;height:20px"></i>
+                <span>文件写入</span>
+            </div>
+        </template>
+        <el-form :model="fileWriteForm" label-width="80px" label-position="left">
+            <el-form-item label="执行模式">
+                <select class="settings-select" v-model="fileWriteForm.mode">
+                    <option value="auto">自动 (auto)</option>
+                    <option value="alwaysAsked">始终询问 (alwaysAsked)</option>
+                    <option value="neverAsked">从不询问 (neverAsked)</option>
+                    <option value="alwaysRejectDanger">始终拒绝危险 (alwaysRejectDanger)</option>
+                </select>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.filewrite = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveFileWrite" :disabled="saving.filewrite">
+                    <span v-if="saving.filewrite" class="btn-spinner"></span>
+                    <span>{{ saving.filewrite ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：文件编辑工具 ==================== -->
+    <el-dialog v-model="dialogs.fileedit" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="file-code" style="width:20px;height:20px"></i>
+                <span>文件编辑</span>
+            </div>
+        </template>
+        <el-form :model="fileEditForm" label-width="80px" label-position="left">
+            <el-form-item label="执行模式">
+                <select class="settings-select" v-model="fileEditForm.mode">
+                    <option value="auto">自动 (auto)</option>
+                    <option value="alwaysAsked">始终询问 (alwaysAsked)</option>
+                    <option value="neverAsked">从不询问 (neverAsked)</option>
+                    <option value="alwaysRejectDanger">始终拒绝危险 (alwaysRejectDanger)</option>
+                </select>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.fileedit = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveFileEdit" :disabled="saving.fileedit">
+                    <span v-if="saving.fileedit" class="btn-spinner"></span>
+                    <span>{{ saving.fileedit ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：文件删除工具 ==================== -->
+    <el-dialog v-model="dialogs.filedelete" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="trash-2" style="width:20px;height:20px"></i>
+                <span>文件删除</span>
+            </div>
+        </template>
+        <el-form :model="fileDeleteForm" label-width="80px" label-position="left">
+            <el-form-item label="执行模式">
+                <select class="settings-select" v-model="fileDeleteForm.mode">
+                    <option value="auto">自动 (auto)</option>
+                    <option value="alwaysAsked">始终询问 (alwaysAsked)</option>
+                    <option value="neverAsked">从不询问 (neverAsked)</option>
+                    <option value="alwaysRejectDanger">始终拒绝危险 (alwaysRejectDanger)</option>
+                </select>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.filedelete = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveFileDelete" :disabled="saving.filedelete">
+                    <span v-if="saving.filedelete" class="btn-spinner"></span>
+                    <span>{{ saving.filedelete ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：文件下载工具 ==================== -->
+    <el-dialog v-model="dialogs.filedownload" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="download" style="width:20px;height:20px"></i>
+                <span>文件下载</span>
+            </div>
+        </template>
+        <el-form :model="fileDownloadForm" label-width="80px" label-position="left">
+            <el-form-item label="执行模式">
+                <select class="settings-select" v-model="fileDownloadForm.mode">
+                    <option value="alwaysAsked">始终询问 (alwaysAsked)</option>
+                    <option value="neverAsked">从不询问 (neverAsked)</option>
+                </select>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.filedownload = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveFileDownload" :disabled="saving.filedownload">
+                    <span v-if="saving.filedownload" class="btn-spinner"></span>
+                    <span>{{ saving.filedownload ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：扩展脚本工具 ==================== -->
+    <el-dialog v-model="dialogs.extensionscript" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="puzzle" style="width:20px;height:20px"></i>
+                <span>扩展脚本</span>
+            </div>
+        </template>
+        <el-form :model="extensionScriptForm" label-width="130px" label-position="left">
+            <el-form-item label="超时 (秒)">
+                <input class="settings-input-number" type="number" v-model.number="extensionScriptForm.timeout" min="1" max="3600">
+            </el-form-item>
+            <el-form-item label="最大输出大小 (B)">
+                <input class="settings-input-number" type="number" v-model.number="extensionScriptForm.maxOutputSize" min="0" step="1024">
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.extensionscript = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveExtensionScript" :disabled="saving.extensionscript">
+                    <span v-if="saving.extensionscript" class="btn-spinner"></span>
+                    <span>{{ saving.extensionscript ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：图片识别工具 ==================== -->
+    <el-dialog v-model="dialogs.imagecaption" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="image" style="width:20px;height:20px"></i>
+                <span>图片识别</span>
+            </div>
+        </template>
+        <el-form :model="imageCaptionForm" label-width="110px" label-position="left">
+            <el-form-item label="最大文本长度">
+                <input class="settings-input-number" type="number" v-model.number="imageCaptionForm.maxLength" min="0" step="50">
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.imagecaption = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveImageCaption" :disabled="saving.imagecaption">
+                    <span v-if="saving.imagecaption" class="btn-spinner"></span>
+                    <span>{{ saving.imagecaption ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：网页阅读工具 ==================== -->
+    <el-dialog v-model="dialogs.webreadertool" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="globe" style="width:20px;height:20px"></i>
+                <span>网页阅读</span>
+            </div>
+        </template>
+        <el-form :model="webReaderForm" label-width="160px" label-position="left">
+            <div class="form-group-title">无头浏览器</div>
+            <el-form-item label="浏览器超时 (毫秒)">
+                <input class="settings-input-number" type="number" v-model.number="webReaderForm.browserTimeoutMs" min="1000" step="1000">
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.webreadertool = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveWebReader" :disabled="saving.webreadertool">
+                    <span v-if="saving.webreadertool" class="btn-spinner"></span>
+                    <span>{{ saving.webreadertool ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：知识库 API ==================== -->
+    <el-dialog v-model="dialogs.knowledgeapi" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="link" style="width:20px;height:20px"></i>
+                <span>知识库 API</span>
+            </div>
+        </template>
+        <el-form :model="knowledgeApiForm" label-width="80px" label-position="left">
+            <el-form-item label="模型">
+                <input class="settings-input" v-model="knowledgeApiForm.model" placeholder="例如: text-embedding-3-small">
+            </el-form-item>
+            <el-form-item label="API URL">
+                <input class="settings-input" v-model="knowledgeApiForm.url" placeholder="例如: https://api.openai.com/v1/embeddings">
+            </el-form-item>
+            <el-form-item label="API Key">
+                <input class="settings-input" v-model="knowledgeApiForm.apiKey" placeholder="输入 API Key">
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.knowledgeapi = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveKnowledgeApi" :disabled="saving.knowledgeapi">
+                    <span v-if="saving.knowledgeapi" class="btn-spinner"></span>
+                    <span>{{ saving.knowledgeapi ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：知识库 参数设置 ==================== -->
+    <el-dialog v-model="dialogs.knowledgesettings" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="database" style="width:20px;height:20px"></i>
+                <span>知识库 设置</span>
+            </div>
+        </template>
+        <el-form :model="knowledgeForm" label-width="130px" label-position="left">
+            <el-form-item label="启用">
+                <el-switch v-model="knowledgeForm.enable" active-text="开启" inactive-text="关闭"></el-switch>
+            </el-form-item>
+            <el-form-item label="相似度阈值">
+                <el-slider v-model="knowledgeForm.similarityThreshold" :min="0" :max="1" :step="0.01" show-input :format-tooltip="v => v.toFixed(2)" style="width: calc(100% - 130px)"></el-slider>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.knowledgesettings = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveKnowledge" :disabled="saving.knowledgesettings">
+                    <span v-if="saving.knowledgesettings" class="btn-spinner"></span>
+                    <span>{{ saving.knowledgesettings ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：知识条目管理（列表） ==================== -->
+    <el-dialog v-model="dialogs.knowledgemanage" title="" width="800px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close @open="fetchKnowledgeList">
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="book-open" style="width:20px;height:20px"></i>
+                <span>知识条目管理</span>
+            </div>
+        </template>
+        <div style="margin-bottom:16px;display:flex;justify-content:flex-end">
+            <button type="button" class="dialog-btn dialog-btn-save" @click="openKnowledgeEdit(null)" style="padding:6px 16px;font-size:13px">
+                <i data-lucide="plus" style="width:14px;height:14px"></i> 添加条目
+            </button>
+        </div>
+        <div v-if="knowledgeLoading" style="text-align:center;padding:40px;color:#909399">加载中...</div>
+        <div v-else-if="knowledgeList.length === 0" style="text-align:center;padding:40px;color:#909399">暂无知识条目，点击上方按钮添加</div>
+        <div v-else class="entry-list">
+            <div v-for="item in knowledgeList" :key="item.id" class="entry-item">
+                <div class="entry-item-body">
+                    <div class="entry-item-title">{{ item.title }}</div>
+                    <div class="entry-item-content">{{ item.content }}</div>
+                    <div class="entry-item-time">{{ formatTime(item.createTime) }}</div>
+                </div>
+                <div class="entry-item-actions">
+                    <button type="button" class="entry-action-btn edit" @click="openKnowledgeEdit(item)" title="编辑">
+                        <i data-lucide="pencil" style="width:15px;height:15px"></i>
+                    </button>
+                    <button type="button" class="entry-action-btn delete" @click="confirmDeleteKnowledge(item)" title="删除">
+                        <i data-lucide="trash-2" style="width:15px;height:15px"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.knowledgemanage = false">关闭</button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：知识条目编辑 ==================== -->
+    <el-dialog v-model="dialogs.knowledgeedit" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="book-open" style="width:20px;height:20px"></i>
+                <span>{{ knowledgeEditForm.id ? '编辑知识条目' : '添加知识条目' }}</span>
+            </div>
+        </template>
+        <el-form :model="knowledgeEditForm" label-width="80px" label-position="left">
+            <el-form-item label="标题">
+                <input class="settings-input" v-model="knowledgeEditForm.title" placeholder="输入知识标题（用于匹配检索）" maxlength="200">
+            </el-form-item>
+            <el-form-item label="内容">
+                <textarea class="settings-textarea" v-model="knowledgeEditForm.content" rows="6" placeholder="输入知识内容"></textarea>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.knowledgeedit = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveKnowledgeEntry" :disabled="saving.knowledgeentry">
+                    <span v-if="saving.knowledgeentry" class="btn-spinner"></span>
+                    <span>{{ saving.knowledgeentry ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：记忆管理（列表） ==================== -->
+    <el-dialog v-model="dialogs.memorymanage" title="" width="800px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close @open="fetchMemoryList">
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="brain" style="width:20px;height:20px"></i>
+                <span>记忆管理</span>
+            </div>
+        </template>
+        <div style="margin-bottom:16px;display:flex;justify-content:flex-end">
+            <button type="button" class="dialog-btn dialog-btn-save" @click="openMemoryEdit(null)" style="padding:6px 16px;font-size:13px">
+                <i data-lucide="plus" style="width:14px;height:14px"></i> 添加记忆
+            </button>
+        </div>
+        <div v-if="memoryLoading" style="text-align:center;padding:40px;color:#909399">加载中...</div>
+        <div v-else-if="memoryList.length === 0" style="text-align:center;padding:40px;color:#909399">暂无记忆，点击上方按钮添加</div>
+        <div v-else class="entry-list">
+            <div v-for="item in memoryList" :key="item.id" class="entry-item">
+                <div class="entry-item-body">
+                    <div class="entry-item-content">{{ item.content }}</div>
+                    <div class="entry-item-time">{{ formatTime(item.createTime) }}</div>
+                </div>
+                <div class="entry-item-actions">
+                    <button type="button" class="entry-action-btn edit" @click="openMemoryEdit(item)" title="编辑">
+                        <i data-lucide="pencil" style="width:15px;height:15px"></i>
+                    </button>
+                    <button type="button" class="entry-action-btn delete" @click="confirmDeleteMemory(item)" title="删除">
+                        <i data-lucide="trash-2" style="width:15px;height:15px"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.memorymanage = false">关闭</button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ==================== 对话框：记忆编辑 ==================== -->
+    <el-dialog v-model="dialogs.memoryedit" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="brain" style="width:20px;height:20px"></i>
+                <span>{{ memoryEditForm.id ? '编辑记忆' : '添加记忆' }}</span>
+            </div>
+        </template>
+        <el-form :model="memoryEditForm" label-width="80px" label-position="left">
+            <el-form-item label="内容">
+                <textarea class="settings-textarea" v-model="memoryEditForm.content" rows="6" placeholder="输入记忆内容"></textarea>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.memoryedit = false">取消</button>
+                <button type="button" class="dialog-btn dialog-btn-save" @click="saveMemoryEntry" :disabled="saving.memoryentry">
+                    <span v-if="saving.memoryentry" class="btn-spinner"></span>
+                    <span>{{ saving.memoryentry ? '保存中...' : '保存' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+</div>
+
+<confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+
+<script>
+const AI_TYPE_NAMES = {
+    chat: '对话模型',
+    chat_pro: '高级对话模型',
+    summary: '摘要模型',
+    title: '标题模型',
+    ocr: 'OCR 模型',
+    mission: '任务模型',
+    task: 'TaskAI 模型'
+};
+
+const MODE_LABELS = {
+    auto: '自动',
+    alwaysAsked: '始终询问',
+    neverAsked: '从不询问',
+    alwaysRejectDanger: '始终拒绝危险'
+};
+
+const app = Vue.createApp({
+    data() {
+        return {
+            mainColor: 'lightsalmon',
+            predefineColors: [
+                'lightsalmon', '#409eff', '#67c23a', '#e6a23c', '#f56c6c',
+                '#e83e8c', '#6f42c1', '#20c997', '#17a2b8', '#6610f2',
+                '#fd7e14', '#28a745', '#dc3545', '#ffc107', '#007bff'
+            ],
+
+            // 所有设置原始数据
+            userSettings: {},
+            assistantSettings: {},
+            aiSettings: { chat: {}, chat_pro: {}, summary: {}, title: {}, ocr: {}, mission: {}, task: {} },
+            commandSettings: {},
+            webSearchSettings: {},
+            fileWriteSettings: {},
+            fileEditSettings: {},
+            fileDeleteSettings: {},
+            fileDownloadSettings: {},
+            imageCaptionSettings: {},
+            webReaderSettings: {},
+            extensionScriptSettings: {},
+            knowledgeApiSettings: {},
+            knowledgeSettings: {},
+
+            // 对话框显示状态
+            dialogs: {
+                user: false,
+                assistant: false,
+                ai: false,
+                command: false,
+                websearch: false,
+                filewrite: false,
+                fileedit: false,
+                filedelete: false,
+                filedownload: false,
+                imagecaption: false,
+                webreadertool: false,
+                extensionscript: false,
+                knowledgeapi: false,
+                knowledgesettings: false,
+                knowledgemanage: false,
+                knowledgeedit: false,
+                memorymanage: false,
+                memoryedit: false
+            },
+
+            // 当前 AI 对话框的类型 (chat/summary/title/ocr/mission)
+            aiDialogType: 'chat',
+            showAiAdvanced: false,
+
+            // 表单数据
+            userForm: { username: '', avatar: '', background: '', opacity: 0.3, mainColor: 'lightsalmon', enableAutoSwitchModel: false },
+            assistantForm: { assistantName: '', avatar: '' },
+            aiForm: { prompt: '', adapterName: '', model: '', stream: false, thinking: false, reasoningEffort: null, temperature: 1, top_p: 1, maxTokens: 4096, frequencyPenalty: 0, presencePenalty: 0 },
+            commandForm: { mode: 'auto', timeout: 10, safetyOutputSize: 8192, maxOutputSize: 32768, whiteListStr: '', blackListStr: '' },
+            webSearchForm: { apiKey: '' },
+            fileWriteForm: { mode: 'auto' },
+            fileEditForm: { mode: 'auto' },
+            fileDeleteForm: { mode: 'auto' },
+            fileDownloadForm: { mode: 'alwaysAsked' },
+            imageCaptionForm: { maxLength: 500 },
+            webReaderForm: { browserTimeoutMs: 30000 },
+            extensionScriptForm: { timeout: 30, maxOutputSize: 65536 },
+            knowledgeApiForm: { model: '', url: '', apiKey: '' },
+            knowledgeForm: { enable: false, similarityThreshold: 0.7 },
+
+            // 知识条目列表与编辑
+            knowledgeList: [],
+            knowledgeLoading: false,
+            knowledgeEditForm: { id: null, title: '', content: '' },
+
+            // 记忆列表与编辑
+            memoryList: [],
+            memoryLoading: false,
+            memoryEditForm: { id: null, content: '' },
+
+            // 保存状态
+            saving: {
+                user: false, assistant: false, ai: false,
+                command: false, websearch: false, filewrite: false, fileedit: false, filedelete: false, filedownload: false, extensionscript: false, imagecaption: false, webreadertool: false,
+                knowledgeapi: false, knowledgesettings: false,
+                knowledgeentry: false, memoryentry: false
+            },
+
+            // 可用适配器列表
+            adapterList: [],
+
+            // 加载状态
+            loading: true,
+        }
+    },
+
+    computed: {
+        aiDialogTitle() {
+            return AI_TYPE_NAMES[this.aiDialogType] || 'AI 模型';
+        },
+        /** 用户头像预览 URL */
+        userAvatarPreviewUrl() {
+            const avatar = this.userForm.avatar;
+            if (!avatar) return '';
+            if (/^https?:\/\//i.test(avatar) || avatar.startsWith('data:')) return avatar;
+            return API.fileProxyUrl(avatar);
+        },
+        /** 助手头像预览 URL */
+        assistantAvatarPreviewUrl() {
+            const avatar = this.assistantForm.avatar;
+            if (!avatar) return '';
+            if (/^https?:\/\//i.test(avatar) || avatar.startsWith('data:')) return avatar;
+            return API.fileProxyUrl(avatar);
+        },
+        /** 用户背景图预览 URL */
+        userBackgroundPreviewUrl() {
+            const bg = this.userForm.background;
+            if (!bg) return '';
+            if (bg.startsWith('data:') || /^https?:\/\//i.test(bg)) return bg;
+            return API.fileProxyUrl(bg);
+        }
+    },
+
+    watch: {
+        // 同步 mainColor 到 :root (document.documentElement)，
+        // 确保 el-dialog 等 teleport 到 #app 外部的组件也能读取到正确的主题色
+        mainColor: {
+            handler(val) {
+                document.documentElement.style.setProperty('--main-color', val);
+            },
+            immediate: true
+        }
+    },
+
+    methods: {
+        /**
+         * 将根路径转换为相对路径（相对当前目录）
+         * @param {string} path - 不带前导 / 的路径
+         * @returns {string} 带 BASE_PATH 前缀的完整路径
+         */
+        $api(path) {
+            return API.BASE_PATH + path;
+        },
+
+        /* ---------- 导航 ---------- */
+        goBack() {
+            window.location.href = this.$api('index.html');
+        },
+
+        /* ---------- 摘要辅助 ---------- */
+        getAiSummary(type) {
+            const s = this.aiSettings[type] || {};
+            return (s.adapterName || '?') + ' / ' + (s.model || '?') + (s.stream ? ' · 流式' : '');
+        },
+        getAiShort(type) {
+            const s = this.aiSettings[type] || {};
+            return s.model || '未配置';
+        },
+        getModeLabel(mode) {
+            return MODE_LABELS[mode] || mode || '自动';
+        },
+        formatSize(bytes) {
+            if (bytes == null || bytes < 0) return '-';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(2) + ' KB';
+            if (bytes < 1073741824) return (bytes / 1048576).toFixed(2) + ' MB';
+            return (bytes / 1073741824).toFixed(2) + ' GB';
+        },
+
+        /* ---------- 用户头像上传 ---------- */
+        triggerUserAvatarUpload() { this.$refs.userAvatarInput.click(); },
+        async onUserAvatarFileChange(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            e.target.value = '';
+            try {
+                const r = await API.settings.user.uploadAvatar(file);
+                if (r.status === 200 && r.data) {
+                    this.userForm.avatar = r.data + '&t=' + Date.now();
+                    ElementPlus.ElMessage.success('头像已上传');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '上传失败');
+                }
+            } catch (err) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(err);
+            }
+        },
+        async clearUserAvatar() {
+            try {
+                const r = await API.settings.user.deleteAvatar();
+                if (r.status === 200) {
+                    this.userForm.avatar = '';
+                    ElementPlus.ElMessage.success('头像已清除');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '清除失败');
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(e);
+            }
+        },
+
+        /* ---------- 助手头像上传 ---------- */
+        triggerAssistantAvatarUpload() { this.$refs.assistantAvatarInput.click(); },
+        async onAssistantAvatarFileChange(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            e.target.value = '';
+            try {
+                const r = await API.settings.assistant.uploadAvatar(file);
+                if (r.status === 200 && r.data) {
+                    this.assistantForm.avatar = r.data + '&t=' + Date.now();
+                    ElementPlus.ElMessage.success('头像已上传');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '上传失败');
+                }
+            } catch (err) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(err);
+            }
+        },
+        async clearAssistantAvatar() {
+            try {
+                const r = await API.settings.assistant.deleteAvatar();
+                if (r.status === 200) {
+                    this.assistantForm.avatar = '';
+                    ElementPlus.ElMessage.success('头像已清除');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '清除失败');
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(e);
+            }
+        },
+
+        /* ---------- 用户背景上传 ---------- */
+        triggerUserBackgroundUpload() { this.$refs.userBgInput.click(); },
+        async onUserBackgroundFileChange(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 10 * 1024 * 1024) {
+                ElementPlus.ElMessage.warning('背景图不能超过 10MB');
+                e.target.value = '';
+                return;
+            }
+            e.target.value = '';
+            try {
+                const r = await API.settings.user.uploadBackground(file);
+                if (r.status === 200 && r.data) {
+                    this.userForm.background = r.data + '&t=' + Date.now();
+                    ElementPlus.ElMessage.success('背景图已上传');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '上传失败');
+                }
+            } catch (err) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(err);
+            }
+        },
+        async clearUserBackground() {
+            try {
+                const r = await API.settings.user.deleteBackground();
+                if (r.status === 200) {
+                    this.userForm.background = '';
+                    ElementPlus.ElMessage.success('背景图已清除');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '清除失败');
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(e);
+            }
+        },
+
+        /* ---------- 对话框控制 ---------- */
+        openDialog(category, subType) {
+            switch (category) {
+                case 'user':
+                    this.userForm = {
+                        username: this.userSettings.username || '',
+                        avatar: this.userSettings.avatar || '',
+                        background: this.userSettings.background || '',
+                        opacity: this.userSettings.opacity != null ? this.userSettings.opacity : 0.3,
+                        mainColor: this.userSettings.mainColor || this.mainColor,
+                        enableAutoSwitchModel: this.userSettings.enableAutoSwitchModel || false
+                    };
+                    this.dialogs.user = true;
+                    break;
+                case 'assistant':
+                    this.assistantForm = {
+                        assistantName: this.assistantSettings.assistantName || '',
+                        avatar: this.assistantSettings.avatar || ''
+                    };
+                    this.dialogs.assistant = true;
+                    break;
+                case 'ai':
+                    this.aiDialogType = subType;
+                    const ai = this.aiSettings[subType] || {};
+                    this.aiForm = {
+                        prompt: ai.prompt || '',
+                        adapterName: ai.adapterName || '',
+                        model: ai.model || '',
+                        stream: ai.stream == null ? false : ai.stream,
+                        thinking: ai.thinking == null ? false : ai.thinking,
+                        reasoningEffort: ai.reasoningEffort != null ? ['low','high','max'].indexOf(ai.reasoningEffort) : null,
+                        temperature: ai.temperature != null ? ai.temperature : null,
+                        top_p: ai.top_p != null ? ai.top_p : null,
+                        maxTokens: ai.maxTokens != null ? ai.maxTokens : null,
+                        frequencyPenalty: ai.frequencyPenalty != null ? ai.frequencyPenalty : null,
+                        presencePenalty: ai.presencePenalty != null ? ai.presencePenalty : null
+                    };
+                    // 已有高级参数值则自动展开并填充默认值
+                    const hasAdvanced = ai.temperature != null || ai.top_p != null || ai.maxTokens != null || ai.frequencyPenalty != null || ai.presencePenalty != null || ai.reasoningEffort != null;
+                    this.showAiAdvanced = hasAdvanced;
+                    if (hasAdvanced) {
+                        const f = this.aiForm;
+                        if (f.temperature == null) f.temperature = 1;
+                        if (f.top_p == null) f.top_p = 1;
+                        if (f.maxTokens == null) f.maxTokens = 4096;
+                        if (f.frequencyPenalty == null) f.frequencyPenalty = 0;
+                        if (f.presencePenalty == null) f.presencePenalty = 0;
+                        if (f.reasoningEffort == null) f.reasoningEffort = 1;
+                    }
+                    this.dialogs.ai = true;
+                    break;
+                case 'command':
+                    this.commandForm = {
+                        mode: this.commandSettings.mode || 'auto',
+                        timeout: this.commandSettings.timeout != null ? this.commandSettings.timeout : 10,
+                        safetyOutputSize: this.commandSettings.safetyOutputSize != null ? this.commandSettings.safetyOutputSize : 8192,
+                        maxOutputSize: this.commandSettings.maxOutputSize != null ? this.commandSettings.maxOutputSize : 32768,
+                        whiteListStr: (this.commandSettings.whiteList || []).join('\n'),
+                        blackListStr: (this.commandSettings.blackList || []).join('\n')
+                    };
+                    this.dialogs.command = true;
+                    break;
+                case 'websearch':
+                    this.webSearchForm = {
+                        apiKey: this.webSearchSettings.apiKey || ''
+                    };
+                    this.dialogs.websearch = true;
+                    break;
+                case 'filewrite':
+                    this.fileWriteForm = {
+                        mode: this.fileWriteSettings.mode || 'auto'
+                    };
+                    this.dialogs.filewrite = true;
+                    break;
+                case 'fileedit':
+                    this.fileEditForm = {
+                        mode: this.fileEditSettings.mode || 'auto'
+                    };
+                    this.dialogs.fileedit = true;
+                    break;
+                case 'filedelete':
+                    this.fileDeleteForm = {
+                        mode: this.fileDeleteSettings.mode || 'auto'
+                    };
+                    this.dialogs.filedelete = true;
+                    break;
+                case 'filedownload':
+                    this.fileDownloadForm = {
+                        mode: this.fileDownloadSettings.mode || 'alwaysAsked'
+                    };
+                    this.dialogs.filedownload = true;
+                    break;
+                case 'imagecaption':
+                    this.imageCaptionForm = {
+                        maxLength: this.imageCaptionSettings.maxLength != null ? this.imageCaptionSettings.maxLength : 500
+                    };
+                    this.dialogs.imagecaption = true;
+                    break;
+                case 'webreadertool':
+                    this.webReaderForm = {
+                        browserTimeoutMs: this.webReaderSettings.browserTimeoutMs != null ? this.webReaderSettings.browserTimeoutMs : 30000
+                    };
+                    this.dialogs.webreadertool = true;
+                    break;
+                case 'extensionscript':
+                    this.extensionScriptForm = {
+                        timeout: this.extensionScriptSettings.timeout != null ? this.extensionScriptSettings.timeout : 30,
+                        maxOutputSize: this.extensionScriptSettings.maxOutputSize != null ? this.extensionScriptSettings.maxOutputSize : 65536
+                    };
+                    this.dialogs.extensionscript = true;
+                    break;
+                case 'knowledgeapi':
+                    this.knowledgeApiForm = {
+                        model: this.knowledgeApiSettings.model || '',
+                        url: this.knowledgeApiSettings.url || '',
+                        apiKey: this.knowledgeApiSettings.apiKey || ''
+                    };
+                    this.dialogs.knowledgeapi = true;
+                    break;
+                case 'knowledgesettings':
+                    this.knowledgeForm = {
+                        enable: this.knowledgeSettings.enable != null ? this.knowledgeSettings.enable : false,
+                        similarityThreshold: this.knowledgeSettings.similarityThreshold != null ? this.knowledgeSettings.similarityThreshold : 0.7
+                    };
+                    this.dialogs.knowledgesettings = true;
+                    break;
+                case 'knowledgemanage':
+                    this.fetchKnowledgeList();
+                    this.dialogs.knowledgemanage = true;
+                    break;
+                case 'memorymanage':
+                    this.fetchMemoryList();
+                    this.dialogs.memorymanage = true;
+                    break;
+            }
+            this.$nextTick(() => lucide.createIcons());
+        },
+
+        /* ---------- 通用保存方法 ---------- */
+        async postSave(path, body, key) {
+            this.saving[key] = true;
+            try {
+                const result = await API.post(path, body);
+                if (result.status === 200) {
+                    ElementPlus.ElMessage.success('保存成功');
+                    this.dialogs[key] = false;
+                    await this.fetchAllSettings();
+                } else {
+                    ElementPlus.ElMessage.error(result.message || '保存失败');
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(e);
+            } finally {
+                this.saving[key] = false;
+            }
+        },
+
+        /* ---------- 各分类保存 ---------- */
+        saveUser() {
+            if (!this.userForm.username.trim()) {
+                ElementPlus.ElMessage.warning('用户名不能为空');
+                return;
+            }
+            if (this.userForm.opacity == null || this.userForm.opacity < 0 || this.userForm.opacity > 1) {
+                ElementPlus.ElMessage.warning('透明度必须在 0 到 1 之间');
+                return;
+            }
+            const mainColor = this.userForm.mainColor || 'lightsalmon';
+            this.postSave('settings/user/save', {
+                username: this.userForm.username.trim(),
+                opacity: this.userForm.opacity,
+                mainColor: mainColor,
+                enableAutoSwitchModel: this.userForm.enableAutoSwitchModel
+            }, 'user').then(() => {
+                // 同步到本地
+                this.mainColor = mainColor;
+                try {
+                    localStorage.setItem('assistant-mainColor', mainColor);
+                } catch (e) {}
+            });
+        },
+
+        saveAssistant() {
+            if (!this.assistantForm.assistantName.trim()) {
+                ElementPlus.ElMessage.warning('助手名称不能为空');
+                return;
+            }
+            this.postSave('settings/assistant/save', {
+                assistantName: this.assistantForm.assistantName.trim()
+            }, 'assistant');
+        },
+
+        saveAi() {
+            if (!this.aiForm.adapterName.trim()) {
+                ElementPlus.ElMessage.warning('适配器名称不能为空');
+                return;
+            }
+            if (!this.aiForm.model.trim()) {
+                ElementPlus.ElMessage.warning('模型名称不能为空');
+                return;
+            }
+            const body = {
+                prompt: this.aiForm.prompt,
+                adapterName: this.aiForm.adapterName.trim(),
+                model: this.aiForm.model.trim(),
+                stream: this.aiForm.stream,
+                thinking: this.aiForm.thinking,
+                reasoningEffort: this.showAiAdvanced && this.aiForm.reasoningEffort != null ? ['low','high','max'][this.aiForm.reasoningEffort] : null,
+                // 未展开高级参数 → 置 null，让 API 使用默认值
+                temperature: this.showAiAdvanced ? this.aiForm.temperature : null,
+                top_p: this.showAiAdvanced ? this.aiForm.top_p : null,
+                maxTokens: this.showAiAdvanced ? this.aiForm.maxTokens : null,
+                frequencyPenalty: this.showAiAdvanced ? this.aiForm.frequencyPenalty : null,
+                presencePenalty: this.showAiAdvanced ? this.aiForm.presencePenalty : null
+            };
+            this.postSave('settings/' + this.aiDialogType + '/save', body, 'ai');
+        },
+
+        toggleAiAdvanced() {
+            if (!this.showAiAdvanced) {
+                // 展开时，null 值填充默认值
+                const f = this.aiForm;
+                if (f.temperature == null) f.temperature = 1;
+                if (f.top_p == null) f.top_p = 1;
+                if (f.maxTokens == null) f.maxTokens = 4096;
+                if (f.frequencyPenalty == null) f.frequencyPenalty = 0;
+                if (f.presencePenalty == null) f.presencePenalty = 0;
+                if (f.reasoningEffort == null) f.reasoningEffort = 1;
+            }
+            this.showAiAdvanced = !this.showAiAdvanced;
+        },
+
+        clearAiAdvanced() {
+            this.aiForm.temperature = null;
+            this.aiForm.top_p = null;
+            this.aiForm.maxTokens = null;
+            this.aiForm.frequencyPenalty = null;
+            this.aiForm.presencePenalty = null;
+            this.aiForm.reasoningEffort = null;
+            this.showAiAdvanced = false;
+            ElementPlus.ElMessage.success('高级参数已清除，保存后将使用 API 默认值');
+        },
+
+        saveCommand() {
+            const mode = this.commandForm.mode;
+            if (!mode) { ElementPlus.ElMessage.warning('请选择执行模式'); return; }
+            if (!['auto','alwaysAsked','alwaysRejectDanger','neverAsked'].includes(mode)) {
+                ElementPlus.ElMessage.warning('无效的执行模式'); return;
+            }
+            if (this.commandForm.timeout == null || this.commandForm.timeout < 0) {
+                ElementPlus.ElMessage.warning('超时时间不能为负数'); return;
+            }
+            if (this.commandForm.safetyOutputSize == null || this.commandForm.safetyOutputSize < 0) {
+                ElementPlus.ElMessage.warning('安全输出大小不能为负数'); return;
+            }
+            if (this.commandForm.maxOutputSize == null || this.commandForm.maxOutputSize < 0) {
+                ElementPlus.ElMessage.warning('最大输出大小不能为负数'); return;
+            }
+            const body = {
+                mode: mode,
+                timeout: this.commandForm.timeout,
+                safetyOutputSize: this.commandForm.safetyOutputSize,
+                maxOutputSize: this.commandForm.maxOutputSize,
+                whiteList: (this.commandForm.whiteListStr || '').split('\n').map(s => s.trim()).filter(Boolean),
+                blackList: (this.commandForm.blackListStr || '').split('\n').map(s => s.trim()).filter(Boolean)
+            };
+            this.postSave('settings/command/save', body, 'command');
+        },
+
+        saveWebSearch() {
+            if (!this.webSearchForm.apiKey.trim()) {
+                ElementPlus.ElMessage.warning('API Key 不能为空');
+                return;
+            }
+            this.postSave('settings/websearch/save', {
+                apiKey: this.webSearchForm.apiKey.trim()
+            }, 'websearch');
+        },
+
+        saveFileWrite() {
+            const mode = this.fileWriteForm.mode;
+            if (!mode) { ElementPlus.ElMessage.warning('请选择执行模式'); return; }
+            if (!['auto','alwaysAsked','neverAsked','alwaysRejectDanger'].includes(mode)) {
+                ElementPlus.ElMessage.warning('无效的执行模式'); return;
+            }
+            this.postSave('settings/filewrite/save', { mode }, 'filewrite');
+        },
+
+        saveFileEdit() {
+            const mode = this.fileEditForm.mode;
+            if (!mode) { ElementPlus.ElMessage.warning('请选择执行模式'); return; }
+            if (!['auto','alwaysAsked','neverAsked','alwaysRejectDanger'].includes(mode)) {
+                ElementPlus.ElMessage.warning('无效的执行模式'); return;
+            }
+            this.postSave('settings/fileedit/save', { mode }, 'fileedit');
+        },
+
+        saveFileDelete() {
+            const mode = this.fileDeleteForm.mode;
+            if (!mode) { ElementPlus.ElMessage.warning('请选择执行模式'); return; }
+            if (!['auto','alwaysAsked','neverAsked','alwaysRejectDanger'].includes(mode)) {
+                ElementPlus.ElMessage.warning('无效的执行模式'); return;
+            }
+            this.postSave('settings/filedelete/save', { mode }, 'filedelete');
+        },
+
+        saveFileDownload() {
+            const mode = this.fileDownloadForm.mode;
+            if (!mode) { ElementPlus.ElMessage.warning('请选择执行模式'); return; }
+            if (!['alwaysAsked','neverAsked'].includes(mode)) {
+                ElementPlus.ElMessage.warning('无效的执行模式'); return;
+            }
+            this.postSave('settings/filedownload/save', { mode }, 'filedownload');
+        },
+
+        saveImageCaption() {
+            if (this.imageCaptionForm.maxLength == null || this.imageCaptionForm.maxLength < 0) {
+                ElementPlus.ElMessage.warning('最大文本长度不能为负数'); return;
+            }
+            this.postSave('settings/imagecaption/save', {
+                maxLength: this.imageCaptionForm.maxLength
+            }, 'imagecaption');
+        },
+
+        saveWebReader() {
+            if (this.webReaderForm.browserTimeoutMs == null || this.webReaderForm.browserTimeoutMs < 1000) {
+                ElementPlus.ElMessage.warning('浏览器超时至少为 1000ms'); return;
+            }
+            this.postSave('settings/webreadertool/save', {
+                browserTimeoutMs: this.webReaderForm.browserTimeoutMs
+            }, 'webreadertool');
+        },
+
+        saveExtensionScript() {
+            if (this.extensionScriptForm.timeout == null || this.extensionScriptForm.timeout < 1) {
+                ElementPlus.ElMessage.warning('超时时间至少为 1 秒'); return;
+            }
+            if (this.extensionScriptForm.maxOutputSize == null || this.extensionScriptForm.maxOutputSize < 0) {
+                ElementPlus.ElMessage.warning('最大输出大小不能为负数'); return;
+            }
+            this.postSave('settings/extensionscript/save', {
+                timeout: this.extensionScriptForm.timeout,
+                maxOutputSize: this.extensionScriptForm.maxOutputSize
+            }, 'extensionscript');
+        },
+
+        saveKnowledge() {
+            if (this.knowledgeForm.similarityThreshold == null || this.knowledgeForm.similarityThreshold < 0) {
+                ElementPlus.ElMessage.warning('相似度阈值不能为负数'); return;
+            }
+            this.postSave('settings/knowledge/save', {
+                enable: this.knowledgeForm.enable,
+                similarityThreshold: this.knowledgeForm.similarityThreshold
+            }, 'knowledgesettings');
+        },
+
+        saveKnowledgeApi() {
+            if (!this.knowledgeApiForm.model.trim()) {
+                ElementPlus.ElMessage.warning('模型不能为空'); return;
+            }
+            if (!this.knowledgeApiForm.url.trim()) {
+                ElementPlus.ElMessage.warning('API URL 不能为空'); return;
+            }
+            if (!this.knowledgeApiForm.apiKey.trim()) {
+                ElementPlus.ElMessage.warning('API Key 不能为空'); return;
+            }
+            this.postSave('settings/knowledgeapi/save', {
+                model: this.knowledgeApiForm.model.trim(),
+                url: this.knowledgeApiForm.url.trim(),
+                apiKey: this.knowledgeApiForm.apiKey.trim()
+            }, 'knowledgeapi');
+        },
+
+        /* ---------- 时间格式化 ---------- */
+        formatTime(timeStr) {
+            if (!timeStr) return '-';
+            try {
+                const d = new Date(timeStr);
+                const pad = n => String(n).padStart(2, '0');
+                return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+                    + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+            } catch (e) {
+                return timeStr;
+            }
+        },
+
+        /* ---------- 知识条目管理 ---------- */
+        async fetchKnowledgeList() {
+            this.knowledgeLoading = true;
+            try {
+                const r = await API.knowledge.list();
+                if (r.status === 200) {
+                    this.knowledgeList = r.data || [];
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '获取知识列表失败');
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(e);
+            } finally {
+                this.knowledgeLoading = false;
+            }
+        },
+
+        openKnowledgeEdit(item) {
+            if (item) {
+                this.knowledgeEditForm = { id: item.id, title: item.title, content: item.content };
+            } else {
+                this.knowledgeEditForm = { id: null, title: '', content: '' };
+            }
+            this.dialogs.knowledgeedit = true;
+            this.$nextTick(() => lucide.createIcons());
+        },
+
+        async saveKnowledgeEntry() {
+            if (!this.knowledgeEditForm.title.trim()) {
+                ElementPlus.ElMessage.warning('标题不能为空');
+                return;
+            }
+            if (!this.knowledgeEditForm.content.trim()) {
+                ElementPlus.ElMessage.warning('内容不能为空');
+                return;
+            }
+            this.saving.knowledgeentry = true;
+            try {
+                const body = {
+                    title: this.knowledgeEditForm.title.trim(),
+                    content: this.knowledgeEditForm.content.trim(),
+                    mode: this.knowledgeEditForm.id ? 'update' : 'add'
+                };
+                if (this.knowledgeEditForm.id) {
+                    body.id = this.knowledgeEditForm.id;
+                }
+                const r = await API.knowledge.save(body);
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('保存成功');
+                    this.dialogs.knowledgeedit = false;
+                    await this.fetchKnowledgeList();
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '保存失败');
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(e);
+            } finally {
+                this.saving.knowledgeentry = false;
+            }
+        },
+
+        async confirmDeleteKnowledge(item) {
+            try {
+                await this.$refs.confirmDialog.show({
+                    title: '确认删除',
+                    message: '确定要删除知识条目「' + item.title + '」吗？此操作不可恢复。',
+                    confirmText: '确认删除',
+                    cancelText: '取消',
+                    type: 'warning'
+                });
+                const r = await API.knowledge.delete(item.id);
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('删除成功');
+                    await this.fetchKnowledgeList();
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '删除失败');
+                }
+            } catch (e) {
+                // 用户取消关闭，不做任何处理
+                if (e !== undefined && e !== 'cancel' && e !== 'close') {
+                    ElementPlus.ElMessage.error('网络请求失败');
+                    console.error(e);
+                }
+            }
+        },
+
+        /* ---------- 记忆管理 ---------- */
+        async fetchMemoryList() {
+            this.memoryLoading = true;
+            try {
+                const r = await API.memory.list();
+                if (r.status === 200) {
+                    this.memoryList = r.data || [];
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '获取记忆列表失败');
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(e);
+            } finally {
+                this.memoryLoading = false;
+            }
+        },
+
+        openMemoryEdit(item) {
+            if (item) {
+                this.memoryEditForm = { id: item.id, content: item.content };
+            } else {
+                this.memoryEditForm = { id: null, content: '' };
+            }
+            this.dialogs.memoryedit = true;
+            this.$nextTick(() => lucide.createIcons());
+        },
+
+        async saveMemoryEntry() {
+            if (!this.memoryEditForm.content.trim()) {
+                ElementPlus.ElMessage.warning('内容不能为空');
+                return;
+            }
+            this.saving.memoryentry = true;
+            try {
+                const body = {
+                    content: this.memoryEditForm.content.trim(),
+                    mode: this.memoryEditForm.id ? 'update' : 'add'
+                };
+                if (this.memoryEditForm.id) {
+                    body.id = this.memoryEditForm.id;
+                }
+                const r = await API.memory.save(body);
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('保存成功');
+                    this.dialogs.memoryedit = false;
+                    await this.fetchMemoryList();
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '保存失败');
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(e);
+            } finally {
+                this.saving.memoryentry = false;
+            }
+        },
+
+        async confirmDeleteMemory(item) {
+            try {
+                await this.$refs.confirmDialog.show({
+                    title: '确认删除',
+                    message: '确定要删除这条记忆吗？此操作不可恢复。',
+                    confirmText: '确认删除',
+                    cancelText: '取消',
+                    type: 'warning'
+                });
+                const r = await API.memory.delete(item.id);
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('删除成功');
+                    await this.fetchMemoryList();
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '删除失败');
+                }
+            } catch (e) {
+                // 用户取消关闭，不做任何处理
+                if (e !== undefined && e !== 'cancel' && e !== 'close') {
+                    ElementPlus.ElMessage.error('网络请求失败');
+                    console.error(e);
+                }
+            }
+        },
+
+        /* ---------- 获取所有设置 ---------- */
+        async fetchAllSettings() {
+            const fetchers = [
+                { key: 'userSettings', url: 'settings/user/get' },
+                { key: 'adapterList', url: 'settings/adapters/list', isAdapterList: true },
+                { key: 'assistantSettings', url: 'settings/assistant/get' },
+                { key: 'commandSettings', url: 'settings/command/get' },
+                { key: 'webSearchSettings', url: 'settings/websearch/get' },
+                { key: 'fileWriteSettings', url: 'settings/filewrite/get' },
+                { key: 'fileEditSettings', url: 'settings/fileedit/get' },
+                { key: 'fileDeleteSettings', url: 'settings/filedelete/get' },
+                { key: 'fileDownloadSettings', url: 'settings/filedownload/get' },
+                { key: 'imageCaptionSettings', url: 'settings/imagecaption/get' },
+                { key: 'webReaderSettings', url: 'settings/webreadertool/get' },
+                { key: 'extensionScriptSettings', url: 'settings/extensionscript/get' },
+                { key: 'knowledgeApiSettings', url: 'settings/knowledgeapi/get' },
+                { key: 'knowledgeSettings', url: 'settings/knowledgesettings/get' },
+            ];
+
+            const aiTypes = ['chat', 'chat_pro', 'summary', 'title', 'ocr', 'mission', 'task'];
+            const aiFetchers = aiTypes.map(type => ({
+                key: type,
+                url: 'settings/' + type + '/get',
+                isAi: true
+            }));
+
+            const all = [...fetchers, ...aiFetchers];
+            const results = await Promise.allSettled(
+                all.map(f => API.get(f.url).then(data => ({ key: f.key, isAi: f.isAi, isAdapterList: f.isAdapterList, data })))
+            );
+
+            for (const r of results) {
+                if (r.status !== 'fulfilled') continue;
+                const { key, isAi, isAdapterList, data } = r.value;
+                if (data.status === 200) {
+                    if (isAdapterList) {
+                        this[key] = data.data || [];
+                    } else if (isAi) {
+                        this.aiSettings[key] = data.data || {};
+                    } else {
+                        this[key] = data.data || {};
+                    }
+                }
+            }
+            // 从服务端获取主题色并同步到本地；没有则回退 localStorage
+            if (this.userSettings.mainColor) {
+                this.mainColor = this.userSettings.mainColor;
+                try {
+                    localStorage.setItem('assistant-mainColor', this.userSettings.mainColor);
+                } catch (e) {}
+            } else {
+                try {
+                    const saved = localStorage.getItem('assistant-mainColor');
+                    if (saved) {
+                        this.mainColor = saved;
+                    }
+                } catch (e) {}
+            }
+            // 静默加载知识库和记忆列表（用于显示条目数量）
+            try {
+                const kr = await API.knowledge.list();
+                if (kr.status === 200) this.knowledgeList = kr.data || [];
+            } catch (e) { /* 静默失败 */ }
+            try {
+                const mr = await API.memory.list();
+                if (mr.status === 200) this.memoryList = mr.data || [];
+            } catch (e) { /* 静默失败 */ }
+
+            this.loading = false;
+        }
+    },
+
+    async mounted() {
+        lucide.createIcons();
+        await this.fetchAllSettings();
+        this.$nextTick(() => lucide.createIcons());
+    },
+
+    updated() {
+        this.$nextTick(() => lucide.createIcons());
+    }
+});
+
+app.use(ElementPlus);
+app.component('confirm-dialog', ConfirmDialog);
+app.mount('#app');
+</script>
+</body>
+</html>

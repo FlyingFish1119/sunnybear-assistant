@@ -1,0 +1,52 @@
+name: system-info
+description: 获取 Windows 系统基本信息（主机名、OS 版本、CPU、内存、磁盘）
+type: powershell
+script: |
+  chcp 65001 > $null
+  Write-Host "=== 系统信息 ==="
+  Write-Host "主机名: $env:COMPUTERNAME"
+  Write-Host "用户名: $env:USERNAME"
+
+  try {
+      $os = Get-CimInstance Win32_OperatingSystem
+      Write-Host "操作系统: $($os.Caption)"
+  } catch {
+      Write-Host "操作系统: 获取失败"
+  }
+
+  Write-Host ""
+  Write-Host "=== CPU ==="
+  try {
+      $cpu = Get-CimInstance Win32_Processor
+      Write-Host "CPU: $($cpu.Name)"
+      Write-Host "核心数: $($cpu.NumberOfCores), 逻辑处理器: $($cpu.NumberOfLogicalProcessors)"
+  } catch {
+      Write-Host "CPU: 获取失败"
+  }
+
+  Write-Host ""
+  Write-Host "=== 内存 ==="
+  try {
+      $os = Get-CimInstance Win32_OperatingSystem
+      $totalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 2)
+      $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 2)
+      Write-Host "总内存: ${totalGB} GB"
+      Write-Host "可用内存: ${freeGB} GB"
+  } catch {
+      Write-Host "内存: 获取失败"
+  }
+
+  Write-Host ""
+  Write-Host "=== 磁盘 ==="
+  try {
+      Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
+          $totalGB = [math]::Round($_.Size / 1GB, 2)
+          $freeGB = [math]::Round($_.FreeSpace / 1GB, 2)
+          Write-Host "$($_.DeviceID) 总计: ${totalGB} GB, 可用: ${freeGB} GB"
+      }
+  } catch {
+      Write-Host "磁盘: 获取失败"
+  }
+
+  Write-Host ""
+  Write-Host "=== 信息获取完成 ==="

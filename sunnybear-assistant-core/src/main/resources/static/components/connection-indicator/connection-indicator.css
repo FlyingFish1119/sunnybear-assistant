@@ -1,0 +1,64 @@
+/* ============================================
+   连接状态指示器组件
+   ============================================ */
+
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-sm, 12px);
+    user-select: none;
+}
+
+.connection-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: background-color var(--transition-normal, 0.3s ease);
+}
+
+.connection-text {
+    white-space: nowrap;
+}
+
+/* 已连接 — 绿色 */
+.connection-status.connected .connection-dot {
+    background-color: #52c41a;
+    box-shadow: 0 0 4px rgba(82, 196, 26, 0.5);
+}
+.connection-status.connected .connection-text {
+    color: #52c41a;
+}
+
+/* 连接中 — 橘色 */
+.connection-status.connecting .connection-dot {
+    background-color: #fa8c16;
+    box-shadow: 0 0 4px rgba(250, 140, 22, 0.5);
+    animation: connection-pulse 1.2s ease-in-out infinite;
+}
+.connection-status.connecting .connection-text {
+    color: #fa8c16;
+}
+
+/* 已断开 — 红色 */
+.connection-status.disconnected .connection-dot {
+    background-color: #ff4d4f;
+    box-shadow: 0 0 4px rgba(255, 77, 79, 0.5);
+}
+.connection-status.disconnected .connection-text {
+    color: #ff4d4f;
+}
+
+@keyframes connection-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* 移动端：隐藏文字只留圆点 */
+@media (max-width: 768px) {
+    .connection-text {
+        width: 0;
+        overflow: hidden;
+    }
+}

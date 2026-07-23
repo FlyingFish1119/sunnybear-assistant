@@ -1,0 +1,163 @@
+/* ============================================
+   斜杠指令候选面板
+   浮动在输入框上方，与现有 UI 风格一致
+   ============================================ */
+
+.command-suggest-panel {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 85%;
+    max-width: 650px;
+    margin-bottom: 8px;
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.06);
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 500;
+    scrollbar-width: thin;
+    scrollbar-color: #ddd transparent;
+}
+
+/* ---- 头部 ---- */
+.command-suggest-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: #999;
+    border-bottom: 1px solid #f0f0f0;
+    user-select: none;
+}
+
+.command-suggest-hint {
+    margin-left: auto;
+    font-size: 11px;
+    color: #bbb;
+}
+
+.command-suggest-hint kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    font-size: 10px;
+    font-family: inherit;
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    line-height: 1.4;
+}
+
+/* ---- 单条候选 ---- */
+.command-suggest-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    border-bottom: 1px solid #f8f8f8;
+}
+
+.command-suggest-item:last-child {
+    border-bottom: none;
+}
+
+.command-suggest-item:hover,
+.command-suggest-item.active {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.command-suggest-item.active {
+    border-left: 3px solid var(--main-color, lightsalmon);
+    padding-left: 11px;  /* 补偿 border 宽度，保持文字不抖动 */
+}
+
+/* ---- 图标 ---- */
+.command-suggest-icon {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    color: #888;
+}
+
+.command-suggest-item.active .command-suggest-icon {
+    color: var(--main-color, lightsalmon);
+}
+
+/* ---- 文字区 ---- */
+.command-suggest-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.command-suggest-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.command-suggest-desc {
+    font-size: 12px;
+    color: #888;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- 用法提示 ---- */
+.command-suggest-usage {
+    margin-left: auto;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
+    color: #aaa;
+    background: #f5f5f5;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex: none;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.command-suggest-item.active .command-suggest-usage {
+    background: rgba(var(--main-color-rgb, 255, 160, 122), 0.12);
+    color: var(--main-color, lightsalmon);
+}
+
+/* ---- 移动端 ---- */
+@media (max-width: 768px) {
+    .command-suggest-panel {
+        width: 92%;
+        max-width: none;
+    }
+    .command-suggest-usage {
+        max-width: 100px;
+    }
+}
+
+/* ---- 过渡动画 ---- */
+.cmd-fade-enter-active {
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.cmd-fade-leave-active {
+    transition: opacity 0.1s ease, transform 0.1s ease;
+}
+.cmd-fade-enter-from {
+    opacity: 0;
+    transform: translateY(6px);
+}
+.cmd-fade-leave-to {
+    opacity: 0;
+    transform: translateY(4px);
+}
