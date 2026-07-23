@@ -54,6 +54,8 @@ sunnybear-assistant/
 
 ### 前端 (内嵌于 Core)
 
+前端采用 CDN 方式加载，无需构建工具链。clone 下来直接 `java -jar` 即可跑起全栈，不用装 Node、不用配 MySQL，零额外依赖。
+
 | 技术 | 用途 |
 |------|------|
 | **Vue.js 3** (CDN) | 响应式 UI |
@@ -327,7 +329,7 @@ com.fishsunny.assistant
 
 ## License
 
-个人项目，仅供学习交流。
+[MIT License](LICENSE) © 2026 FlyingFish1119
 
 ---
 
