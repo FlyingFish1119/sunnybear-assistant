@@ -28,7 +28,7 @@
 
         <sqlite.version>3.49.1.0</sqlite.version>
         <thumbnailator.version>0.4.14</thumbnailator.version>
-        <lombook.version>1.18.20</lombook.version>
+        <lombok.version>1.18.20</lombok.version>
         <jsoup.version>1.18.1</jsoup.version>
         <poi.version>5.2.5</poi.version>
         <pdfbox.version>3.0.2</pdfbox.version>
@@ -147,7 +147,7 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>${lombook.version}</version>
+            <version>${lombok.version}</version>
         </dependency>
     </dependencies>
 
