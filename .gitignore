@@ -8,8 +8,9 @@
 **/build/
 **/out/
 *.class
-*.jar
-*.war
+
+# Gradle Wrapper jar 例外（Android 编译必需）
+!**/gradle/wrapper/gradle-wrapper.jar
 
 # ===== 运行时数据（含敏感信息，绝不提交）=====
 sunnybear-assistant-core/data/
