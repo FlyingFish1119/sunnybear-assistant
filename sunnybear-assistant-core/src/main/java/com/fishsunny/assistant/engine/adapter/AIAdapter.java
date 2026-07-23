@@ -62,7 +62,7 @@ public abstract class AIAdapter {
 
     public AIAdapter(AIAdapterOption option) throws Exception {
         this.baseUrl = option.getBaseUrl();
-        this.apiKey = option.getApyKey();
+        this.apiKey = option.getApiKey();
         this.masterReqCls = option.getMasterReqCls();
         this.targetReqCls = option.getTargetReqCls();
         this.masterRespCls = option.getMasterRespCls();

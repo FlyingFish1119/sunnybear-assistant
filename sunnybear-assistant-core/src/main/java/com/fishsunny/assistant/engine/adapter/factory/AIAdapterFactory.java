@@ -12,13 +12,6 @@ import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.adapter.AIAdapterProperties;
 import com.fishsunny.assistant.engine.adapter.AIAdapterRegister;
-import com.fishsunny.assistant.engine.adapter.standard.StandardAIAdapter;
-import com.fishsunny.assistant.engine.adapter.standard.StandardStreamAIAdapter;
-import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
-import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
-import com.fishsunny.assistant.engine.protocol.standard.chat.StandardAIRequest;
-import com.fishsunny.assistant.engine.protocol.standard.chat.StandardAIResponse;
-import com.fishsunny.assistant.engine.protocol.standard.chat.StandardStreamAIResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -93,7 +86,7 @@ public class AIAdapterFactory {
 
         AIAdapterOption option = new AIAdapterOption()
                 .setBaseUrl(register.getBaseUrl())
-                .setApyKey(register.getApyKey())
+                .setApiKey(register.getApiKey())
                 .setMasterReqCls(register.getMasterReqCls())
                 .setTargetReqCls(register.getTargetReqCls())
                 .setMasterRespCls(register.getMasterRespCls())

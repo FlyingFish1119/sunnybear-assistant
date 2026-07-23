@@ -11,7 +11,7 @@ public class AIAdapterRegister {
 
     private String baseUrl;
 
-    private String apyKey;
+    private String apiKey;
 
     private Class<? extends AIAdapter> adapterCls;
 

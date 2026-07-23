@@ -21,7 +21,7 @@ public class AIAdapterOption {
 
     protected String baseUrl;
 
-    protected String apyKey;
+    protected String apiKey;
 
     protected Class<? extends AIRequest> masterReqCls;
 
@@ -37,13 +37,13 @@ public class AIAdapterOption {
     public AIAdapterOption() {
     }
 
-    public AIAdapterOption(String baseUrl, String apyKey,
+    public AIAdapterOption(String baseUrl, String apiKey,
                            Class<? extends AIRequest> masterReqCls,
                            Class<? extends AIRequest> targetReqCls,
                            Class<? extends AIResponse> masterRespCls,
                            Class<? extends AIResponse> targetRespCls) {
         this.baseUrl = baseUrl;
-        this.apyKey = apyKey;
+        this.apiKey = apiKey;
         this.masterReqCls = masterReqCls;
         this.targetReqCls = targetReqCls;
         this.masterRespCls = masterRespCls;

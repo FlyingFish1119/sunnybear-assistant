@@ -80,7 +80,7 @@ engine:
       # Kimi（Moonshot）流式
       - apiName: moonshot
         baseUrl: https://api.moonshot.cn/v1/chat/completions
-        apyKey: ${MOONSHOT_API_KEY}
+        apiKey: ${MOONSHOT_API_KEY}
         stream: true
         adapterCls: com.fishsunny.assistant.engine.adapter.standard.StandardStreamAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
@@ -91,7 +91,7 @@ engine:
       # Kimi（Moonshot）非流式
       - apiName: moonshot
         baseUrl: https://api.moonshot.cn/v1/chat/completions
-        apyKey: ${MOONSHOT_API_KEY}
+        apiKey: ${MOONSHOT_API_KEY}
         stream: false
         adapterCls: com.fishsunny.assistant.engine.adapter.standard.StandardAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
@@ -102,7 +102,7 @@ engine:
       # DeepSeek 非流式
       - apiName: deepseek
         baseUrl: https://api.deepseek.com/chat/completions
-        apyKey: ${DEEPSEEK_API_KEY}
+        apiKey: ${DEEPSEEK_API_KEY}
         stream: false
         adapterCls: com.fishsunny.assistant.engine.adapter.text.TextAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
@@ -113,7 +113,7 @@ engine:
       # DeepSeek 流式
       - apiName: deepseek
         baseUrl: https://api.deepseek.com/chat/completions
-        apyKey: ${DEEPSEEK_API_KEY}
+        apiKey: ${DEEPSEEK_API_KEY}
         stream: true
         adapterCls: com.fishsunny.assistant.engine.adapter.text.TextStreamAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
@@ -124,7 +124,7 @@ engine:
       # siliconflow 非流式
       - apiName: siliconflow
         baseUrl: https://api.siliconflow.cn/v1/chat/completions
-        apyKey: ${SILICONFLOW_API_KEY}
+        apiKey: ${SILICONFLOW_API_KEY}
         stream: false
         adapterCls: com.fishsunny.assistant.engine.adapter.text.TextAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
@@ -135,7 +135,7 @@ engine:
       # siliconflow 流式
       - apiName: siliconflow
         baseUrl: https://api.siliconflow.cn/v1/chat/completions
-        apyKey: ${SILICONFLOW_API_KEY}
+        apiKey: ${SILICONFLOW_API_KEY}
         stream: true
         adapterCls: com.fishsunny.assistant.engine.adapter.text.TextStreamAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
