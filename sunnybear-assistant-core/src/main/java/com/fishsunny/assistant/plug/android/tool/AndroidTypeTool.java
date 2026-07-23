@@ -27,9 +27,7 @@ public class AndroidTypeTool implements ToolHandler {
         this.bridgeService = bridgeService;
         this.register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("在 Android 设备当前焦点的输入框中输入文本。"
-                        + "使用前请先调用 android_click 点击目标输入框使其获得焦点。"
-                        + "也可通过 targetHint 参数指定目标输入框的提示文本，APK 会自动查找。")
+                .setDescription("在当前焦点输入框中输入文本。需先点击输入框获得焦点，或用 targetHint 自动定位输入框。")
                 .setRequired(List.of("text"))
                 .setParameters(List.of(
                         param("deviceId", "string", "目标设备 ID。不填则使用第一个已连接设备。"),

@@ -43,16 +43,10 @@ public class DeleteMemoryTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("""
-                        根据 ID 删除一条核心记忆。请在以下场景使用：\
-                        1) 用户明确要求删除某条记忆或「忘记」某事；\
-                        2) 某条记忆被确认是错误的（而非过时，过时应用 ${postMemoryTool} 的 update 模式）；\
-                        3) 记忆内容涉及用户要求删除的隐私信息。\
-                        删除前请确认你找对了记忆 ID。删除后无法恢复，请谨慎操作。
-                        """.replace("\n", " ").replace("${postMemoryTool}", PostMemoryTool.NAME))
+                .setDescription("根据 ID 删除一条核心记忆。删除不可恢复，请先确认 ID 正确。")
                 .setRequired(List.of("id"))
                 .setParameters(List.of(
-                        new ToolRegister.Parameters("id", "integer", "要删除的记忆 ID。请仔细核对确保删除的是正确的记忆，该操作不可逆。")
+                        new ToolRegister.Parameters("id", "integer", "要删除的记忆 ID。操作不可逆，请仔细核对")
                 ));
     }
 

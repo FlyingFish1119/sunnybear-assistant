@@ -48,11 +48,7 @@ public class AndroidGetUiTreeTool implements ToolHandler {
 
         this.register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("获取 Android 设备当前屏幕的 UI 树结构。"
-                        + "element 模式返回 AI 精简后的可交互元素列表（推荐优先使用），"
-                        + "full 模式返回完整 UI 树。"
-                        + "这是分析屏幕内容的首选工具——先获取 UI 树了解布局和目标元素，"
-                        + "再调用 android_click / android_type / android_swipe 执行操作。")
+                .setDescription("获取屏幕 UI 树。element 模式返回可交互元素列表（推荐），full 模式返回完整结构。分析屏幕的首选工具。")
                 .setRequired(List.of());
 
         ToolRegister.Parameters modeParam = new ToolRegister.Parameters()

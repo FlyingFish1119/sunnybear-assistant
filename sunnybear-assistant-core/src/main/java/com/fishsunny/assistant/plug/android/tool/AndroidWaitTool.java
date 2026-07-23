@@ -27,8 +27,7 @@ public class AndroidWaitTool implements ToolHandler {
         this.bridgeService = bridgeService;
         this.register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("等待指定文本出现在 Android 设备屏幕上。APK 会轮询 UI 树直到文本出现或超时。"
-                        + "适用于等待页面加载、弹窗出现、搜索结果显示等场景。")
+                .setDescription("等待指定文本出现在屏幕上。用于等待页面加载、弹窗出现等场景。")
                 .setRequired(List.of("text"))
                 .setParameters(List.of(
                         param("deviceId", "string", "目标设备 ID。不填则使用第一个已连接设备。"),

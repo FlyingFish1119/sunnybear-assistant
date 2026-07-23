@@ -43,16 +43,10 @@ public class DeleteKnowledgeTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("""
-                        根据 ID 删除一条知识库条目。请在以下场景使用：\
-                        1) 用户明确要求删除某条知识或「忘掉」某个知识点；\
-                        2) 某条知识被确认是错误的；\
-                        3) 知识内容已过时且用户确认不再需要。\
-                        删除前请确认你找对了条目 ID。删除后无法恢复，请谨慎操作。
-                        """.replace("\n", " "))
+                .setDescription("根据 ID 删除一条知识库条目。删除不可恢复，请先确认 ID 正确。")
                 .setRequired(List.of("id"))
                 .setParameters(List.of(
-                        new ToolRegister.Parameters("id", "integer", "要删除的知识条目 ID。请仔细核对确保删除的是正确的条目，该操作不可逆。")
+                        new ToolRegister.Parameters("id", "integer", "要删除的条目 ID。操作不可逆，请仔细核对")
                 ));
     }
 

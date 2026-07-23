@@ -43,7 +43,7 @@ public class BrowserWaitTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("在内部无头浏览器中等待指定 CSS 选择器对应的元素出现。常用于等待页面加载完成、AJAX 内容渲染、弹窗出现等场景。")
+                .setDescription("等待指定 CSS 选择器对应的元素出现。用于等待页面加载、AJAX 渲染、弹窗等。")
                 .setRequired(List.of("selector"));
 
         ToolRegister.Parameters selectorParam = new ToolRegister.Parameters()

@@ -74,7 +74,7 @@ public class WebReaderTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        获取网页正文，自动过滤导航、页脚、侧边栏、广告等噪音。支持快速全文提取和定向内容提取两种模式。""")
+                        获取网页正文内容。fast 模式快速提取全文，quality 模式可按 target 定向提取关键内容。""")
                 .setRequired(List.of("url"));
         ToolRegister.Parameters urlParam = new ToolRegister.Parameters()
                 .setParameterName("url")

@@ -27,10 +27,7 @@ public class AndroidLaunchAppTool implements ToolHandler {
         this.bridgeService = bridgeService;
         this.register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("在 Android 设备上启动指定应用。需要提供应用包名（packageName）。"
-                        + "常见包名：微信=com.tencent.mm，支付宝=com.eg.android.AlipayGphone，"
-                        + "淘宝=com.taobao.taobao，京东=com.jingdong.app.mall，"
-                        + "抖音=com.ss.android.ugc.aweme，设置=com.android.settings。")
+                .setDescription("启动指定包名的应用。常见包名示例：微信=com.tencent.mm，设置=com.android.settings。")
                 .setRequired(List.of("packageName"))
                 .setParameters(List.of(
                         param("deviceId", "string", "目标设备 ID。不填则使用第一个已连接设备。"),

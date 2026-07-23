@@ -103,20 +103,7 @@ public class TaskReadTool implements ToolHandler {
     public ToolRegister getRegister() {
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("""
-                        查看指定任务的详细信息，包括任务基本信息和所有步骤的详情（含执行状态和结果）。\
-
-                        ## 使用场景\
-                        1) 用户询问任务进度，如「我的任务怎么样了」「查看一下XX任务」；\
-                        2) 在执行 task_run_tool 之前，先确认任务和步骤内容是否正确；\
-                        3) 在删除任务之前，先让用户确认任务内容；\
-                        4) 任务执行过程中或执行完毕后，查看各步骤的执行状态和输出结果。\
-
-                        ## 返回内容\
-                        返回信息包括：任务 ID、名称、描述、当前状态、创建/完成时间，以及每个步骤的\
-                        名称、描述、状态、排序号和执行结果（如果步骤已完成）。\
-                        步骤状态包括：waiting（等待执行）、running（执行中）、finished（已完成）、failed（执行失败）。
-                        """.replace("\n", " "))
+                .setDescription("查看任务详情及所有步骤的执行状态和结果。返回任务基本信息、每步状态（waiting/running/finished/failed）和输出。")
                 .setRequired(List.of("taskId"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("taskId", "string", "要查看的任务 ID。可从 task_create_tool 的返回结果中获取，或从之前的对话上下文中查找")

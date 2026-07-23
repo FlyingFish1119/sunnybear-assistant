@@ -596,21 +596,20 @@ public class CommandTool implements ToolHandler {
     @Override
     public ToolRegister getRegister() {
         String modeDesc = switch (settings.getMode()) {
-            case NEVER_ASKED -> "当前处于[不需要询问]：所有命令不经确认直接执行。";
-            case ALWAYS_ASKED -> "当前处于[每次询问]：所有命令执行前都需要用户确认。";
-            case AUTO -> "当前处于[系统检测后询问]：安全命令直接执行，可疑命令经系统审查后需用户确认才执行。";
-            case ALWAYS_REJECT_DANGER -> "当前处于[危险后拒绝]：系统判定危险的命令将被直接拒绝，不询问用户。";
+            case NEVER_ASKED -> "";
+            case ALWAYS_ASKED -> "（每次需确认）";
+            case AUTO -> "（危险操作需确认）";
+            case ALWAYS_REJECT_DANGER -> "（危险操作直接拒绝）";
             default -> "";
         };
-        String limitDesc = buildLimitDescription();
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("在 " + getOsName() + " 操作系统下执行命令行（" + getShellName() + "）。" + modeDesc + limitDesc)
+                .setDescription("在终端中执行命令。" + modeDesc + "默认有安全输出限制。")
                 .setRequired(List.of("command"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("command", "string", "你准备执行的命令"),
-                        new ToolRegister.Parameters("skipSafeMode", "boolean", "是否跳过安全输出限制。设为 true 可获取完整输出（但仍受最大输出限制）；默认 false，超过安全限制的输出将被拦截。当预计命令输出较大时（如读取长文件、列出大量文件等），建议设为 true 并配合命令自身的筛选参数控制输出量"),
-                        new ToolRegister.Parameters("background", "boolean", "是否在后台执行命令。设为 true 时：命令在后台线程中执行，无超时限制、无输出大小限制，输出以追加模式写入到日志文件中。适用于长时间运行的命令（如构建、部署、大型数据处理等）。命令返回后提示日志文件路径，使用 file_read_tool 读取输出内容")
+                        new ToolRegister.Parameters("skipSafeMode", "boolean", "设为 true 跳过安全限制以获取完整输出（大输出时建议开启）"),
+                        new ToolRegister.Parameters("background", "boolean", "设为 true 后台执行（无超时限制），适合长时间任务。输出写入日志文件。")
                 ));
     }
 

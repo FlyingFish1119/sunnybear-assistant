@@ -61,7 +61,7 @@ public class ScreenCaptureTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        屏幕截取与内容分析工具。支持两种工作模式：定位模式返回 UI 元素坐标用于自动化操作，描述模式返回屏幕内容的文字描述。""")
+                        截取屏幕并分析。location 模式返回 UI 元素归一化坐标（用于自动化点击），caption 模式返回屏幕内容的中文描述。""")
                 .setRequired(List.of("target", "mode"));
 
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()

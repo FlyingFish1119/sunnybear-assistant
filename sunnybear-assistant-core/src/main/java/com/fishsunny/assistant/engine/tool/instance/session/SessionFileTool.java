@@ -60,8 +60,7 @@ public class SessionFileTool implements ToolHandler {
         this.objectMapper = objectMapper;
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("列出当前会话文件目录下所有文件的元信息，包括文件名、大小、修改时间、是否为目录等。" +
-                        "无需参数，自动获取当前会话 ID 并列出其 file 目录下的所有文件。")
+                .setDescription("列出当前会话文件目录下的所有文件（含文件名、大小、修改时间）。")
                 .setRequired(List.of())
                 .setParameters(List.of());
     }

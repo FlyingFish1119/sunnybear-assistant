@@ -257,10 +257,10 @@ public class FileWriteTool implements ToolHandler {
     @Override
     public ToolRegister getRegister() {
         String modeDesc = switch (settings.getMode()) {
-            case NEVER_ASKED -> "当前处于[不需要询问]：所有写入操作不经确认直接执行。";
-            case ALWAYS_ASKED -> "当前处于[每次询问]：所有写入操作都需要用户确认。";
-            case AUTO -> "当前处于[系统检测后询问]：经系统审查判定危险的操作需用户确认才执行。";
-            case ALWAYS_REJECT_DANGER -> "当前处于[危险后拒绝]：系统判定危险的操作将被直接拒绝。";
+            case NEVER_ASKED -> "";
+            case ALWAYS_ASKED -> "（每次需确认）";
+            case AUTO -> "（危险操作需确认）";
+            case ALWAYS_REJECT_DANGER -> "（危险操作直接拒绝）";
             default -> "";
         };
         return new ToolRegister()

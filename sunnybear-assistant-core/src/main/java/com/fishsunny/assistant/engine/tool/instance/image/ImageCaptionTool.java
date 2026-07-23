@@ -71,7 +71,7 @@ public class ImageCaptionTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("图片/视频内容理解工具。用于识别、描述、解释图片或视频中的内容，回答关于媒体内容的问题。仅返回对媒体内容的文字描述和理解，不返回坐标信息。如需定位屏幕中 UI 元素的具体坐标用于自动化操作，请使用 screen_location_tool。")
+                .setDescription("识别和理解图片/视频内容。支持网络链接和本地文件，返回中文描述。适用于描述图片、识别图中文字、分析图表、理解视频等。")
                 .setRequired(List.of("url"));
 
         ToolRegister.Parameters urlParam = new ToolRegister.Parameters()

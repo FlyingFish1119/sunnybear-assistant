@@ -41,7 +41,7 @@ public class BrowserDragTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("在内部无头浏览器中将一个元素拖拽到另一个元素的位置。适用于拖拽排序、滑块、拖拽上传等场景。")
+                .setDescription("将元素从 source 拖拽到 target 位置。适用于拖拽排序、滑块等场景。")
                 .setRequired(List.of("source", "target"));
 
         ToolRegister.Parameters sourceParam = new ToolRegister.Parameters()

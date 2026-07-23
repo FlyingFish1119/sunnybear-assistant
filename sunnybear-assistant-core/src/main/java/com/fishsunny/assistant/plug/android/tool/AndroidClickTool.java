@@ -34,9 +34,7 @@ public class AndroidClickTool implements ToolHandler {
     private ToolRegister buildRegister() {
         ToolRegister r = new ToolRegister()
                 .setName(NAME)
-                .setDescription("点击 Android 设备屏幕上的 UI 元素。可通过坐标 (x, y) 或文本内容定位目标。"
-                        + "使用场景：先调用 android_get_ui_tree 获取屏幕元素列表，再根据元素文本或坐标进行点击。"
-                        + "例如：点击发送按钮 → text=\"发送\"；点击坐标 → x=500, y=800。")
+                .setDescription("点击屏幕上指定坐标或文本对应的 UI 元素。推荐先通过 android_get_ui_tree 获取元素信息。")
                 .setRequired(List.of());
 
         List<ToolRegister.Parameters> params = new ArrayList<>();

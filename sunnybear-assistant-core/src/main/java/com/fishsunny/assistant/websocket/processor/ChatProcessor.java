@@ -25,6 +25,9 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.vi
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.extension.ExtensionScriptService;
+import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
+import com.fishsunny.assistant.engine.tool.instance.net.MetaSOAISearchTool;
+import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
@@ -234,6 +237,9 @@ public class ChatProcessor {
         return systemPrompt;
     }
 
+    /** 主 Agent 不直接调用的工具（由 net_explore_tool 子 Agent 代理） */
+    private static final Set<String> EXCLUDE_TOOLS = Set.of(MetaSOAISearchTool.NAME, WebReaderTool.NAME);
+
     /**
      * 工具调用循环
      */
@@ -247,8 +253,9 @@ public class ChatProcessor {
         AISettings effectiveAISettings = (chatSession.getEnablePro() != null && chatSession.getEnablePro())
                 ? chatProAISettings : aiSettings;
 
-        // 注入工具
-        List<StandardToolRegister> toolRegisters = StandardToolRegister.buildToolRegister(toolExecutor);
+        // 注入工具（排除原始 net 工具，由 net_agent_tool 子 Agent 统一代理）
+        List<StandardToolRegister> toolRegisters = StandardToolRegister.buildToolRegisterExcluding(
+                toolExecutor, EXCLUDE_TOOLS);
         if (chatProvider.getToolProvider() != null) {
             ChatProvider.ToolProviderContext toolCtx = new ChatProvider.ToolProviderContext(chatSession, toolRegisters);
             toolRegisters = chatProvider.getToolProvider().apply(toolCtx);

@@ -18,4 +18,6 @@ public class ControlSign {
     public static final String SIGN_TOOL_ASK = "###TOOL_ASK###";
     // 应携带一个 session json 对象
     public static final String UPDATE_SESSION = "###UPDATE_SESSION###";
+    // 应携带一个 AgentLogEntry json 对象
+    public static final String SIGN_AGENT_LOG = "###AGENT_LOG###";
 }

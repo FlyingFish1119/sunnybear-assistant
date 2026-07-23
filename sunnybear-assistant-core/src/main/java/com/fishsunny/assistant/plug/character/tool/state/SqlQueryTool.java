@@ -53,11 +53,7 @@ public class SqlQueryTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        对当前角色的私有 SQLite 数据库执行查询（仅限 SELECT / PRAGMA / EXPLAIN 等只读语句）。\
-                        返回 Markdown 格式的表格结果，最多 100 行。\
-                        查询前可先用以下语句了解库中有哪些表：\
-                        SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;\
-                        查看某表结构：PRAGMA table_info(表名);""")
+                        查询当前角色的私有数据库（仅限 SELECT 等只读语句），返回 Markdown 表格。""")
                 .setRequired(List.of("sql"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("sql", "string", "要执行的 SQL 查询语句，仅限只读操作（SELECT / PRAGMA / EXPLAIN）")

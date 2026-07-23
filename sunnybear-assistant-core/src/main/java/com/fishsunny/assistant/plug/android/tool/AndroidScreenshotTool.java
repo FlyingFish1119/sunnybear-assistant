@@ -45,12 +45,7 @@ public class AndroidScreenshotTool implements ToolHandler {
 
         this.register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("截取 Android 设备当前屏幕并返回中文描述。需要 Android 14+ 系统。"
-                        + "⚠️ 注意：优先使用 android_get_ui_tree（element 模式）获取页面结构和可交互元素，"
-                        + "它的开销更低且返回结构化数据。仅在以下情况使用截图："
-                        + "① UI 树无法表达的视觉信息（颜色、图标、图片内容）；"
-                        + "② 需要确认操作后的视觉变化；"
-                        + "③ UI 树数据不足以判断当前状态。")
+                .setDescription("截取屏幕并返回中文描述。⚠️ 优先用 android_get_ui_tree 获取结构化内容，截图仅用于视觉确认（颜色、图标、图片）。")
                 .setRequired(List.of())
                 .setParameters(List.of(
                         param("deviceId", "string", "目标设备 ID。不填则使用第一个已连接设备。"),

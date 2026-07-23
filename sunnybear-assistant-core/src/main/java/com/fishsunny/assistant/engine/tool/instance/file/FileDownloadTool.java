@@ -202,13 +202,13 @@ public class FileDownloadTool implements ToolHandler {
     @Override
     public ToolRegister getRegister() {
         String modeDesc = switch (settings.getMode()) {
-            case NEVER_ASKED -> "当前处于[不需要询问]：所有下载操作不经确认直接执行。";
-            case ALWAYS_ASKED -> "当前处于[每次询问]：所有下载操作都需要用户确认。";
+            case NEVER_ASKED -> "";
+            case ALWAYS_ASKED -> "（每次需确认）";
             default -> "";
         };
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("从指定 URL 下载文件并保存到本地路径，父目录不存在会自动创建。" + modeDesc)
+                .setDescription("从 URL 下载文件到本地。" + modeDesc)
                 .setRequired(List.of("url", "path"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("url", "string", "要下载的文件 URL 地址"),

@@ -37,7 +37,7 @@ public class FlowTestTool implements ToolHandler {
     public FlowTestTool(ObjectMapper objectMapper) {
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("这是一个流程测试工具，用于测试工具流程是否正常工作。接受一个字符串参数，在工具流程成功后拼接输入的字符串并返回。")
+                .setDescription("测试工具：接受一个字符串并拼接返回。用于调试工具流程。")
                 .setRequired(List.of("input"));
         ToolRegister.Parameters parameter = new ToolRegister.Parameters()
                 .setParameterName("input")

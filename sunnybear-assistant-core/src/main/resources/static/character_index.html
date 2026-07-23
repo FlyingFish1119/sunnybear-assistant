@@ -915,6 +915,10 @@
                     }
                     return;
                 }
+                if (event.data.startsWith('###')) {
+                    console.warn("未知的信号:" + event.data);
+                    return;
+                }
 
                 let response = JSON.parse(event.data);
 

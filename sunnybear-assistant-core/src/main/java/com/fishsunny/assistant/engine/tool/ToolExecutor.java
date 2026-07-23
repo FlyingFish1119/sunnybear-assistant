@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -232,6 +233,25 @@ public class ToolExecutor {
                     tools.add(function.apply(tool.getRegister()));
                 }
             }
+        }
+        return tools;
+    }
+
+    /**
+     * 构建所有工具注册信息，排除指定的 Handler 名称。
+     *
+     * @param function        转换函数，将 ToolRegister 转为目标类型
+     * @param excludeHandlers 需要排除的 Handler 名称集合，为 null 或空时不排除任何工具
+     * @param <T>             目标类型
+     * @return 转换后的工具注册列表
+     */
+    public <T> List<T> buildToolExcluding(Function<ToolRegister, T> function, Set<String> excludeHandlers) {
+        List<T> tools = new ArrayList<>();
+        for (ToolHandler tool : toolMap.values()) {
+            if (excludeHandlers != null && excludeHandlers.contains(tool.name())) {
+                continue;
+            }
+            tools.add(function.apply(tool.getRegister()));
         }
         return tools;
     }

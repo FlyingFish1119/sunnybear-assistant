@@ -71,21 +71,17 @@ public class D20Tool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        当角色尝试执行一个有失败风险的动作时，使用此工具进行 D20 检定来判定成败。\
-                        例如：撬锁、潜行、交涉、侦查、攀爬、闪避等需要运气的行为。\
-                        投掷一个 20 面骰子（d20），加上属性补正后与目标难度（DC）比较判定成功或失败。\
-                        支持优势（投两次取高）或劣势（投两次取低），二者只能选其一，都填或都不填则视为普通检定。\
-                        检定结果会由 AI 根据当前角色设定和最近对话历史，生成生动的叙事描述。""")
+                        进行 D20 检定：投 20 面骰 + 属性补正 vs 目标难度，判定动作成败。支持优势/劣势。检定结果会生成叙事描述。""")
                 .setRequired(List.of("difficulty", "event"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("difficulty", "integer",
-                                "目标难度（DC），范围 1-30。最终结果（d20 + 属性补正）>= 难度则成功，否则失败。自然 20 为大成功，自然 1 为大失败。"),
+                                "目标难度 DC，范围 1-30。结果 >= DC 则成功"),
                         new ToolRegister.Parameters("event", "string",
-                                "事件描述，说明角色正在尝试做什么。越详细越好，例如：「试图撬开上锁的宝箱」「与守卫交涉以通过城门」「在暴风雨中驾驶船只」。"),
+                                "事件描述，说明角色正在尝试做什么。如'试图撬开上锁的宝箱'"),
                         new ToolRegister.Parameters("modifier", "integer",
-                                "属性补正，加到 d20 投掷结果上的修正值。可为正数、负数或零。例如力量+3 则填 3，敏捷-1 则填 -1。不填默认为 0。"),
+                                "属性补正（可选），如力量+3填3，敏捷-1填-1。默认0"),
                         new ToolRegister.Parameters("advantage", "string",
-                                "优势或劣势。可选值：\"advantage\"（优势，投两次取高）或 \"disadvantage\"（劣势，投两次取低）。不填或填其他值则视为普通检定（投一次）。二者只能选其一。")
+                                "优势/劣势（可选）。'advantage'=投两次取高，'disadvantage'=投两次取低")
                 ));
     }
 

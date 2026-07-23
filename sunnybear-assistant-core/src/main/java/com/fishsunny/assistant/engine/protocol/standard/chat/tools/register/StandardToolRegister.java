@@ -49,6 +49,17 @@ public class StandardToolRegister {
     }
 
     /**
+     * 构建所有工具注册信息，排除指定的 Handler 名称
+     *
+     * @param toolExecutor    工具执行器
+     * @param excludeHandlers 需要排除的 Handler 名称集合
+     * @return 转换后的 StandardToolRegister 列表
+     */
+    public static List<StandardToolRegister> buildToolRegisterExcluding(ToolExecutor toolExecutor, Set<String> excludeHandlers) {
+        return toolExecutor.buildToolExcluding(TOOL_REGISTER_CONVERTER, excludeHandlers);
+    }
+
+    /**
      * 根据指定的 Handler 名称过滤并构建工具注册信息
      *
      * @param toolExecutor    工具执行器

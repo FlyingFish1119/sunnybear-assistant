@@ -37,10 +37,7 @@ public class CalculateTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("这是一个数学计算工具，支持加减乘除、三角函数、对数、指数、开方等数学运算。" +
-                        "支持的运算包括：+（加）、-（减）、*（乘）、/（除）、%（取余）、" +
-                        "Math.pow()（幂运算，例如 Math.pow(2, 8)）、Math.sin()、Math.cos()、Math.tan()、Math.log()、Math.exp()、Math.sqrt()、Math.abs()、" +
-                        "Math.floor()、Math.ceil()、Math.round()、Math.PI、Math.E 等 JavaScript Math 标准库函数（ES5.1标准）。")
+                .setDescription("计算数学表达式。支持加减乘除、三角函数、对数、幂运算等 JavaScript Math 标准库函数。示例：1+2*3、Math.sqrt(16)、Math.pow(2, 8)。")
                 .setRequired(List.of("expression"));
 
         ToolRegister.Parameters expressionParam = new ToolRegister.Parameters()

@@ -45,31 +45,13 @@ public class PostKnowledgeTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("""
-                        添加或修改一条知识库条目。知识库是一个类似 wiki 词条的 K-V 存储，\
-                        条目标题用于语义匹配，内容为详细说明。\
-                        当用户提问时，系统会自动匹配相关知识并注入对话上下文。\
-                        通过 mode 参数切换操作类型：\
-                        1) add 模式 - 新增一条知识条目；\
-                        2) update 模式 - 修改已有知识条目，需要提供条目 id。
-
-                        ## 你应该记录的信息类型：
-                        1. 用户明确分享的知识、经验、技巧、教程类内容；
-                        2. 用户认为值得记住、后续可能需要查询的信息；
-                        3. 用户纠正你某个错误认知后，应该被固化的正确信息；
-                        4. 项目相关的技术决策、架构说明、配置方式等需要长期保留的信息。
-
-                        ## 编写要求：
-                        1. title 是词条标题，应简洁明确，方便语义匹配（如「项目部署流程」「LLM的定义」）；
-                        2. content 是词条详细内容，可以较长，包含具体细节；
-                        3. 如果用户纠正了之前的认知，应使用 update 模式更新旧条目而非新增。
-                        """.replace("\n", " "))
+                .setDescription("添加或更新一条知识库条目。mode=add 新增，mode=update 修改已有条目（需提供 id）。知识会在相关提问时自动匹配注入上下文。")
                 .setRequired(List.of("mode", "title", "content"))
                 .setParameters(List.of(
-                        new ToolRegister.Parameters("mode", "string", "操作模式：add（新增一条知识条目）或 update（修改已有知识条目）。"),
-                        new ToolRegister.Parameters("title", "string", "词条标题。简洁明确，用于语义匹配检索。好例子：「Git 常用命令」「项目部署流程」。坏例子：「那个东西」（指代不明）。"),
-                        new ToolRegister.Parameters("content", "string", "词条内容。详细说明该知识点，可包含步骤、注意事项、示例等。"),
-                        new ToolRegister.Parameters("id", "integer", "（update 模式必填，add 模式忽略）要修改的知识条目 ID。")
+                        new ToolRegister.Parameters("mode", "string", "操作模式：add（新增）或 update（修改已有条目）"),
+                        new ToolRegister.Parameters("title", "string", "词条标题，简洁明确，用于语义匹配。如'Git 常用命令'"),
+                        new ToolRegister.Parameters("content", "string", "词条详细内容"),
+                        new ToolRegister.Parameters("id", "integer", "（update 模式必填）要修改的条目 ID")
                 ));
     }
 

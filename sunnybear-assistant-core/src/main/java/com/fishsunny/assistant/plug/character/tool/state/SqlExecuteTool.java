@@ -46,12 +46,7 @@ public class SqlExecuteTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        对当前角色的私有 SQLite 数据库执行写入操作。支持：\
-                        CREATE TABLE / ALTER TABLE / DROP TABLE — 建表改表；\
-                        INSERT / UPDATE / DELETE — 增删改数据；\
-                        CREATE INDEX / DROP INDEX — 索引管理。\
-                        建表时请使用标准 SQLite 语法，支持 INTEGER PRIMARY KEY AUTOINCREMENT、NOT NULL、UNIQUE、DEFAULT、CHECK 等约束。\
-                        建议先用 character_db_query 执行 SELECT name FROM sqlite_master WHERE type='table' 了解现有表结构。""")
+                        写入当前角色的私有数据库（CREATE TABLE/INSERT/UPDATE/DELETE 等）。""")
                 .setRequired(List.of("sql"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("sql", "string", "要执行的 SQL 写入语句（CREATE / INSERT / UPDATE / DELETE / DROP / ALTER 等）")

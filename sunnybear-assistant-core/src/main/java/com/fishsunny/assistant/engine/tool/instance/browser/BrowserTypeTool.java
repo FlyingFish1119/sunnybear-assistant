@@ -41,7 +41,7 @@ public class BrowserTypeTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("在内部无头浏览器的输入框（input、textarea 等）中填入文本。")
+                .setDescription("在输入框中填入文本。用于 input、textarea 等表单元素。")
                 .setRequired(List.of("selector", "text"));
 
         ToolRegister.Parameters selectorParam = new ToolRegister.Parameters()

@@ -41,7 +41,7 @@ public class BrowserClickTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("在内部无头浏览器中点击匹配 CSS 选择器的第一个元素。适用于按钮、链接、复选框等可交互元素。")
+                .setDescription("点击匹配 CSS 选择器的第一个可交互元素。适用于按钮、链接、复选框等。")
                 .setRequired(List.of("selector"));
 
         ToolRegister.Parameters selectorParam = new ToolRegister.Parameters()

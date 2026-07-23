@@ -45,7 +45,7 @@ public class MouseClickTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("鼠标点击工具，在当前鼠标位置执行点击操作。支持左键(click)、右键(context menu)、中键/滚轮键(middle click)点击，支持设置点击次数（如双击）。")
+                .setDescription("在当前鼠标位置执行点击。支持左键/右键/中键，可设置点击次数（如双击）。")
                 .setRequired(List.of("button"));
 
         ToolRegister.Parameters buttonParam = new ToolRegister.Parameters()

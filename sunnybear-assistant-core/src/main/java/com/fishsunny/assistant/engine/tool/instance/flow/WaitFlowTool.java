@@ -36,7 +36,7 @@ public class WaitFlowTool implements ToolHandler {
     public WaitFlowTool(ObjectMapper objectMapper) {
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("等待指定时间（秒）后返回。用于让AI在流程中实现真正的等待，例如等待某个操作完成后再继续。接受一个整数参数 seconds，表示等待的秒数。")
+                .setDescription("等待指定秒数后返回。")
                 .setRequired(List.of("seconds"));
         ToolRegister.Parameters parameter = new ToolRegister.Parameters()
                 .setParameterName("seconds")

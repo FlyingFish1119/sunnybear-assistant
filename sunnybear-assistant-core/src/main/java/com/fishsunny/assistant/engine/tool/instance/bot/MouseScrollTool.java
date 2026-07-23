@@ -42,8 +42,7 @@ public class MouseScrollTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("鼠标滚轮工具，在当前鼠标位置执行垂直滚轮滚动。正数向下滚动（页面下移），负数向上滚动（页面上移）。"
-                        + " 一个单位大约相当于一行文本的滚动量。适用于浏览网页、文档、长列表等场景。")
+                .setDescription("在当前鼠标位置执行滚轮滚动。正值向下，负值向上。")
                 .setRequired(List.of("amount"));
 
         ToolRegister.Parameters amountParam = new ToolRegister.Parameters()

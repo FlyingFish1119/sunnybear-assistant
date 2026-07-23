@@ -120,9 +120,7 @@ public class TaskStepUpdateTool implements ToolHandler {
         return new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        更新已有任务的某个步骤信息。当向用户展示计划后，用户提出修改建议（如调整步骤顺序、\
-                        修改步骤名称或描述等）时使用此工具。只修改步骤的元信息，不修改执行状态或结果。\
-                        适用于在开始执行前和用户对齐需求。
+                        更新任务步骤的名称、描述或排序位置。适用于执行前根据用户反馈调整步骤。
                         """.replace("\n", " "))
                 .setRequired(List.of("taskId", "stepId"))
                 .setParameters(List.of(

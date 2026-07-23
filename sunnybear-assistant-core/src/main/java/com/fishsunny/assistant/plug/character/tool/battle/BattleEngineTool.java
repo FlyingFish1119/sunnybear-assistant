@@ -13,11 +13,10 @@ package com.fishsunny.assistant.plug.character.tool.battle;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
-import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
-import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
@@ -67,12 +66,14 @@ public class BattleEngineTool implements ToolHandler {
     private final AISettings missionAISettings;
     private final ChatHttpHandler chatHttpHandler;
     private final ToolExecutor toolExecutor;
+    private final ToolCallLoop toolCallLoop;
     private final BattleDbManager dbManager;
 
     public BattleEngineTool(ObjectMapper objectMapper,
                             @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                             ChatHttpHandler chatHttpHandler,
                             @Lazy ToolExecutor executor,
+                            ToolCallLoop toolCallLoop,
                             BattleDbManager dbManager
                             ) {
         this.objectMapper = objectMapper;
@@ -80,26 +81,19 @@ public class BattleEngineTool implements ToolHandler {
         this.chatHttpHandler = chatHttpHandler;
         this.dbManager = dbManager;
         this.toolExecutor = executor;
+        this.toolCallLoop = toolCallLoop;
 
         // Step 1: 注册工具定义 —— 只收两段自然语言，所有数值/技能/Buff 都由 MissionAI 从中提取
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        战斗引擎 —— 将自然语言描述的玩家角色和敌人信息，转换为结构化的战斗数据卡。\
-                        角色所有的具体数值（HP/MP）、技能（名称/伤害骰/消耗/效果/难度）、增益减益效果，\
-                        全部通过自然语言描述传入，由 AI 自动提取并结构化为战斗卡牌。\
-                        技能伤害使用「m × n + k」格式，表示投 m 个 n 面骰子加 k 点固定值。\
-                        生成的结构化卡牌会存入战斗缓存，准备开始回合制战斗。""")
+                        将自然语言描述的角色和敌人信息转换为结构化战斗数据，准备回合制战斗。""")
                 .setRequired(List.of("playerDescription", "enemyDescription"))
                 .setParameters(List.of(
-                        new ToolRegister.Parameters("playerDescription", "string", """
-                                玩家角色的完整自然语言描述。必须包含角色名、HP/MP（如未明确则 AI 自行设定合理值）、\
-                                所有技能（含伤害骰公式、MP 消耗、效果、难度 DC）、以及任何初始 Buff/减益。\
-                                例如：「钢铁勇士卡尔，HP 100 MP 30，身着重甲持剑盾。技能：重击（2×6+0，消耗 3 MP，DC 10）、盾牌格挡（减免下次伤害 50%，消耗 5 MP）、复仇冲锋（3×6+3，消耗 15 MP，DC 14，击退敌人）。Buff：钢铁意志（防御力提升 2 回合）」"""),
-                        new ToolRegister.Parameters("enemyDescription", "string", """
-                                敌人的完整自然语言描述。必须包含名称、HP/MP、所有技能（含伤害骰公式、MP 消耗、效果、难度 DC）、\
-                                以及任何初始 Buff/减益。格式与玩家描述相同。\
-                                例如：「暗影魔狼，HP 60 MP 10。技能：利爪撕裂（1×8+0，流血 2 回合，DC 8）、暗影突袭（2×8+2，消耗 5 MP，DC 12，先手攻击）。Buff：暗夜潜行（首回合闪避提升）」""")
+                        new ToolRegister.Parameters("playerDescription", "string",
+                                "玩家角色的完整描述，含角色名、HP/MP、技能（伤害公式和效果）及初始 Buff"),
+                        new ToolRegister.Parameters("enemyDescription", "string",
+                                "敌人的完整描述，格式与玩家相同")
                 ));
     }
 
@@ -641,7 +635,7 @@ public class BattleEngineTool implements ToolHandler {
                 .setTools(toolRegisters);
 
         AtomicReference<String> result = new AtomicReference<>("");
-        processTurnToolCallCycle(request, result, context);
+        result.set(toolCallLoop.execute(missionAISettings, request, context));
 
         String text = result.get();
         return text != null ? text.trim() : "逃跑失败（检定异常）";
@@ -857,60 +851,9 @@ public class BattleEngineTool implements ToolHandler {
                 .setTools(toolRegisters);
 
         AtomicReference<String> result = new AtomicReference<>("");
-        processTurnToolCallCycle(request, result, context);
+        result.set(toolCallLoop.execute(missionAISettings, request, context));
 
         return result.get();
-    }
-
-    /**
-     * 工具调用递归循环 —— 参考 TaskRunTool.toolCallCycle。
-     * AI 返回工具调用 → 执行 → 追加结果 → 递归，直到 AI 返回纯文本（无工具调用）时终止。
-     */
-    private void processTurnToolCallCycle(ChatRequest request, AtomicReference<String> result, Map<String, Object> context) throws Exception {
-        ChatHttpHandler.CompleteCallback onComplete = (tr, lastRes) -> {
-            List<AIAdapter.ToolCall> toolCalls = tr.toolCalls();
-            boolean haveToolCall = toolCalls != null && !toolCalls.isEmpty();
-
-            List<ChatMessage> messages = request.getMessages();
-
-            // 追加 assistant 消息
-            messages.add(new ChatMessage().assistant(
-                    tr.content(), tr.reasoning(),
-                    haveToolCall ? ChatToolRequest.convert(toolCalls) : null));
-
-            // 无工具调用 → 终止，保存最终结果
-            if (!haveToolCall) {
-                result.set(tr.content());
-                return;
-            }
-
-            // 构建批量工具请求并并行执行
-            List<ToolExecutor.ToolRequest> toolRequests = ToolExecutor.ToolRequest.convert(toolCalls);
-            List<ToolExecutor.ToolExecuteResponse> toolResults = toolExecutor.execute(toolRequests, context);
-
-            // 追加 tool 结果消息
-            for (int i = 0; i < toolCalls.size(); i++) {
-                AIAdapter.ToolCall toolcall = toolCalls.get(i);
-                ToolExecutor.ToolExecuteResponse toolResult = toolResults.get(i);
-                messages.add(new ChatMessage().tool(toolcall.getId(), toolResult.getResult()));
-            }
-
-            // 递归
-            try {
-                processTurnToolCallCycle(request, result, context);
-            } catch (Exception e) {
-                log.error("战斗回合工具调用递归失败: {}", e.getMessage(), e);
-                throw new RuntimeException(e);
-            }
-        };
-
-        chatHttpHandler.translate(
-                UUID.randomUUID().toString(),
-                missionAISettings.getAdapterName(),
-                request,
-                missionAISettings.getStream(),
-                null,
-                onComplete);
     }
 
     // ==================== SQL 工具方法 ====================

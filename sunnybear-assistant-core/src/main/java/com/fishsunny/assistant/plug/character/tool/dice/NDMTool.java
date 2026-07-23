@@ -43,9 +43,7 @@ public class NDMTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        投掷 n 个 m 面骰子，返回每个骰子的结果和总和。\
-                        适用于各种需要多骰子投掷的场景，例如：伤害掷骰（3d6 火球术）、属性生成（4d6 取最高3个）、\
-                        优势叠加判定等。可以指定投掷原因让结果更具可读性。""")
+                        投 n 个 m 面骰子，返回各骰子结果和总和。适用于伤害掷骰、属性生成等场景。""")
                 .setRequired(List.of("count", "sides"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("count", "integer",

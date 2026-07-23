@@ -43,7 +43,7 @@ public class BrowserScrollTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("在内部无头浏览器中垂直滚动页面或指定元素内的滚动容器。正值向下、负值向上。")
+                .setDescription("垂直滚动页面或指定容器。正值向下，负值向上。")
                 .setRequired(List.of());
 
         ToolRegister.Parameters selectorParam = new ToolRegister.Parameters()

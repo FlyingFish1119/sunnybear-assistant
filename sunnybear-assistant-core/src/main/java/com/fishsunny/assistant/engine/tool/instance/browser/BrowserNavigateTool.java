@@ -43,7 +43,7 @@ public class BrowserNavigateTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("在内部无头浏览器中打开指定 URL。会话状态（cookie、登录态等）跨操作保持。")
+                .setDescription("打开指定 URL，会话状态（cookie、登录态等）跨操作保持。")
                 .setRequired(List.of("url"));
 
         ToolRegister.Parameters urlParam = new ToolRegister.Parameters()

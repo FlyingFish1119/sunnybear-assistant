@@ -67,11 +67,7 @@ public class GenerateGlossaryTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        为当前角色生成并永久保存一条词条。你需要提供一段场景描述（prompt），\
-                        系统会结合角色的设定信息，自动生成结构化的词条（包含关键词、简短描述和完整内容）并持久化存储。\
-                        适用于：当对话中出现了值得记录的新设定、事件、关系、地点、组织、术语等信息时，\
-                        使用此工具将其固化为词条，以便后续对话中通过词条查询工具检索使用。\
-                        注意：生成词条是永久性的，请确保你提供的信息准确且值得记录。""")
+                        为当前角色生成并永久保存一条词条。用于记录对话中出现的新设定、事件、关系等信息。生成后可通过词条查询工具检索。""")
                 .setRequired(List.of("prompt"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("prompt", "string",

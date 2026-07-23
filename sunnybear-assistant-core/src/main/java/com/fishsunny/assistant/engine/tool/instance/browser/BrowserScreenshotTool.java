@@ -54,12 +54,7 @@ public class BrowserScreenshotTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("对内部无头浏览器当前页面截图并返回中文描述。"
-                        + "⚠️ 注意：优先使用 browser_read_content_tool（element 模式）获取页面内容和可交互元素，"
-                        + "它的开销更低且返回结构化数据。仅在以下情况使用截图："
-                        + "① 页面内容无法表达的视觉信息（布局样式、图表、图片内容）；"
-                        + "② 需要确认操作后的视觉变化；"
-                        + "③ 页面内容数据不足以判断当前状态。")
+                .setDescription("截取当前页面并返回中文描述。⚠️ 优先用 browser_read_content_tool 获取结构化内容，截图仅用于视觉确认（布局、图表、图片）。")
                 .setRequired(List.of());
 
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()

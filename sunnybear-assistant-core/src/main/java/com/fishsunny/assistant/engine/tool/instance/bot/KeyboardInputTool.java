@@ -213,12 +213,7 @@ public class KeyboardInputTool implements ToolHandler {
                 .limit(30)
                 .forEach(k -> keyListBuilder.append(k).append(", "));
 
-        String description = "键盘输入工具，用于模拟键盘按键操作。支持三种使用方式："
-                + "1) 按下单个按键，如 'enter'、'escape'、'tab'、'a' 等；"
-                + "2) 按下组合键，使用 '+' 连接多个按键，如 'ctrl+c'、'ctrl+shift+escape'、'alt+tab'；"
-                + "3) 输入文本字符串。"
-                + "注意：如果当前为中文输入法，会导致输入内容出现问题，最好切换为英文输入法。"
-                + " 常用按键包括：" + keyListBuilder.substring(0, keyListBuilder.length() - 2) + " 等。";
+        String description = "模拟键盘输入。支持三种方式：1) 单个按键（enter、escape）；2) 组合键（ctrl+c）；3) 文本字符串输入。注意：中文输入法可能导致输入异常。";
 
         register = new ToolRegister()
                 .setName(NAME)

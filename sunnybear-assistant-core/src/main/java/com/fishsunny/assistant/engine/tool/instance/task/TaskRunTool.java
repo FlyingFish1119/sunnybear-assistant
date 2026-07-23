@@ -10,9 +10,7 @@ package com.fishsunny.assistant.engine.tool.instance.task;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
-import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
-import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.Task;
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskStep;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
@@ -23,6 +21,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.*;
+import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import com.fishsunny.assistant.mvc.service.TaskService;
 import com.fishsunny.assistant.settings.AISettings;
@@ -33,7 +32,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -58,19 +56,23 @@ public class TaskRunTool implements ToolHandler {
     private final AISettings missionAISettings;
     private final ChatHttpHandler chatHttpHandler;
     private final ToolExecutor toolExecutor;
+    private final ToolCallLoop toolCallLoop;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     @Autowired
     public TaskRunTool(TaskService taskService, ObjectMapper objectMapper,
                        @Qualifier(AISettings.TASK) AISettings taskAISettings,
                        @Qualifier(AISettings.MISSION) AISettings missionAISettings,
-                       ChatHttpHandler chatHttpHandler, @Lazy ToolExecutor toolExecutor) {
+                       ChatHttpHandler chatHttpHandler,
+                       @Lazy ToolExecutor toolExecutor,
+                       ToolCallLoop toolCallLoop) {
         this.taskService = taskService;
         this.objectMapper = objectMapper;
         this.taskAISettings = taskAISettings;
         this.missionAISettings = missionAISettings;
         this.chatHttpHandler = chatHttpHandler;
         this.toolExecutor = toolExecutor;
+        this.toolCallLoop = toolCallLoop;
     }
 
     @Override
@@ -180,7 +182,8 @@ public class TaskRunTool implements ToolHandler {
                         .setMessages(messages)
                         .setTools(toolRegisters);
                 AtomicReference<String> result = new AtomicReference<>();
-                toolCallCycle(context, result, request);
+
+                result.set(toolCallLoop.execute(taskAISettings, request, context, new ToolCallLoop.AgentLoopHook(toolCallLoop.createDefaultLogback(context), null)));
 
                 // 检查 AI 是否输出了失败标记
                 Matcher failureMatcher = TASK_FAILURE_PATTERN.matcher(result.get());
@@ -209,56 +212,6 @@ public class TaskRunTool implements ToolHandler {
             }
             throw new RuntimeException("任务[" + task.getTaskName() + "]执行异常：" + e.getMessage());
         }
-    }
-
-    private void toolCallCycle(Map<String, Object> context, AtomicReference<String> result, ChatRequest request) throws Exception {
-
-        ChatHttpHandler.CompleteCallback onComplete = (tr, lastRes) -> {
-            var toolCalls = tr.toolCalls();
-            boolean haveToolCall = !CollectionUtils.isEmpty(toolCalls);
-
-            List<ChatMessage> messages = request.getMessages();
-            List<ChatToolRequest> chatToolRequests = new ArrayList<>();
-            for (AIAdapter.ToolCall toolCall : toolCalls) {
-                chatToolRequests.add(new ChatToolRequest()
-                        .setId(toolCall.getId())
-                        .setName(toolCall.getFunction().getName())
-                        .setArguments(toolCall.getFunction().getArguments()));
-            }
-            messages.add(new ChatMessage().assistant(tr.content(), tr.reasoning(), chatToolRequests));
-
-            // 执行完毕
-            if (!haveToolCall) {
-                result.set(tr.content());
-                return;
-            }
-
-            // 构建批量请求
-            List<ToolExecutor.ToolRequest> toolRequests = new ArrayList<>();
-            for (AIAdapter.ToolCall toolcall : toolCalls) {
-                toolRequests.add(new ToolExecutor.ToolRequest(
-                        toolcall.getFunction().getName(),
-                        toolcall.getFunction().getArguments()));
-            }
-            // 并行执行，统一注入 session
-            List<ToolExecutor.ToolExecuteResponse> toolResults = toolExecutor.execute(toolRequests, context);
-            // 构建工具消息
-            for (int i = 0; i < toolCalls.size(); i++) {
-                AIAdapter.ToolCall toolcall = toolCalls.get(i);
-                ToolExecutor.ToolExecuteResponse toolResult = toolResults.get(i);
-                messages.add(new ChatMessage().tool(toolcall.getId(), toolResult.getResult()));
-            }
-            // 递归调用
-            try {
-                toolCallCycle(context, result, request);
-            } catch (Exception e) {
-                log.error("工具调用失败: {}", e.getMessage());
-                throw new RuntimeException(e);
-            }
-        };
-        chatHttpHandler.translate(UUID.randomUUID().toString(), taskAISettings.getAdapterName(), request,
-                taskAISettings.getStream() != null ? taskAISettings.getStream() : true,
-                null, onComplete);
     }
 
     /**
@@ -296,8 +249,7 @@ public class TaskRunTool implements ToolHandler {
                         new ChatMessage().user(userPrompt))
                 );
         java.util.concurrent.atomic.AtomicReference<String> generatedText = new java.util.concurrent.atomic.AtomicReference<>();
-        chatHttpHandler.translate(UUID.randomUUID().toString(), missionAISettings.getAdapterName(), request,
-                missionAISettings.getStream() != null ? missionAISettings.getStream() : true,
+        chatHttpHandler.translate(UUID.randomUUID().toString(), missionAISettings.getAdapterName(), request, missionAISettings.getStream(),
                 null,
                 ((result, lastRes) -> generatedText.set(result.content()))
         );
@@ -314,9 +266,7 @@ public class TaskRunTool implements ToolHandler {
         return new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        异步执行指定任务的所有步骤。任务在后台按步骤顺序依次执行，每个步骤由独立的 AI 实例完成，\
-                        上一步的输出作为下一步的上下文输入。调用后立即返回，不阻塞等待执行结果。\
-                        执行后可通过 task_read_tool 随时查询任务和各步骤的最新执行状态。
+                        异步执行任务的所有步骤。调用后立即返回，通过 task_read_tool 查询进度。
                         """.replace("\n", " "))
                 .setRequired(List.of("taskId"))
                 .setParameters(List.of(

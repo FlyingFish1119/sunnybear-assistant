@@ -84,20 +84,7 @@ public class TaskDeleteTool implements ToolHandler {
     public ToolRegister getRegister() {
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("""
-                        删除指定任务及其所有步骤。**此操作不可逆，删除后任务和步骤数据将永久丢失。**\
-
-                        ## 使用场景\
-                        1) 用户明确要求删除某个任务或「取消」某个计划；\
-                        2) 任务创建错误，需要移除后重新创建；\
-                        3) 已完成且确认不再需要的旧任务，用户要求清理。\
-
-                        ## 重要提醒\
-                        1) 删除前应先用 task_read_tool 确认任务内容，避免误删；\
-                        2) 如果任务正在执行中（状态为 running），建议先等待执行完毕或告知用户；\
-                        3) 删除任务将级联删除该任务下的所有步骤及其执行结果；\
-                        4) 如果只是想修改任务内容而非删除，应引导用户重新创建一个正确的任务。
-                        """.replace("\n", " "))
+                .setDescription("删除任务及其所有步骤。不可逆，建议删除前先用 task_read_tool 确认任务内容。")
                 .setRequired(List.of("id"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("id", "string", "要删除的任务 ID。删除前请仔细核对 ID 是否正确——该操作不可逆，建议先用 task_read_tool 确认任务内容后再删除")

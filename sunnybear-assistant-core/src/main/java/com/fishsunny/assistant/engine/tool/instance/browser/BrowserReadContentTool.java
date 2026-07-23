@@ -57,8 +57,7 @@ public class BrowserReadContentTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("""
-                        读取内部无头浏览器当前页面内容。element 模式返回可交互元素列表（按钮、输入框、链接等），full 模式返回完整 HTML。""")
+                .setDescription("读取页面内容。element 模式返回可交互元素列表，full 模式返回完整 HTML。")
                 .setRequired(List.of());
 
         ToolRegister.Parameters modeParam = new ToolRegister.Parameters()

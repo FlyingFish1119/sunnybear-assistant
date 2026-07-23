@@ -122,22 +122,7 @@ public class TaskListTool implements ToolHandler {
     public ToolRegister getRegister() {
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("""
-                        分页查询所有外层主任务（不含具体步骤），按创建时间倒序排列。\
-                        用于快速浏览现有任务的全貌，了解有哪些任务以及它们的状态。\
-
-                        ## 使用场景\
-                        1) 用户询问「我有哪些任务」「查看所有任务」「任务列表」等；\
-                        2) 在执行任务操作前，先了解当前有哪些任务存在；\
-                        3) 查看任务整体进度概览。\
-
-                        ## 返回内容\
-                        返回每个外层任务的摘要信息：编号、名称、描述（超过 100 字会截断）、状态、创建时间、完成时间。\
-                        不包含具体的步骤信息，如需查看某个任务的详细步骤，请使用 task_read_tool。\
-
-                        ## 分页\
-                        默认每次返回 10 条，最多 50 条。通过 offset 翻页查看后续任务。
-                        """.replace("\n", " "))
+                .setDescription("分页查询任务列表，按创建时间倒序。返回任务摘要（名称、状态、时间），不含具体步骤，需查看步骤详情请用 task_read_tool。")
                 .setRequired(List.of())
                 .setParameters(List.of(
                         new ToolRegister.Parameters("limit", "integer",

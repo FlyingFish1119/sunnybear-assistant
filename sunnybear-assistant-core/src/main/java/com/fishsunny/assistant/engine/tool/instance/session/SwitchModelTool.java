@@ -128,24 +128,12 @@ public class SwitchModelTool implements ToolHandler {
 
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("""
-                        切换当前会话使用的 AI 模型级别。
-
-                        【普通模型】%s
-                        响应速度快、资源消耗低。
-
-                        【Pro 模型】%s
-                        推理能力强、擅长复杂任务。
-
-                        【切换建议】
-                        - 开启 Pro：当用户提出编程、深度推理、复杂分析等高难度任务时，主动切换到 Pro 以获得更好的效果。
-                        - 切回普通：当复杂任务处理完毕，后续回归日常闲聊或简单问答时，切回普通模型以节省资源。
-                        - 切忌频繁切换：在同一类任务中不要反复切换模型。
-                        """.formatted(normalModel, proModel))
+                .setDescription("切换当前会话的 AI 模型级别。普通模型（%s）响应快，Pro 模型（%s）推理强、适合复杂任务。"
+                        .formatted(normalModel, proModel))
                 .setRequired(List.of("enablePro"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("enablePro", "boolean",
-                                ("true = 切换到 Pro 模型（%s，适合复杂任务）；false = 切换到普通模型（%s，适合日常对话）。")
+                                ("true = 切换到 Pro 模型（%s），适合复杂任务；false = 切换到普通模型（%s），适合日常对话。")
                                         .formatted(proModel, normalModel))
                 ));
     }

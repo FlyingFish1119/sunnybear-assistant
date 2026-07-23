@@ -44,7 +44,7 @@ public class MouseMoveTool implements ToolHandler {
         this.objectMapper = objectMapper;
 
         Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-        String description = "鼠标移动工具，将鼠标从当前位置平滑移动到目标坐标位置。支持自定义移动时长以控制移动速度。"
+        String description = "将鼠标移动到指定目标坐标位置。"
                 + " 当前屏幕尺寸：" + screenSize.width + "x" + screenSize.height + "（宽x高，单位像素）。";
 
         register = new ToolRegister()
@@ -65,7 +65,7 @@ public class MouseMoveTool implements ToolHandler {
         ToolRegister.Parameters durationParam = new ToolRegister.Parameters()
                 .setParameterName("duration")
                 .setType("integer")
-                .setDescription("（可选）平滑移动的总时长（毫秒），默认 " + DEFAULT_DURATION_MS + "ms。值越大移动越慢越平滑");
+                .setDescription("（可选）移动时长（毫秒），默认 " + DEFAULT_DURATION_MS + "ms。值越大移动越慢");
 
         ToolRegister.Parameters dragParam = new ToolRegister.Parameters()
                 .setParameterName("drag")

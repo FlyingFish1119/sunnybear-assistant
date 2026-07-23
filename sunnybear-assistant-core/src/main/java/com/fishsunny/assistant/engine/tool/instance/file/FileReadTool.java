@@ -1,7 +1,7 @@
 package com.fishsunny.assistant.engine.tool.instance.file;
 
 /*
- * @Usage 文件读取工具 - 支持元数据提取和内容读取（可选行范围）
+ * @Usage 文件读取工具 - 多文件并行读取，每文件独立行范围，含元数据
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
@@ -19,7 +19,6 @@ import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import lombok.Data;
 import org.springframework.util.StringUtils;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -29,23 +28,17 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.stream.Stream;
 import java.util.Map;
 
 /**
  * 文件读取工具
- * 支持两种模式：
- * 1. metadata - 提取文件元数据（行数、大小、创建/修改时间等）
- * 2. content  - 读取文件内容，可选指定行范围
+ * 多文件并行读取，每个文件支持独立的行范围。返回内容含元信息（路径、大小、行数、时间）。
  */
 @ToolKitComponent(FileToolKit.class)
 @ConditionalOnExpression("${engine.tool.file.enable:true} && ${engine.tool.file.file-read.enable:true}")
 public class FileReadTool implements ToolHandler {
 
     public static final String NAME = "file_read_tool";
-
-    public static final String MODE_METADATA = "metadata";
-    public static final String MODE_CONTENT = "content";
 
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter
             .ofPattern("yyyy-MM-dd HH:mm:ss")
@@ -59,15 +52,11 @@ public class FileReadTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("读取文件工具，支持两种模式：" +
-                        "1) metadata 模式 - 提取文件元数据（行数、大小、创建时间、修改时间等）；" +
-                        "2) content 模式 - 读取文件文本内容，可选通过 startLine 和 endLine 指定读取的行范围（行号从1开始，两端均包含）。")
-                .setRequired(List.of("path", "mode"))
+                .setDescription("读取一个或多个文件的内容并返回元信息。多个文件并行读取，各文件独立返回结果（单文件失败不影响其他）。每个文件可独立指定行范围。")
+                .setRequired(List.of("paths"))
                 .setParameters(List.of(
-                        new ToolRegister.Parameters("path", "string", "文件路径，例如 D:\\projects\\test.txt 或 /home/user/file.log"),
-                        new ToolRegister.Parameters("mode", "string", "读取模式：metadata（提取元数据）或 content（读取内容）"),
-                        new ToolRegister.Parameters("startLine", "integer", "（content 模式可选）起始行号，从1开始，不指定则从第1行开始"),
-                        new ToolRegister.Parameters("endLine", "integer", "（content 模式可选）结束行号（包含），不指定则读到文件末尾")
+                        new ToolRegister.Parameters("paths", "array",
+                                "文件描述数组。每项为对象：{path (string, 必填), startLine (integer, 可选, 从1开始), endLine (integer, 可选, 包含)}。不指定行范围则读全文。")
                 ));
     }
 
@@ -80,84 +69,58 @@ public class FileReadTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
         }
 
-        if (!StringUtils.hasText(arguments.getPath())) {
-            throw new ToolExecutor.ToolExecuteException("参数 path 不能为空");
-        }
-        if (!StringUtils.hasText(arguments.getMode())) {
-            throw new ToolExecutor.ToolExecuteException("参数 mode 不能为空，请指定为 metadata 或 content");
+        if (arguments.getPaths() == null || arguments.getPaths().isEmpty()) {
+            throw new ToolExecutor.ToolExecuteException("参数 paths 不能为空，请至少提供一个文件描述");
         }
 
-        Path filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
+        // 并行读取所有文件，每个文件使用自己的行范围
+        List<FileResult> results = arguments.getPaths().parallelStream()
+                .map(this::readFileSafe)
+                .toList();
 
-        if (!Files.exists(filePath)) {
-            throw new ToolExecutor.ToolExecuteException("文件不存在: " + filePath);
-        }
-        if (Files.isDirectory(filePath)) {
-            throw new ToolExecutor.ToolExecuteException("路径指向的是目录而非文件: " + filePath);
-        }
-        if (!Files.isReadable(filePath)) {
-            throw new ToolExecutor.ToolExecuteException("文件不可读: " + filePath);
-        }
+        return assembleResults(results);
+    }
 
-        String mode = arguments.getMode().trim().toLowerCase();
-
+    /**
+     * 安全读取单个文件描述，捕获异常返回失败结果而不抛出
+     */
+    private FileResult readFileSafe(FileSpec spec) {
+        String pathStr = spec.getPath();
         try {
-            return switch (mode) {
-                case MODE_METADATA -> handleMetadata(filePath);
-                case MODE_CONTENT -> handleContent(filePath, arguments);
-                default -> throw new ToolExecutor.ToolExecuteException(
-                        "不支持的读取模式: " + mode + "，仅支持 metadata 和 content");
-            };
-        } catch (ToolExecutor.ToolExecuteException e) {
-            throw e;
-        } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("文件读取失败: " + e.getMessage());
+            if (!StringUtils.hasText(pathStr)) {
+                return FileResult.error("(空路径)", "path 不能为空");
+            }
+            Path filePath = Paths.get(pathStr.trim()).toAbsolutePath().normalize();
+            if (!Files.exists(filePath)) {
+                return FileResult.error(pathStr, "文件不存在: " + filePath);
+            }
+            if (Files.isDirectory(filePath)) {
+                return FileResult.error(pathStr, "路径指向的是目录而非文件: " + filePath);
+            }
+            if (!Files.isReadable(filePath)) {
+                return FileResult.error(pathStr, "文件不可读: " + filePath);
+            }
+            String content = readFileContent(filePath, spec);
+            return FileResult.success(pathStr, content);
         } catch (Exception e) {
-            throw new ToolExecutor.ToolExecuteException("文件读取异常: " + e.getMessage());
+            return FileResult.error(pathStr, "读取异常: " + e.getMessage());
         }
     }
 
     /**
-     * 处理元数据模式：返回文件的行数、大小、时间等信息
+     * 读取单个文件的文本内容（含元数据头），使用 FileSpec 中的行范围
      */
-    private ToolExecutor.ToolExecuteResponse handleMetadata(Path filePath) throws IOException {
-        BasicFileAttributes attrs = Files.readAttributes(filePath, BasicFileAttributes.class);
-
-        long lineCount;
-        try (Stream<String> lines = Files.lines(filePath)) {
-            lineCount = lines.count();
-        } catch (IOException e) {
-            lineCount = -1; // 二进制文件可能无法按行读取
-        }
-
-        String sb = "文件元数据:\n\n" +
-                "  路径: " + filePath + "\n\n" +
-                "  文件名: " + filePath.getFileName() + "\n\n" +
-                "  大小: " + ToolKit.formatSize(attrs.size()) + " (" + attrs.size() + " 字节)\n\n" +
-                "  行数: " + (lineCount >= 0 ? String.valueOf(lineCount) : "无法统计（可能是二进制文件）") + "\n\n" +
-                "  创建时间: " + formatTime(attrs.creationTime()) + "\n\n" +
-                "  最后修改时间: " + formatTime(attrs.lastModifiedTime()) + "\n\n" +
-                "  最后访问时间: " + formatTime(attrs.lastAccessTime()) + "\n\n" +
-                "  是否为常规文件: " + (attrs.isRegularFile() ? "是" : "否") + "\n\n" +
-                "  是否为符号链接: " + (attrs.isSymbolicLink() ? "是" : "否");
-
-        return new ToolExecutor.ToolExecuteResponse(name(), sb);
-    }
-
-    /**
-     * 处理内容模式：读取文件的文本内容，支持指定行范围
-     */
-    private ToolExecutor.ToolExecuteResponse handleContent(Path filePath, Arguments arguments) throws Exception {
+    private String readFileContent(Path filePath, FileSpec spec) throws Exception {
         List<String> allLines = Files.readAllLines(filePath);
         int totalLines = allLines.size();
 
         if (totalLines == 0) {
-            return new ToolExecutor.ToolExecuteResponse(name(), "文件为空，共 0 行。");
+            return "文件为空，共 0 行。";
         }
 
-        // 解析行范围，行号从 1 开始
-        int startLine = arguments.getStartLine() == null ? 1 : arguments.getStartLine();
-        int endLine = arguments.getEndLine() == null ? totalLines : arguments.getEndLine();
+        // 该文件的行范围，行号从 1 开始
+        int startLine = spec.getStartLine() == null ? 1 : spec.getStartLine();
+        int endLine = spec.getEndLine() == null ? totalLines : spec.getEndLine();
 
         // 验证行号
         if (startLine < 1) {
@@ -171,17 +134,17 @@ public class FileReadTool implements ToolHandler {
                     "startLine(" + startLine + ") 超出文件总行数(" + totalLines + ")");
         }
         if (endLine > totalLines) {
-            endLine = totalLines; // 自动截断到文件末尾
+            endLine = totalLines;
         }
         if (startLine > endLine) {
             throw new ToolExecutor.ToolExecuteException(
                     "startLine(" + startLine + ") 不能大于 endLine(" + endLine + ")");
         }
 
-        // 提取指定范围的行（转为 0-based 索引）
+        // 提取指定范围的行
         List<String> selectedLines = allLines.subList(startLine - 1, endLine);
 
-        // 根据文件扩展名推断语言标识，用于代码高亮
+        // 根据文件扩展名推断语言标识
         String language = ToolKit.inferLanguage(filePath);
 
         // 读取文件元数据
@@ -205,6 +168,55 @@ public class FileReadTool implements ToolHandler {
         }
 
         sb.append("````").append("\n");
+        return sb.toString();
+    }
+
+    /**
+     * 将所有文件的读取结果组装为最终输出
+     */
+    private ToolExecutor.ToolExecuteResponse assembleResults(List<FileResult> results) {
+        long successCount = results.stream().filter(FileResult::success).count();
+        long failCount = results.size() - successCount;
+
+        StringBuilder sb = new StringBuilder();
+
+        // 单文件直接输出，无需分隔符和汇总
+        if (results.size() == 1) {
+            FileResult r = results.get(0);
+            if (r.success()) {
+                sb.append(r.content());
+            } else {
+                sb.append("读取失败: ").append(r.error());
+            }
+            return new ToolExecutor.ToolExecuteResponse(name(), sb.toString());
+        }
+
+        // 多文件：分隔输出 + 汇总
+        String separator = "\n" + "=".repeat(60) + "\n";
+
+        for (int i = 0; i < results.size(); i++) {
+            FileResult r = results.get(i);
+            sb.append(separator);
+            sb.append("文件 ").append(i + 1).append("/").append(results.size()).append(": ").append(r.path()).append("\n");
+            sb.append(separator);
+            if (r.success()) {
+                sb.append(r.content());
+            } else {
+                sb.append("❌ 读取失败: ").append(r.error()).append("\n");
+            }
+        }
+
+        // 汇总
+        sb.append(separator);
+        sb.append("汇总: ").append(results.size()).append(" 个文件，成功 ").append(successCount).append(" 个");
+        if (failCount > 0) {
+            sb.append("，失败 ").append(failCount).append(" 个:\n");
+            results.stream().filter(r -> !r.success()).forEach(r ->
+                    sb.append("  - ").append(r.path()).append(": ").append(r.error()).append("\n")
+            );
+        } else {
+            sb.append("\n");
+        }
 
         return new ToolExecutor.ToolExecuteResponse(name(), sb.toString());
     }
@@ -229,10 +241,26 @@ public class FileReadTool implements ToolHandler {
         return register;
     }
 
+    /**
+     * 单文件读取结果
+     */
+    private record FileResult(String path, String content, String error, boolean success) {
+        static FileResult success(String path, String content) {
+            return new FileResult(path, content, null, true);
+        }
+        static FileResult error(String path, String error) {
+            return new FileResult(path, null, error, false);
+        }
+    }
+
     @Data
     private static class Arguments {
+        private List<FileSpec> paths;
+    }
+
+    @Data
+    private static class FileSpec {
         private String path;
-        private String mode;
         private Integer startLine;
         private Integer endLine;
     }

@@ -69,8 +69,7 @@ public class MetaSOAISearchTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("通过使用 web_search_tool 你可以使用搜索引擎来获取你想要知道的信息。" +
-                        "使用技巧：类似新闻、时政、游戏、健康资讯等实时性或小众专业领域你需要善用搜索。")
+                .setDescription("搜索互联网信息。适用于获取实时资讯、专业知识等需要联网搜索的场景。")
                 .setRequired(List.of("q"));
 
         ToolRegister.Parameters qParam = new ToolRegister.Parameters()

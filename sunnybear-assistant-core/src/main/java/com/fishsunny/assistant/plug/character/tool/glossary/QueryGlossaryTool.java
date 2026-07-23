@@ -45,9 +45,7 @@ public class QueryGlossaryTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        查询当前角色绑定的词条内容。根据关键词精确匹配，返回该词条的关键词、描述和完整内容。\
-                        在对话中，只要涉及到可能与任何词条相关联的话题（如角色名、地名、组织名、事件、术语、设定等），你必须主动调用此工具进行查询，以获取准确的角色设定信息。\
-                        绝对禁止在未查询词条的情况下捏造该词条的内容。""")
+                        查询当前角色的词条内容。涉及角色设定时主动调用此工具获取准确数据，禁止在未查询时捏造。""")
                 .setRequired(List.of("keyword"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("keyword", "string", "要查询的词条关键词，精确匹配。例如角色名、地名、组织名、术语等。")

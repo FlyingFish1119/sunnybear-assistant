@@ -116,9 +116,7 @@ public class TaskCreateTool implements ToolHandler {
         return new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        创建一个新任务及其执行步骤。当需要为用户制定多步骤执行计划时使用，\
-                        例如「帮我做一个XX项目」「请完成XX任务」等需要拆解为多个子步骤的复杂需求。\
-                        创建后状态为「等待中」，需要使用 task_run_tool 来启动执行。
+                        创建新任务及其执行步骤。适用于需拆解为多个子步骤的复杂需求，创建后需用 task_run_tool 启动执行。
                         """.replace("\n", " "))
                 .setRequired(List.of("name", "desc", "steps"))
                 .setParameters(List.of(

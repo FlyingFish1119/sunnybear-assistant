@@ -1,0 +1,261 @@
+/* ============================================
+   Agent Log Sidebar — 浮动右侧面板
+   不参与 flex 布局，绝对定位在消息区右侧
+   ============================================ */
+
+/* ---- 浮动面板 ---- */
+.agent-log-sidebar {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 360px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    background: #fafbfc;
+    border-left: 1px solid var(--border-color, #ddd);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.10);
+    z-index: 10;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 展开状态 — 不参与文档流，仅改变 transform */
+.agent-log-sidebar:not(.collapsed) {
+    transform: translateX(0);
+}
+
+/* collapsed 类名由 visible prop 通过 :class 控制 */
+/* 注意：visible=false 时添加 collapsed，visible=true 时不添加 */
+
+/* ---- 头部 ---- */
+.agent-log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 2px solid var(--border-color, #ddd);
+    flex-shrink: 0;
+    background: #fff;
+}
+
+.agent-log-header-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary, #333);
+}
+
+.agent-log-badge {
+    font-size: 11px;
+    background: var(--main-color, lightsalmon);
+    color: #fff;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+    min-width: 18px;
+    text-align: center;
+}
+
+.agent-log-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #888;
+    transition: all var(--transition-fast, 0.15s);
+}
+
+.agent-log-close-btn:hover {
+    background: #e8e8e8;
+    color: var(--text-primary, #333);
+}
+
+/* ---- 日志列表 ---- */
+.agent-log-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 6px 0;
+}
+
+/* ---- 空状态 ---- */
+.agent-log-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 48px 20px;
+    color: var(--text-muted, #999);
+    font-size: 13px;
+    text-align: center;
+}
+
+.agent-log-empty-hint {
+    font-size: 11px;
+    opacity: 0.6;
+    line-height: 1.6;
+    max-width: 220px;
+}
+
+/* ---- 单条日志 ---- */
+.agent-log-entry {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.agent-log-entry:last-child {
+    border-bottom: none;
+}
+
+.agent-log-entry-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast, 0.15s);
+}
+
+.agent-log-entry-header:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+/* ---- 阶段圆点 ---- */
+.agent-log-dot {
+    width: 8px;
+    height: 8px;
+    min-width: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.agent-log-dot.dot-iteration {
+    background: #fa8c16;
+    box-shadow: 0 0 4px rgba(250, 140, 22, 0.4);
+}
+
+.agent-log-dot.dot-tool_call {
+    background: #1890ff;
+    box-shadow: 0 0 4px rgba(24, 144, 255, 0.4);
+}
+
+.agent-log-dot.dot-tool_result {
+    background: #722ed1;
+    box-shadow: 0 0 4px rgba(114, 46, 209, 0.4);
+}
+
+.agent-log-dot.dot-done {
+    background: #52c41a;
+    box-shadow: 0 0 4px rgba(82, 196, 26, 0.4);
+}
+
+/* ---- 迭代轮次标签 ---- */
+.agent-log-iter {
+    font-size: 10px;
+    color: #fff;
+    background: #8c8c8c;
+    padding: 0 6px;
+    border-radius: 3px;
+    font-weight: 600;
+    flex-shrink: 0;
+    line-height: 17px;
+}
+
+/* ---- 标题 ---- */
+.agent-log-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--text-primary, #333);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+}
+
+/* ---- 时间 ---- */
+.agent-log-time {
+    font-size: 10px;
+    color: var(--text-muted, #999);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- 展开图标 ---- */
+.agent-log-expand-icon {
+    flex-shrink: 0;
+    color: var(--text-muted, #999);
+    transition: transform 0.2s ease;
+}
+
+.agent-log-expand-icon.rotated {
+    transform: rotate(180deg);
+}
+
+/* ---- 展开内容 ---- */
+.agent-log-entry-body {
+    padding: 0 16px 10px 16px;
+}
+
+.agent-log-entry-body pre {
+    margin: 0;
+    padding: 10px 12px;
+    background: #f0f0f0;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-secondary, #666);
+    max-height: 240px;
+    overflow-y: auto;
+    text-align: left;
+}
+
+/* ---- 移动端遮罩 ---- */
+.agent-log-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 9;
+    transition: opacity 0.3s ease;
+}
+
+.agent-log-overlay.visible {
+    display: block;
+}
+
+/* ============================================
+   移动端 — 全宽浮动面板
+   ============================================ */
+@media (max-width: 768px) {
+    .agent-log-sidebar {
+        position: fixed;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 90vw;
+        max-width: 360px;
+        height: 100dvh;
+        padding-bottom: env(safe-area-inset-bottom);
+        z-index: 1000;
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: -4px 0 24px rgba(0, 0, 0, 0.18);
+    }
+
+    .agent-log-sidebar:not(.collapsed) {
+        transform: translateX(0);
+    }
+}

@@ -206,7 +206,7 @@ public class ExtensionScriptTool implements ToolHandler {
     @Override
     public ToolRegister getRegister() {
         List<ExtensionScriptMeta> scripts = extensionScriptService.getAvailableScripts();
-        StringBuilder desc = new StringBuilder("执行 tool-extension 目录下的扩展脚本。");
+        StringBuilder desc = new StringBuilder("执行扩展脚本。");
         if (!scripts.isEmpty()) {
             desc.append(" 当前可用的脚本: ");
             desc.append(scripts.stream()

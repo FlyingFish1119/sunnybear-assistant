@@ -42,11 +42,7 @@ public class BattleSqlExecuteTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        对当前战斗会话的临时 SQLite 数据库执行写入操作。支持：\
-                        INSERT / UPDATE / DELETE — 增删改数据；\
-                        CREATE TABLE / ALTER TABLE / DROP TABLE — 建表改表。\
-                        共有 6 张初始表：player_state / player_skills / player_buffs / enemy_state / enemy_skills / enemy_buffs。\
-                        建议先用 battle_db_query 查看现有表结构。""")
+                        写入当前战斗的临时数据库（INSERT/UPDATE/DELETE/CREATE 等）。""")
                 .setRequired(List.of("sql"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("sql", "string", "要执行的 SQL 写入语句（INSERT / UPDATE / DELETE / CREATE / ALTER / DROP 等）")
