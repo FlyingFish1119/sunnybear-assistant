@@ -55,21 +55,25 @@ public class NetExploreTool implements ToolHandler {
     private final AISettings missionAISettings;
     private final ToolCallLoop toolCallLoop;
     private final ToolExecutor toolExecutor;
+    private final MetaSOAISearchTool metaSOAISearchTool;
 
     public NetExploreTool(ObjectMapper objectMapper,
                           @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                           ToolCallLoop toolCallLoop,
-                          @Lazy ToolExecutor toolExecutor) {
+                          @Lazy ToolExecutor toolExecutor,
+                          @Lazy MetaSOAISearchTool metaSOAISearchTool) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
         this.toolCallLoop = toolCallLoop;
         this.toolExecutor = toolExecutor;
+        this.metaSOAISearchTool = metaSOAISearchTool;
 
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
                         联网探索信息的子 Agent。接受一个收集目标，自动搜索、阅读网页、评估结果，\
-                        最终返回一份结构化的收集报告。适合需要深度调研某个主题的场景。""")
+                        最终返回一份结构化的收集报告。适合需要深度调研某个主题的场景。\
+                        设置 fast=true 可跳过深度探索，直接返回搜索结果。""")
                 .setRequired(List.of("target"));
 
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
@@ -77,7 +81,12 @@ public class NetExploreTool implements ToolHandler {
                 .setType("string")
                 .setDescription("收集目标，描述你需要收集什么信息。例如'AI 安全的最新进展'、'微服务架构最佳实践'");
 
-        register.setParameters(List.of(targetParam));
+        ToolRegister.Parameters fastParam = new ToolRegister.Parameters()
+                .setParameterName("fast")
+                .setType("boolean")
+                .setDescription("快速模式，默认 false。设为 true 时直接返回搜索结果，不进行深度探索。");
+
+        register.setParameters(List.of(targetParam, fastParam));
     }
 
     @Override
@@ -95,6 +104,22 @@ public class NetExploreTool implements ToolHandler {
             throw e;
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
+        }
+
+        // ========== fast 模式：直接调用搜索引擎返回结果 ==========
+        if (arguments.isFast()) {
+            try {
+                Map<String, Object> searchArgs = Map.of(
+                        "q", arguments.getTarget(),
+                        "size", 10,
+                        "scope", "webpage"
+                );
+                return metaSOAISearchTool.action(objectMapper.writeValueAsString(searchArgs), context);
+            } catch (ToolExecutor.ToolExecuteException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new ToolExecutor.ToolExecuteException("快速搜索失败: " + e.getMessage());
+            }
         }
 
         try {
@@ -288,5 +313,6 @@ public class NetExploreTool implements ToolHandler {
     @Accessors(chain = true)
     private static class Arguments {
         private String target;
+        private boolean fast = false;
     }
 }
