@@ -31,16 +31,15 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Playwright 无头浏览器服务，提供 JS 渲染能力 + 浏览器自动化交互。
  * <p>
  * 两种使用模式：
  * <ul>
- *   <li><b>fetch 模式</b>（WebReaderTool 使用）：每次创建独立 BrowserContext，用完即关，无状态</li>
- *   <li><b>交互模式</b>（Browser 工具使用）：按 sessionId 维护独立 BrowserContext + Page，
- *       不同会话完全隔离，浏览器启动后常驻不关</li>
+ *   <li><b>fetch 模式</b>（WebReaderTool 使用）：每次调用创建独立的 Playwright 实例，用完即毁，完全隔离</li>
+ *   <li><b>交互模式</b>（Browser 工具使用）：按 sessionId 维护独立的 Playwright 实例 + 完整浏览器栈，
+ *       不同会话完全隔离，通过 Caffeine 缓存自动管理过期和淘汰</li>
  * </ul>
  */
 @Service
@@ -76,81 +75,76 @@ public class PlaywrightBrowserService {
     /** 最大会话数 */
     private static final int MAX_SESSIONS = 50;
 
-    /** 单个会话的浏览器状态 */
-    private record SessionState(BrowserContext context, Page page) {}
+    // ==================== 会话状态 ====================
 
-    // ==================== 实例字段 ====================
-
-    private final Object lock = new Object();
-    private volatile Playwright playwright;
-    private volatile Browser browser;
-    private final AtomicLong lastUsedAt = new AtomicLong(-1);
+    /**
+     * 每个交互会话持有完整的独立 Playwright 实例栈，
+     * 不同 sessionId 之间完全隔离，一个会话崩溃不会影响其他会话。
+     */
+    private record SessionState(Playwright playwright, Browser browser, BrowserContext context, Page page) {}
 
     /** 按 sessionId 隔离的交互模式会话，Caffeine 缓存自动处理过期和淘汰 */
     private final Cache<String, SessionState> sessions = Caffeine.newBuilder()
             .maximumSize(MAX_SESSIONS)
             .expireAfterAccess(SESSION_IDLE_MINUTES, TimeUnit.MINUTES)
-            .removalListener((String key, SessionState value, RemovalCause cause) -> {
-                if (value != null) {
+            .removalListener((String key, SessionState state, RemovalCause cause) -> {
+                if (state != null) {
                     log.info("Playwright: [{}] 会话已淘汰（{}）", key, cause);
-                    try { value.page().close(); } catch (Exception ignored) {}
-                    try { value.context().close(); } catch (Exception ignored) {}
+                    closeSession(state);
                 }
             })
             .build();
+
+    /** Chromium 安装锁，防止多线程同时触发安装 */
+    private final Object chromiumInstallLock = new Object();
 
     // ==================== 结果类型 ====================
 
     public record FetchResult(String title, String htmlContent) {}
 
-    // ==================== fetch 模式（WebReaderTool 使用，每次独立 Context） ====================
+    // ==================== fetch 模式（每次独立 Playwright 实例，用完即毁） ====================
 
+    /**
+     * 使用独立的 Playwright 实例抓取网页，调用结束后完全销毁。
+     * 与交互模式的 session 完全隔离，互不影响。
+     */
     public FetchResult fetch(String url, int timeoutMs) throws ToolExecutor.ToolExecuteException {
-        ensureBrowserReady();
-        lastUsedAt.set(System.currentTimeMillis());
+        try (Playwright pw = Playwright.create()) {
+            Browser browser = launchBrowser(pw);
+            BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+                    .setUserAgent(randomUserAgent())
+                    .setViewportSize(1920, 1080)
+                    .setLocale("zh-CN"));
 
-        try (BrowserContext context = browser.newContext(new Browser.NewContextOptions()
-                .setUserAgent(randomUserAgent())
-                .setViewportSize(1920, 1080)
-                .setLocale("zh-CN"))) {
-
-            context.addInitScript(STEALTH_INIT_SCRIPT);
-
-            try (Page page = context.newPage()) {
-                page.navigate(url);
+                context.addInitScript(STEALTH_INIT_SCRIPT);
                 try {
+                    Page page = context.newPage();
+                    page.navigate(url, new Page.NavigateOptions().setTimeout(timeoutMs));
                     page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions()
                             .setTimeout(timeoutMs));
+                    return new FetchResult(page.title(), page.content());
                 } catch (TimeoutError e) {
-                    log.warn("Playwright: 页面加载超时（{}ms），使用已加载的部分内容: {}", timeoutMs, url);
+                    throw new ToolExecutor.ToolExecuteException("无头浏览器抓取失败: " + e.getMessage() + "。URL: " + url);
                 }
-
-                String title = page.title();
-                String htmlContent = page.content();
-                return new FetchResult(title, htmlContent);
-            }
-
         } catch (Exception e) {
-            log.error("Playwright: 浏览器操作异常，标记浏览器为失效: {}", e.getMessage());
-            invalidateBrowser();
+            log.error("Playwright: fetch 操作异常: {}", e.getMessage());
             throw new ToolExecutor.ToolExecuteException(
                     "无头浏览器抓取失败: " + e.getMessage() + "。URL: " + url);
         }
     }
 
-    // ==================== 交互模式（按 sessionId 隔离） ====================
+    // ==================== 交互模式（按 sessionId 隔离，每个 session 独立的 Playwright 实例） ====================
 
     public String navigate(String sessionId, String url, int timeoutMs) throws ToolExecutor.ToolExecuteException {
-        Page page = getOrCreatePage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
-            page.navigate(url);
+            page.navigate(url, new Page.NavigateOptions().setTimeout(timeoutMs));
             try {
                 page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions()
                         .setTimeout(timeoutMs));
             } catch (TimeoutError e) {
                 log.warn("Playwright: [{}] 页面加载超时（{}ms），使用已加载的部分内容: {}", sessionId, timeoutMs, url);
             }
-            lastUsedAt.set(System.currentTimeMillis());
             return page.title();
         } catch (Exception e) {
             log.error("Playwright: [{}] 导航失败: {}", sessionId, e.getMessage());
@@ -159,40 +153,36 @@ public class PlaywrightBrowserService {
     }
 
     public void click(String sessionId, String selector) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
             page.locator(selector).first().click();
-            lastUsedAt.set(System.currentTimeMillis());
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("点击元素失败 [" + selector + "]: " + e.getMessage());
         }
     }
 
     public void type(String sessionId, String selector, String text) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
             page.locator(selector).first().fill(text);
-            lastUsedAt.set(System.currentTimeMillis());
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("输入文本失败 [" + selector + "]: " + e.getMessage());
         }
     }
 
     public void scroll(String sessionId, int deltaY) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
             page.evaluate("window.scrollBy(0, " + deltaY + ")");
-            lastUsedAt.set(System.currentTimeMillis());
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("滚动页面失败: " + e.getMessage());
         }
     }
 
     public void scroll(String sessionId, String selector, int deltaY) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
             page.locator(selector).first().evaluate("el => el.scrollBy(0, " + deltaY + ")");
-            lastUsedAt.set(System.currentTimeMillis());
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(
                     "滚动元素 [" + selector + "] 失败: " + e.getMessage());
@@ -200,10 +190,9 @@ public class PlaywrightBrowserService {
     }
 
     public void drag(String sessionId, String sourceSelector, String targetSelector) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
             page.locator(sourceSelector).first().dragTo(page.locator(targetSelector).first());
-            lastUsedAt.set(System.currentTimeMillis());
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(
                     "拖拽失败 [" + sourceSelector + " → " + targetSelector + "]: " + e.getMessage());
@@ -211,10 +200,9 @@ public class PlaywrightBrowserService {
     }
 
     public String screenshot(String sessionId) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
             byte[] screenshotBytes = page.screenshot(new Page.ScreenshotOptions().setFullPage(false));
-            lastUsedAt.set(System.currentTimeMillis());
             return ScaleImageHelper.byteArrayToBase64(screenshotBytes);
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("截图失败: " + e.getMessage());
@@ -222,7 +210,7 @@ public class PlaywrightBrowserService {
     }
 
     public String screenshotToFile(String sessionId, String outputPath) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
             Path path = Path.of(outputPath);
             Path parent = path.getParent();
@@ -230,7 +218,6 @@ public class PlaywrightBrowserService {
                 Files.createDirectories(parent);
             }
             page.screenshot(new Page.ScreenshotOptions().setPath(path).setFullPage(false));
-            lastUsedAt.set(System.currentTimeMillis());
             return path.toAbsolutePath().toString();
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("截图保存失败: " + e.getMessage());
@@ -238,9 +225,8 @@ public class PlaywrightBrowserService {
     }
 
     public String getContent(String sessionId) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
-            lastUsedAt.set(System.currentTimeMillis());
             return (String) page.evaluate(
                     "(() => {" +
                     "  const c = document.documentElement.cloneNode(true);" +
@@ -254,9 +240,8 @@ public class PlaywrightBrowserService {
     }
 
     public String getTitle(String sessionId) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
-            lastUsedAt.set(System.currentTimeMillis());
             return page.title();
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("获取页面标题失败: " + e.getMessage());
@@ -264,9 +249,8 @@ public class PlaywrightBrowserService {
     }
 
     public String getCurrentUrl(String sessionId) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
-            lastUsedAt.set(System.currentTimeMillis());
             return page.url();
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("获取当前 URL 失败: " + e.getMessage());
@@ -274,10 +258,9 @@ public class PlaywrightBrowserService {
     }
 
     public void waitForSelector(String sessionId, String selector, int timeoutMs) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
             page.waitForSelector(selector, new Page.WaitForSelectorOptions().setTimeout(timeoutMs));
-            lastUsedAt.set(System.currentTimeMillis());
         } catch (TimeoutError e) {
             throw new ToolExecutor.ToolExecuteException(
                     "等待元素超时（" + timeoutMs + "ms）[" + selector + "]: " + e.getMessage());
@@ -287,80 +270,94 @@ public class PlaywrightBrowserService {
     }
 
     public String evaluate(String sessionId, String js) throws ToolExecutor.ToolExecuteException {
-        Page page = getExistingPage(sessionId);
+        Page page = getExistingSession(sessionId).page();
         try {
             Object result = page.evaluate(js);
-            lastUsedAt.set(System.currentTimeMillis());
             return result != null ? result.toString() : "null";
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("执行 JavaScript 失败: " + e.getMessage());
         }
     }
 
-    // ==================== 内部：Session 级别的 Page 管理（Caffeine 缓存自动过期/淘汰） ====================
+    // ==================== 内部：Session 级别的完整 Playwright 实例管理 ====================
 
-    private Page getOrCreatePage(String sessionId) throws ToolExecutor.ToolExecuteException {
-        ensureBrowserReady();
-        SessionState state = sessions.get(sessionId, k -> {
-            BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+    /**
+     * 获取或创建指定 sessionId 的完整浏览器会话。
+     * 每个会话持有独立的 Playwright → Browser → BrowserContext → Page 栈。
+     */
+    private SessionState getExistingSession(String sessionId) throws ToolExecutor.ToolExecuteException {
+        SessionState state = sessions.getIfPresent(sessionId);
+        if (state != null) {
+            return state;
+        }
+        log.info("Playwright: [{}] 会话尚未创建，自动初始化...", sessionId);
+        return getOrCreateSession(sessionId);
+    }
+
+    private SessionState getOrCreateSession(String sessionId) throws ToolExecutor.ToolExecuteException {
+        try {
+            return sessions.get(sessionId, k -> createSession());
+        } catch (RuntimeException e) {
+            // Caffeine 会原样抛出 mapping 函数中的 RuntimeException
+            throw new ToolExecutor.ToolExecuteException("创建浏览器会话失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 创建全新的独立浏览器会话（Playwright → Browser → BrowserContext → Page）。
+     * 失败时自动清理已创建的资源。
+     */
+    private SessionState createSession() {
+        Playwright pw = null;
+        Browser browser = null;
+        BrowserContext context = null;
+        try {
+            pw = Playwright.create();
+            browser = launchBrowser(pw);
+            context = browser.newContext(new Browser.NewContextOptions()
                     .setUserAgent(randomUserAgent())
                     .setViewportSize(1920, 1080)
                     .setLocale("zh-CN"));
             context.addInitScript(STEALTH_INIT_SCRIPT);
             Page page = context.newPage();
-            log.info("Playwright: [{}] 会话已创建（缓存 {} 个）", sessionId, sessions.estimatedSize());
-            return new SessionState(context, page);
-        });
-        return state.page();
-    }
-
-    private Page getExistingPage(String sessionId) throws ToolExecutor.ToolExecuteException {
-        SessionState state = sessions.getIfPresent(sessionId);
-        if (state != null) {
-            return state.page();
+            log.info("Playwright: 会话已创建（缓存 {} 个）", sessions.estimatedSize());
+            return new SessionState(pw, browser, context, page);
+        } catch (RuntimeException e) {
+            // 逐级回滚已创建的资源
+            if (context != null) {
+                try { context.close(); } catch (Exception ignored) {}
+            }
+            if (browser != null) {
+                try { browser.close(); } catch (Exception ignored) {}
+            }
+            if (pw != null) {
+                try { pw.close(); } catch (Exception ignored) {}
+            }
+            throw e;
         }
-        log.info("Playwright: [{}] 会话尚未创建，自动初始化...", sessionId);
-        return getOrCreatePage(sessionId);
     }
 
     // ==================== 浏览器生命周期管理 ====================
 
-    private void ensureBrowserReady() throws ToolExecutor.ToolExecuteException {
-        if (browser != null) {
-            return;
-        }
-
-        synchronized (lock) {
-            if (browser != null) {
-                return;
+    /**
+     * 启动 Chromium 浏览器。
+     * 首次使用时若 Chromium 未安装会自动安装（受锁保护，防止并发安装）。
+     */
+    private Browser launchBrowser(Playwright playwright) {
+        try {
+            return playwright.chromium().launch(
+                    new BrowserType.LaunchOptions()
+                            .setHeadless(true)
+                            .setArgs(LAUNCH_ARGS));
+        } catch (Exception e) {
+            log.warn("Playwright: Chromium 未安装或启动失败，尝试自动安装... 原因: {}", e.getMessage());
+            synchronized (chromiumInstallLock) {
+                installChromium();
             }
-
-            try {
-                playwright = Playwright.create();
-
-                try {
-                    browser = playwright.chromium().launch(
-                            new BrowserType.LaunchOptions()
-                                    .setHeadless(true)
-                                    .setArgs(LAUNCH_ARGS));
-                } catch (Exception e) {
-                    log.warn("Playwright: Chromium 未安装或启动失败，尝试自动安装... 原因: {}", e.getMessage());
-                    installChromium();
-                    browser = playwright.chromium().launch(
-                            new BrowserType.LaunchOptions()
-                                    .setHeadless(true)
-                                    .setArgs(LAUNCH_ARGS));
-                }
-
-                log.info("Playwright: 无头浏览器已就绪 (Chromium)");
-                lastUsedAt.set(System.currentTimeMillis());
-            } catch (Exception e) {
-                closeQuietly();
-                throw new ToolExecutor.ToolExecuteException(
-                        "无法启动无头浏览器。请确保系统已安装 Chromium，"
-                        + "或手动运行: mvn exec:java -Dexec.mainClass=com.microsoft.playwright.CLI "
-                        + "-Dexec.args='install chromium'。原因: " + e.getMessage());
-            }
+            return playwright.chromium().launch(
+                    new BrowserType.LaunchOptions()
+                            .setHeadless(true)
+                            .setArgs(LAUNCH_ARGS));
         }
     }
 
@@ -379,47 +376,24 @@ public class PlaywrightBrowserService {
         return USER_AGENTS.get(ThreadLocalRandom.current().nextInt(USER_AGENTS.size()));
     }
 
-    private void invalidateBrowser() {
-        closeAllSessions();
-        Browser b = browser;
-        browser = null;
-        Playwright p = playwright;
-        playwright = null;
-        if (b != null) { try { b.close(); } catch (Exception ignored) {} }
-        if (p != null) { try { p.close(); } catch (Exception ignored) {} }
-    }
-
-    private void closeAllSessions() {
-        sessions.asMap().forEach((id, state) -> {
-            try { state.page().close(); } catch (Exception ignored) {}
-            try { state.context().close(); } catch (Exception ignored) {}
-        });
-        sessions.invalidateAll();
-    }
-
-    private void closeQuietly() {
-        closeAllSessions();
-        Browser b = browser;
-        browser = null;
-        Playwright p = playwright;
-        playwright = null;
-        lastUsedAt.set(-1);
-        if (b != null) {
-            try { b.close(); } catch (Exception e) {
-                log.warn("Playwright: 关闭 Browser 时发生异常: {}", e.getMessage());
-            }
-        }
-        if (p != null) {
-            try { p.close(); } catch (Exception e) {
-                log.warn("Playwright: 关闭 Playwright 时发生异常: {}", e.getMessage());
-            }
-        }
+    /**
+     * 安全关闭一个会话的全部资源（Page → BrowserContext → Browser → Playwright）。
+     */
+    private void closeSession(SessionState state) {
+        try { state.page().close(); } catch (Exception ignored) {}
+        try { state.context().close(); } catch (Exception ignored) {}
+        try { state.browser().close(); } catch (Exception ignored) {}
+        try { state.playwright().close(); } catch (Exception ignored) {}
     }
 
     @PreDestroy
-    public void destroy() {
+    public synchronized void destroy() {
         log.info("Playwright: 正在关闭无头浏览器（{} 个会话）...", sessions.estimatedSize());
-        closeQuietly();
+        sessions.asMap().forEach((id, state) -> {
+            log.info("Playwright: [{}] 关闭会话...", id);
+            closeSession(state);
+        });
+        sessions.invalidateAll();
         log.info("Playwright: 已关闭");
     }
 }
