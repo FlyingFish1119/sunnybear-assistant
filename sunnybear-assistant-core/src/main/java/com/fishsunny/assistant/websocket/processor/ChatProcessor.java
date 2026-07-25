@@ -48,6 +48,7 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.net.InetAddress;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -156,7 +157,7 @@ public class ChatProcessor {
 
         // 替换变量（系统提示词始终使用 chat 的 prompt，模型名使用实际生效的模型）
         String systemPrompt = aiSettings.getPrompt()
-                .replace(PromptReplaceVariable.CURRENT_TIME, LocalDateTime.now().toString())
+                .replace(PromptReplaceVariable.CURRENT_TIME, LocalDate.now().toString())
                 .replace(PromptReplaceVariable.MODEL_NAME, effectiveModelName)
                 .replace(PromptReplaceVariable.IP_ADDRESS, InetAddress.getLocalHost().toString());
 
