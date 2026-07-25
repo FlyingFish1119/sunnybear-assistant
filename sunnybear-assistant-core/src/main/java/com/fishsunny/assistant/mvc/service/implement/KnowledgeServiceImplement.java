@@ -29,8 +29,6 @@ import org.springframework.util.StringUtils;
 import java.util.*;
 import java.util.stream.Collectors;
 
-// List is already imported via java.util.*
-
 @Service
 public class KnowledgeServiceImplement implements KnowledgeService {
 
@@ -59,6 +57,8 @@ public class KnowledgeServiceImplement implements KnowledgeService {
         this.knowledgeSettings = knowledgeSettings;
         this.objectMapper = objectMapper;
     }
+
+
 
     // ========================= 知识 CRUD =========================
 
@@ -121,6 +121,64 @@ public class KnowledgeServiceImplement implements KnowledgeService {
             log.warn("删除知识条目失败，记录不存在: id={}", id);
         }
         return deleted;
+    }
+
+    @Override
+    public ListKnowledgeResult listKnowledge(String queryText, int offset) {
+        int limit = 10;
+        if (offset < 0) {
+            offset = 0;
+        }
+
+        // 无搜索词：按 create_time 降序分页返回全部
+        if (!StringUtils.hasText(queryText)) {
+            List<KnowledgeRecord> all = knowledgeRepository.selectAll();
+            all.sort(Comparator.comparing(KnowledgeRecord::getCreateTime,
+                    Comparator.nullsLast(Comparator.reverseOrder())));
+
+            int total = all.size();
+            int fromIndex = Math.min(offset, total);
+            int toIndex = Math.min(fromIndex + limit, total);
+            List<KnowledgeRecord> page = new ArrayList<>(all.subList(fromIndex, toIndex));
+
+            return new ListKnowledgeResult(page, total, offset, limit);
+        }
+
+        // 有搜索词：embedding + 余弦相似度匹配
+        List<Float> queryEmbedding = encodeTitle(queryText);
+        if (queryEmbedding == null || queryEmbedding.isEmpty()) {
+            log.warn("查询 embedding 失败，返回空列表");
+            return new ListKnowledgeResult(new ArrayList<>(), 0, offset, limit);
+        }
+
+        List<KnowledgeRecord> allEntries = knowledgeRepository.selectAll();
+
+        // 逐条计算相似度，跳过 embedding 为 null/empty 的条目
+        List<AbstractMap.SimpleEntry<KnowledgeRecord, Float>> scored = new ArrayList<>();
+        for (KnowledgeRecord entry : allEntries) {
+            if (entry.getEmbedding() == null || entry.getEmbedding().isEmpty()) {
+                continue;
+            }
+            try {
+                float similarity = CosineSimilarityUtil.cosine(queryEmbedding, entry.getEmbedding());
+                scored.add(new AbstractMap.SimpleEntry<>(entry, similarity));
+            } catch (Exception e) {
+                log.warn("计算相似度失败: title={}, error={}", entry.getTitle(), e.getMessage());
+            }
+        }
+
+        // 按相似度降序排列
+        scored.sort((a, b) -> Float.compare(b.getValue(), a.getValue()));
+
+        int total = scored.size();
+        int fromIndex = Math.min(offset, total);
+        int toIndex = Math.min(fromIndex + limit, total);
+        List<KnowledgeRecord> page = new ArrayList<>();
+        for (int i = fromIndex; i < toIndex; i++) {
+            page.add(scored.get(i).getKey());
+        }
+
+        return new ListKnowledgeResult(page, total, offset, limit);
     }
 
     // ========================= 匹配与注入 =========================

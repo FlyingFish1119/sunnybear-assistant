@@ -8,10 +8,12 @@ package com.fishsunny.assistant.engine.tool.instance.task;
  * @Date 2026/7/5 08:14
  */
 
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.Task;
+import com.fishsunny.assistant.engine.protocol.project.entity.TaskPrompt;
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskStep;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
@@ -23,6 +25,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.*;
 import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import com.fishsunny.assistant.mvc.service.TaskPromptService;
 import com.fishsunny.assistant.mvc.service.TaskService;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
@@ -54,6 +57,7 @@ public class TaskRunTool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final AISettings taskAISettings;
     private final AISettings missionAISettings;
+    private final TaskPromptService taskPromptService;
     private final ChatHttpHandler chatHttpHandler;
     private final ToolExecutor toolExecutor;
     private final ToolCallLoop toolCallLoop;
@@ -63,13 +67,15 @@ public class TaskRunTool implements ToolHandler {
     public TaskRunTool(TaskService taskService, ObjectMapper objectMapper,
                        @Qualifier(AISettings.TASK) AISettings taskAISettings,
                        @Qualifier(AISettings.MISSION) AISettings missionAISettings,
+                       TaskPromptService taskPromptService,
                        ChatHttpHandler chatHttpHandler,
                        @Lazy ToolExecutor toolExecutor,
                        ToolCallLoop toolCallLoop) {
         this.taskService = taskService;
         this.objectMapper = objectMapper;
-        this.taskAISettings = taskAISettings;
         this.missionAISettings = missionAISettings;
+        this.taskAISettings = taskAISettings;
+        this.taskPromptService = taskPromptService;
         this.chatHttpHandler = chatHttpHandler;
         this.toolExecutor = toolExecutor;
         this.toolCallLoop = toolCallLoop;
@@ -140,7 +146,7 @@ public class TaskRunTool implements ToolHandler {
             for (TaskStep step : steps) {
                 taskService.updateTaskStepStatus(step.getId(), Task.STATUS_RUNNING);
 
-                String prompt = createStepPrompt(task, step, steps);
+                String prompt = createStepPrompt(task, step);
                 List<StandardToolRegister> toolRegisters = StandardToolRegister.buildToolRegister(toolExecutor, includeKits);
 
                 String userPrompt = """
@@ -161,7 +167,7 @@ public class TaskRunTool implements ToolHandler {
                         ${step}
                         [你的之前步骤的输出结果]：
                         ${flow}
-                        
+
                         开始执行你的任务，并严格按照要求完成。
 
                         ## 失败处理
@@ -215,45 +221,86 @@ public class TaskRunTool implements ToolHandler {
     }
 
     /**
-     * 创建步骤的提示词，用于优化每一个 AI 模型执行
+     * AI 从 task_prompt 表中选择最合适的系统提示词，不再由 AI 直接生成。
+     * AI 分析步骤内容后输出 JSON：{"type": "xxx"}，查表即得 system prompt。
+     * 步骤具体信息由 user prompt 提供，system prompt 只管角色和行为约束。
      */
-    private String createStepPrompt(Task task, TaskStep step, List<TaskStep> steps) throws Exception {
-        String prompt = """
-                你是一位资深提示词工程师，专门为多步骤自动化流水线中的“单一步骤 AI”设计系统提示词。
-                你会收到用户提供的两段信息：
-                - 总体目标：完整流水线的最终产出
-                - 当前步骤：当前这个 AI 需要完成的唯一子任务
-                
-                你的任务是基于以上信息，生成一份专门给“当前步骤 AI”使用的系统提示词。
-                该系统提示词必须严格满足以下要求：
-                
-                1. 职责边界锁定
-                   - 明确告知 AI，它的唯一职责是完成「当前步骤」所描述的具体工作。
-                   - 必须用强烈语气禁止 AI 尝试完成总体目标、提前执行后续步骤、或者给出整体解决方案。
-                   - 约束 AI 只输出与本步骤直接相关的内容，不扩展、不越界。
-                
-                2. 步骤完成后的强制总结
-                   - 要求 AI 在完成该步骤的工作后，额外输出一段独立的“步骤总结”。
-                   - 总结中需包含：本步骤做了什么、产出了什么关键结果。
-                
-                请直接输出生成的系统提示词，不要包含任何你的附加解释或开场白。输出内容即为可直接复制使用的“步骤 AI 系统提示词”。
-                """;
-        String userPrompt = "[总目标]：" + task.getTaskName() + "\n" +
-                "[当前步骤]：" + step.getStepName() + "\n" +
-                "[步骤描述]：" + step.getStepDesc() + "\n";
+    private String createStepPrompt(Task task, TaskStep step) throws Exception {
+        // 1. 列出所有可用类型
+        List<TaskPrompt> allPrompts = taskPromptService.listAll();
+        StringBuilder typeList = new StringBuilder();
+        for (TaskPrompt p : allPrompts) {
+            typeList.append("- **").append(p.getType()).append("**: ").append(p.getDescription()).append("\n");
+        }
 
-        ChatRequest request = new ChatRequest()
+        // 2. 构建分类请求，让 AI 选择最合适的 type
+        String classificationPrompt = """
+                你是一个任务分类器。根据步骤的内容，从下方可用的提示词类型中选择最合适的一个。
+                只输出 JSON，不要包含任何其他文字。
+
+                可用类型：
+                """ + typeList + """
+
+                任务总目标：${taskName}
+                步骤名称：${stepName}
+                步骤描述：${stepDesc}
+
+                请输出你的选择（严格 JSON 格式）：
+                {"type": "<选中的类型>"}
+                
+                如果没有可供选择的提示词，则输出 {"type": null}
+                """
+                .replace("${taskName}", task.getTaskName())
+                .replace("${stepName}", step.getStepName())
+                .replace("${stepDesc}", step.getStepDesc());
+
+        ChatRequest classificationRequest = new ChatRequest()
                 .loadSettings(missionAISettings)
-                .setMessages(List.of(
-                        new ChatMessage().system(prompt),
-                        new ChatMessage().user(userPrompt))
-                );
-        java.util.concurrent.atomic.AtomicReference<String> generatedText = new java.util.concurrent.atomic.AtomicReference<>();
-        chatHttpHandler.translate(UUID.randomUUID().toString(), missionAISettings.getAdapterName(), request, missionAISettings.getStream(),
+                .setMessages(List.of(new ChatMessage().user(classificationPrompt)));
+
+        // 3. 调用 AI 进行分类
+        AtomicReference<String> rawJson = new java.util.concurrent.atomic.AtomicReference<>();
+        chatHttpHandler.translate(
+                UUID.randomUUID().toString(),
+                missionAISettings.getAdapterName(),
+                classificationRequest,
+                missionAISettings.getStream(),
                 null,
-                ((result, lastRes) -> generatedText.set(result.content()))
+                (result, lastRes) -> rawJson.set(result.content())
         );
-        return generatedText.get();
+
+        // 4. 解析 AI 返回的 JSON，提取 type
+        String selectedType = parseTypeFromJson(rawJson.get());
+        log.info("TaskPrompt AI 选择: type={}, step={}", selectedType, step.getStepName());
+
+        // 5. 查表获取 prompt，直接作为 system prompt（step 信息已在 user prompt 中）
+        TaskPrompt config = allPrompts.stream()
+                .filter(p -> p.getType().equals(selectedType))
+                .findFirst()
+                .orElse(TaskPrompt.DEFAULT_PROMPT);
+        String finalPrompt = config.getPrompt();
+
+        // 6. JSON 输出最终选中信息
+        log.info("TaskPrompt 最终使用: {{\"type\": \"{}\", \"fallback\": {}}}",
+                config.getType(), !selectedType.equals(config.getType()));
+
+        return finalPrompt;
+    }
+
+    /**
+     * 从 AI 返回的文本中解析 type 字段。
+     * 兼容纯 JSON、带 markdown 代码块包裹的情况。
+     */
+    private String parseTypeFromJson(String raw) {
+        try {
+            String json = raw.trim();
+            JavaType mapType = objectMapper.getTypeFactory().constructMapType(Map.class, String.class, String.class);
+            Map<String, String> result = objectMapper.readValue(json, mapType);
+            return result.get("type").trim();
+        } catch (Exception e) {
+            log.warn("解析 AI 分类结果失败，回退到 default。raw={}, error={}", raw, e.getMessage());
+        }
+        return "default";
     }
 
     @Override

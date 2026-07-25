@@ -255,6 +255,14 @@ const API = (function () {
             delete: function (id) { return get('memory/delete?id=' + encodeURIComponent(id)); }
         },
 
+        /* ---------- 任务提示词 ---------- */
+        taskPrompt: {
+            list: function () { return get('task-prompt/list'); },
+            get: function (type) { return get('task-prompt/get?type=' + encodeURIComponent(type)); },
+            save: function (data) { return post('task-prompt/save', data); },
+            delete: function (type) { return get('task-prompt/delete?type=' + encodeURIComponent(type)); }
+        },
+
         /* ---------- 问候语 ---------- */
         greeting: {
             random: function () { return get('greeting/random'); }

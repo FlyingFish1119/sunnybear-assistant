@@ -37,6 +37,15 @@ public interface KnowledgeService {
     KnowledgeRecord deleteKnowledge(Integer id);
 
     /**
+     * 搜索知识条目列表。
+     *
+     * @param queryText 搜索字符串，当为 null 或空字符串时，表示返回全部记录并按时间倒序排列
+     * @param offset 翻页偏移量
+     * @return 分页匹配结果
+     */
+    ListKnowledgeResult listKnowledge(String queryText, int offset);
+
+    /**
      * 构建系统提示词中的知识库片段。
      * 用 queryText 做 embedding 匹配知识库，
      * 合并 session 之前已注入的知识 ID，更新映射表，
@@ -47,4 +56,7 @@ public interface KnowledgeService {
      * @return 格式化的知识库文本，无匹配时返回空字符串
      */
     String buildKnowledgeSection(String sessionId, String queryText);
+
+    public record ListKnowledgeResult(List<KnowledgeRecord> items, int total, int offset, int limit) {
+    }
 }

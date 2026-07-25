@@ -9,42 +9,41 @@ parameters:
 script: |
   chcp 65001 > $null
   $root = "{{path}}"
-  if (-not $root) { $root = "." }
+  if (-not $root -or $root -match '\{\{') { $root = "." }
   $root = Resolve-Path $root
 
-  Write-Host "📁 项目路径: $root"
+  Write-Host "Project: $root"
   Write-Host ""
 
-  # 常见源码扩展名
+  # Common source code extensions
   $codeExts = @(".java",".kt",".scala",".py",".js",".ts",".jsx",".tsx",".go",".rs",".cpp",".c",".h",".hpp",".cs",".php",".rb",".swift",".m",".mm",".xml",".json",".yaml",".yml",".sql",".sh",".ps1",".md")
 
   $allFiles = Get-ChildItem -Path $root -Recurse -File | Where-Object {
-      # 排除常见构建/依赖目录
       $full = $_.FullName
-      -not ($full -match "\\(target|build|dist|node_modules|\.git|\.idea|\.vscode|out|bin|obj)\\")
+      -not ($full -match "\\(target|build|dist|node_modules|lib|\.git|\.idea|\.vscode|out|bin|obj)\\")
   }
 
   $totalFiles = $allFiles.Count
   $totalSizeKB = [math]::Round(($allFiles | Measure-Object -Property Length -Sum).Sum / 1KB, 2)
 
-  Write-Host "=== 总体概览 ==="
-  Write-Host "总文件数: $totalFiles"
-  Write-Host "总大小: ${totalSizeKB} KB"
+  Write-Host "=== Overview ==="
+  Write-Host "Total files: $totalFiles"
+  Write-Host "Total size: ${totalSizeKB} KB"
   Write-Host ""
 
-  # 按扩展名统计
+  # Stats by extension
   $extStats = $allFiles | Group-Object Extension | ForEach-Object {
       [PSCustomObject]@{
-          扩展名 = if ($_.Name) { $_.Name } else { "(无扩展名)" }
-          文件数 = $_.Count
-          总大小KB = [math]::Round(($_.Group | Measure-Object -Property Length -Sum).Sum / 1KB, 2)
+          Extension  = if ($_.Name) { $_.Name } else { "(none)" }
+          FileCount  = $_.Count
+          TotalSizeKB = [math]::Round(($_.Group | Measure-Object -Property Length -Sum).Sum / 1KB, 2)
       }
-  } | Sort-Object 文件数 -Descending
+  } | Sort-Object FileCount -Descending
 
-  Write-Host "=== 文件类型分布（Top 15）==="
-  $extStats | Select-Object -First 15 | Format-Table -AutoSize | Out-String | Write-Host
+  Write-Host "=== File Types (Top 15) ==="
+  $extStats | Select-Object -First 15 | Format-Table Extension, FileCount, TotalSizeKB -AutoSize | Out-String | Write-Host
 
-  # 源码文件行数统计（仅对文本类源码）
+  # Source lines of code
   $codeFiles = $allFiles | Where-Object { $codeExts -contains $_.Extension.ToLower() }
   $totalLines = 0
   $lineStats = @()
@@ -54,27 +53,27 @@ script: |
           $lines = (Get-Content $file.FullName | Measure-Object).Count
           $totalLines += $lines
           $lineStats += [PSCustomObject]@{
-              扩展名 = $file.Extension.ToLower()
-              行数 = $lines
+              Extension = $file.Extension.ToLower()
+              Lines     = $lines
           }
       } catch {
-          # 跳过无法读取的文件
+          # Skip unreadable files
       }
   }
 
-  $groupedLines = $lineStats | Group-Object 扩展名 | ForEach-Object {
+  $groupedLines = $lineStats | Group-Object Extension | ForEach-Object {
       [PSCustomObject]@{
-          扩展名 = $_.Name
-          文件数 = $_.Count
-          代码行数 = ($_.Group | Measure-Object -Property 行数 -Sum).Sum
+          Extension = $_.Name
+          FileCount = $_.Count
+          CodeLines = ($_.Group | Measure-Object -Property Lines -Sum).Sum
       }
-  } | Sort-Object 代码行数 -Descending
+  } | Sort-Object CodeLines -Descending
 
-  Write-Host "=== 源码行数统计 ==="
-  Write-Host "源码文件数: $($codeFiles.Count)"
-  Write-Host "估算总行数: $totalLines"
+  Write-Host "=== Source Lines of Code ==="
+  Write-Host "Source files: $($codeFiles.Count)"
+  Write-Host "Estimated total lines: $totalLines"
   Write-Host ""
-  Write-Host "按类型分布:"
-  $groupedLines | Format-Table -AutoSize | Out-String | Write-Host
+  Write-Host "By type:"
+  $groupedLines | Format-Table Extension, FileCount, CodeLines -AutoSize | Out-String | Write-Host
 
-  Write-Host "✅ 统计完成"
+  Write-Host "Done."

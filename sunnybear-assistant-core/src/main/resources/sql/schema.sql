@@ -104,6 +104,14 @@ CREATE TABLE IF NOT EXISTS task (
 -- 索引：按创建时间加速排序
 CREATE INDEX IF NOT EXISTS idx_task_create_time ON task(create_time);
 
+-- TaskPrompt 提示词模板表
+-- 预定义的 step 系统提示词，按 type 索引，TaskRunTool 查表获取不再由 AI 动态生成
+CREATE TABLE IF NOT EXISTS task_prompt (
+    type        TEXT PRIMARY KEY,
+    prompt      TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT ''
+);
+
 -- TaskStep 建表语句
 CREATE TABLE IF NOT EXISTS task_step (
     id          TEXT PRIMARY KEY,
