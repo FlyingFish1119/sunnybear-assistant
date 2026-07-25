@@ -127,7 +127,7 @@ public class TaskRunTool implements ToolHandler {
     /**
      * AI 无法完成任务时输出的失败标记，格式：$[TASK_FAILURE: 失败原因]$
      */
-    private static final Pattern TASK_FAILURE_PATTERN = Pattern.compile("\\$\\[TASK_FAILURE:\\s*(.+?)\\]\\$", Pattern.DOTALL);
+    private static final Pattern TASK_FAILURE_PATTERN = Pattern.compile("\\$\\[TASK_FAILURE:\\s*(.+?)]\\$", Pattern.DOTALL);
 
     private static final List<Class<? extends ToolKit>> includeKits = List.of(
             FileToolKit.class, NetToolKit.class, ImageToolKit.class, OSToolKit.class);
