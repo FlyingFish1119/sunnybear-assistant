@@ -72,7 +72,7 @@ public class FileListTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("列出目录下的文件和子目录，支持递归深度、glob 过滤和分页。用于浏览项目结构、查找文件。")
+                .setDescription("浏览目录内容的首选工具（比执行 dir/ls 命令更安全，无需用户确认）。列出文件和子目录，支持递归深度、glob 过滤和分页。用于浏览项目结构、按文件名查找文件时优先使用此工具。")
                 .setRequired(List.of("path"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("path", "string", "目录路径，例如 D:\\projects 或 /home/user"),

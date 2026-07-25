@@ -52,7 +52,7 @@ public class FileReadTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("读取一个或多个文件的内容并返回元信息。多个文件并行读取，各文件独立返回结果（单文件失败不影响其他）。每个文件可独立指定行范围。")
+                .setDescription("读取文件内容的首选工具（比执行 cat/type 命令更安全，无输出限制）。支持多文件并行读取，各文件可独立指定行范围，单文件失败不影响其他文件。")
                 .setRequired(List.of("paths"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("paths", "array",

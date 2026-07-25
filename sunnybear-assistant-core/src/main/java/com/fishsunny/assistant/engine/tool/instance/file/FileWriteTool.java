@@ -265,7 +265,7 @@ public class FileWriteTool implements ToolHandler {
         };
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("将内容写入指定文件，父目录不存在会自动创建。" + modeDesc)
+                .setDescription("创建或覆写文件时使用此工具（比执行 echo/重定向命令更安全可靠）。父目录不存在会自动创建，返回写入文件的元信息。" + modeDesc)
                 .setRequired(List.of("path", "content"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("path", "string", "文件路径，包含文件名，例如 D:\\projects\\test.txt"),

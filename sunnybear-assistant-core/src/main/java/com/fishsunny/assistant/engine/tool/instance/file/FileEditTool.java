@@ -484,7 +484,7 @@ public class FileEditTool implements ToolHandler {
         };
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("修改文件内容：查找并替换指定文本。" + modeDesc)
+                .setDescription("精确修改文件内容时使用此工具（比执行 sed/awk 命令更安全可靠）。在文件中查找唯一匹配的旧文本并替换为新文本，支持删除操作（newContent 为空时）。" + modeDesc)
                 .setRequired(List.of("path", "oldContent"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("path", "string", "文件路径，例如 D:\\projects\\test.txt"),

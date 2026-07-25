@@ -317,7 +317,7 @@ public class FileDeleteTool implements ToolHandler {
         };
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("删除指定文件或目录。删除目录需设 recursive=true。" + modeDesc)
+                .setDescription("删除文件或目录时使用此工具（比执行 rm/del 命令更安全，有 AI 安全审核）。删除目录需设 recursive=true。" + modeDesc)
                 .setRequired(List.of("path"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("path", "string", "要删除的文件或目录路径，例如 D:\\projects\\test.txt"),

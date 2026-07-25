@@ -208,7 +208,7 @@ public class FileDownloadTool implements ToolHandler {
         };
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("从 URL 下载文件到本地。" + modeDesc)
+                .setDescription("从 URL 下载文件到本地时使用此工具（比执行 curl/wget 命令更可靠，支持大文件和重定向）。" + modeDesc)
                 .setRequired(List.of("url", "path"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("url", "string", "要下载的文件 URL 地址"),
