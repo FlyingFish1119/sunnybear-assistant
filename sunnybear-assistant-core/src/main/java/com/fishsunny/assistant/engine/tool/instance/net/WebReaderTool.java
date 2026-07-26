@@ -19,6 +19,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.NetToolKit;
 import com.github.benmanes.caffeine.cache.Cache;
+import org.checkerframework.checker.nullness.qual.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import com.fishsunny.assistant.engine.tool.extension.PlaywrightBrowserService;
 import com.fishsunny.assistant.settings.AISettings;
@@ -94,7 +95,14 @@ public class WebReaderTool implements ToolHandler {
                         'fast'：快速全文提取，不支持 target。\
                         'quality'：系统按 target 定向提取。""");
 
-        register.setParameters(List.of(urlParam, targetParam, modeParam));
+        ToolRegister.Parameters waitNetParam = new ToolRegister.Parameters()
+                .setParameterName("waitNet")
+                .setType("boolean")
+                .setDescription("""
+                       是否等待网络请求完成再提取。\
+                       如果目标网页有大量异步加载的内容（如 SPA 页面），建议设置为 true。""");
+
+        register.setParameters(List.of(urlParam, targetParam, modeParam, waitNetParam));
 
         this.objectMapper = objectMapper;
         this.summarySettings = summarySettings;
@@ -129,7 +137,7 @@ public class WebReaderTool implements ToolHandler {
 
             // 始终使用无头浏览器渲染
             PlaywrightBrowserService.FetchResult result = playwrightBrowserService.fetch(
-                    arguments.getUrl(), settings.getBrowserTimeoutMs());
+                    arguments.getUrl(), settings.getBrowserTimeoutMs(), Boolean.TRUE.equals(arguments.getWaitNet()));
             Document document = Jsoup.parse(result.htmlContent(), arguments.getUrl());
             String pageTitle = result.title();
 
@@ -213,7 +221,7 @@ public class WebReaderTool implements ToolHandler {
                 .loadSettings(summarySettings);
         AtomicReference<String> afterResolve = new AtomicReference<>("");
         chatHttpHandler.translate(UUID.randomUUID().toString(), summarySettings.getAdapterName(), request,
-                summarySettings.getStream() != null ? summarySettings.getStream() : true,
+                summarySettings.getStream(),
                 null,
                 (result, lastRes) -> afterResolve.set(result.content()));
         return afterResolve.get();
@@ -260,7 +268,7 @@ public class WebReaderTool implements ToolHandler {
     private void removeComments(Document document) {
         document.filter(new NodeFilter() {
             @Override
-            public FilterResult head(Node node, int depth) {
+            public FilterResult head(@NonNull Node node, int depth) {
                 if (node instanceof Comment) {
                     return FilterResult.REMOVE;
                 }
@@ -268,7 +276,7 @@ public class WebReaderTool implements ToolHandler {
             }
 
             @Override
-            public FilterResult tail(Node node, int depth) {
+            public FilterResult tail(@NonNull Node node, int depth) {
                 return FilterResult.CONTINUE;
             }
         });
@@ -313,6 +321,7 @@ public class WebReaderTool implements ToolHandler {
         private String url;
         private String target;
         private String mode;
+        private Boolean waitNet = false;
         public String getKey() {
             return url + ":" + target + ":" + mode;
         }

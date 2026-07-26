@@ -29,8 +29,13 @@ import jakarta.annotation.PreDestroy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Playwright 无头浏览器服务，提供 JS 渲染能力 + 浏览器自动化交互。
@@ -70,6 +75,8 @@ public class PlaywrightBrowserService {
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15"
     );
 
+    /** Playwright 启动 / Chromium 启动的超时时间（秒），防止资源耗尽时永久阻塞 */
+    private static final int BROWSER_START_TIMEOUT_SECONDS = 30;
     /** 会话空闲超时（分钟），默认 30 */
     private static final int SESSION_IDLE_MINUTES = 30;
     /** 最大会话数 */
@@ -108,7 +115,7 @@ public class PlaywrightBrowserService {
      * 使用独立的 Playwright 实例抓取网页，调用结束后完全销毁。
      * 与交互模式的 session 完全隔离，互不影响。
      */
-    public FetchResult fetch(String url, int timeoutMs) throws ToolExecutor.ToolExecuteException {
+    public FetchResult fetch(String url, int timeoutMs, boolean waitNet) throws ToolExecutor.ToolExecuteException {
         try (Playwright pw = Playwright.create()) {
             Browser browser = launchBrowser(pw);
             BrowserContext context = browser.newContext(new Browser.NewContextOptions()
@@ -116,16 +123,20 @@ public class PlaywrightBrowserService {
                     .setViewportSize(1920, 1080)
                     .setLocale("zh-CN"));
 
-                context.addInitScript(STEALTH_INIT_SCRIPT);
-                try {
-                    Page page = context.newPage();
-                    page.navigate(url, new Page.NavigateOptions().setTimeout(timeoutMs));
-                    page.waitForLoadState(LoadState.NETWORKIDLE, new Page.WaitForLoadStateOptions()
-                            .setTimeout(timeoutMs));
-                    return new FetchResult(page.title(), page.content());
-                } catch (TimeoutError e) {
-                    throw new ToolExecutor.ToolExecuteException("无头浏览器抓取失败: " + e.getMessage() + "。URL: " + url);
+            context.addInitScript(STEALTH_INIT_SCRIPT);
+            Page page = context.newPage();
+            try {
+                page.navigate(url, new Page.NavigateOptions().setTimeout(timeoutMs));
+                Page.WaitForLoadStateOptions options = new Page.WaitForLoadStateOptions().setTimeout(timeoutMs);
+                if (waitNet) {
+                    page.waitForLoadState(LoadState.NETWORKIDLE, options);
+                } else {
+                    page.waitForLoadState(LoadState.DOMCONTENTLOADED, options);
                 }
+            } catch (TimeoutError e) {
+                log.warn("Playwright: [{}] 页面加载超时（{}ms），使用已加载的部分内容", url, timeoutMs);
+            }
+            return new FetchResult(page.title(), page.content());
         } catch (Exception e) {
             log.error("Playwright: fetch 操作异常: {}", e.getMessage());
             throw new ToolExecutor.ToolExecuteException(
