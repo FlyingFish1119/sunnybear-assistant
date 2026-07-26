@@ -24,23 +24,29 @@ public class App {
     private static final Logger log = LoggerFactory.getLogger(App.class);
 
     public static void main(String[] args) {
-        // 解析命令行参数
-        String serverUrl = "http://127.0.0.1:11451/comfyui-bridge";
-        String comfyuiUrl = "http://127.0.0.1:8188";
-        String deviceName = null;
-        String username = null;
-        String password = null;
+        // 1. 加载配置文件（同级目录 agent-config.json）
+        AgentConfig config = AgentConfig.load();
 
+        // 2. 命令行参数覆盖配置文件
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
-                case "--server" -> serverUrl = args[++i];
-                case "--comfyui" -> comfyuiUrl = args[++i];
-                case "--name" -> deviceName = args[++i];
-                case "--username" -> username = args[++i];
-                case "--password" -> password = args[++i];
+                case "--server" -> config.setServer(args[++i]);
+                case "--comfyui" -> config.setComfyui(args[++i]);
+                case "--workflow-path" -> config.setWorkflowPath(args[++i]);
+                case "--name" -> config.setName(args[++i]);
+                case "--username" -> config.setUsername(args[++i]);
+                case "--password" -> config.setPassword(args[++i]);
+                case "--config" -> config = AgentConfig.load(args[++i]);
                 case "--help", "-h" -> { printUsage(); return; }
             }
         }
+
+        String serverUrl = config.getServer();
+        String comfyuiUrl = config.getComfyui();
+        String workflowPath = config.getWorkflowPath();
+        String deviceName = config.getName();
+        String username = config.getUsername();
+        String password = config.getPassword();
 
         if (serverUrl == null || serverUrl.isEmpty()) {
             log.error("缺少 --server 参数");
@@ -64,11 +70,12 @@ public class App {
         log.info("  ComfyUI Agent v1.0");
         log.info("  Device  : {} ({})", deviceId, deviceName);
         log.info("  Server  : {}", serverUrl);
-        log.info("  ComfyUI  : {}", comfyuiUrl);
+        log.info("  ComfyUI : {}", comfyuiUrl);
+        log.info("  Workflow: {}", workflowPath);
         log.info("============================================");
 
         // 构建组件
-        ComfyUIHttpClient comfyUI = new ComfyUIHttpClient(comfyuiUrl);
+        ComfyUIHttpClient comfyUI = new ComfyUIHttpClient(comfyuiUrl, workflowPath);
         CommandDispatcher dispatcher = new CommandDispatcher(comfyUI);
         WebSocketClient wsClient = new WebSocketClient(serverUrl, deviceId, deviceName,
                 username, password, dispatcher);
@@ -100,11 +107,15 @@ public class App {
         System.out.println("""
                 用法: java -jar comfyui-agent.jar [选项]
 
+                启动时自动读取同级目录下的 agent-config.json 配置文件。
+                CLI 参数优先级高于配置文件。
+
                 选项:
-                  --server <url>         SunnyBear Server 的 WebSocket 地址（必填）
+                  --config <path>        指定配置文件路径，默认 ./agent-config.json
+                  --server <url>         SunnyBear Server 的 WebSocket 地址
                                         例如 ws://192.168.1.100:11451/comfyui-bridge
                   --comfyui <url>        ComfyUI API 地址，默认 http://127.0.0.1:8188
-
+                  --workflow-path <path> 工作流文件目录，默认 ./workflow
                   --name <name>          设备名称（显示在服务端），默认使用 hostname
                   --username <user>      Basic Auth 用户名（可选）
                   --password <pass>      Basic Auth 密码（可选）

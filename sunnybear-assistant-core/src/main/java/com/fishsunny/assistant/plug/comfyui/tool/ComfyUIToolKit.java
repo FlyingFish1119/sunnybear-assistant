@@ -18,5 +18,6 @@ public class ComfyUIToolKit extends ToolKit {
         super(tools, enable);
         ChatProcessor.getEXCLUDE_TOOLS().add(ComfyUIGenerateTool.NAME);
         ChatProcessor.getEXCLUDE_TOOLS().add(ComfyUIResourcesTool.NAME);
+        ChatProcessor.getEXCLUDE_TOOLS().add(ComfyUIWorkflowTool.NAME);
     }
 }

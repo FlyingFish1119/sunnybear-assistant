@@ -31,8 +31,10 @@ public class ComfyUIResourcesTool implements ToolHandler {
                 .setName(NAME)
                 .setDescription("""
                         获取 ComfyUI 当前可用的所有资源。返回 JSON 包含：\
-                        checkpoints（模型列表）、loRAs（LoRA 列表）、\
-                        VAEs（VAE 列表）、samplers（采样器）、schedulers（调度器）。\
+                        checkpoints（模型）、loras（LoRA）、vaes（VAE）、\
+                        samplers（采样器）、schedulers（调度器），以及 \
+                        models（所有模型文件按类别分组，含 diffusion_models、text_encoders、\
+                        controlnet、clip_vision、upscale_models、style_models 等）。\
                         生图前务必调用此工具确认可用模型名称。""")
                 .setRequired(List.of());
         register.setParameters(List.of());

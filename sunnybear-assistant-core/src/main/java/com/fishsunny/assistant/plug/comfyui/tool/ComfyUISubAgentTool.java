@@ -38,10 +38,11 @@ public class ComfyUISubAgentTool implements ToolHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ComfyUISubAgentTool.class);
 
-    /** 子 Agent 可用工具：查资源 + 生图（图片由主工具拉取） */
+    /** 子 Agent 可用工具：查资源 + 查工作流 + 生图（图片由主工具拉取） */
     private static final Set<String> SUB_AGENT_TOOLS = Set.of(
             ComfyUIResourcesTool.NAME,  // comfyui_resources
-            ComfyUIGenerateTool.NAME    // comfyui_generate
+            ComfyUIGenerateTool.NAME,   // comfyui_generate
+            ComfyUIWorkflowTool.NAME    // comfyui_workflow
     );
 
     private final ToolRegister register;
@@ -68,8 +69,7 @@ public class ComfyUISubAgentTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        ComfyUI 图像生成子 Agent。接受生图需求，自动查询可用 workflow 模板或模型后生成图片。\
-                        target 中请详细描述画面内容、风格、尺寸等要求。""")
+                        ComfyUI 图像生成子 Agent。""")
                 .setRequired(List.of("target"));
 
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
@@ -216,16 +216,19 @@ public class ComfyUISubAgentTool implements ToolHandler {
 
                 ## 工具
                 - **comfyui_resources** — 查询可用模型、LoRA、VAE、采样器、调度器。**生图前必须先调用。**
+                - **comfyui_workflow** — 管理工作流文件。支持 list（列出可用工作流）和 detail（获取工作流详情）。
                 - **comfyui_generate** — 提交 workflow JSON 执行生图，自动等待完成。
 
                 ## 流程（必须按序）
                 1. 调用 comfyui_resources 获取可用模型列表。
-                2. 根据用户需求构建 workflow JSON。
+                2. 如果用户指定了工作流名称，先调用 comfyui_workflow（action=detail）加载该工作流 JSON；
+                   如果不确定有哪些工作流，先调用 comfyui_workflow（action=list）查看可用列表。
+                3. 根据用户需求调整/构建 workflow JSON。
                    - 必须包含：LoadCheckpoint → CLIPTextEncode（正/负向）→ KSampler → VAEDecode → SaveImage
                    - 默认 512x768，随机 seed，步数 20，CFG 7
                    - 模型名必须来自 comfyui_resources 的返回结果
-                3. 调用 comfyui_generate 提交执行。
-                4. 简单汇报结果即可。
+                4. 调用 comfyui_generate 提交执行。
+                5. 简单汇报结果即可。
 
                 ## 输出格式
                 "✅ 生成成功 — 模型: xxx, 种子: 42"

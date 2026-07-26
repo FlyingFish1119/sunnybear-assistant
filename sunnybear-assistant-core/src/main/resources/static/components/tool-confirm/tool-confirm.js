@@ -81,12 +81,16 @@ const ToolConfirm = {
                 'file_write_tool': 'file-pen-line',
                 'file_edit_tool': 'file-code',
                 'file_delete_tool': 'trash-2',
+                'task_run_tool': 'play-circle',
+                'net_explore_tool': 'globe',
             },
             titleMap: {
                 'command_tool': '命令执行确认',
                 'file_write_tool': '文件写入确认',
                 'file_edit_tool': '文件编辑确认',
                 'file_delete_tool': '文件删除确认',
+                'task_run_tool': '任务执行确认',
+                'net_explore_tool': '网络探索确认',
             }
         };
     },

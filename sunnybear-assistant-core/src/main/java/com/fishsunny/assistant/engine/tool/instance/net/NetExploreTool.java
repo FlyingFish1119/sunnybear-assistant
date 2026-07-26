@@ -9,6 +9,7 @@ package com.fishsunny.assistant.engine.tool.instance.net;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
@@ -18,7 +19,9 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.NetToolKit;
+import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.variable.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
@@ -27,6 +30,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.util.StringUtils;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketSession;
 
 import java.util.*;
 
@@ -71,7 +76,7 @@ public class NetExploreTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        联网探索信息的子 Agent。接受一个收集目标，自动搜索、阅读网页、评估结果，\
+                        联网探索信息的子 Agent（每次需确认）。接受一个收集目标，自动搜索、阅读网页、评估结果，\
                         最终返回一份结构化的收集报告。适合需要深度调研某个主题的场景。\
                         设置 fast=true 可跳过深度探索，直接返回搜索结果。""")
                 .setRequired(List.of("target"));
@@ -106,7 +111,7 @@ public class NetExploreTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
         }
 
-        // ========== fast 模式：直接调用搜索引擎返回结果 ==========
+        // ========== fast 模式：直接调用搜索引擎返回结果（无需确认） ==========
         if (arguments.isFast()) {
             try {
                 Map<String, Object> searchArgs = Map.of(
@@ -123,6 +128,17 @@ public class NetExploreTool implements ToolHandler {
         }
 
         try {
+            // ========== 确认机制（深度模式始终需要确认） ==========
+            String uuid = UUID.randomUUID().toString();
+            try {
+                if (!(context.get("session") instanceof WebSocketSession session)) {
+                    throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
+                }
+                ask(uuid, session, arguments.getTarget());
+            } finally {
+                ChatController.cleanupConfirm(uuid);
+            }
+
             // ========== 收集器与统计 ==========
             StringBuilder collector = new StringBuilder();
             int[] usefulRounds = {0};
@@ -164,7 +180,8 @@ public class NetExploreTool implements ToolHandler {
 
             // ========== 组装返回结果 ==========
             return assembleResponse(finalReport, collector.toString(), usefulRounds[0], discardedRounds[0]);
-
+        } catch (ToolExecutor.ToolExecuteException e) {
+            throw e;
         } catch (Exception e) {
             log.error("NetExploreTool 执行异常: {}", e.getMessage(), e);
             throw new ToolExecutor.ToolExecuteException("网络探索子 Agent 执行失败: " + e.getMessage());
@@ -226,6 +243,34 @@ public class NetExploreTool implements ToolHandler {
         if (text == null) return "";
         if (text.length() <= maxLen) return text;
         return text.substring(0, maxLen) + "\n\n... (内容过长，已截断 " + (text.length() - maxLen) + " 字符)";
+    }
+
+    /**
+     * 向用户发送确认请求并等待响应。
+     */
+    private void ask(String uuid, WebSocketSession session, String target) throws Exception {
+        String message = "### 网络探索请求\n\n"
+                + "AI 请求进行联网深度探索，将自动搜索并阅读网页内容。\n\n"
+                + "| 属性 | 内容 |\n"
+                + "|------|------|\n"
+                + "| 收集目标 | **" + target + "** |\n"
+                + "| 可用工具 | web_search_tool（搜索）、web_reader_tool（阅读网页） |\n"
+                + "| 模式 | 深度探索（子 Agent 循环） |\n\n"
+                + "> ⚠️ 子 Agent 将自动进行多轮搜索与网页阅读，可能消耗较多 token。请确认目标合理后再允许执行。";
+
+        ToolAsk confirmation = new ToolAsk()
+                .setId(uuid)
+                .setToolName(NAME)
+                .setMessage(message);
+
+        session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
+        Boolean result = ChatController.awaitConfirm(uuid, 30);
+        if (result == null) {
+            throw new ToolExecutor.ToolExecuteException("用户未确认网络探索，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整目标。");
+        }
+        if (!result) {
+            throw new ToolExecutor.ToolExecuteException("用户拒绝了网络探索，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整目标。");
+        }
     }
 
     // ==================== 提示词 ====================

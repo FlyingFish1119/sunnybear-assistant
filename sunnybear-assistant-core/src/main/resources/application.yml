@@ -47,6 +47,8 @@ plug:
     tool:
       enable: true
   comfyui:
+    workflow:
+      path: D:\\ComfyUi\\ComfyUI-aki-v2\\ComfyUI\\user\\default\\workflows
     tool:
       enable: true
 

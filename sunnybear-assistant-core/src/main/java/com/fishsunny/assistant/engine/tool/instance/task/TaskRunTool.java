@@ -10,6 +10,7 @@ package com.fishsunny.assistant.engine.tool.instance.task;
 
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.Task;
@@ -25,9 +26,11 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.*;
 import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.mvc.service.TaskPromptService;
 import com.fishsunny.assistant.mvc.service.TaskService;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.variable.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
@@ -36,6 +39,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.util.StringUtils;
+import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.*;
@@ -100,6 +104,14 @@ public class TaskRunTool implements ToolHandler {
 
             Task task = theTask.task();
             List<TaskStep> steps = theTask.taskSteps();
+
+            // 确认机制：始终要求用户确认
+            String uuid = UUID.randomUUID().toString();
+            try {
+                ask(uuid, (WebSocketSession) context.get("session"), task, steps);
+            } finally {
+                ChatController.cleanupConfirm(uuid);
+            }
 
             // 异步执行
             executor.submit(() -> {
@@ -247,7 +259,7 @@ public class TaskRunTool implements ToolHandler {
 
                 请输出你的选择（严格 JSON 格式）：
                 {"type": "<选中的类型>"}
-                
+
                 如果没有可供选择的提示词，则输出 {"type": null}
                 """
                 .replace("${taskName}", task.getTaskName())
@@ -303,6 +315,46 @@ public class TaskRunTool implements ToolHandler {
         return "default";
     }
 
+    /**
+     * 向用户发送确认请求并等待响应。
+     */
+    private void ask(String uuid, WebSocketSession session, Task task, List<TaskStep> steps) throws Exception {
+        StringBuilder stepList = new StringBuilder();
+        for (int i = 0; i < steps.size(); i++) {
+            TaskStep step = steps.get(i);
+            stepList.append(i + 1).append(". **").append(step.getStepName()).append("**");
+            if (StringUtils.hasText(step.getStepDesc())) {
+                stepList.append(" — ").append(step.getStepDesc());
+            }
+            stepList.append("\n");
+        }
+
+        String message = "### 任务执行请求\n\n"
+                + "AI 请求执行以下任务：\n\n"
+                + "| 属性 | 内容 |\n"
+                + "|------|------|\n"
+                + "| 任务 ID | `" + task.getId() + "` |\n"
+                + "| 任务名称 | **" + task.getTaskName() + "** |\n"
+                + "| 步骤数 | **" + steps.size() + "** |\n"
+                + "| 任务描述 | " + (StringUtils.hasText(task.getTaskDesc()) ? task.getTaskDesc() : "(无)") + " |\n"
+                + "\n**步骤列表：**\n" + stepList + "\n"
+                + "> ⚠️ 任务将在后台异步执行，可能涉及多次 AI 调用和工具操作。请确认后再允许执行。";
+
+        ToolAsk confirmation = new ToolAsk()
+                .setId(uuid)
+                .setToolName(NAME)
+                .setMessage(message);
+
+        session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
+        Boolean result = ChatController.awaitConfirm(uuid, 30);
+        if (result == null) {
+            throw new ToolExecutor.ToolExecuteException("用户未确认任务执行，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整任务。");
+        }
+        if (!result) {
+            throw new ToolExecutor.ToolExecuteException("用户拒绝了任务执行，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整任务。");
+        }
+    }
+
     @Override
     public String name() {
         return NAME;
@@ -312,9 +364,7 @@ public class TaskRunTool implements ToolHandler {
     public ToolRegister getRegister() {
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("""
-                        异步执行任务的所有步骤。调用后立即返回，通过 task_read_tool 查询进度。
-                        """.replace("\n", " "))
+                .setDescription("异步执行任务的所有步骤（每次需确认）。调用后立即返回，通过 task_read_tool 查询进度。")
                 .setRequired(List.of("taskId"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("taskId", "string", "要执行的任务 ID。执行前建议先用 task_read_tool 确认任务内容正确且状态为 waiting（等待执行）")

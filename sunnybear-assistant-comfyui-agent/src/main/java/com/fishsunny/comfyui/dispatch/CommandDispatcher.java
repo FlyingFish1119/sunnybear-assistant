@@ -7,7 +7,7 @@ import com.fishsunny.comfyui.protocol.CommandRequest;
 import java.util.Map;
 
 /**
- * 命令分发器。只支持 3 个命令：generate / resources / view。
+ * 命令分发器。支持 generate / resources / view / workflow-list / workflow-detail。
  */
 public class CommandDispatcher {
 
@@ -39,7 +39,13 @@ public class CommandDispatcher {
                     yield error("参数 filename 不能为空");
                 yield toJson(comfyUI.viewImage(p.filename, p.type));
             }
-            default -> error("不支持的命令: " + cmd.method + "。支持: generate, resources, view");
+            case "workflow-list" -> toJson(comfyUI.listWorkflows());
+            case "workflow-detail" -> {
+                if (p.workflowName == null || p.workflowName.isEmpty())
+                    yield error("参数 workflowName 不能为空");
+                yield toJson(comfyUI.getWorkflowDetail(p.workflowName));
+            }
+            default -> error("不支持的命令: " + cmd.method + "。支持: generate, resources, view, workflow-list, workflow-detail");
         };
     }
 
