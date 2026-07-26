@@ -25,9 +25,9 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.vi
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.extension.ExtensionScriptService;
-import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
 import com.fishsunny.assistant.engine.tool.instance.net.MetaSOAISearchTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
+import com.fishsunny.assistant.plug.comfyui.tool.ComfyUIGenerateTool;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
@@ -38,6 +38,7 @@ import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.variable.PromptReplaceVariable;
 import com.fishsunny.assistant.variable.RoleVariable;
 import com.fishsunny.assistant.websocket.ChatProvider;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -94,8 +95,6 @@ public class ChatProcessor {
         this.chatProAISettings = chatProAISettings;
         this.chatHttpHandler = chatHttpHandler;
     }
-
-
 
     /**
      * 核心对话处理逻辑
@@ -238,8 +237,13 @@ public class ChatProcessor {
         return systemPrompt;
     }
 
-    /** 主 Agent 不直接调用的工具（由 net_explore_tool 子 Agent 代理） */
-    private static final Set<String> EXCLUDE_TOOLS = Set.of(MetaSOAISearchTool.NAME, WebReaderTool.NAME);
+    /** 主 Agent 不直接调用的工具（由子 Agent 代理：net_explore_tool、comfyui_tool） */
+    @Getter
+    private static final Set<String> EXCLUDE_TOOLS = new HashSet<>();
+    static {
+        EXCLUDE_TOOLS.add(MetaSOAISearchTool.NAME);
+        EXCLUDE_TOOLS.add(WebReaderTool.NAME);
+    }
 
     /**
      * 工具调用循环

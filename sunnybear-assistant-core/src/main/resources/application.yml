@@ -46,6 +46,9 @@ plug:
   android:
     tool:
       enable: true
+  comfyui:
+    tool:
+      enable: true
 
 engine:
   tool:

@@ -3,7 +3,6 @@ package com.fishsunny.assistant.plug.android.tool;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
-import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
@@ -48,7 +47,6 @@ public class AndroidScreenshotTool implements ToolHandler {
                 .setDescription("截取屏幕并返回中文描述。⚠️ 优先用 android_get_ui_tree 获取结构化内容，截图仅用于视觉确认（颜色、图标、图片）。")
                 .setRequired(List.of())
                 .setParameters(List.of(
-                        param("deviceId", "string", "目标设备 ID。不填则使用第一个已连接设备。"),
                         param("target", "string", "（可选）描述你希望重点关注的页面区域或内容。例如 '顶部导航栏的结构'、'搜索结果列表的第几条'。不填则对页面进行全面描述。")
                 ));
     }
@@ -60,8 +58,7 @@ public class AndroidScreenshotTool implements ToolHandler {
             Arguments args = objectMapper.readValue(argumentsJson, Arguments.class);
 
             // 1. 截取 Android 设备屏幕
-            String deviceId = resolveDeviceId(args.getDeviceId());
-            String imageBase64 = bridgeService.sendCommand(deviceId, "screenshot", "{}");
+            String imageBase64 = bridgeService.sendCommand("screenshot", "{}");
             if (imageBase64 == null || imageBase64.startsWith("错误") || imageBase64.startsWith("截图失败")) {
                 throw new ToolExecutor.ToolExecuteException(imageBase64);
             }
@@ -100,12 +97,6 @@ public class AndroidScreenshotTool implements ToolHandler {
     @Override public String name() { return NAME; }
     @Override public ToolRegister getRegister() { return register; }
 
-    private String resolveDeviceId(String deviceId) throws ToolExecutor.ToolExecuteException {
-        if (deviceId != null && !deviceId.isEmpty()) return deviceId;
-        String first = bridgeService.getFirstDeviceId();
-        if (first == null) throw new ToolExecutor.ToolExecuteException("没有已连接的 Android 设备");
-        return first;
-    }
 
     private static ToolRegister.Parameters param(String name, String type, String desc) {
         return new ToolRegister.Parameters().setParameterName(name).setType(type).setDescription(desc);
@@ -113,7 +104,6 @@ public class AndroidScreenshotTool implements ToolHandler {
 
     @Data @Accessors(chain = true)
     private static class Arguments {
-        private String deviceId;
         private String target;
     }
 }

@@ -1,41 +1,42 @@
-package com.fishsunny.assistant.plug.android.tool;
+package com.fishsunny.assistant.plug.comfyui.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
-import com.fishsunny.assistant.plug.android.service.AndroidBridgeService;
+import com.fishsunny.assistant.plug.comfyui.service.ComfyUIBridgeService;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
 
-@ToolKitComponent(AndroidToolKit.class)
-@ConditionalOnExpression("${plug.android.tool.enable:true} && ${plug.android.tool.swipe.enable:true}")
-public class AndroidSwipeTool implements ToolHandler {
+@ToolKitComponent(ComfyUIToolKit.class)
+@ConditionalOnExpression("${plug.comfyui.tool.enable:true} && ${plug.comfyui.tool.generate.enable:true}")
+public class ComfyUIGenerateTool implements ToolHandler {
 
-    public static final String NAME = "android_swipe";
+    public static final String NAME = "comfyui_generate";
+
     private final ObjectMapper objectMapper;
     private final ToolRegister register;
-    private final AndroidBridgeService bridgeService;
+    private final ComfyUIBridgeService bridgeService;
 
-    public AndroidSwipeTool(ObjectMapper objectMapper, AndroidBridgeService bridgeService) {
+    public ComfyUIGenerateTool(ObjectMapper objectMapper, ComfyUIBridgeService bridgeService) {
         this.objectMapper = objectMapper;
         this.bridgeService = bridgeService;
-        this.register = new ToolRegister()
+
+        register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("在 Android 设备屏幕上滑动。可用于滚动列表、切换页面、下拉刷新等。")
-                .setRequired(List.of("x1", "y1", "x2", "y2"))
-                .setParameters(List.of(
-                        param("x1", "integer", "滑动起点 X 坐标"),
-                        param("y1", "integer", "滑动起点 Y 坐标"),
-                        param("x2", "integer", "滑动终点 X 坐标"),
-                        param("y2", "integer", "滑动终点 Y 坐标"),
-                        param("duration", "integer", "滑动持续时间（毫秒），默认 300。越大越慢越平滑")
-                ));
+                .setDescription("提交 ComfyUI workflow JSON 并执行生图。支持轮询等待完成，返回生成结果（含图片信息）。")
+                .setRequired(List.of("workflow"));
+
+        register.setParameters(List.of(
+                param("workflow", "string", "ComfyUI workflow JSON 对象。包含所有节点定义和连接关系。"),
+                param("timeout", "integer", "超时秒数，默认 120 秒。复杂 workflow 建议设大一些。")
+        ));
     }
 
     @Override
@@ -43,13 +44,16 @@ public class AndroidSwipeTool implements ToolHandler {
             throws ToolExecutor.ToolExecuteException {
         try {
             Arguments args = objectMapper.readValue(argumentsJson, Arguments.class);
+            if (!StringUtils.hasText(args.getWorkflow())) {
+                throw new ToolExecutor.ToolExecuteException("参数 workflow 不能为空");
+            }
             String paramsJson = objectMapper.writeValueAsString(args);
-            String result = bridgeService.sendCommand("swipe", paramsJson);
+            String result = bridgeService.sendCommand("generate", paramsJson);
             return new ToolExecutor.ToolExecuteResponse(NAME, result);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
         } catch (Exception e) {
-            throw new ToolExecutor.ToolExecuteException("Android 滑动失败: " + e.getMessage());
+            throw new ToolExecutor.ToolExecuteException("ComfyUI 生图失败: " + e.getMessage());
         }
     }
 
@@ -63,7 +67,7 @@ public class AndroidSwipeTool implements ToolHandler {
 
     @Data @Accessors(chain = true)
     private static class Arguments {
-        private Integer x1, y1, x2, y2;
-        private Integer duration;
+        private String workflow;
+        private Integer timeout;
     }
 }

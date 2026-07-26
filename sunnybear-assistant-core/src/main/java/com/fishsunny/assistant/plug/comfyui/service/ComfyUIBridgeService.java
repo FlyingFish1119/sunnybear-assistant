@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.plug.android.service;
+package com.fishsunny.assistant.plug.comfyui.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
@@ -19,15 +19,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * Android 设备桥接服务，管理来自手机 APK 的 WebSocket 连接。
+ * ComfyUI 桥接服务，管理来自 ComfyUI Agent JAR 的 WebSocket 连接。
  * <p>
  * 提供 RPC 调用模式：服务端工具调用 {@link #sendCommand(String, String)}
- * → 发送 JSON 命令到设备 → 阻塞等待 APK 返回结果 → 返回给工具。
+ * → 发送 JSON 命令到 Agent → 阻塞等待返回结果 → 返回给工具。
  */
 @Component
-public class AndroidBridgeService extends TextWebSocketHandler {
+public class ComfyUIBridgeService extends TextWebSocketHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(AndroidBridgeService.class);
+    private static final Logger log = LoggerFactory.getLogger(ComfyUIBridgeService.class);
 
     private final ObjectMapper objectMapper;
     /** 当前连接 */
@@ -36,14 +36,11 @@ public class AndroidBridgeService extends TextWebSocketHandler {
     /** requestId → 等待响应的 CompletableFuture */
     private final Map<String, CompletableFuture<String>> pendingRequests = new ConcurrentHashMap<>();
 
-    private static final int COMMAND_TIMEOUT = 30;
+    /** 命令超时（秒），生图可能较慢 */
+    private static final int COMMAND_TIMEOUT = 180;
 
-    public AndroidBridgeService(ObjectMapper objectMapper) {
+    public ComfyUIBridgeService(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-    }
-
-    public boolean isOnline() {
-        return session != null && session.isOpen();
     }
 
     // ==================== RPC ====================
@@ -52,7 +49,7 @@ public class AndroidBridgeService extends TextWebSocketHandler {
             throws ToolExecutor.ToolExecuteException {
         WebSocketSession s = this.session;
         if (s == null || !s.isOpen()) {
-            throw new ToolExecutor.ToolExecuteException("Android 设备不在线");
+            throw new ToolExecutor.ToolExecuteException("ComfyUI 设备不在线");
         }
 
         String requestId = UUID.randomUUID().toString();
@@ -67,11 +64,7 @@ public class AndroidBridgeService extends TextWebSocketHandler {
             synchronized (s) {
                 s.sendMessage(new TextMessage(commandJson));
             }
-            log.debug("→ {}: {}", method, paramsJson);
-            String result = future.get(COMMAND_TIMEOUT, TimeUnit.SECONDS);
-            log.debug("← {} = {}", method,
-                    result.length() > 200 ? result.substring(0, 200) + "..." : result);
-            return result;
+            return future.get(COMMAND_TIMEOUT, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             pendingRequests.remove(requestId);
             throw new ToolExecutor.ToolExecuteException(
@@ -87,7 +80,7 @@ public class AndroidBridgeService extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        log.info("Android 设备连接中: {} (session={})", session.getRemoteAddress(), session.getId());
+        log.info("ComfyUI Agent 连接中: {} (session={})", session.getRemoteAddress(), session.getId());
     }
 
     @Override
@@ -109,7 +102,7 @@ public class AndroidBridgeService extends TextWebSocketHandler {
                 }
                 this.session = session;
                 this.deviceName = name;
-                log.info("Android 设备已注册: {}", name);
+                log.info("ComfyUI Agent 已注册: {}", name);
                 return;
             }
 
@@ -124,14 +117,14 @@ public class AndroidBridgeService extends TextWebSocketHandler {
                     String result = (String) msg.get("result");
                     String error = (String) msg.get("error");
                     if (error != null) {
-                        future.complete("错误: " + error);
+                        future.complete("{\"error\":\"" + error + "\"}");
                     } else {
-                        future.complete(result != null ? result : "ok");
+                        future.complete(result != null ? result : "{}");
                     }
                 }
             }
         } catch (Exception e) {
-            log.error("解析设备消息失败: {}", e.getMessage());
+            log.error("解析 Agent 消息失败: {}", e.getMessage());
         }
     }
 
@@ -141,12 +134,12 @@ public class AndroidBridgeService extends TextWebSocketHandler {
             this.session = null;
             this.deviceName = null;
         }
-        log.info("Android 设备已断开: status={}", status);
+        log.info("ComfyUI Agent 已断开: status={}", status);
     }
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
-        log.error("Android 连接传输错误 [{}]: {}", session.getId(), exception.getMessage());
+        log.error("Agent 连接传输错误 [{}]: {}", session.getId(), exception.getMessage());
         if (this.session != null && this.session.getId().equals(session.getId())) {
             this.session = null;
         }

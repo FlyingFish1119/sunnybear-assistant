@@ -25,11 +25,14 @@ public class StandardToolRegister {
 
     private static final Function<ToolRegister, StandardToolRegister> TOOL_REGISTER_CONVERTER = register -> {
         Map<String, StandardToolRegisterProperty> properties = new HashMap<>();
-        for (ToolRegister.Parameters parameter : register.getParameters()) {
-            StandardToolRegisterProperty property = new StandardToolRegisterProperty()
-                    .setType(parameter.getType())
-                    .setDescription(parameter.getDescription());
-            properties.put(parameter.getParameterName(), property);
+        List<ToolRegister.Parameters> params = register.getParameters();
+        if (params != null) {
+            for (ToolRegister.Parameters parameter : params) {
+                StandardToolRegisterProperty property = new StandardToolRegisterProperty()
+                        .setType(parameter.getType())
+                        .setDescription(parameter.getDescription());
+                properties.put(parameter.getParameterName(), property);
+            }
         }
         StandardToolRegisterParameter parameter = new StandardToolRegisterParameter()
                 .setProperties(properties).setRequired(register.getRequired());

@@ -3,7 +3,6 @@ package com.fishsunny.assistant.plug.android.tool;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
-import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
@@ -11,8 +10,6 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.plug.android.service.AndroidBridgeService;
 import com.fishsunny.assistant.settings.AISettings;
-import lombok.Data;
-import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
@@ -58,17 +55,12 @@ public class AndroidGetUiTreeTool implements ToolHandler {
                         + "'element' - AI 提取可交互元素，返回精简列表（按钮、输入框、文本等）；"
                         + "'full' - 返回完整 UI 树，适合需要深入分析布局时使用。");
 
-        ToolRegister.Parameters deviceParam = new ToolRegister.Parameters()
-                .setParameterName("deviceId")
-                .setType("string")
-                .setDescription("目标设备 ID。不填则使用第一个已连接设备。");
-
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
                 .setParameterName("target")
                 .setType("string")
                 .setDescription("（当模式为 element 时必选）在 element 模式下描述你需要的元素类型或区域，例如 '所有输入框和按钮'、'顶部导航栏'。不填则提取全部可交互元素。full 模式下忽略。");
 
-        register.setParameters(List.of(modeParam, deviceParam, targetParam));
+        register.setParameters(List.of(modeParam, targetParam));
     }
 
     @Override
@@ -76,7 +68,6 @@ public class AndroidGetUiTreeTool implements ToolHandler {
             throws ToolExecutor.ToolExecuteException {
         try {
             Arguments args = objectMapper.readValue(argumentsJson, Arguments.class);
-            String deviceId = resolveDeviceId(args.getDeviceId());
 
             String mode = MODE_ELEMENT;
             if (StringUtils.hasText(args.getMode())) {
@@ -93,7 +84,7 @@ public class AndroidGetUiTreeTool implements ToolHandler {
             }
 
             // 不限制深度，全量获取 UI 树，避免遗漏深层嵌套元素
-            String uiTree = bridgeService.sendCommand(deviceId, "get_ui_tree", "{\"maxDepth\":99}");
+            String uiTree = bridgeService.sendCommand("get_ui_tree", "{\"maxDepth\":99}");
 
             if (MODE_FULL.equals(mode)) {
                 return new ToolExecutor.ToolExecuteResponse(NAME, uiTree);
@@ -107,9 +98,6 @@ public class AndroidGetUiTreeTool implements ToolHandler {
         }
     }
 
-    /**
-     * element 模式：将 UI 树交给轻量 AI 提取可交互元素，返回精简列表
-     */
     private ToolExecutor.ToolExecuteResponse buildElementResult(String uiTree, String target)
             throws Exception {
         String focus = StringUtils.hasText(target)
@@ -152,17 +140,12 @@ public class AndroidGetUiTreeTool implements ToolHandler {
     @Override public String name() { return NAME; }
     @Override public ToolRegister getRegister() { return register; }
 
-    private String resolveDeviceId(String deviceId) throws ToolExecutor.ToolExecuteException {
-        if (deviceId != null && !deviceId.isEmpty()) return deviceId;
-        String first = bridgeService.getFirstDeviceId();
-        if (first == null) throw new ToolExecutor.ToolExecuteException("没有已连接的 Android 设备");
-        return first;
-    }
 
-    @Data @Accessors(chain = true)
     private static class Arguments {
-        private String deviceId;
         private String mode;
         private String target;
+
+        public String getMode() { return mode; }
+        public String getTarget() { return target; }
     }
 }

@@ -2,6 +2,7 @@ package com.fishsunny.assistant.config;
 
 import com.fishsunny.assistant.plug.android.service.AndroidBridgeService;
 import com.fishsunny.assistant.plug.character.websocket.CharacterChatSocketHandler;
+import com.fishsunny.assistant.plug.comfyui.service.ComfyUIBridgeService;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,13 +18,16 @@ public class WebSocketConfig implements WebSocketConfigurer {
     private final ChatWebSocketHandler chatWebSocketHandler;
     private final CharacterChatSocketHandler characterChatSocketHandler;
     private final AndroidBridgeService androidBridgeService;
+    private final ComfyUIBridgeService comfyUIBridgeService;
 
     public WebSocketConfig(ChatWebSocketHandler chatWebSocketHandler,
                            CharacterChatSocketHandler characterChatSocketHandler,
-                           AndroidBridgeService androidBridgeService) {
+                           AndroidBridgeService androidBridgeService,
+                           ComfyUIBridgeService comfyUIBridgeService) {
         this.chatWebSocketHandler = chatWebSocketHandler;
         this.characterChatSocketHandler = characterChatSocketHandler;
         this.androidBridgeService = androidBridgeService;
+        this.comfyUIBridgeService = comfyUIBridgeService;
     }
 
     @Override
@@ -33,6 +37,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
         registry.addHandler(characterChatSocketHandler, "/ws/character-chat")
                 .setAllowedOrigins("*");
         registry.addHandler(androidBridgeService, "/android-bridge")
+                .setAllowedOrigins("*");
+        registry.addHandler(comfyUIBridgeService, "/comfyui-bridge")
                 .setAllowedOrigins("*");
     }
 

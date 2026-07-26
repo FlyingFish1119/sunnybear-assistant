@@ -7,7 +7,6 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.plug.android.service.AndroidBridgeService;
 import lombok.Data;
-import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 
 import java.util.List;
@@ -30,7 +29,6 @@ public class AndroidTypeTool implements ToolHandler {
                 .setDescription("在当前焦点输入框中输入文本。需先点击输入框获得焦点，或用 targetHint 自动定位输入框。")
                 .setRequired(List.of("text"))
                 .setParameters(List.of(
-                        param("deviceId", "string", "目标设备 ID。不填则使用第一个已连接设备。"),
                         param("text", "string", "要输入的文本内容"),
                         param("targetHint", "string", "目标输入框的 hint 文本，如\"搜索\"。用于自动定位输入框。")
                 ));
@@ -44,12 +42,11 @@ public class AndroidTypeTool implements ToolHandler {
             if (args.getText() == null || args.getText().isEmpty()) {
                 throw new ToolExecutor.ToolExecuteException("请输入要输入的文本");
             }
-            String deviceId = resolveDeviceId(args.getDeviceId());
             String paramsJson = objectMapper.writeValueAsString(Map.of(
                     "inputText", args.getText(),
                     "targetHint", args.getTargetHint() != null ? args.getTargetHint() : ""
             ));
-            String result = bridgeService.sendCommand(deviceId, "type", paramsJson);
+            String result = bridgeService.sendCommand("type", paramsJson);
             return new ToolExecutor.ToolExecuteResponse(NAME, result);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
@@ -61,20 +58,13 @@ public class AndroidTypeTool implements ToolHandler {
     @Override public String name() { return NAME; }
     @Override public ToolRegister getRegister() { return register; }
 
-    private String resolveDeviceId(String deviceId) throws ToolExecutor.ToolExecuteException {
-        if (deviceId != null && !deviceId.isEmpty()) return deviceId;
-        String first = bridgeService.getFirstDeviceId();
-        if (first == null) throw new ToolExecutor.ToolExecuteException("没有已连接的 Android 设备");
-        return first;
-    }
 
     private static ToolRegister.Parameters param(String name, String type, String desc) {
         return new ToolRegister.Parameters().setParameterName(name).setType(type).setDescription(desc);
     }
 
-    @Data @Accessors(chain = true)
+    @Data
     private static class Arguments {
-        private String deviceId;
         private String text;
         private String targetHint;
     }

@@ -6,8 +6,6 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.plug.android.service.AndroidBridgeService;
-import lombok.Data;
-import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 
 import java.util.List;
@@ -18,19 +16,16 @@ import java.util.Map;
 public class AndroidWaitTool implements ToolHandler {
 
     public static final String NAME = "android_wait";
-    private final ObjectMapper objectMapper;
     private final ToolRegister register;
     private final AndroidBridgeService bridgeService;
 
     public AndroidWaitTool(ObjectMapper objectMapper, AndroidBridgeService bridgeService) {
-        this.objectMapper = objectMapper;
         this.bridgeService = bridgeService;
         this.register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("等待指定文本出现在屏幕上。用于等待页面加载、弹窗出现等场景。")
                 .setRequired(List.of("text"))
                 .setParameters(List.of(
-                        param("deviceId", "string", "目标设备 ID。不填则使用第一个已连接设备。"),
                         param("text", "string", "要等待出现的文本（模糊匹配）"),
                         param("timeout", "integer", "超时时间（毫秒），默认 5000。最大建议不超过 30000。")
                 ));
@@ -40,15 +35,16 @@ public class AndroidWaitTool implements ToolHandler {
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context)
             throws ToolExecutor.ToolExecuteException {
         try {
-            Arguments args = objectMapper.readValue(argumentsJson, Arguments.class);
-            if (args.getText() == null || args.getText().isEmpty()) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> args = new ObjectMapper().readValue(argumentsJson, Map.class);
+            String text = (String) args.get("text");
+            if (text == null || text.isEmpty()) {
                 throw new ToolExecutor.ToolExecuteException("请提供要等待的文本（text）");
             }
-            String deviceId = resolveDeviceId(args.getDeviceId());
-            int timeout = args.getTimeout() != null ? args.getTimeout() : 5000;
-            String paramsJson = "{\"text\":\"" + args.getText().replace("\"", "\\\"")
+            Integer timeout = args.get("timeout") instanceof Number n ? n.intValue() : 5000;
+            String paramsJson = "{\"text\":\"" + text.replace("\"", "\\\"")
                     + "\",\"timeout\":" + timeout + "}";
-            String result = bridgeService.sendCommand(deviceId, "wait_for_text", paramsJson);
+            String result = bridgeService.sendCommand("wait_for_text", paramsJson);
             return new ToolExecutor.ToolExecuteResponse(NAME, result);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
@@ -60,21 +56,8 @@ public class AndroidWaitTool implements ToolHandler {
     @Override public String name() { return NAME; }
     @Override public ToolRegister getRegister() { return register; }
 
-    private String resolveDeviceId(String deviceId) throws ToolExecutor.ToolExecuteException {
-        if (deviceId != null && !deviceId.isEmpty()) return deviceId;
-        String first = bridgeService.getFirstDeviceId();
-        if (first == null) throw new ToolExecutor.ToolExecuteException("没有已连接的 Android 设备");
-        return first;
-    }
 
     private static ToolRegister.Parameters param(String name, String type, String desc) {
         return new ToolRegister.Parameters().setParameterName(name).setType(type).setDescription(desc);
-    }
-
-    @Data @Accessors(chain = true)
-    private static class Arguments {
-        private String deviceId;
-        private String text;
-        private Integer timeout;
     }
 }
