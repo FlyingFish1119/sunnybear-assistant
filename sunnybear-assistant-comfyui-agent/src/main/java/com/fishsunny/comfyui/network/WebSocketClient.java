@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Base64;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -40,6 +41,13 @@ public class WebSocketClient {
     private volatile WebSocket webSocket;
     private volatile boolean shouldReconnect = false;
     private volatile boolean connected = false;
+
+    /** 命令执行线程池（异步执行 generate 等耗时命令，避免阻塞 WebSocket 回调线程） */
+    private final ExecutorService commandExecutor = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "comfyui-command");
+        t.setDaemon(true);
+        return t;
+    });
 
     private final ScheduledExecutorService reconnectScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "comfyui-reconnect");
@@ -128,23 +136,25 @@ public class WebSocketClient {
                 try {
                     CommandRequest cmd = objectMapper.readValue(text, CommandRequest.class);
                     if (cmd.id != null && cmd.method != null) {
-                        String result = dispatcher.dispatch(cmd);
-                        CommandResponse resp = CommandResponse.success(cmd.id, result);
-                        ws.send(toJson(resp));
-                        log.debug("命令完成: {} → result 长度={}", cmd.method, result.length());
+                        String commandId = cmd.id;
+                        commandExecutor.submit(() -> {
+                            try {
+                                String result = dispatcher.dispatch(cmd);
+                                CommandResponse resp = CommandResponse.success(commandId, result);
+                                boolean sent = ws.send(toJson(resp));
+                                if (!sent) {
+                                    log.error("WebSocket send 失败（连接可能已关闭）: id={}", commandId);
+                                }
+                                log.info("命令完成: {} → result 长度={}", cmd.method, result.length());
+                            } catch (Exception e) {
+                                log.error("处理命令失败: id={}, error={}", commandId, e.getMessage());
+                                CommandResponse resp = CommandResponse.failure(commandId, e.getMessage());
+                                ws.send(toJson(resp));
+                            }
+                        });
                     }
                 } catch (Exception e) {
-                    log.error("处理命令失败: {}", text, e);
-                    try {
-                        // 尝试解析 id
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> msg = objectMapper.readValue(text, Map.class);
-                        String id = (String) msg.get("id");
-                        if (id != null) {
-                            CommandResponse resp = CommandResponse.failure(id, e.getMessage());
-                            ws.send(toJson(resp));
-                        }
-                    } catch (Exception ignored) {}
+                    log.error("解析命令失败: {}", text, e);
                 }
             }
 

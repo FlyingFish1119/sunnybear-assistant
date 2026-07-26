@@ -30,7 +30,7 @@ public class CommandDispatcher {
             case "generate" -> {
                 if (p.workflow == null || p.workflow.isEmpty())
                     yield error("参数 workflow 不能为空");
-                int timeout = p.timeout != null ? p.timeout : 120;
+                int timeout = p.timeout != null ? p.timeout : comfyUI.getDefaultGenerateTimeout();
                 yield toJson(comfyUI.generate(p.workflow, timeout));
             }
             case "resources" -> toJson(comfyUI.getResources());

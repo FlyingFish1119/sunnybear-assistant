@@ -36,6 +36,7 @@ public class App {
                 case "--name" -> config.setName(args[++i]);
                 case "--username" -> config.setUsername(args[++i]);
                 case "--password" -> config.setPassword(args[++i]);
+                case "--generate-timeout" -> config.setGenerateTimeout(Integer.parseInt(args[++i]));
                 case "--config" -> config = AgentConfig.load(args[++i]);
                 case "--help", "-h" -> { printUsage(); return; }
             }
@@ -44,6 +45,7 @@ public class App {
         String serverUrl = config.getServer();
         String comfyuiUrl = config.getComfyui();
         String workflowPath = config.getWorkflowPath();
+        int generateTimeout = config.getGenerateTimeout();
         String deviceName = config.getName();
         String username = config.getUsername();
         String password = config.getPassword();
@@ -72,10 +74,11 @@ public class App {
         log.info("  Server  : {}", serverUrl);
         log.info("  ComfyUI : {}", comfyuiUrl);
         log.info("  Workflow: {}", workflowPath);
+        log.info("  Timeout : {}s", generateTimeout);
         log.info("============================================");
 
         // 构建组件
-        ComfyUIHttpClient comfyUI = new ComfyUIHttpClient(comfyuiUrl, workflowPath);
+        ComfyUIHttpClient comfyUI = new ComfyUIHttpClient(comfyuiUrl, workflowPath, generateTimeout);
         CommandDispatcher dispatcher = new CommandDispatcher(comfyUI);
         WebSocketClient wsClient = new WebSocketClient(serverUrl, deviceId, deviceName,
                 username, password, dispatcher);
@@ -115,8 +118,9 @@ public class App {
                   --server <url>         SunnyBear Server 的 WebSocket 地址
                                         例如 ws://192.168.1.100:11451/comfyui-bridge
                   --comfyui <url>        ComfyUI API 地址，默认 http://127.0.0.1:8188
-                  --workflow-path <path> 工作流文件目录，默认 ./workflow
-                  --name <name>          设备名称（显示在服务端），默认使用 hostname
+                  --workflow-path <path>  工作流文件目录，默认 ./workflow
+                  --generate-timeout <s>  生图超时秒数，默认 1800（30 分钟）
+                  --name <name>           设备名称（显示在服务端），默认使用 hostname
                   --username <user>      Basic Auth 用户名（可选）
                   --password <pass>      Basic Auth 密码（可选）
                   --help, -h             显示此帮助

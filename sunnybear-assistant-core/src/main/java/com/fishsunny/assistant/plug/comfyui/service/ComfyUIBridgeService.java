@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -36,8 +37,9 @@ public class ComfyUIBridgeService extends TextWebSocketHandler {
     /** requestId → 等待响应的 CompletableFuture */
     private final Map<String, CompletableFuture<String>> pendingRequests = new ConcurrentHashMap<>();
 
-    /** 命令超时（秒），生图可能较慢 */
-    private static final int COMMAND_TIMEOUT = 180;
+    /** 命令超时（秒），默认 1800（30 分钟），可在 application.yml 中配置 */
+    @Value("${plug.comfyui.bridge.command-timeout:1800}")
+    private int commandTimeout;
 
     public ComfyUIBridgeService(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -64,11 +66,11 @@ public class ComfyUIBridgeService extends TextWebSocketHandler {
             synchronized (s) {
                 s.sendMessage(new TextMessage(commandJson));
             }
-            return future.get(COMMAND_TIMEOUT, TimeUnit.SECONDS);
+            return future.get(commandTimeout, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             pendingRequests.remove(requestId);
             throw new ToolExecutor.ToolExecuteException(
-                    "命令 [" + method + "] 超时（" + COMMAND_TIMEOUT + "s）");
+                    "命令 [" + method + "] 超时（" + commandTimeout + "s）");
         } catch (Exception e) {
             pendingRequests.remove(requestId);
             throw new ToolExecutor.ToolExecuteException(

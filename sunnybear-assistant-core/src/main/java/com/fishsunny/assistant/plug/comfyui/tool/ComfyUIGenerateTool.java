@@ -35,7 +35,7 @@ public class ComfyUIGenerateTool implements ToolHandler {
 
         register.setParameters(List.of(
                 param("workflow", "string", "ComfyUI workflow JSON 对象。包含所有节点定义和连接关系。"),
-                param("timeout", "integer", "超时秒数，默认 120 秒。复杂 workflow 建议设大一些。")
+                param("timeout", "integer", "超时秒数，默认 1800 秒（30 分钟）。复杂 workflow 建议设大一些。")
         ));
     }
 

@@ -47,8 +47,8 @@ plug:
     tool:
       enable: true
   comfyui:
-    workflow:
-      path: D:\\ComfyUi\\ComfyUI-aki-v2\\ComfyUI\\user\\default\\workflows
+    bridge:
+      command-timeout: 1800
     tool:
       enable: true
 

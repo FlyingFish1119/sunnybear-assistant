@@ -34,6 +34,9 @@ public class AgentConfig {
     /** 工作流文件目录 */
     private String workflowPath = "./workflow";
 
+    /** 生成超时（秒），默认 1800（30 分钟） */
+    private int generateTimeout = 1800;
+
     /** 设备名称（显示在服务端） */
     private String name;
 
