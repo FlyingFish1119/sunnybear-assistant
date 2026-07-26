@@ -70,6 +70,11 @@ const MarkdownUtils = (function () {
             });
             // Markdown 渲染
             html = marked.parse(processed);
+            // 重写 file/proxy URL，补上 BASE_PATH（云上部署时页面可能不在根路径）
+            html = html.replace(/(src|href)="(\/?)(file\/proxy\?[^"]+)"/g,
+                function (match, attr, slash, rest) {
+                    return attr + '="' + API.BASE_PATH + rest + '"';
+                });
             // 还原公式：用 KaTeX 渲染替换占位符
             mathBlocks.forEach(function (block, id) {
                 var placeholder = (block.type === 'block' ? '\x00MB' : '\x00MI') + id + '\x00';
