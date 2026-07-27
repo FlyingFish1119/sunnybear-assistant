@@ -9,6 +9,7 @@ package com.fishsunny.assistant.engine.tool.instance.browser;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.extension.PlaywrightBrowserService;
@@ -16,13 +17,18 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
+import com.fishsunny.assistant.mvc.controller.ChatController;
+import com.fishsunny.assistant.variable.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketSession;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @ToolKitComponent(BrowserToolKit.class)
 @ConditionalOnExpression("${engine.tool.browser.enable:true} && ${engine.tool.browser.navigate.enable:true}")
@@ -43,7 +49,7 @@ public class BrowserNavigateTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("打开指定 URL，会话状态（cookie、登录态等）跨操作保持。")
+                .setDescription("打开指定 URL，会话状态（cookie、登录态等）跨操作保持。（每次需用户确认）")
                 .setRequired(List.of("url"));
 
         ToolRegister.Parameters urlParam = new ToolRegister.Parameters()
@@ -62,11 +68,23 @@ public class BrowserNavigateTool implements ToolHandler {
     @Override
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context)
             throws ToolExecutor.ToolExecuteException {
+        String uuid = UUID.randomUUID().toString();
         try {
+            if (!(context.get("session") instanceof WebSocketSession session)) {
+                throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
+            }
+
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
 
             if (!StringUtils.hasText(arguments.getUrl())) {
                 throw new ToolExecutor.ToolExecuteException("参数 url 不能为空");
+            }
+
+            // 始终需要用户确认
+            ask(uuid, session, arguments);
+
+            if (!session.isOpen()) {
+                throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
             }
 
             int timeout = DEFAULT_TIMEOUT_MS;
@@ -82,6 +100,32 @@ public class BrowserNavigateTool implements ToolHandler {
             throw e;
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("浏览器导航失败: " + e.getMessage());
+        } finally {
+            ChatController.cleanupConfirm(uuid);
+        }
+    }
+
+    /**
+     * 向用户发送导航确认请求，等待用户确认
+     */
+    private void ask(String uuid, WebSocketSession session, Arguments arguments) throws Exception {
+        String message = "### 浏览器导航请求\n\n"
+                + "AI 请求在浏览器中打开以下 URL：\n\n"
+                + "**目标地址：** `" + arguments.getUrl() + "`\n\n"
+                + "> ⚠️ 请确认此导航操作安全后再允许执行。";
+
+        ToolAsk confirmation = new ToolAsk()
+                .setId(uuid)
+                .setToolName(NAME)
+                .setMessage(message);
+
+        session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
+        Boolean result = ChatController.awaitConfirm(uuid, 30);
+        if (result == null) {
+            throw new ToolExecutor.ToolExecuteException("用户未确认浏览器导航操作，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整 URL。");
+        }
+        if (!result) {
+            throw new ToolExecutor.ToolExecuteException("用户拒绝了浏览器导航操作，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整 URL。");
         }
     }
 
