@@ -34,7 +34,7 @@ import org.jsoup.nodes.Comment;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
-import org.jsoup.select.Elements;
+
 import org.jsoup.select.NodeFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -228,47 +228,55 @@ public class WebReaderTool implements ToolHandler {
     }
 
     /**
-     * 预处理 HTML，删除噪音内容，减少后续 Tika/AI 处理的数据量
+     * 预处理 HTML，删除噪音内容，减少后续 Tika/AI 处理的数据量。
+     * <p>
+     * 优化要点：减少 DOM 遍历次数，将多次 select 合并，空元素/注释删除合并为单次树遍历。
      */
     private void cleanHtml(Document document) {
-        // 1. 删除 script、style、noscript、head、link、meta、iframe、svg 等标签
-        document.select("script, style, noscript, head, link, meta, iframe, svg").remove();
+        // 1. 合并删除：标签选择器 + 语义化非内容标签 → 一次遍历
+        document.select(
+                "script, style, noscript, head, link, meta, iframe, svg, " +
+                "nav, footer, aside"
+        ).remove();
 
-        // 2. 删除语义化的非内容标签
-        document.select("nav, footer, aside").remove();
-
-        // 3. 删除 HTML 注释
-        removeComments(document);
-
-        // 4. 删除 class/id 中包含明显非内容关键词的元素
+        // 2. 合并删除：class/id 噪音关键词 → 一次遍历（原来每个模式一次遍历，共 18 次）
         String[] noisePatterns = {
                 "sidebar", "comment", "widget", "related", "recommend",
                 "share", "social", "cookie", "popup", "sponsor", "promo",
                 "advertisement", "advert", "navbar", "breadcrumb", "pagination",
                 "copyright", "subscribe", "newsletter"
         };
-        for (String pattern : noisePatterns) {
-            document.select("[class*=" + pattern + "], [id*=" + pattern + "]").remove();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < noisePatterns.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append("[class*=").append(noisePatterns[i]).append("], ");
+            sb.append("[id*=").append(noisePatterns[i]).append("]");
         }
+        document.select(sb.toString()).remove();
 
-        // 5. 删除隐藏元素
+        // 3. 合并删除：隐藏元素 → 一次遍历
         document.select(
                 "[style*=\"display:none\"], [style*=\"display: none\"], " +
                 "[style*=\"visibility:hidden\"], [style*=\"visibility: hidden\"], " +
                 "[aria-hidden=\"true\"], [hidden]"
         ).remove();
 
-        // 6. 迭代删除空元素
-        removeEmptyElements(document);
+        // 4. 单次遍历：删除注释 + 自底向上删除空元素（原来两次遍历，且空元素是 O(n²) while 循环）
+        removeCommentsAndEmptyElements(document);
     }
 
     /**
-     * 移除 HTML 中的所有注释节点
+     * 单次 DOM 遍历同时完成：①删除注释节点  ②自底向上删除空元素。
+     * <p>
+     * 利用 Jsoup {@link NodeFilter} 的 tail() 回调天然是自底向上（子节点先于父节点触发 tail），
+     * 子节点被移除后父节点自动变为空元素，一次遍历即可完成，复杂度 O(n)。
+     * 替代原来 O(n²) 的 while 循环 + 每次全量 {@code select("*")} 的做法。
      */
-    private void removeComments(Document document) {
+    private void removeCommentsAndEmptyElements(Document document) {
         document.filter(new NodeFilter() {
             @Override
             public FilterResult head(@NonNull Node node, int depth) {
+                // 注释节点直接移除，不遍历其子节点（注释无子节点，但返回 REMOVE 跳过无意义的深度遍历）
                 if (node instanceof Comment) {
                     return FilterResult.REMOVE;
                 }
@@ -277,30 +285,20 @@ public class WebReaderTool implements ToolHandler {
 
             @Override
             public FilterResult tail(@NonNull Node node, int depth) {
+                if (node instanceof Element) {
+                    Element el = (Element) node;
+                    // 保留自闭合或有意义的空元素
+                    if (el.is("br, hr, img, input, textarea, area, base, col, embed, source, track, wbr")) {
+                        return FilterResult.CONTINUE;
+                    }
+                    // tail 触发时子元素已全部处理完毕，若此时无文本且无剩余子元素则可安全移除
+                    if (el.ownText().trim().isEmpty() && el.children().isEmpty()) {
+                        return FilterResult.REMOVE;
+                    }
+                }
                 return FilterResult.CONTINUE;
             }
         });
-    }
-
-    /**
-     * 迭代删除空元素（自身无文本，且无子元素）
-     * 跳过 br、hr、img 等自闭合或有意义的空元素
-     */
-    private void removeEmptyElements(Document document) {
-        boolean changed = true;
-        while (changed) {
-            changed = false;
-            Elements all = document.select("*");
-            for (Element el : all) {
-                if (el.is("br, hr, img, input, textarea, area, base, col, embed, source, track, wbr")) {
-                    continue;
-                }
-                if (el.ownText().trim().isEmpty() && el.children().isEmpty()) {
-                    el.remove();
-                    changed = true;
-                }
-            }
-        }
     }
 
     @Override
