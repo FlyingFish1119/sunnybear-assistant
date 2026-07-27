@@ -242,7 +242,7 @@ public class ChatProcessor {
     private static final Set<String> EXCLUDE_TOOLS = new HashSet<>();
     static {
         EXCLUDE_TOOLS.add(MetaSOAISearchTool.NAME);
-        EXCLUDE_TOOLS.add(WebReaderTool.NAME);
+        //EXCLUDE_TOOLS.add(WebReaderTool.NAME);
     }
 
     /**

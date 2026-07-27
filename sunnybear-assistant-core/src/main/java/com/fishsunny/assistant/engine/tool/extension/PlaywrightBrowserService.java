@@ -30,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -105,6 +106,9 @@ public class PlaywrightBrowserService {
     /** Chromium 安装锁，防止多线程同时触发安装 */
     private final Object chromiumInstallLock = new Object();
 
+    /** fetch 模式的硬超时执行器，Java 层面兜底防止 Playwright 内部超时失效 */
+    private final ExecutorService fetchExecutor = Executors.newCachedThreadPool();
+
     // ==================== 结果类型 ====================
 
     public record FetchResult(String title, String htmlContent) {}
@@ -114,8 +118,34 @@ public class PlaywrightBrowserService {
     /**
      * 使用独立的 Playwright 实例抓取网页，调用结束后完全销毁。
      * 与交互模式的 session 完全隔离，互不影响。
+     * <p>
+     * 包含 Java 层面硬超时兜底：即使 Playwright 内部超时失效卡死，
+     * {@code Future.get(timeoutMs + 5000)} 也会强制中断，确保不会无限期阻塞。
      */
     public FetchResult fetch(String url, int timeoutMs, boolean waitNet) throws ToolExecutor.ToolExecuteException {
+        Future<FetchResult> future = fetchExecutor.submit(() -> fetchInternal(url, timeoutMs, waitNet));
+        try {
+            return future.get(timeoutMs + 5_000, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            log.error("Playwright: fetch 触发 Java 硬超时（{}ms），已强制中断。URL: {}", timeoutMs, url);
+            throw new ToolExecutor.ToolExecuteException(
+                    "无头浏览器抓取硬超时（" + timeoutMs + "ms），已强制中断。URL: " + url);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            future.cancel(true);
+            throw new ToolExecutor.ToolExecuteException("无头浏览器抓取被中断。URL: " + url);
+        } catch (Exception e) {
+            log.error("Playwright: fetch 操作异常: {}", e.getMessage(), e);
+            throw new ToolExecutor.ToolExecuteException(
+                    "无头浏览器抓取失败: " + e.getMessage() + "。URL: " + url);
+        }
+    }
+
+    /**
+     * fetch 的实际执行逻辑，运行在独立线程中，由 {@link #fetch} 的 Future 超时兜底。
+     */
+    private FetchResult fetchInternal(String url, int timeoutMs, boolean waitNet) throws ToolExecutor.ToolExecuteException {
         try (Playwright pw = Playwright.create()) {
             Browser browser = launchBrowser(pw);
             BrowserContext context = browser.newContext(new Browser.NewContextOptions()
@@ -405,6 +435,7 @@ public class PlaywrightBrowserService {
             closeSession(state);
         });
         sessions.invalidateAll();
+        fetchExecutor.shutdownNow();
         log.info("Playwright: 已关闭");
     }
 }
