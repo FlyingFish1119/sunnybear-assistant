@@ -13,8 +13,6 @@ import org.springframework.util.StringUtils;
 import java.io.File;
 import java.io.InputStream;
 
-// 什么叫做模型更新了我项目还要更新SpringAI依赖?你活不活了?
-
 @EnableScheduling
 @SpringBootApplication
 public class App {

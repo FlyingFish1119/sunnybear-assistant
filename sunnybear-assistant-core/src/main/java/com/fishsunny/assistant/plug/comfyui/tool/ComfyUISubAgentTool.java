@@ -69,7 +69,7 @@ public class ComfyUISubAgentTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        ComfyUI 图像生成子 Agent。任何关于 ComfyUI 的操作优先使用此工具""")
+                        ComfyUI 图像生成子 Agent。任何关于 ComfyUI 的操作优先使用此工具，同时图像生成结束后总是用 markdown 格式展示图片""")
                 .setRequired(List.of("target"));
 
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
