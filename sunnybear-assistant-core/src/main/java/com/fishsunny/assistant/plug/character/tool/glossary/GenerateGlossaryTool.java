@@ -192,7 +192,7 @@ public class GenerateGlossaryTool implements ToolHandler {
                         new ChatMessage().system(buildSystemPrompt()),
                         new ChatMessage().user(buildUserPrompt(characterSetting, userPrompt))
                 ))
-                .loadSettings(missionAISettings);
+                .loadSettings(new AISettings().copy(missionAISettings).setResponseFormat("json_object"));
 
         AtomicReference<String> afterResolve = new AtomicReference<>("");
         chatHttpHandler.translate(

@@ -103,6 +103,7 @@ public class WebReaderTool implements ToolHandler {
                        如果目标网页有大量异步加载的内容（如 SPA 页面），建议设置为 true。""");
 
         register.setParameters(List.of(urlParam, targetParam, modeParam, waitNetParam));
+        register.setTimeoutMs(settings.getBrowserTimeoutMs() * 2);
 
         this.objectMapper = objectMapper;
         this.summarySettings = summarySettings;
@@ -119,7 +120,7 @@ public class WebReaderTool implements ToolHandler {
             if (!StringUtils.hasText(arguments.getUrl())) {
                 throw new ToolExecutor.ToolExecuteException("参数 url 不能为空");
             }
-            Object present = cache.getIfPresent(arguments.getUrl());
+            Object present = cache.getIfPresent(arguments.getKey());
             if (present instanceof ToolExecutor.ToolExecuteResponse response) {
                 return response;
             }
@@ -233,13 +234,13 @@ public class WebReaderTool implements ToolHandler {
      * 优化要点：减少 DOM 遍历次数，将多次 select 合并，空元素/注释删除合并为单次树遍历。
      */
     private void cleanHtml(Document document) {
-        // 1. 合并删除：标签选择器 + 语义化非内容标签 → 一次遍历
+        // 1. 合并删除：标签选择器 + 语义化非内容标签
         document.select(
                 "script, style, noscript, head, link, meta, iframe, svg, " +
                 "nav, footer, aside"
         ).remove();
 
-        // 2. 合并删除：class/id 噪音关键词 → 一次遍历（原来每个模式一次遍历，共 18 次）
+        // 2. 合并删除：class/id 噪音关键词
         String[] noisePatterns = {
                 "sidebar", "comment", "widget", "related", "recommend",
                 "share", "social", "cookie", "popup", "sponsor", "promo",
@@ -254,14 +255,14 @@ public class WebReaderTool implements ToolHandler {
         }
         document.select(sb.toString()).remove();
 
-        // 3. 合并删除：隐藏元素 → 一次遍历
+        // 3. 合并删除：隐藏元素
         document.select(
                 "[style*=\"display:none\"], [style*=\"display: none\"], " +
                 "[style*=\"visibility:hidden\"], [style*=\"visibility: hidden\"], " +
                 "[aria-hidden=\"true\"], [hidden]"
         ).remove();
 
-        // 4. 单次遍历：删除注释 + 自底向上删除空元素（原来两次遍历，且空元素是 O(n²) while 循环）
+        // 4. 单次遍历：删除注释 + 自底向上删除空元素
         removeCommentsAndEmptyElements(document);
     }
 
@@ -285,8 +286,7 @@ public class WebReaderTool implements ToolHandler {
 
             @Override
             public FilterResult tail(@NonNull Node node, int depth) {
-                if (node instanceof Element) {
-                    Element el = (Element) node;
+                if (node instanceof Element el) {
                     // 保留自闭合或有意义的空元素
                     if (el.is("br, hr, img, input, textarea, area, base, col, embed, source, track, wbr")) {
                         return FilterResult.CONTINUE;

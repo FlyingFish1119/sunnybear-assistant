@@ -261,7 +261,7 @@ public class BattleEngineTool implements ToolHandler {
                         new ChatMessage().system(systemPrompt),
                         new ChatMessage().user(userPrompt)
                 ))
-                .loadSettings(missionAISettings);
+                .loadSettings(new AISettings().copy(missionAISettings).setResponseFormat("json_object"));
 
         AtomicReference<String> afterResolve = new AtomicReference<>("");
         chatHttpHandler.translate(
@@ -566,9 +566,9 @@ public class BattleEngineTool implements ToolHandler {
 
         userPrompt.append("\n请根据上述战场状态和决策原则，选择最优技能索引。只返回 JSON：{\"skillIndex\": N}");
 
-        // 敌人行动
+        // 敌人行动 - JSON 模式
         ChatRequest request = new ChatRequest()
-                .loadSettings(missionAISettings)
+                .loadSettings(new AISettings().copy(missionAISettings).setResponseFormat("json_object"))
                 .setMessages(List.of(new ChatMessage().system(systemPrompt), new ChatMessage().user(userPrompt.toString())));
         AtomicReference<String> content = new AtomicReference<>();
         chatHttpHandler.translate(UUID.randomUUID().toString(), missionAISettings.getAdapterName(), request, missionAISettings.getStream(), null,

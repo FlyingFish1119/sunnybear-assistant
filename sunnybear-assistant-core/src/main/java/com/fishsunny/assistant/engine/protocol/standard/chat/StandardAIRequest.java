@@ -36,8 +36,21 @@ public class StandardAIRequest implements AIRequest {
 
     private String reasoning_effort;
 
+    /** 响应格式，null 时不序列化 */
+    private ResponseFormat response_format;
+
     private List<StandardToolRegister> tools = new ArrayList<>();
 
     public StandardAIRequest() {
+    }
+
+    @Data
+    @Accessors(chain = true)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class ResponseFormat {
+        private String type;
+
+        public ResponseFormat() {}
+        public ResponseFormat(String type) { this.type = type; }
     }
 }

@@ -30,6 +30,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 @Component
@@ -110,8 +112,30 @@ public class ToolExecutor {
         if (handler == null) {
             return new ToolExecuteResponse(toolName, "工具[" + toolName + "]不存在").setSucceed(false);
         }
+        Integer timeoutMs = handler.getRegister().getTimeoutMs();
+        if (timeoutMs == null) {
+            // 无超时限制，直接同步执行
+            return executeNow(handler, toolName, arguments, context);
+        }
+        // 有超时限制，通过 CompletableFuture 做硬超时
+        CompletableFuture<ToolExecuteResponse> future = CompletableFuture.supplyAsync(
+                () -> executeNow(handler, toolName, arguments, context), executorService);
         try {
-            // 执行前对 JSON 参数做一次修复，处理 AI 模型常见的转义遗漏问题
+            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            log.warn("工具[{}]执行超时（{}ms），已强制中断", toolName, timeoutMs);
+            return new ToolExecuteResponse(toolName,
+                    "工具[" + toolName + "]执行超时（" + timeoutMs + "ms），已强制中断").setSucceed(false);
+        } catch (Exception e) {
+            return new ToolExecuteResponse(toolName,
+                    "工具[" + toolName + "]执行异常，原因是：" + e.getMessage()).setSucceed(false);
+        }
+    }
+
+    /** 实际执行工具调用，抽取为独立方法供超时包装复用 */
+    private ToolExecuteResponse executeNow(ToolHandler handler, String toolName, String arguments, Map<String, Object> context) {
+        try {
             String safeArguments = repairJson(arguments);
             return handler.action(safeArguments, context).setSucceed(true);
         } catch (ToolExecuteException e) {

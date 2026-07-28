@@ -267,7 +267,7 @@ public class TaskRunTool implements ToolHandler {
                 .replace("${stepDesc}", step.getStepDesc());
 
         ChatRequest classificationRequest = new ChatRequest()
-                .loadSettings(missionAISettings)
+                .loadSettings(new AISettings().copy(missionAISettings).setResponseFormat("json_object"))
                 .setMessages(List.of(new ChatMessage().user(classificationPrompt)));
 
         // 3. 调用 AI 进行分类

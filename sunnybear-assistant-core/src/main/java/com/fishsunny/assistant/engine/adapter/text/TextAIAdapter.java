@@ -55,6 +55,12 @@ public class TextAIAdapter extends TextBaseAIAdapter {
                 .setMessages(convertToTextMessage(chatRequest.getMessages()))
                 .setTools(chatRequest.getTools());
 
+        // 映射 response_format
+        if (settings.getResponse_format() != null) {
+            textAIRequest.setResponse_format(
+                    new TextAIRequest.ResponseFormat(settings.getResponse_format().getType()));
+        }
+
         return textAIRequest;
     }
 

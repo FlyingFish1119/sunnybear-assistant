@@ -25,6 +25,9 @@ public class ToolRegister {
 
     private List<Parameters> parameters;
 
+    /** 工具执行超时时间（毫秒），为 null 表示不限制超时 */
+    private Integer timeoutMs;
+
     public ToolRegister() {
     }
 

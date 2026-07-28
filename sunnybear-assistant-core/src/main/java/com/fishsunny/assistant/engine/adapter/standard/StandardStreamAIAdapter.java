@@ -63,6 +63,13 @@ public class StandardStreamAIAdapter extends StandardBaseAIAdapter {
                 .setMessages(convertToStandardMessage(chatRequest.getMessages()))
                 .setTools(chatRequest.getTools());
 
+        // 映射 response_format
+        if (settings.getResponse_format() != null) {
+            standardAIRequest.setResponse_format(
+                    new com.fishsunny.assistant.engine.protocol.standard.chat.StandardAIRequest.ResponseFormat(
+                            settings.getResponse_format().getType()));
+        }
+
         return standardAIRequest;
     }
 

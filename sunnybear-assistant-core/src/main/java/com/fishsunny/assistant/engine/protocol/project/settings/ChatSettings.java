@@ -45,6 +45,9 @@ public class ChatSettings {
     //推理努力程度，控制模型在推理时的思考深度，可选值：low / high / max
     private String reasoning_effort;
 
+    /** 响应格式，对应 OpenAI response_format。null 表示不设置 */
+    private ResponseFormat response_format;
+
     public ChatSettings() {
     }
 
@@ -58,5 +61,17 @@ public class ChatSettings {
         this.temperature = aiSettings.getTemperature();
         this.top_p = aiSettings.getTop_p();
         this.reasoning_effort = aiSettings.getReasoningEffort();
+        if (aiSettings.getResponseFormat() != null) {
+            this.response_format = new ResponseFormat(aiSettings.getResponseFormat());
+        }
+    }
+
+    @Data
+    @Accessors(chain = true)
+    public static class ResponseFormat {
+        private String type;
+
+        public ResponseFormat() {}
+        public ResponseFormat(String type) { this.type = type; }
     }
 }

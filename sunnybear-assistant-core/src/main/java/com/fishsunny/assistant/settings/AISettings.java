@@ -50,6 +50,9 @@ public class AISettings {
     //Default = 0;
     private Double presencePenalty;
 
+    /** 临时变量，用于系统内部在特定场景下强制 JSON 输出模式。可选值：json_object、json_schema。非空时设置到 API 的 response_format */
+    private String responseFormat;
+
     //采样温度，介于 0 和 2 之间。更高的值，如 0.8，会使输出更随机，而更低的值，如 0.2，会使其更加集中和确定。 我们通常建议可以更改这个值或者更改 top_p，但不建议同时对两者进行修改。
     //Default = 1;
     private Double temperature;
@@ -71,6 +74,7 @@ public class AISettings {
                 .setFrequencyPenalty(settings.getFrequencyPenalty())
                 .setMaxTokens(settings.getMaxTokens())
                 .setPresencePenalty(settings.getPresencePenalty())
+                .setResponseFormat(settings.getResponseFormat())
                 .setTemperature(settings.getTemperature())
                 .setTop_p(settings.getTop_p());
     }
