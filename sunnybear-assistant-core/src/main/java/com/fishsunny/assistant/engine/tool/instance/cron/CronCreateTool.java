@@ -49,7 +49,7 @@ public class CronCreateTool implements ToolHandler {
                         new ToolRegister.Parameters("title", "string", "定时任务标题，简洁明确。如'每日早报'"),
                         new ToolRegister.Parameters("description", "string", "任务描述，说明这个定时任务的用途（可选）"),
                         new ToolRegister.Parameters("cron", "string", "cron 表达式，6 字段空格分隔：秒(0-59) 分(0-59) 时(0-23) 日(1-31) 月(1-12) 周(0-7)。如 '0 0 9 * * *' 表示每天上午 9:00，'0 */5 * * * *' 表示每 5 分钟"),
-                        new ToolRegister.Parameters("message", "string", "定时触发时要发送给 AI 的消息内容，系统会以此消息创建一个新的 chat_session 并执行"),
+                        new ToolRegister.Parameters("message", "string", "定时触发时要发送给 AI 的消息内容，注意你应该以用户的口吻生成这条消息"),
                         new ToolRegister.Parameters("enable_pro", "boolean", "是否启用高级模型（默认 false）。对于需要复杂推理的任务可设为 true")
                 ));
     }
