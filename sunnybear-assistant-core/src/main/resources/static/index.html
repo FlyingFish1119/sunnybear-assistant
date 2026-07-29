@@ -837,8 +837,8 @@
                     request.files = this.uploadedFiles;
                 }
                 this.ws.send(JSON.stringify(request));
-                this.inputText = '';
-                this.uploadedFiles = [];
+                // 不在这里清空 inputText/uploadedFiles，改为在收到服务端 init_user 确认后再清空
+                // 避免移动端 WebSocket 假连接导致消息丢失
             },
 
             /**
@@ -915,6 +915,10 @@
                         }
 
                         this.currentMessages.push(...response.messages);
+
+                        // 服务端已确认收到消息，此时清空输入框和已上传文件
+                        this.inputText = '';
+                        this.uploadedFiles = [];
 
                         // 生成临时 ID，避免 :key 为 undefined
                         let assistantMessage = Utils.getDefaultAssistantMessage(response.sessionId, last.id);
