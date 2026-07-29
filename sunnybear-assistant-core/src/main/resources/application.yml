@@ -80,6 +80,8 @@ engine:
       enable: true
     session:
       enable: true
+    cron:
+      enable: true
   adapter-register:
     register:
       # Kimi（Moonshot）流式

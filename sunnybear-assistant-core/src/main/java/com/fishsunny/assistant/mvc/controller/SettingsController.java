@@ -196,6 +196,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
         } catch (Exception e) {
+            log.error("保存 AI chat 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -213,6 +214,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
         } catch (Exception e) {
+            log.error("保存 AI chat_pro 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -228,6 +230,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
         } catch (Exception e) {
+            log.error("保存 AI summary 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -243,6 +246,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
         } catch (Exception e) {
+            log.error("保存 AI title 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -258,6 +262,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
         } catch (Exception e) {
+            log.error("保存 AI ocr 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -273,6 +278,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
         } catch (Exception e) {
+            log.error("保存 AI mission 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -288,6 +294,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
         } catch (Exception e) {
+            log.error("保存 AI task 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -379,6 +386,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(toolSettingsPath), toolSettingsMap);
         } catch (Exception e) {
+            log.error("保存 CommandTool 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -401,6 +409,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(toolSettingsPath), toolSettingsMap);
         } catch (Exception e) {
+            log.error("保存 ExtensionScriptTool 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -419,6 +428,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(toolSettingsPath), toolSettingsMap);
         } catch (Exception e) {
+            log.error("保存 MetaSOAISearchTool 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -444,6 +454,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(toolSettingsPath), toolSettingsMap);
         } catch (Exception e) {
+            log.error("保存 FileWriteTool 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -469,6 +480,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(toolSettingsPath), toolSettingsMap);
         } catch (Exception e) {
+            log.error("保存 FileEditTool 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");
@@ -494,6 +506,7 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(toolSettingsPath), toolSettingsMap);
         } catch (Exception e) {
+            log.error("保存 FileDeleteTool 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");

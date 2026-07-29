@@ -6,9 +6,9 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 
-import java.io.InputStream;
 import java.net.http.HttpClient;
 import java.util.List;
+import java.util.stream.Stream;
 
 @Getter
 public abstract class AIAdapter {
@@ -36,8 +36,8 @@ public abstract class AIAdapter {
 
     public abstract AIResponse convertToMaster(AIResponse response);
 
-    protected abstract InputStream establishHttpClient(AIRequest request) throws Exception;
-    public final InputStream connect(AIRequest request) throws Exception {
+    protected abstract Stream<String> establishHttpClient(AIRequest request) throws Exception;
+    public final Stream<String> connect(AIRequest request) throws Exception {
         if (request == null) {
             throw new Exception("null request");
         }

@@ -710,6 +710,11 @@
                         this.currentMessages = result.data;
                         let streamingMessage = this.streamingMessages.find(m => m.sessionId === session.id);
                         if (streamingMessage) {
+                            // 如果流式消息已被 init_assistant 赋予 id（已入库），
+                            // 则用流式消息替换 DB 中的同名消息，避免重复显示
+                            if (streamingMessage.id) {
+                                this.currentMessages = this.currentMessages.filter(m => m.id !== streamingMessage.id);
+                            }
                             this.currentMessages.push(streamingMessage);
                         }
                         this.scrollToBottom(true);

@@ -28,13 +28,13 @@ import com.fishsunny.assistant.variable.RoleVariable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public abstract class TextBaseAIAdapter extends AIAdapter {
 
@@ -66,7 +66,7 @@ public abstract class TextBaseAIAdapter extends AIAdapter {
     }
 
     @Override
-    protected InputStream establishHttpClient(AIRequest request) throws Exception {
+    protected Stream<String> establishHttpClient(AIRequest request) throws Exception {
         HttpRequest httpRequest = HttpRequest.newBuilder()
                 .uri(URI.create(super.baseUrl))
                 .header("Content-Type", "application/json")
@@ -74,10 +74,10 @@ public abstract class TextBaseAIAdapter extends AIAdapter {
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
                 .build();
 
-        HttpResponse<InputStream> response = this.httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofInputStream());
+        HttpResponse<Stream<String>> response = this.httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
         if (response.statusCode() != 200) {
-            try (InputStream inputStream = response.body()) {
-                String errorMessage = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            try (Stream<String> bodyStream = response.body()) {
+                String errorMessage = bodyStream.collect(Collectors.joining("\n"));
                 log.info(errorMessage);
                 throw new RuntimeException("Invalid status code: " + response.statusCode() + ", error: " + errorMessage);
             }

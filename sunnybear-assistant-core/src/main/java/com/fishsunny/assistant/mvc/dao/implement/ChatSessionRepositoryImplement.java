@@ -41,12 +41,20 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         } catch (Exception e) {
             log.debug("Migration: enable_pro column may already exist, skipping. {}", e.getMessage());
         }
+        // 自动迁移：为旧数据库添加 type 列
+        try {
+            jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN type TEXT NOT NULL DEFAULT 'chat'");
+            log.info("Migration: added type column to chat_session");
+        } catch (Exception e) {
+            log.debug("Migration: type column may already exist, skipping. {}", e.getMessage());
+        }
     }
 
     private final RowMapper<ChatSession> rowMapper = (resultSet, i) -> {
         ChatSession chatSession = new ChatSession();
         chatSession.setId(resultSet.getString("id"));
         chatSession.setName(resultSet.getString("name"));
+        chatSession.setType(resultSet.getString("type"));
         chatSession.setCreateTime(LocalDateTime.parse(resultSet.getString("create_time"), formatter));
         chatSession.setUpdateTime(LocalDateTime.parse(resultSet.getString("update_time"), formatter));
         chatSession.setEnablePro(resultSet.getInt("enable_pro") == 1);
@@ -58,13 +66,14 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         String sql =
                 """
                 INSERT INTO chat_session
-                (id, name, create_time, update_time, enable_pro)
+                (id, name, type, create_time, update_time, enable_pro)
                 VALUES
-                (?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?)
                 """;
         jdbcTemplate.update(sql,
                 chatSession.getId(),
                 chatSession.getName(),
+                chatSession.getType() != null ? chatSession.getType() : "chat",
                 chatSession.getCreateTime().format(formatter),
                 chatSession.getUpdateTime().format(formatter),
                 chatSession.getEnablePro() != null && chatSession.getEnablePro() ? 1 : 0
@@ -118,17 +127,20 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
 
     @Override
     public List<ChatSession> selectAll() {
-        String sql = "SELECT * FROM chat_session ORDER BY update_time DESC";
+        String sql = "SELECT * FROM chat_session WHERE type = 'chat' ORDER BY update_time DESC";
         return jdbcTemplate.query(sql, rowMapper);
+    }
+
+    @Override
+    public List<ChatSession> selectByType(String type) {
+        String sql = "SELECT * FROM chat_session WHERE type = ? ORDER BY update_time DESC";
+        return jdbcTemplate.query(sql, rowMapper, type);
     }
 
     @Override
     public ChatSession selectById(String id) {
         String sql = "SELECT * FROM chat_session WHERE id = ?";
-        ChatSession chatSession = jdbcTemplate.queryForObject(sql, rowMapper, id);
-        if (chatSession == null) {
-            throw new RuntimeException("Session not found");
-        }
-        return chatSession;
+        List<ChatSession> results = jdbcTemplate.query(sql, rowMapper, id);
+        return results.isEmpty() ? null : results.get(0);
     }
 }

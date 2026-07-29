@@ -70,6 +70,17 @@ const ChatSidebar = {
                        title="设置">
                 <i ref="settings" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="settings"></i>
             </el-button>
+            <!-- 定时器 / 对话 切换 -->
+            <button class="sidebar-list-mode-toggle"
+                    :title="listMode === 'chat' ? '切换到定时器会话' : '切换到对话会话'"
+                    @click="toggleListMode">
+                <span class="list-mode-icon" :class="{ active: listMode === 'chat' }">
+                    <i data-lucide="message-circle" style="width:20px;height:20px"></i>
+                </span>
+                <span class="list-mode-icon" :class="{ active: listMode === 'cron' }">
+                    <i data-lucide="clock" style="width:20px;height:20px"></i>
+                </span>
+            </button>
         </div>
     </div>
     <!-- 移动端侧边栏遮罩 -->
@@ -90,6 +101,8 @@ const ChatSidebar = {
         return {
             /** 会话列表（组件内部唯一数据源） */
             sessions: [],
+            /** 当前列表模式：chat / cron */
+            listMode: 'chat',
             sidebarOpen: false,
             contextMenu: {
                 visible: false,
@@ -126,18 +139,26 @@ const ChatSidebar = {
         },
 
         /**
-         * 从服务端重新获取会话列表。
+         * 从服务端重新获取会话列表（根据当前 listMode）。
          * 由父组件在 WebSocket 事件（###START###）时通过 ref 调用。
          */
         refresh: async function () {
             try {
-                let result = await API.session.getAll();
+                let result = await API.session.getAll(this.listMode);
                 if (result.status === 200) {
                     this.sessions = result.data;
                 }
             } catch (error) {
                 console.error('获取会话列表失败:', error);
             }
+        },
+
+        /**
+         * 切换列表模式：chat ↔ cron
+         */
+        toggleListMode: function () {
+            this.listMode = this.listMode === 'chat' ? 'cron' : 'chat';
+            this.refresh();
         },
 
         /**

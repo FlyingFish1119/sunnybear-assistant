@@ -22,6 +22,8 @@ public class ChatSession {
 
     private String name;
 
+    private String type = "chat";
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 

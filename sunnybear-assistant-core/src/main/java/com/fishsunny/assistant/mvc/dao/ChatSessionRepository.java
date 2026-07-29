@@ -22,5 +22,8 @@ public interface ChatSessionRepository {
 
     public List<ChatSession> selectAll();
 
+    /** 按 type 筛选会话列表（如 'chat'、'cron'） */
+    public List<ChatSession> selectByType(String type);
+
     public ChatSession selectById(String id);
 }

@@ -2,16 +2,15 @@
 CREATE TABLE IF NOT EXISTS chat_session (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'chat',
     create_time TEXT NOT NULL,
     update_time TEXT NOT NULL,
     enable_pro INTEGER NOT NULL DEFAULT 0
 );
 -- 索引：按会话 ID 加速查询
 CREATE INDEX IF NOT EXISTS idx_chat_session_id ON chat_session(id);
-
--- 迁移：如果表已存在但缺少 enable_pro 列：
--- ALTER TABLE chat_session ADD COLUMN enable_pro INTEGER NOT NULL DEFAULT 0;
-
+-- 索引：按 type 加速过滤
+CREATE INDEX IF NOT EXISTS idx_chat_session_type ON chat_session(type);
 
 -- ChatMessage 建表语句
 CREATE TABLE IF NOT EXISTS chat_message (
@@ -109,7 +108,9 @@ CREATE INDEX IF NOT EXISTS idx_task_create_time ON task(create_time);
 CREATE TABLE IF NOT EXISTS task_prompt (
     type        TEXT PRIMARY KEY,
     prompt      TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT ''
+    description TEXT NOT NULL DEFAULT '',
+    create_time TEXT NOT NULL,
+    update_time TEXT NOT NULL
 );
 
 -- TaskStep 建表语句
@@ -127,3 +128,15 @@ CREATE TABLE IF NOT EXISTS task_step (
 -- 索引：按任务 ID 加速查询
 CREATE INDEX IF NOT EXISTS idx_task_step_task_id ON task_step(task_id);
 
+CREATE TABLE IF NOT EXISTS cron_job (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    cron        TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    enable_pro  INTEGER NOT NULL DEFAULT 0,
+    create_time TEXT NOT NULL,
+    update_time TEXT NOT NULL
+);
+-- 索引：按定时任务 ID 加速查询
+CREATE INDEX IF NOT EXISTS idx_cron_job_id ON cron_job(id);

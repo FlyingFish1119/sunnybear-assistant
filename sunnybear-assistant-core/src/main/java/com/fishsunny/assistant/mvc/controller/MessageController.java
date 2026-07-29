@@ -45,6 +45,7 @@ public class MessageController {
             List<ChatMessage> history = chatMessageService.getConversationHistory(sessionId);
             return new RestResponse().success(history);
         } catch (Exception e) {
+            log.error("获取历史记录失败: sessionId={}", sessionId, e);
             return new RestResponse().error("获取历史记录失败: " + e.getMessage());
         }
     }
@@ -58,6 +59,7 @@ public class MessageController {
             chatMessageService.deleteById(id);
             return new RestResponse().success("删除成功");
         } catch (Exception e) {
+            log.error("删除历史记录失败: id={}", id, e);
             return new RestResponse().error("删除历史记录失败: " + e.getMessage());
         }
     }
@@ -76,6 +78,7 @@ public class MessageController {
 
             return new RestResponse().success("已切换分支，更新 " + affected + " 条消息");
         } catch (Exception e) {
+            log.error("切换分支失败: id={}, direction={}", id, direction, e);
             return new RestResponse().error("切换分支失败: " + e.getMessage());
         }
     }
@@ -89,6 +92,7 @@ public class MessageController {
             chatMessageService.deleteUserMessageWithChildren(userMessageId);
             return new RestResponse().success("删除成功");
         } catch (Exception e) {
+            log.error("删除用户消息失败: userMessageId={}", userMessageId, e);
             return new RestResponse().error("删除用户消息失败: " + e.getMessage());
         }
     }
@@ -105,6 +109,7 @@ public class MessageController {
             chatMessageService.editAssistantMessage(dto.getId(), dto.getContent());
             return new RestResponse().success("编辑成功");
         } catch (Exception e) {
+            log.error("编辑助手消息失败: id={}", dto.getId(), e);
             return new RestResponse().error("编辑助手消息失败: " + e.getMessage());
         }
     }

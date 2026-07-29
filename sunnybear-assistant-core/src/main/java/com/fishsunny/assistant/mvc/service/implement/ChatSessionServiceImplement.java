@@ -53,6 +53,11 @@ public class ChatSessionServiceImplement implements ChatSessionService {
     }
 
     @Override
+    public List<ChatSession> findByType(String type) {
+        return chatSessionRepository.selectByType(type);
+    }
+
+    @Override
     public ChatSession save(ChatSession chatSession) {
         chatSession.setId(UUID.randomUUID().toString())
                 .setCreateTime(LocalDateTime.now())

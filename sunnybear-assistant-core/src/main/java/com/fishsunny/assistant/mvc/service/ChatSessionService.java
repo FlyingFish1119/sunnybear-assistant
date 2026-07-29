@@ -18,6 +18,9 @@ public interface ChatSessionService {
 
     public List<ChatSession> findAll();
 
+    /** 按 type 筛选会话列表 */
+    public List<ChatSession> findByType(String type);
+
     public ChatSession save(ChatSession chatSession);
 
     public ChatSession update(ChatSession chatSession);

@@ -29,6 +29,9 @@ public class ChatMessageRequest {
      */
     private String mode;
 
+    /** cron 任务 ID，不为空时表示该请求来自 cron 定时触发 */
+    private Integer cronId;
+
     private String content;
 
     /**

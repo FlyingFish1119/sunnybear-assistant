@@ -700,6 +700,11 @@
                         this.currentMessages = result.data;
                         let streamingMessage = this.streamingMessages.find(m => m.sessionId === session.id);
                         if (streamingMessage) {
+                            // 如果流式消息已被 init_assistant 赋予 id（已入库），
+                            // 则用流式消息替换 DB 中的同名消息，避免重复显示
+                            if (streamingMessage.id) {
+                                this.currentMessages = this.currentMessages.filter(m => m.id !== streamingMessage.id);
+                            }
                             this.currentMessages.push(streamingMessage);
                         }
                         this.scrollToBottom(true);
@@ -921,14 +926,17 @@
                         break;
                     }
                     case 'tool_response': {
-                        this.currentMessages.push(...response.messages);
                         let index = this.streamingMessages.findIndex(m => m.sessionId === response.sessionId);
                         if (index !== -1) {
                             this.streamingMessages.splice(index, 1);
+                        } else {
+                            console.warn('未找到对应的 streamingMessage, sessionId:', response.sessionId);
+                            return;
                         }
                         let assistantMessage = Utils.getDefaultAssistantMessage(response.sessionId, last.id);
                         this.streamingMessages.push(assistantMessage);
                         if (response.sessionId === this.currentSessionId) {
+                            this.currentMessages.push(...response.messages);
                             this.currentMessages.push(assistantMessage);
                         }
                         break;
@@ -936,7 +944,7 @@
                     case 'done':
                     case 'chunk': {
                         if (!streamingMessage) {
-                            console.warn('未找到对应的 streamingMessage, sessionId:', this.currentSessionId);
+                            console.warn('未找到对应的 streamingMessage, sessionId:', response.sessionId);
                             return;
                         }
 
@@ -988,6 +996,9 @@
                         break
                     }
                     case "init_assistant": {
+                        if (!streamingMessage) {
+                            return;
+                        }
                         // 只同步元数据属性，保留已累积的 contents / reasoningContent / toolCalls
                         const serverMsg = response.messages[0];
                         if (serverMsg.id) streamingMessage.id = serverMsg.id;

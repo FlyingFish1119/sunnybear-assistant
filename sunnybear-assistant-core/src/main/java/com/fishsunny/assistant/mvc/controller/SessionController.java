@@ -11,6 +11,8 @@ package com.fishsunny.assistant.mvc.controller;
 import com.fishsunny.assistant.dto.RestResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +22,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/session")
 public class SessionController {
+
+    private static final Logger log = LoggerFactory.getLogger(SessionController.class);
 
     /** 会话名称最大长度 */
     private static final int MAX_SESSION_NAME_LENGTH = 30;
@@ -40,17 +44,19 @@ public class SessionController {
             ChatSession session = chatSessionService.findById(sessionId);
             return new RestResponse().success(session);
         } catch (Exception e) {
+            log.error("获取会话失败: sessionId={}", sessionId, e);
             return new RestResponse().error("获取会话失败: " + e.getMessage());
         }
     }
 
     @RequestMapping("/get/all")
-    public RestResponse getAll() {
+    public RestResponse getAll(@RequestParam(required = false, defaultValue = "chat") String type) {
         try {
-            List<ChatSession> sessions = chatSessionService.findAll();
+            List<ChatSession> sessions = chatSessionService.findByType(type);
             return new RestResponse().success(sessions);
         } catch (Exception e) {
-            return new RestResponse().error("获取所有会话失败: " + e.getMessage());
+            log.error("获取会话列表失败: type={}", type, e);
+            return new RestResponse().error("获取会话列表失败: " + e.getMessage());
         }
     }
 
@@ -63,6 +69,7 @@ public class SessionController {
             chatSessionService.deleteById(id);
             return new RestResponse().success("删除成功");
         } catch (Exception e) {
+            log.error("删除会话失败: id={}", id, e);
             return new RestResponse().error("删除会话失败: " + e.getMessage());
         }
     }
@@ -85,6 +92,7 @@ public class SessionController {
             chatSessionService.update(session);
             return new RestResponse().success(session);
         } catch (Exception e) {
+            log.error("切换 Pro 模式失败: id={}", id, e);
             return new RestResponse().error("切换模式失败: " + e.getMessage());
         }
     }
@@ -107,6 +115,7 @@ public class SessionController {
             ChatSession updatedSession = chatSessionService.update(session);
             return new RestResponse().success(updatedSession);
         } catch (Exception e) {
+            log.error("更新会话失败: id={}", session.getId(), e);
             return new RestResponse().error("更新会话失败: " + e.getMessage());
         }
     }

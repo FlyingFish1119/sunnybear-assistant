@@ -127,9 +127,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 switch (request.getMode()) {
                     case ChatMessageRequest.MODE_CREATE:
                         isNewChat = true;
-                        // 先判断是否需要高级模型（角色对话跳过），再创建 session
-                        boolean enablePro = isProModelEnabled() && serviceProcessor.judgeProModel(request.getContent());
-                        chatSession = serviceProcessor.createChatSession(enablePro);
+                        // cron 触发：通过 cronId 查库获取标题，session type = 'cron'
+                        if (request.getCronId() != null) {
+                            chatSession = serviceProcessor.createCronChatSession(request.getCronId());
+                        } else {
+                            boolean enablePro = isProModelEnabled() && serviceProcessor.judgeProModel(request.getContent());
+                            chatSession = serviceProcessor.createChatSession(enablePro);
+                        }
                         request.setSessionId(chatSession.getId());
                         // 先写文件，再创建带文件引用的用户消息
                         List<String> createFileUrls = serviceProcessor.writeSessionFile(request.getFiles(), chatSession);

@@ -177,10 +177,18 @@ const API = (function () {
 
         /* ---------- 会话 ---------- */
         session: {
-            getAll: function () { return get('session/get/all'); },
+            getAll: function (type) { return get('session/get/all?type=' + encodeURIComponent(type || 'chat')); },
             update: function (data) { return post('session/update', data); },
             delete: function (id) { return get('session/delete?id=' + encodeURIComponent(id)); },
             togglePro: function (id) { return post('session/toggle-pro?id=' + encodeURIComponent(id)); }
+        },
+
+        /* ---------- 定时任务 ---------- */
+        cronJob: {
+            list: function () { return get('cron-job/list'); },
+            get: function (id) { return get('cron-job/get?id=' + encodeURIComponent(id)); },
+            save: function (data) { return post('cron-job/save', data); },
+            delete: function (id) { return get('cron-job/delete?id=' + encodeURIComponent(id)); }
         },
 
         /* ---------- 消息 ---------- */

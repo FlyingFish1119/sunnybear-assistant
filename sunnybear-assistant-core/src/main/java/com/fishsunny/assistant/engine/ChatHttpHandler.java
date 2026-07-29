@@ -18,13 +18,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.stream.Stream;
 
 @Component
 public class ChatHttpHandler {
@@ -75,11 +73,10 @@ public class ChatHttpHandler {
         allowedContinue.add(stopId);
         stream = stream != null && stream;
         AIAdapter adapter = adapterFactory.getAdapter(adapterName, stream);
-        try (InputStream inputStream = adapter.connect(request)) {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-            String line;
+        try (Stream<String> lines = adapter.connect(request)) {
             AIResponse lastRes = null;
-            while ((line = reader.readLine()) != null) {
+            for (Iterator<String> it = lines.iterator(); it.hasNext(); ) {
+                String line = it.next();
                 if (!StringUtils.hasText(line) || line.equals("\n")) {
                     continue;
                 }
@@ -115,7 +112,8 @@ public class ChatHttpHandler {
                     break;
                 }
             }
-            // 流意外结束（readLine 返回 null）但未触发 finished → 回传已收集的内容
+            // 流意外结束或中断，回传已收集的内容
+            // Stream.close() 会正确取消订阅，JDK HttpClient 释放 Direct ByteBuffer
             if (onComplete != null) {
                 AIResponse lastConverted = lastRes != null ? adapter.convertToMaster(lastRes) : null;
                 TranslateResult result = new TranslateResult(
@@ -123,9 +121,6 @@ public class ChatHttpHandler {
                         adapter.getToolCalls(), adapter.getReasoningSignature());
                 onComplete.onComplete(result, lastConverted);
             }
-
-            // 排空 Socket 缓冲区内残留的字节，确保 JDK HttpClient 释放 Direct ByteBuffer
-            inputStream.transferTo(OutputStream.nullOutputStream());
         } finally {
             allowedContinue.remove(stopId);
         }

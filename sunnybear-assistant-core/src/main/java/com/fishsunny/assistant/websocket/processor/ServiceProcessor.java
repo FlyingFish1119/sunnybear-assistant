@@ -18,8 +18,10 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
+import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
+import com.fishsunny.assistant.mvc.service.CronJobService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.UserSettings;
@@ -40,6 +42,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -59,6 +63,7 @@ public class ServiceProcessor {
 
     private final ChatMessageService chatMessageService;
     private final ChatSessionService chatSessionService;
+    private final CronJobService cronJobService;
     private final ObjectMapper objectMapper;
     private final UserSettings userSettings;
     private final AssistantSettings assistantSettings;
@@ -67,6 +72,7 @@ public class ServiceProcessor {
     private final AISettings missionAISettings;
     public ServiceProcessor(ChatMessageService chatMessageService,
                             ChatSessionService chatSessionService,
+                            CronJobService cronJobService,
                             ObjectMapper objectMapper,
                             UserSettings userSettings,
                             AssistantSettings assistantSettings,
@@ -76,6 +82,7 @@ public class ServiceProcessor {
                             ) {
         this.chatMessageService = chatMessageService;
         this.chatSessionService = chatSessionService;
+        this.cronJobService = cronJobService;
         this.objectMapper = objectMapper;
         this.userSettings = userSettings;
         this.assistantSettings = assistantSettings;
@@ -126,6 +133,27 @@ public class ServiceProcessor {
         } catch (Exception e) {
             log.error("Error create chat session: {}", e.getMessage());
             throw new UserException("创建会话失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 为 cron 定时任务创建会话，标题为 "cron任务标题_时间戳"
+     * @param cronId cron 任务 ID
+     */
+    public ChatSession createCronChatSession(Integer cronId) throws Exception {
+        CronJob cronJob = cronJobService.findById(cronId);
+        if (cronJob == null) {
+            throw new UserException("cron 任务不存在: " + cronId);
+        }
+        String name = cronJob.getTitle() + "_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        ChatSession chatSession = new ChatSession(name);
+        chatSession.setType("cron");
+        chatSession.setEnablePro(cronJob.getEnablePro() != null && cronJob.getEnablePro());
+        try {
+            return chatSessionService.save(chatSession);
+        } catch (Exception e) {
+            log.error("Error create cron chat session: {}", e.getMessage());
+            throw new UserException("创建 cron 会话失败: " + e.getMessage());
         }
     }
 
