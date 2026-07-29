@@ -49,8 +49,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public ServletServerContainerFactoryBean createWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
         // 消息缓冲区 100MB，支持含 base64 图片/文件的上传消息 + 较长 AI 回复
-        container.setMaxTextMessageBufferSize(100 * 1024 * 1024);
-        container.setMaxBinaryMessageBufferSize(100 * 1024 * 1024);
+        container.setMaxTextMessageBufferSize(20 * 1024 * 1024);
+        container.setMaxBinaryMessageBufferSize(20 * 1024 * 1024);
         // 会话空闲超时 30 分钟
         container.setMaxSessionIdleTimeout(30 * 60 * 1000L);
         return container;

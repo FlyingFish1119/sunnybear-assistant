@@ -21,6 +21,7 @@ import org.springframework.util.StringUtils;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -122,6 +123,9 @@ public class ChatHttpHandler {
                         adapter.getToolCalls(), adapter.getReasoningSignature());
                 onComplete.onComplete(result, lastConverted);
             }
+
+            // 排空 Socket 缓冲区内残留的字节，确保 JDK HttpClient 释放 Direct ByteBuffer
+            inputStream.transferTo(OutputStream.nullOutputStream());
         } finally {
             allowedContinue.remove(stopId);
         }
@@ -145,4 +149,5 @@ public class ChatHttpHandler {
     public static interface  InTranslateCallback {
         public void onTranslate(AIResponse response);
     }
+
 }

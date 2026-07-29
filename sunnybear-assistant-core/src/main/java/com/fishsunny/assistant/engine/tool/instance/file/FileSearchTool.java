@@ -80,7 +80,7 @@ public class FileSearchTool implements ToolHandler {
                         new ToolRegister.Parameters("caseSensitive", "boolean", "是否区分大小写，默认 false（不区分大小写）"),
                         new ToolRegister.Parameters("contextLines", "integer", "匹配行前后各显示多少行上下文，默认 0（仅显示匹配行），最大 " + MAX_CONTEXT_LINES),
                         new ToolRegister.Parameters("maxResults", "integer", "最大返回匹配数，默认 " + DEFAULT_MAX_RESULTS + "，上限 " + MAX_RESULTS_LIMIT)
-                ));
+                )).setTimeoutMs(60000);
     }
 
     @Override

@@ -78,9 +78,9 @@ public class PlaywrightBrowserService {
     /** Playwright 启动 / Chromium 启动的超时时间（秒），防止资源耗尽时永久阻塞 */
     private static final int BROWSER_START_TIMEOUT_SECONDS = 30;
     /** 会话空闲超时（分钟），默认 30 */
-    private static final int SESSION_IDLE_MINUTES = 30;
+    private static final int SESSION_IDLE_MINUTES = 10;
     /** 最大会话数 */
-    private static final int MAX_SESSIONS = 50;
+    private static final int MAX_SESSIONS = 10;
 
     // ==================== 会话状态 ====================
 
