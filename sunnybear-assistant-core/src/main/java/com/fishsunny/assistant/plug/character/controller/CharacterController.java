@@ -226,6 +226,86 @@ public class CharacterController {
     }
 
     /**
+     * 获取角色私有数据库的所有表结构及全部数据。
+     * 返回每个表的列名列表和所有行数据，用于前端展示。
+     */
+    @RequestMapping("/db-tables")
+    public RestResponse getDbTables(@RequestParam("id") String id) {
+        if (!StringUtils.hasText(id)) {
+            return new RestResponse().error("角色 ID 不能为空");
+        }
+        try {
+            CharacterInfo character = characterInfoService.findById(id);
+            if (character == null) {
+                return new RestResponse().error("角色不存在");
+            }
+            javax.sql.DataSource ds = characterDbManager.getOrCreate(id);
+            List<Map<String, Object>> tables = new ArrayList<>();
+
+            try (java.sql.Connection conn = ds.getConnection();
+                 java.sql.Statement stmt = conn.createStatement()) {
+
+                // 1. 获取所有用户表名
+                java.sql.ResultSet tableRs = stmt.executeQuery(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
+                List<String> tableNames = new ArrayList<>();
+                while (tableRs.next()) {
+                    tableNames.add(tableRs.getString("name"));
+                }
+                tableRs.close();
+
+                // 2. 对每个表获取列信息和全部数据
+                for (String tableName : tableNames) {
+                    Map<String, Object> tableInfo = new LinkedHashMap<>();
+                    tableInfo.put("tableName", tableName);
+
+                    // 列信息
+                    List<Map<String, Object>> columns = new ArrayList<>();
+                    java.sql.ResultSet colRs = stmt.executeQuery("PRAGMA table_info('" + tableName.replace("'", "''") + "')");
+                    List<String> colNames = new ArrayList<>();
+                    while (colRs.next()) {
+                        Map<String, Object> col = new LinkedHashMap<>();
+                        col.put("name", colRs.getString("name"));
+                        col.put("type", colRs.getString("type"));
+                        col.put("notNull", colRs.getInt("notnull") == 1);
+                        col.put("pk", colRs.getInt("pk") == 1);
+                        columns.add(col);
+                        colNames.add(colRs.getString("name"));
+                    }
+                    colRs.close();
+                    tableInfo.put("columns", columns);
+
+                    // 全部数据行
+                    List<Map<String, Object>> rows = new ArrayList<>();
+                    try {
+                        java.sql.ResultSet dataRs = stmt.executeQuery("SELECT * FROM \"" + tableName.replace("\"", "\"\"") + "\"");
+                        while (dataRs.next()) {
+                            Map<String, Object> row = new LinkedHashMap<>();
+                            for (String colName : colNames) {
+                                row.put(colName, dataRs.getString(colName));
+                            }
+                            rows.add(row);
+                        }
+                        dataRs.close();
+                    } catch (Exception e) {
+                        log.warn("读取表 [{}] 数据失败: {}", tableName, e.getMessage());
+                        tableInfo.put("error", e.getMessage());
+                    }
+                    tableInfo.put("rows", rows);
+                    tableInfo.put("rowCount", rows.size());
+
+                    tables.add(tableInfo);
+                }
+            }
+
+            return new RestResponse().success(tables);
+        } catch (Exception e) {
+            log.error("获取角色 [{}] 数据库表失败", id, e);
+            return new RestResponse().error("获取数据库表失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 单独上传角色背景图（multipart 文件上传，与 create/update 解耦）。
      */
     @PostMapping("/upload-background")

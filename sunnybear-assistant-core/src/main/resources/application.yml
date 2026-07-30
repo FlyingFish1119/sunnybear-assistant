@@ -51,6 +51,16 @@ plug:
       command-timeout: 1800
     tool:
       enable: true
+  character:
+    tool:
+      glossary:
+        enable: true
+      sql:
+        enable: true
+      dice:
+        enable: true
+      battle:
+        enable: true
 
 engine:
   tool:

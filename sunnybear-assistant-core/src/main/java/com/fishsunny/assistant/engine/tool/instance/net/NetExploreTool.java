@@ -11,6 +11,7 @@ package com.fishsunny.assistant.engine.tool.instance.net;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
@@ -128,15 +129,22 @@ public class NetExploreTool implements ToolHandler {
         }
 
         try {
-            // ========== 确认机制（深度模式始终需要确认） ==========
-            String uuid = UUID.randomUUID().toString();
-            try {
-                if (!(context.get("session") instanceof WebSocketSession session)) {
-                    throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
+            Object chatSessionObj = context.get("chatSession");
+            if (! (chatSessionObj instanceof ChatSession chatSession)) {
+                throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: chatSession 缺失");
+            }
+
+            if (ChatSession.TYPE_CHAT.equals(chatSession.getType())) {
+                // ========== 确认机制（深度模式始终需要确认） ==========
+                String uuid = UUID.randomUUID().toString();
+                try {
+                    if (!(context.get("session") instanceof WebSocketSession session)) {
+                        throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
+                    }
+                    ask(uuid, session, arguments.getTarget());
+                } finally {
+                    ChatController.cleanupConfirm(uuid);
                 }
-                ask(uuid, session, arguments.getTarget());
-            } finally {
-                ChatController.cleanupConfirm(uuid);
             }
 
             // ========== 收集器与统计 ==========

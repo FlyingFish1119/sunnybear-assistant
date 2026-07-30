@@ -18,6 +18,9 @@ import java.time.LocalDateTime;
 @Accessors(chain = true)
 public class ChatSession {
 
+    public static final String TYPE_CHAT = "chat";
+    public static final String TYPE_CRON = "cron";
+
     private String id;
 
     private String name;

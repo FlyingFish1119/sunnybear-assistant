@@ -35,6 +35,7 @@
     <script src="components/connection-indicator/connection-indicator.js"></script>
     <script src="components/auto-resize-textarea/auto-resize-textarea.js"></script>
     <script src="components/command-suggest/command-suggest.js"></script>
+    <script src="components/character-db-panel/character-db-panel.js"></script>
     <!-- 样式 -->
     <link rel="stylesheet" href="css/scrollbar.css"/>
     <link rel="stylesheet" href="css/layout.css"/>
@@ -51,6 +52,7 @@
     <link rel="stylesheet" href="components/connection-indicator/connection-indicator.css"/>
     <link rel="stylesheet" href="components/auto-resize-textarea/auto-resize-textarea.css"/>
     <link rel="stylesheet" href="components/command-suggest/command-suggest.css"/>
+    <link rel="stylesheet" href="components/character-db-panel/character-db-panel.css"/>
     <!-- highlight.js 代码高亮样式 -->
     <link rel="stylesheet" href="lib/highlight-github-dark.min.css">
 </head>
@@ -92,11 +94,18 @@
                     @update-session-name="n => currentSession.name = n">
                 </session-name>
             </div>
-            <connection-indicator
-                :ws-url="wsUrl"
-                @connected="ws = $event; ws.onmessage = (e) => handleStreamChunk(e)"
-                @disconnected="ws = null">
-            </connection-indicator>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <connection-indicator
+                    :ws-url="wsUrl"
+                    @connected="ws = $event; ws.onmessage = (e) => handleStreamChunk(e)"
+                    @disconnected="ws = null">
+                </connection-indicator>
+                <button class="sidebar-toggle-btn" @click="toggleDbPanel"
+                        :title="dbPanelVisible ? '收起数据库面板' : '展开数据库面板'"
+                        :style="dbPanelVisible ? {color: mainColor} : {}">
+                    <i data-lucide="database" style="width: 18px; height: 18px;"></i>
+                </button>
+            </div>
         </div>
         <div class="message-area-panel" :class="{ 'is-new-chat': !currentSessionId && currentMessages.length === 0 }">
             <!-- 新对话时的问候语横幅 -->
@@ -280,6 +289,13 @@
                 </div>
             </div>
         </div>
+        <character-db-panel
+            ref="dbPanel"
+            :visible="dbPanelVisible"
+            :character-id="characterId"
+            :main-color="mainColor"
+            @toggle="dbPanelVisible = !dbPanelVisible">
+        </character-db-panel>
         <div class="send-area-container" :style="{'--main-color': mainColor}" style="position: relative;">
             <command-suggest
                 :commands="filteredCommands"
@@ -427,6 +443,8 @@
                 commandParentCmd: null,
                 uploadedFiles: [],   // [{name, data}] — 对应后端 FileData
                 dragOver: false,
+                // 数据库面板
+                dbPanelVisible: false,
             }
         },
 
@@ -1091,6 +1109,13 @@
             },
 
             /**
+             * 切换数据库面板
+             */
+            toggleDbPanel() {
+                this.dbPanelVisible = !this.dbPanelVisible;
+            },
+
+            /**
              * 关闭侧边栏（移动端抽屉 + 桌面端折叠通用）
              */
             closeSidebar() {
@@ -1515,6 +1540,7 @@
     app.component('connection-indicator', ConnectionIndicator);
     app.component('auto-resize-textarea', AutoResizeTextarea);
     app.component('command-suggest', CommandSuggest);
+    app.component('character-db-panel', CharacterDbPanel);
 
     app.use(ElementPlus);
     app.mount('#app');

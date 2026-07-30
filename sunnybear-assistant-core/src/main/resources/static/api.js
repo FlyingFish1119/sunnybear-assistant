@@ -229,6 +229,11 @@ const API = (function () {
                 return upload('character/upload-background?id=' + encodeURIComponent(id), file);
             },
 
+            /* 角色数据库表查询 */
+            dbTables: function (id) {
+                return get('character/db-tables?id=' + encodeURIComponent(id));
+            },
+
             /* 角色词条管理 */
             glossary: {
                 list: function (characterId) {
