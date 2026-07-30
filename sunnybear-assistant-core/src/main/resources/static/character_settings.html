@@ -1061,7 +1061,7 @@ const app = Vue.createApp({
             showTools: false,
             userDialogVisible: false,
             toolCategories: [
-                { key: 'glossary', label: '角色词条', tools: ['character_glossary_query_tool', 'character_glossary_generate_tool'], hint: 'AI 可查询和生成角色专属术语定义' },
+                { key: 'glossary', label: '角色词条', tools: ['character_glossary_create_tool', 'character_glossary_update_tool', 'character_glossary_delete_tool', 'character_glossary_query_tool'], hint: 'AI 可增删改查角色专属术语词条' },
                 { key: 'gm', label: 'GM 组件', tools: ['calculate_tool', 'character_db_query', 'character_db_execute', 'd20_check', 'ndm_roll', 'battle_engine_tool'], hint: '包含数据库、骰子检定、战斗引擎等完整 TRPG 跑团体验' }
             ],
             toolSwitches: {},
