@@ -43,6 +43,14 @@ public class CharacterGlossaryServiceImplement implements CharacterGlossaryServi
     }
 
     @Override
+    public CharacterGlossary getById(Long id) {
+        if (id == null) {
+            throw new RuntimeException("词条 ID 不能为空");
+        }
+        return glossaryRepository.selectById(id);
+    }
+
+    @Override
     public CharacterGlossary getByCharacterIdAndKeyword(String characterId, String keyword) {
         if (!StringUtils.hasText(characterId)) {
             throw new RuntimeException("角色 ID 不能为空");

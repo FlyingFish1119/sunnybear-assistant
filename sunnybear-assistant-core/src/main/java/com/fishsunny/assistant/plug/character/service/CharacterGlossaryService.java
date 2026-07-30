@@ -16,6 +16,8 @@ public interface CharacterGlossaryService {
 
     List<CharacterGlossary> listByCharacterId(String characterId);
 
+    CharacterGlossary getById(Long id);
+
     CharacterGlossary getByCharacterIdAndKeyword(String characterId, String keyword);
 
     CharacterGlossary create(CharacterGlossary glossary);
