@@ -25,9 +25,8 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.vi
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.extension.ExtensionScriptService;
-import com.fishsunny.assistant.engine.tool.instance.net.MetaSOAISearchTool;
+import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
-import com.fishsunny.assistant.plug.comfyui.tool.ComfyUIGenerateTool;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
@@ -35,6 +34,7 @@ import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
+import com.fishsunny.assistant.utils.ToolContextBuilder;
 import com.fishsunny.assistant.variable.PromptReplaceVariable;
 import com.fishsunny.assistant.variable.RoleVariable;
 import com.fishsunny.assistant.websocket.ChatProvider;
@@ -50,10 +50,8 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.net.InetAddress;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 本类主要用于处理核心对话逻辑，包括消息的传输与落盘
@@ -104,7 +102,9 @@ public class ChatProcessor {
                                       WebSocketSession session,
                                       ChatProvider chatProvider
                                       ) throws Exception {
-        chatProvider = chatProvider == null ? new ChatProvider() : chatProvider;
+        if (chatProvider == null) {
+            throw new UserException("无效的 ChatProvider");
+        }
 
         // 根据 session 的 enable_pro 标记选择使用 chat 还是 chat_pro 模型
         AISettings effectiveAISettings = (chatSession.getEnablePro() != null && chatSession.getEnablePro())
@@ -124,7 +124,7 @@ public class ChatProcessor {
 
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(new ChatMessage().system(systemPrompt));
-        messages.addAll(ChatMessage.readContent(originMessages));
+        messages.addAll(ChatMessage.fillAllFile(originMessages));
 
         ChatRequest request = new ChatRequest()
                 .setMessages(messages)
@@ -241,7 +241,7 @@ public class ChatProcessor {
     @Getter
     private static final Set<String> EXCLUDE_TOOLS = new HashSet<>();
     static {
-        EXCLUDE_TOOLS.add(MetaSOAISearchTool.NAME);
+        EXCLUDE_TOOLS.add(WebSearchTool.NAME);
         EXCLUDE_TOOLS.add(WebReaderTool.NAME);
     }
 
@@ -267,6 +267,7 @@ public class ChatProcessor {
         }
         request.setTools(toolRegisters);
 
+        // 定义响应处理
         ChatHttpHandler.InTranslateCallback translate = response -> {
             ChatResponse chatResponse = (ChatResponse) response;
             try {
@@ -284,34 +285,29 @@ public class ChatProcessor {
             }
         };
 
+        // 定义回调
         ChatHttpHandler.CompleteCallback complete = (result, lastResp) -> {
             var toolCalls = result.toolCalls();
             boolean haveToolCall = !CollectionUtils.isEmpty(toolCalls);
 
-            // 落盘
+            // 落盘w
             try {
                 ChatMessage last = ObjectUtils.getLast(request.getMessages());
                 String parentId = last == null ? null : last.getId();
                 List<ChatToolRequest> toolCallRequests = new ArrayList<>();
                 // 如果 AI 调用了工具，将工具调用的参数注入
                 if (haveToolCall) {
-                    for (AIAdapter.ToolCall toolCall : toolCalls) {
-                        ChatToolRequest toolRequest = new ChatToolRequest()
-                                .setId(toolCall.getId())
-                                .setName(toolCall.getFunction().getName())
-                                .setArguments(toolCall.getFunction().getArguments());
-                        toolCallRequests.add(toolRequest);
-                    }
+                    List<ChatToolRequest> convert = ChatToolRequest.convert(toolCalls);
+                    toolCallRequests.addAll(convert);
                 }
                 ChatMessage assistantMessage = appendAssistantMessage(chatSession.getId(), parentId, result.reasoning(), result.content(), toolCallRequests);
+                // A\专用的
                 String reasoningSignature = result.reasoningSignature();
                 if (reasoningSignature != null && !reasoningSignature.isEmpty()) {
                     assistantMessage.setReasoningSignature(reasoningSignature);
                 }
-                ChatResponse response = new ChatResponse()
-                        .setStatus(ChatResponse.STATUS_INIT_ASSISTANT)
-                        .setMessages(List.of(assistantMessage))
-                        .setSessionId(chatSession.getId());
+                // 添加助手消息
+                ChatResponse response = new ChatResponse().afterAIResponse(assistantMessage, chatSession.getId());
                 session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
                 request.getMessages().add(assistantMessage);
                 collector.add(assistantMessage);
@@ -322,27 +318,22 @@ public class ChatProcessor {
 
             // 执行工具
             if (haveToolCall) {
-                List<ChatMessage> toolMessages = new ArrayList<>();
                 ChatMessage last = ObjectUtils.getLast(request.getMessages());
                 if (last == null) {
                     throw new RuntimeException("Error message data: missed tool call message");
                 }
                 // 构建批量请求
-                List<ToolExecutor.ToolRequest> toolRequests = new ArrayList<>();
-                for (AIAdapter.ToolCall toolcall : toolCalls) {
-                    toolRequests.add(new ToolExecutor.ToolRequest(
-                            toolcall.getFunction().getName(),
-                            toolcall.getFunction().getArguments()));
-                }
+                List<ToolExecutor.ToolRequest> toolRequests = ToolExecutor.ToolRequest.convert(toolCalls);
+
                 // 并行执行
-                Map<String, Object> context = new HashMap<>();
-                context.put("session", session);
-                context.put("chatSession", chatSession);
+                // 构建上下文
+                Map<String, Object> context = ToolContextBuilder.minimumBuild(session, chatSession);
                 if (chatProvider.getContextProvider() != null) {
                     context = chatProvider.getContextProvider().apply(context);
                 }
                 List<ToolExecutor.ToolExecuteResponse> toolResults = toolExecutor.execute(toolRequests, context);
                 // 构建工具消息
+                List<ChatMessage> toolMessages = new ArrayList<>();
                 for (int i = 0; i < toolCalls.size(); i++) {
                     AIAdapter.ToolCall toolcall = toolCalls.get(i);
                     ToolExecutor.ToolExecuteResponse toolResult = toolResults.get(i);
@@ -356,14 +347,11 @@ public class ChatProcessor {
                 }
                 // 保存工具消息
                 try {
-                    List<ChatMessage> chatMessages = appendToolMessage(toolMessages);
-                    request.getMessages().addAll(chatMessages);
-                    ChatResponse response = new ChatResponse()
-                            .setStatus(ChatResponse.STATUS_TOOL_RESPONSE)
-                            .setMessages(chatMessages)
-                            .setSessionId(chatSession.getId());
+                    List<ChatMessage> toolResponseMessages = appendToolMessage(toolMessages);
+                    request.getMessages().addAll(toolResponseMessages);
+                    ChatResponse response = new ChatResponse().afterToolCall(toolResponseMessages, chatSession.getId());
                     session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
-                    collector.addAll(chatMessages);
+                    collector.addAll(toolResponseMessages);
                 } catch (Exception e) {
                     log.error("保存工具消息失败: {}", e.getMessage());
                     throw new RuntimeException(e);
@@ -379,8 +367,7 @@ public class ChatProcessor {
             }
         };
 
-        boolean stream = request.getSettings().getStream() != null ? request.getSettings().getStream() : true;
-        chatHttpHandler.translate(chatSession.getId(), effectiveAISettings.getAdapterName(), request, stream, translate, complete);
+        chatHttpHandler.translate(chatSession.getId(), effectiveAISettings.getAdapterName(), request, request.getSettings().getStream(), translate, complete);
     }
 
     private ChatMessage appendAssistantMessage(String sessionId, String parentId, String reasoning, String content, List<ChatToolRequest> toolCalls) throws Exception {
@@ -510,24 +497,31 @@ public class ChatProcessor {
                        .append(text.replace("\n", " ")).append("\n\n");
         }
 
-        // 构建 MissionAI 请求
+        // 提取 chat AI 的系统提示词，与待总结文本一同放入 user prompt
         String focusLine = prompt.isBlank() ? "" : "请重点关注以下方面：" + prompt + "\n";
-        String systemPrompt = """
-                你是一个对话记录摘要助手。根据提供的对话历史，生成一段简洁有条理的概述（3-5 段）。
-                如果用户指定了关注重点，请围绕该重点展开；否则概括全文的要点和关键信息。
-                使用 Markdown 格式输出，包含标题和分点。""";
+        String chatSystemPrompt = aiSettings.getPrompt() != null ? aiSettings.getPrompt() : "";
 
         String userPrompt = """
+                ## 当前角色设定
+                %s
+
                 ## 会话 ID：%s
                 %s
                 ## 对话历史
                 %s
-                请生成该会话的摘要。"""
-                .formatted(sessionId.trim(), focusLine, historyText.toString());
+
+                请以当前角色设定的视角，对上述对话历史生成一段简洁有条理的摘要（3-5 段）。
+                如果指定了关注重点，请围绕该重点展开；否则概括全文的要点和关键信息。
+                使用 Markdown 格式输出，包含标题和分点。"""
+                .formatted(
+                        chatSystemPrompt.isBlank() ? "（无特殊角色设定）" : chatSystemPrompt,
+                        sessionId.trim(),
+                        focusLine,
+                        historyText.toString());
 
         ChatRequest request = new ChatRequest()
                 .loadSettings(aiSettings)
-                .setMessages(List.of(new ChatMessage().system(systemPrompt), new ChatMessage().user(userPrompt)));
+                .setMessages(List.of(new ChatMessage().user(userPrompt)));
 
         String header = "## 📜 会话摘要：`" + sessionId.trim() + "`\n\n";
         AtomicBoolean isFirst = new AtomicBoolean(true);

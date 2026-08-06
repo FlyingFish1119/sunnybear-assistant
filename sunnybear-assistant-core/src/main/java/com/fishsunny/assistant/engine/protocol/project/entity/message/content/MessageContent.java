@@ -66,7 +66,7 @@ public interface MessageContent {
         return messageContents;
     }
 
-    public static List<MessageContent> readContent(List<MessageContent> contents) {
+    public static List<MessageContent> fillFile(List<MessageContent> contents) {
         if (contents == null) {
             return new ArrayList<>();
         }

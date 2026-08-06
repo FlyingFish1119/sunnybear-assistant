@@ -158,10 +158,10 @@ public class ChatMessage {
         return text.toString();
     }
 
-    public static List<ChatMessage> readContent(List<ChatMessage> messages) {
+    public static List<ChatMessage> fillAllFile(List<ChatMessage> messages) {
         List<ChatMessage> resultMessages = new ArrayList<>();
         for (ChatMessage message : messages) {
-            List<MessageContent> contents = MessageContent.readContent(message.getContents());
+            List<MessageContent> contents = MessageContent.fillFile(message.getContents());
             message.setContents(contents);
             resultMessages.add(message);
         }

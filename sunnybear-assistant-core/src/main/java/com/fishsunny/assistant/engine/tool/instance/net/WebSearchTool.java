@@ -1,7 +1,10 @@
 package com.fishsunny.assistant.engine.tool.instance.net;
 
 /*
- * @Usage 网页搜索工具 - 通过 MetaSo API 进行网页搜索
+ * @Usage 网页搜索工具 - 支持多种搜索引擎，由 AI 通过 engineName 参数选择
+ *
+ * Settings 中配置各引擎的 API Key，AI 调用时传 engineName 切换引擎。
+ * 国内/中文搜索默认用 metaso，国外/英文搜索可用 serper。
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
@@ -15,61 +18,46 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.NetToolKit;
+import com.fishsunny.assistant.engine.tool.instance.net.search.SearchEngine;
+import com.fishsunny.assistant.engine.tool.instance.net.search.SearchEngineFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.util.StringUtils;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
 @ToolKitComponent(NetToolKit.class)
 @ConditionalOnExpression("${engine.tool.net.enable:true} && ${engine.tool.net.meta-soai-search.enable:true}")
-public class MetaSOAISearchTool implements ToolHandler {
+public class WebSearchTool implements ToolHandler {
 
     public static final String NAME = "web_search_tool";
     public static final String SETTINGS = "web_search_tool_settings";
 
     private static final List<String> SCOPE_LIST = Arrays.asList("webpage", "document", "scholar", "image", "video", "podcast");
 
-    /** HTTP 连接超时时间（秒） */
-    private static final int CONNECT_TIMEOUT_SECONDS = 5;
-
-    /** HTTP 请求超时时间（秒） */
-    private static final int REQUEST_TIMEOUT_SECONDS = 30;
-
-    /** HTTP 成功状态码 */
-    private static final int HTTP_OK = 200;
-
-    /** 默认返回条目数 */
     private static final int DEFAULT_SIZE = 10;
-
-    /** 默认搜索范围 */
     private static final String DEFAULT_SCOPE = "webpage";
+    private static final String DEFAULT_ENGINE = "metaso";
 
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
     private final Settings settings;
-    private final HttpClient httpClient;
+    private final SearchEngineFactory searchEngineFactory;
 
-    public MetaSOAISearchTool(ObjectMapper objectMapper, @Qualifier(SETTINGS) Settings settings) {
+    public WebSearchTool(ObjectMapper objectMapper,
+                         @Qualifier(SETTINGS) Settings settings,
+                         SearchEngineFactory searchEngineFactory) {
         this.objectMapper = objectMapper;
         this.settings = settings;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
-                .build();
+        this.searchEngineFactory = searchEngineFactory;
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("搜索互联网信息。适用于获取实时资讯、专业知识等需要联网搜索的场景。")
+                .setDescription("搜索互联网信息。国内/中文搜索优先使用 metaso，国外/英文搜索可使用 serper。通过 engineName 参数切换。")
                 .setRequired(List.of("q"));
 
         ToolRegister.Parameters qParam = new ToolRegister.Parameters()
@@ -87,15 +75,17 @@ public class MetaSOAISearchTool implements ToolHandler {
                 .setType("string")
                 .setDescription("搜索范围，默认为 webpage，可选值有:" + Arrays.toString(SCOPE_LIST.toArray()));
 
-        register.setParameters(List.of(qParam, sizeParam, scopeParam));
+        ToolRegister.Parameters engineParam = new ToolRegister.Parameters()
+                .setParameterName("engineName")
+                .setType("string")
+                .setDescription("搜索引擎名称，默认为 metaso（国内/中文搜索），可选 serper（国外/英文 Google 搜索）");
+
+        register.setParameters(List.of(qParam, sizeParam, scopeParam, engineParam));
     }
 
     @Override
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
-        if (settings == null || !StringUtils.hasText(settings.getApiKey())) {
-            throw new ToolExecutor.ToolExecuteException("搜索工具的 API 密钥未配置，导致无法使用搜索工具。");
-        }
-
+        // 解析参数
         Arguments arguments;
         try {
             arguments = objectMapper.readValue(argumentsJson, Arguments.class);
@@ -117,29 +107,30 @@ public class MetaSOAISearchTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
         }
 
+        // AI 通过 engineName 参数选择引擎，默认 metaso
+        String engineName = StringUtils.hasText(arguments.getEngineName())
+                ? arguments.getEngineName().trim().toLowerCase()
+                : DEFAULT_ENGINE;
+
+        // 从 Settings 中取对应引擎的 API Key
+        String apiKey = settings.getApiKey(engineName);
+        if (!StringUtils.hasText(apiKey)) {
+            throw new ToolExecutor.ToolExecuteException(
+                    "搜索引擎 [" + engineName + "] 的 API Key 未配置，请在设置中配置。");
+        }
+
+        // 工厂创建引擎并执行搜索
         try {
-            String requestBody = objectMapper.writeValueAsString(arguments);
+            SearchEngine engine = searchEngineFactory.create(engineName, apiKey, objectMapper);
+            String rawJson = engine.search(arguments.getQ(), arguments.getSize(), arguments.getScope());
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://metaso.cn/api/v1/search"))
-                    .timeout(Duration.ofSeconds(REQUEST_TIMEOUT_SECONDS))
-                    .header("Authorization", "Bearer " + settings.getApiKey())
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-
-            if (response.statusCode() != HTTP_OK) {
-                throw new ToolExecutor.ToolExecuteException("搜索引擎返回错误状态码: " + response.statusCode());
-            }
-
-            // 格式化 JSON 输出，方便阅读
-            Object json = objectMapper.readTree(response.body());
-            String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(json);
+            Object jsonNode = objectMapper.readTree(rawJson);
+            String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonNode);
             return new ToolExecutor.ToolExecuteResponse(name(), prettyJson);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
+        } catch (IllegalArgumentException e) {
+            throw new ToolExecutor.ToolExecuteException("搜索引擎配置错误: " + e.getMessage());
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("搜索引擎调用失败: " + e.getMessage());
         }
@@ -161,6 +152,8 @@ public class MetaSOAISearchTool implements ToolHandler {
         private String q;
         private Integer size = DEFAULT_SIZE;
         private String scope = DEFAULT_SCOPE;
+        /** AI 选择搜索引擎：metaso（默认，国内/中文）或 serper（国外/英文） */
+        private String engineName = DEFAULT_ENGINE;
         private boolean includeSummary = false;
         private boolean includeRawContent = false;
         private boolean conciseSnippet = false;
@@ -170,11 +163,28 @@ public class MetaSOAISearchTool implements ToolHandler {
     @Accessors(chain = true)
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Settings {
-        private String apiKey;
+        /** MetaSOAI 的 API Key（国内搜索，默认引擎） */
+        private String metasoApiKey;
+        /** Serper 的 API Key（Google 搜索，国外/英文场景） */
+        private String serperApiKey;
+
         public Settings() {
         }
-        public Settings(String apiKey) {
-            this.apiKey = apiKey;
+
+        public Settings(String metasoApiKey, String serperApiKey) {
+            this.metasoApiKey = metasoApiKey;
+            this.serperApiKey = serperApiKey;
+        }
+
+        /**
+         * 根据引擎名称获取对应的 API Key
+         */
+        public String getApiKey(String engineName) {
+            return switch (engineName) {
+                case "metaso" -> metasoApiKey;
+                case "serper" -> serperApiKey;
+                default -> null;
+            };
         }
     }
 }

@@ -8,8 +8,11 @@ package com.fishsunny.assistant.dto;
  * @Date 2026/6/27 03:28
  */
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.exception.UserException;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -47,5 +50,32 @@ public class ChatMessageRequest {
     private List<FileData> files;
 
     public ChatMessageRequest() {
+    }
+
+    public ChatMessageRequest parseAndValidate(String payload, ObjectMapper objectMapper) {
+        try {
+            ChatMessageRequest request = objectMapper.readValue(payload, ChatMessageRequest.class);
+            switch (request.getMode()) {
+                case ChatMessageRequest.MODE_CREATE:
+                    if (!StringUtils.hasText(request.getContent())) {
+                        throw new UserException("内容为空");
+                    }
+                    return request;
+                case ChatMessageRequest.MODE_APPEND:
+                case ChatMessageRequest.MODE_REPLACE:
+                case ChatMessageRequest.MODE_EDIT:
+                    if (!StringUtils.hasText(request.getContent())) {
+                        throw new UserException("内容为空");
+                    }
+                    if (!StringUtils.hasText(request.getSessionId())) {
+                        throw new UserException("会话 ID 为空");
+                    }
+                    return request;
+                default:
+                    throw new UserException("无效的请求类型[" + request.getMode() + "]");
+            }
+        } catch (Exception e) {
+            throw new UserException("消息格式无效: " + e.getMessage());
+        }
     }
 }

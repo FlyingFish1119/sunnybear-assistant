@@ -14,7 +14,6 @@ import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
-import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.variable.ControlSign;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
@@ -30,11 +29,9 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
 
 
 @Primary
@@ -80,7 +77,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      * 获取 ChatToAiProvider，默认为 null、通过子类继承使用
      */
     public ChatProvider chatToAiProvider() {
-        return null;
+        return ChatProvider.DEFAULT;
     }
 
     /**
@@ -117,52 +114,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 }
 
                 // 检查请求
-                ChatMessageRequest request;
-                request = serviceProcessor.checkRequest(payload);
+                ChatMessageRequest request = new ChatMessageRequest().parseAndValidate(payload, objectMapper);
+
+                // 处理会话
+                ServiceProcessor.ChatSessionModeParseResult parseResult = serviceProcessor.handleChatSession(request, safeSession, isProModelEnabled());
 
                 // 处理请求
-                boolean isNewChat;
-                List<ChatMessage> messages = new ArrayList<>();
-                ChatSession chatSession = null;
-                switch (request.getMode()) {
-                    case ChatMessageRequest.MODE_CREATE:
-                        isNewChat = true;
-                        // cron 触发：通过 cronId 查库获取标题，session type = 'cron'
-                        if (request.getCronId() != null) {
-                            chatSession = serviceProcessor.createCronChatSession(request.getCronId());
-                        } else {
-                            boolean enablePro = isProModelEnabled() && serviceProcessor.judgeProModel(request.getContent());
-                            chatSession = serviceProcessor.createChatSession(enablePro);
-                        }
-                        request.setSessionId(chatSession.getId());
-                        // 先写文件，再创建带文件引用的用户消息
-                        List<String> createFileUrls = serviceProcessor.writeSessionFile(request.getFiles(), chatSession);
-                        messages.add(serviceProcessor.appendUserMessage(
-                                chatSession.getId(), null, request.getContent(), createFileUrls, safeSession));
-                        break;
-                    case ChatMessageRequest.MODE_APPEND:
-                        isNewChat = false;
-                        chatSession = serviceProcessor.findChatSession(request.getSessionId());
-                        messages = serviceProcessor.findHistoryMessages(request.getSessionId());
-                        ChatMessage last = ObjectUtils.getLast(messages);
-                        String parentId = last == null ? null : last.getId();
-                        List<String> appendFileUrls = serviceProcessor.writeSessionFile(request.getFiles(), chatSession);
-                        messages.add(serviceProcessor.appendUserMessage(
-                                request.getSessionId(), parentId, request.getContent(), appendFileUrls, safeSession));
-                        break;
-                    case ChatMessageRequest.MODE_REPLACE:
-                        isNewChat = false;
-                        chatSession = serviceProcessor.findChatSession(request.getSessionId());
-                        messages = serviceProcessor.handleReplace(request, safeSession);
-                        break;
-                    case ChatMessageRequest.MODE_EDIT:
-                        isNewChat = false;
-                        chatSession = serviceProcessor.findChatSession(request.getSessionId());
-                        messages = serviceProcessor.handleEdit(request, safeSession);
-                        break;
-                    default:
-                        throw new UserException("无效的请求模式");
-                }
+                ChatSession chatSession = parseResult.chatSession();
+
                 if (chatSession == null) {
                     throw new UserException("无效的会话 ID");
                 }
@@ -172,18 +131,18 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
                     safeSession.sendMessage(new TextMessage(ControlSign.SIGN_START + chatSession.getId()));
 
-                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(messages, chatSession, safeSession, chatToAiProvider());
+                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, safeSession, chatToAiProvider());
 
                     // 如果是新的会话，则生成标题
-                    if (isNewChat) {
-                        serviceProcessor.generateTitle(session, chatSession, request.getContent(), chatMessages.get(0).resolveText());
+                    if (parseResult.isNewChat()) {
+                        serviceProcessor.generateTitle(safeSession, chatSession, request.getContent(), chatMessages.get(0).resolveText());
                     }
 
                     safeSession.sendMessage(new TextMessage(ControlSign.SIGN_END + chatSession.getId()));
                 } catch (IOException e) {
-                    log.warn("WebSocket 发送失败，连接可能已关闭 [{}]: {}", session.getId(), e.getMessage());
+                    log.warn("WebSocket 发送失败，连接可能已关闭 [{}]: {}", safeSession.getId(), e.getMessage());
                 } catch (Exception e) {
-                    log.error("chatToAi async error [{}]: {}", session.getId(), e.getMessage(), e);
+                    log.error("chatToAi async error [{}]: {}", safeSession.getId(), e.getMessage(), e);
                     sendErrorToFrontend(safeSession, chatSession.getId(), "AI 对话异常: " + e.getMessage());
                 } finally {
                     activeTaskCount.merge(safeSession.getId(), -1, Integer::sum);
@@ -193,12 +152,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 log.warn(e.getMessage());
                 sendErrorToFrontend(safeSession, null, e.getMessage());
             } catch (Exception e) {
-                log.error("error: {},\n stacktrace: {}", e.getMessage(), e.getStackTrace());
+                log.error("error: {}", e.getMessage(), e);
                 sendErrorToFrontend(safeSession, null, "系统内部错误，请稍后重试");
             }
 
         });
     }
+
 
     /** 将错误信息通过 ChatResponse 推送到前端 */
     private void sendErrorToFrontend(WebSocketSession safeSession, String sessionId, String errorMessage) {

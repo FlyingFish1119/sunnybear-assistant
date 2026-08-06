@@ -10,7 +10,7 @@ import com.fishsunny.assistant.engine.tool.instance.file.FileDownloadTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileEditTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileWriteTool;
 import com.fishsunny.assistant.engine.tool.instance.image.ImageCaptionTool;
-import com.fishsunny.assistant.engine.tool.instance.net.MetaSOAISearchTool;
+import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.os.CommandTool;
 import com.fishsunny.assistant.engine.tool.instance.os.ExtensionScriptTool;
@@ -91,7 +91,7 @@ public class SettingsController {
             @Qualifier(AISettings.TASK) AISettings taskAISettings,
             @Qualifier(CommandTool.SETTINGS) CommandTool.Settings commandToolSettings,
             @Qualifier(ExtensionScriptTool.SETTINGS) ExtensionScriptTool.Settings extensionScriptToolSettings,
-            @Qualifier(MetaSOAISearchTool.SETTINGS) MetaSOAISearchTool.Settings webSearchToolSettings,
+            @Qualifier(WebSearchTool.SETTINGS) WebSearchTool.Settings webSearchToolSettings,
             @Qualifier(FileWriteTool.SETTINGS) FileWriteTool.Settings fileWriteToolSettings,
             @Qualifier(FileEditTool.SETTINGS) FileEditTool.Settings fileEditToolSettings,
             @Qualifier(FileDeleteTool.SETTINGS) FileDeleteTool.Settings fileDeleteToolSettings,
@@ -121,7 +121,7 @@ public class SettingsController {
         this.toolSettingsMap = new LinkedHashMap<>();
         this.toolSettingsMap.put(CommandTool.SETTINGS, commandToolSettings);
         this.toolSettingsMap.put(ExtensionScriptTool.SETTINGS, extensionScriptToolSettings);
-        this.toolSettingsMap.put(MetaSOAISearchTool.SETTINGS, webSearchToolSettings);
+        this.toolSettingsMap.put(WebSearchTool.SETTINGS, webSearchToolSettings);
         this.toolSettingsMap.put(FileWriteTool.SETTINGS, fileWriteToolSettings);
         this.toolSettingsMap.put(FileEditTool.SETTINGS, fileEditToolSettings);
         this.toolSettingsMap.put(FileDeleteTool.SETTINGS, fileDeleteToolSettings);
@@ -312,7 +312,7 @@ public class SettingsController {
     }
     @RequestMapping("/websearch/get")
     public RestResponse getWebSearchToolSettings() {
-        MetaSOAISearchTool.Settings webSearchToolSettings = (MetaSOAISearchTool.Settings) toolSettingsMap.get(MetaSOAISearchTool.SETTINGS);
+        WebSearchTool.Settings webSearchToolSettings = (WebSearchTool.Settings) toolSettingsMap.get(WebSearchTool.SETTINGS);
         return new RestResponse().success(webSearchToolSettings);
     }
     @RequestMapping("/filewrite/get")
@@ -415,20 +415,26 @@ public class SettingsController {
         return new RestResponse().success("保存成功");
     }
     @PostMapping("/websearch/save")
-    public RestResponse saveWebSearchToolSettings(@RequestBody(required = false) MetaSOAISearchTool.Settings settings) {
+    public RestResponse saveWebSearchToolSettings(@RequestBody(required = false) WebSearchTool.Settings settings) {
         if (settings == null) {
             return new RestResponse().error("Invalid settings");
         }
-        if (!StringUtils.hasText(settings.getApiKey())) {
-            return new RestResponse().error("Invalid settings");
+        WebSearchTool.Settings webSearchToolSettings = (WebSearchTool.Settings) toolSettingsMap.get(WebSearchTool.SETTINGS);
+        if (StringUtils.hasText(settings.getMetasoApiKey())) {
+            webSearchToolSettings.setMetasoApiKey(settings.getMetasoApiKey());
         }
-        MetaSOAISearchTool.Settings webSearchToolSettings = (MetaSOAISearchTool.Settings) toolSettingsMap.get(MetaSOAISearchTool.SETTINGS);
-        webSearchToolSettings.setApiKey(settings.getApiKey());
-        toolSettingsMap.put(MetaSOAISearchTool.SETTINGS, webSearchToolSettings);
+        if (StringUtils.hasText(settings.getSerperApiKey())) {
+            webSearchToolSettings.setSerperApiKey(settings.getSerperApiKey());
+        }
+        if (!StringUtils.hasText(webSearchToolSettings.getMetasoApiKey())
+                && !StringUtils.hasText(webSearchToolSettings.getSerperApiKey())) {
+            return new RestResponse().error("至少需要配置一个搜索引擎的 API Key");
+        }
+        toolSettingsMap.put(WebSearchTool.SETTINGS, webSearchToolSettings);
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(toolSettingsPath), toolSettingsMap);
         } catch (Exception e) {
-            log.error("保存 MetaSOAISearchTool 设置失败: {}", e.getMessage());
+            log.error("保存 WebSearchTool 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");

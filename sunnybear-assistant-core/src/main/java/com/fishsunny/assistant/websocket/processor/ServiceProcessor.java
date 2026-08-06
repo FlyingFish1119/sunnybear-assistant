@@ -26,6 +26,7 @@ import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.UserSettings;
 import com.fishsunny.assistant.utils.Base64Utils;
+import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.variable.ControlSign;
 import com.fishsunny.assistant.variable.RoleVariable;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,7 +49,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 本类主要和元数据处理逻辑有关
@@ -91,41 +91,63 @@ public class ServiceProcessor {
         this.missionAISettings = missionAISettings;
     }
 
-    /**
-     * 检查请求参数
-     */
-    public ChatMessageRequest checkRequest(String payload) throws Exception {
-        try {
-            ChatMessageRequest request = objectMapper.readValue(payload, ChatMessageRequest.class);
-            switch (request.getMode()) {
-                case ChatMessageRequest.MODE_CREATE:
-                    if (!StringUtils.hasText(request.getContent())) {
-                        throw new UserException("内容为空");
-                    }
-                    return request;
-                case ChatMessageRequest.MODE_APPEND:
-                case ChatMessageRequest.MODE_REPLACE:
-                case ChatMessageRequest.MODE_EDIT:
-                    if (!StringUtils.hasText(request.getContent())) {
-                        throw new UserException("内容为空");
-                    }
-                    if (!StringUtils.hasText(request.getSessionId())) {
-                        throw new UserException("会话 ID 为空");
-                    }
-                    return request;
-                default:
-                    throw new UserException("无效的请求类型[" + request.getMode() + "]");
-            }
-        } catch (Exception e) {
-            throw new UserException("消息格式无效: " + e.getMessage());
+    public ChatSessionModeParseResult handleChatSession(ChatMessageRequest request, WebSocketSession safeSession, boolean isEnablePro) throws Exception {
+        ChatSession chatSession;
+        boolean isNewChat;
+        List<ChatMessage> messages = new ArrayList<>();
+
+        switch (request.getMode()) {
+            case ChatMessageRequest.MODE_CREATE:
+                isNewChat = true;
+                // cron 触发：通过 cronId 查库获取标题，session type = 'cron'
+                if (request.getCronId() != null) {
+                    chatSession = createCronChatSession(request.getCronId());
+                } else {
+                    boolean enablePro = isEnablePro && judgeProModel(request.getContent());
+                    chatSession = createChatSession(enablePro);
+                }
+                request.setSessionId(chatSession.getId());
+                // 先写文件，再创建带文件引用的用户消息
+                List<String> createFileUrls = writeSessionFile(request.getFiles(), chatSession);
+                messages.add(appendUserMessage(
+                        chatSession.getId(), null, request.getContent(), createFileUrls, safeSession));
+                break;
+            case ChatMessageRequest.MODE_APPEND:
+                isNewChat = false;
+                chatSession = findChatSession(request.getSessionId());
+                messages = findHistoryMessages(request.getSessionId());
+                ChatMessage last = ObjectUtils.getLast(messages);
+                String parentId = last == null ? null : last.getId();
+                List<String> appendFileUrls = writeSessionFile(request.getFiles(), chatSession);
+                messages.add(appendUserMessage(
+                        request.getSessionId(), parentId, request.getContent(), appendFileUrls, safeSession));
+                break;
+            case ChatMessageRequest.MODE_REPLACE:
+                isNewChat = false;
+                chatSession = findChatSession(request.getSessionId());
+                messages = handleReplace(request, safeSession);
+                break;
+            case ChatMessageRequest.MODE_EDIT:
+                isNewChat = false;
+                chatSession = findChatSession(request.getSessionId());
+                messages = handleEdit(request, safeSession);
+                break;
+            default:
+                throw new UserException("无效的请求模式");
         }
+
+        return new ChatSessionModeParseResult(chatSession, isNewChat, messages);
     }
+
+    public record ChatSessionModeParseResult(ChatSession chatSession, boolean isNewChat, List<ChatMessage> messages) {
+    }
+
 
     /**
      * 创建会话
      * @param enablePro 是否启用高级模型
      */
-    public ChatSession createChatSession(boolean enablePro) throws Exception {
+    private ChatSession createChatSession(boolean enablePro) throws Exception {
         ChatSession chatSession = new ChatSession("新会话");
         chatSession.setEnablePro(enablePro);
         try {
@@ -140,7 +162,7 @@ public class ServiceProcessor {
      * 为 cron 定时任务创建会话，标题为 "cron任务标题_时间戳"
      * @param cronId cron 任务 ID
      */
-    public ChatSession createCronChatSession(Integer cronId) throws Exception {
+    private ChatSession createCronChatSession(Integer cronId) throws Exception {
         CronJob cronJob = cronJobService.findById(cronId);
         if (cronJob == null) {
             throw new UserException("cron 任务不存在: " + cronId);
@@ -161,7 +183,7 @@ public class ServiceProcessor {
      * 使用 mission AI 判断用户问题是否需要使用复杂模型（chat_pro）。
      * @return true = 需要高级模型，false = 普通模型即可
      */
-    public boolean judgeProModel(String userQuestion) {
+    private boolean judgeProModel(String userQuestion) {
         if (userSettings.getEnableAutoSwitchModel() == null || !userSettings.getEnableAutoSwitchModel()) {
             return false;
         }
@@ -239,8 +261,7 @@ public class ServiceProcessor {
             ChatHttpHandler.CompleteCallback onComplete = (result, lastRes) -> {
                 chatSession.setName(result.content());
             };
-            chatHttpHandler.translate(UUID.randomUUID().toString(), titleAISettings.getAdapterName(), request,
-                    titleAISettings.getStream() != null ? titleAISettings.getStream() : true,
+            chatHttpHandler.translate(UUID.randomUUID().toString(), titleAISettings.getAdapterName(), request, titleAISettings.getStream(),
                     null, onComplete);
             chatSessionService.update(chatSession);
             session.sendMessage(new TextMessage(ControlSign.UPDATE_SESSION + objectMapper.writeValueAsString(chatSession)));
@@ -249,7 +270,7 @@ public class ServiceProcessor {
         }
     }
 
-    public ChatSession findChatSession(String sessionId) throws Exception {
+    private ChatSession findChatSession(String sessionId) throws Exception {
         ChatSession session = chatSessionService.findById(sessionId);
         if (session == null) {
             throw new UserException("会话不存在: " + sessionId);
@@ -261,14 +282,14 @@ public class ServiceProcessor {
      * 查询会话历史
      * @return 会话历史
      */
-    public List<ChatMessage> findHistoryMessages(String sessionId) throws Exception {
+    private List<ChatMessage> findHistoryMessages(String sessionId) throws Exception {
         return chatMessageService.getConversationHistory(sessionId);
     }
 
     /**
      * 处理 replace 模式：停用旧助手分支，返回历史消息到父用户消息为止
      */
-    public List<ChatMessage> handleReplace(ChatMessageRequest request, WebSocketSession session) throws Exception {
+    private List<ChatMessage> handleReplace(ChatMessageRequest request, WebSocketSession session) throws Exception {
         String replaceMessageId = request.getReplaceMessageId();
         if (!StringUtils.hasText(replaceMessageId)) {
             throw new UserException("replace 模式下 replaceMessageId 不能为空");
@@ -304,7 +325,7 @@ public class ServiceProcessor {
      * 处理 edit 模式：停用旧用户消息分支，创建新的用户消息，返回历史消息
      * <p>仅替换文本内容，保留旧消息中的文件附件（image / video / audio / file）
      */
-    public List<ChatMessage> handleEdit(ChatMessageRequest request, WebSocketSession session) throws Exception {
+    private List<ChatMessage> handleEdit(ChatMessageRequest request, WebSocketSession session) throws Exception {
         String editMessageId = request.getEditMessageId();
         if (!StringUtils.hasText(editMessageId)) {
             throw new UserException("edit 模式下 editMessageId 不能为空");
@@ -372,7 +393,7 @@ public class ServiceProcessor {
      * @param fileUrls  文件引用路径列表（绝对路径），用于前端通过 /file/proxy 获取
      * @param session   WebSocket 会话
      */
-    public ChatMessage appendUserMessage(String sessionId, String parentId, String prompt,
+    private ChatMessage appendUserMessage(String sessionId, String parentId, String prompt,
                                           List<String> fileUrls, WebSocketSession session) throws Exception {
 
         ChatMessage chatMessage = new ChatMessage();
@@ -412,7 +433,7 @@ public class ServiceProcessor {
      * @param chatSession 会话对象
      * @return 写入成功的文件绝对路径列表，用于前端 /file/proxy 代理获取
      */
-    public List<String> writeSessionFile(List<FileData> files, ChatSession chatSession) {
+    private List<String> writeSessionFile(List<FileData> files, ChatSession chatSession) {
         List<String> writtenPaths = new ArrayList<>();
         if (files == null || files.isEmpty()) {
             return writtenPaths;

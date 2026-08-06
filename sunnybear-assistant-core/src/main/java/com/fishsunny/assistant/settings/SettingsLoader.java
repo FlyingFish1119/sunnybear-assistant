@@ -9,7 +9,7 @@ import com.fishsunny.assistant.engine.tool.instance.file.FileDownloadTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileEditTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileWriteTool;
 import com.fishsunny.assistant.engine.tool.instance.image.ImageCaptionTool;
-import com.fishsunny.assistant.engine.tool.instance.net.MetaSOAISearchTool;
+import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.os.CommandTool;
 import com.fishsunny.assistant.engine.tool.instance.os.ExtensionScriptTool;
@@ -332,7 +332,7 @@ public class SettingsLoader {
                         "icacls", "takeown", "cacls", "sc delete", "wmic delete"
                 ))
                 .setMaxOutputSize(32768L).setSafetyOutputSize(8192L));
-        defaults.put(MetaSOAISearchTool.SETTINGS, new MetaSOAISearchTool.Settings(""));
+        defaults.put(WebSearchTool.SETTINGS, new WebSearchTool.Settings("", ""));
         defaults.put(ExtensionScriptTool.SETTINGS, new ExtensionScriptTool.Settings(30L, 65536L));
         defaults.put(ImageCaptionTool.SETTINGS, new ImageCaptionTool.Settings(1280));
         defaults.put(FileWriteTool.SETTINGS, new FileWriteTool.Settings(FileWriteTool.AUTO));
@@ -363,14 +363,14 @@ public class SettingsLoader {
         return objectMapper.convertValue(data, ExtensionScriptTool.Settings.class);
     }
 
-    @Bean(MetaSOAISearchTool.SETTINGS)
-    public MetaSOAISearchTool.Settings webSearchToolSettings() {
+    @Bean(WebSearchTool.SETTINGS)
+    public WebSearchTool.Settings webSearchToolSettings() {
         initToolSettingsFile();
-        Object data = toolSettingsCache.get(MetaSOAISearchTool.SETTINGS);
+        Object data = toolSettingsCache.get(WebSearchTool.SETTINGS);
         if (data == null) {
-            return new MetaSOAISearchTool.Settings("");
+            return new WebSearchTool.Settings("", "");
         }
-        return objectMapper.convertValue(data, MetaSOAISearchTool.Settings.class);
+        return objectMapper.convertValue(data, WebSearchTool.Settings.class);
     }
 
     @Bean(FileWriteTool.SETTINGS)

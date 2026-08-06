@@ -301,7 +301,7 @@ public class FileSearchTool implements ToolHandler {
     private boolean isSkippableDir(String dirName) {
         return switch (dirName) {
             case "node_modules", ".git", ".svn", "__pycache__", ".idea",
-                 "vendor", "target", "build", "dist", ".next", ".nuxt",
+                 "vendor", "target", "minimumBuild", "dist", ".next", ".nuxt",
                  "venv", ".venv", ".tox", ".eggs", ".mypy_cache",
                  ".pytest_cache", ".ruff_cache", "bower_components" -> true;
             default -> false;

@@ -60,6 +60,10 @@ engine:
       enable: true
     net:
       enable: true
+      meta-soai-search:
+        enable: true
+      serper-search:
+        enable: true
     file:
       enable: true
     image:

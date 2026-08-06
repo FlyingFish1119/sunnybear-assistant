@@ -210,7 +210,7 @@
                         </div>
                     </div>
                     <div class="settings-item-right">
-                        <span class="settings-item-value">{{ webSearchSettings.apiKey ? '已配置' : '未配置' }}</span>
+                        <span class="settings-item-value">{{ (webSearchSettings.metasoApiKey || webSearchSettings.serperApiKey) ? '已配置' : '未配置' }}</span>
                         <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
                     </div>
                 </div>
@@ -672,9 +672,12 @@
                 <span>网络搜索</span>
             </div>
         </template>
-        <el-form :model="webSearchForm" label-width="80px" label-position="left">
-            <el-form-item label="API Key">
-                <input class="settings-input" v-model="webSearchForm.apiKey" placeholder="输入 API Key">
+        <el-form :model="webSearchForm" label-width="90px" label-position="left">
+            <el-form-item label="MetaSOAI Key">
+                <input class="settings-input" v-model="webSearchForm.metasoApiKey" placeholder="国内/中文搜索（默认引擎）">
+            </el-form-item>
+            <el-form-item label="Serper Key">
+                <input class="settings-input" v-model="webSearchForm.serperApiKey" placeholder="Google 搜索（国外/英文场景）">
             </el-form-item>
         </el-form>
         <template #footer>
@@ -1299,7 +1302,7 @@ const app = Vue.createApp({
             assistantForm: { assistantName: '', avatar: '' },
             aiForm: { prompt: '', adapterName: '', model: '', stream: false, thinking: false, reasoningEffort: null, temperature: 1, top_p: 1, maxTokens: 4096, frequencyPenalty: 0, presencePenalty: 0 },
             commandForm: { mode: 'auto', timeout: 10, safetyOutputSize: 8192, maxOutputSize: 32768, whiteListStr: '', blackListStr: '' },
-            webSearchForm: { apiKey: '' },
+            webSearchForm: { metasoApiKey: '', serperApiKey: '' },
             fileWriteForm: { mode: 'auto' },
             fileEditForm: { mode: 'auto' },
             fileDeleteForm: { mode: 'auto' },
@@ -1591,7 +1594,8 @@ const app = Vue.createApp({
                     break;
                 case 'websearch':
                     this.webSearchForm = {
-                        apiKey: this.webSearchSettings.apiKey || ''
+                        metasoApiKey: this.webSearchSettings.metasoApiKey || '',
+                        serperApiKey: this.webSearchSettings.serperApiKey || ''
                     };
                     this.dialogs.websearch = true;
                     break;
@@ -1806,12 +1810,15 @@ const app = Vue.createApp({
         },
 
         saveWebSearch() {
-            if (!this.webSearchForm.apiKey.trim()) {
-                ElementPlus.ElMessage.warning('API Key 不能为空');
+            const metasoKey = this.webSearchForm.metasoApiKey.trim();
+            const serperKey = this.webSearchForm.serperApiKey.trim();
+            if (!metasoKey && !serperKey) {
+                ElementPlus.ElMessage.warning('至少需要配置一个搜索引擎的 API Key');
                 return;
             }
             this.postSave('settings/websearch/save', {
-                apiKey: this.webSearchForm.apiKey.trim()
+                metasoApiKey: metasoKey,
+                serperApiKey: serperKey
             }, 'websearch');
         },
 

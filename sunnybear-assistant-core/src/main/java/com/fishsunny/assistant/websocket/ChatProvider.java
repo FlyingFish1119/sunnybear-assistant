@@ -24,6 +24,8 @@ import java.util.function.Function;
 @Accessors(chain = true)
 public class ChatProvider {
 
+    public static final ChatProvider DEFAULT = new ChatProvider();
+
     private Function<SystemProviderContext, String> systemProvider;
     private Function<ToolProviderContext, List<StandardToolRegister>> toolProvider;
     private Function<Map<String, Object>, Map<String, Object>> contextProvider;
@@ -32,10 +34,8 @@ public class ChatProvider {
     }
 
     @Accessors(chain = true)
-        public record SystemProviderContext(ChatSession chatSession, List<ChatMessage> originMessages) {
-    }
+    public record SystemProviderContext(ChatSession chatSession, List<ChatMessage> originMessages) { }
 
     @Accessors(chain = true)
-        public record ToolProviderContext(ChatSession chatSession, List<StandardToolRegister> toolRegisters) {
-    }
+    public record ToolProviderContext(ChatSession chatSession, List<StandardToolRegister> toolRegisters) { }
 }

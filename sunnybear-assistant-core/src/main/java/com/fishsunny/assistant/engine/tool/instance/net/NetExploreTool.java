@@ -46,7 +46,7 @@ public class NetExploreTool implements ToolHandler {
 
     /** 子 Agent 可用的网络工具（按 handler 名称过滤，避免递归到自己） */
     private static final Set<String> SUB_AGENT_TOOLS = Set.of(
-            MetaSOAISearchTool.NAME,   // web_search_tool
+            WebSearchTool.NAME,   // web_search_tool
             WebReaderTool.NAME         // web_reader_tool
     );
 
@@ -61,18 +61,18 @@ public class NetExploreTool implements ToolHandler {
     private final AISettings missionAISettings;
     private final ToolCallLoop toolCallLoop;
     private final ToolExecutor toolExecutor;
-    private final MetaSOAISearchTool metaSOAISearchTool;
+    private final WebSearchTool webSearchTool;
 
     public NetExploreTool(ObjectMapper objectMapper,
                           @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                           ToolCallLoop toolCallLoop,
                           @Lazy ToolExecutor toolExecutor,
-                          @Lazy MetaSOAISearchTool metaSOAISearchTool) {
+                          @Lazy WebSearchTool webSearchTool) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
         this.toolCallLoop = toolCallLoop;
         this.toolExecutor = toolExecutor;
-        this.metaSOAISearchTool = metaSOAISearchTool;
+        this.webSearchTool = webSearchTool;
 
         register = new ToolRegister()
                 .setName(NAME)
@@ -120,7 +120,7 @@ public class NetExploreTool implements ToolHandler {
                         "size", 10,
                         "scope", "webpage"
                 );
-                return metaSOAISearchTool.action(objectMapper.writeValueAsString(searchArgs), context);
+                return webSearchTool.action(objectMapper.writeValueAsString(searchArgs), context);
             } catch (ToolExecutor.ToolExecuteException e) {
                 throw e;
             } catch (Exception e) {
