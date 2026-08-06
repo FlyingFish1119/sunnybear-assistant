@@ -1,0 +1,332 @@
+/* ============================================
+   Character DB Panel — 浮动右侧面板
+   不参与 flex 布局，绝对定位在消息区右侧
+   桌面端 50dvw，移动端 100dvw
+   ============================================ */
+
+/* ---- 浮动面板 ---- */
+.character-db-panel {
+    position: fixed;
+    right: 0;
+    top: 0;
+    height: 100dvh;
+    width: 50dvw;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    background: #fafbfc;
+    border-left: 1px solid var(--border-color, #ddd);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.10);
+    z-index: 100;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 展开状态 */
+.character-db-panel:not(.collapsed) {
+    transform: translateX(0);
+}
+
+/* ---- 头部 ---- */
+.character-db-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 2px solid var(--border-color, #ddd);
+    flex-shrink: 0;
+    background: #fff;
+}
+
+.character-db-header-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary, #333);
+}
+
+.character-db-badge {
+    font-size: 11px;
+    background: var(--main-color, lightsalmon);
+    color: #fff;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+    min-width: 18px;
+    text-align: center;
+}
+
+.character-db-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #888;
+    transition: all var(--transition-fast, 0.15s);
+}
+
+.character-db-close-btn:hover {
+    background: #e8e8e8;
+    color: var(--text-primary, #333);
+}
+
+/* ---- 列表区域 ---- */
+.character-db-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 6px 0;
+}
+
+/* ---- 空状态 / 加载中 ---- */
+.character-db-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 48px 20px;
+    color: var(--text-muted, #999);
+    font-size: 13px;
+    text-align: center;
+}
+
+.character-db-empty-hint {
+    font-size: 11px;
+    opacity: 0.6;
+    line-height: 1.6;
+    max-width: 280px;
+}
+
+.character-db-retry-btn {
+    margin-top: 4px;
+    padding: 4px 16px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: #fff;
+    color: var(--text-primary, #333);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all var(--transition-fast, 0.15s);
+}
+
+.character-db-retry-btn:hover {
+    border-color: var(--main-color, lightsalmon);
+    color: var(--main-color, lightsalmon);
+}
+
+.spin-icon {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ---- 单条表 ---- */
+.character-db-table {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.character-db-table:last-child {
+    border-bottom: none;
+}
+
+.character-db-table-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 16px;
+    cursor: pointer;
+    user-select: none;
+    transition: background var(--transition-fast, 0.15s);
+}
+
+.character-db-table-header:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+.character-db-expand-icon {
+    flex-shrink: 0;
+    color: var(--text-muted, #999);
+    transition: transform 0.2s ease;
+}
+
+.character-db-expand-icon.rotated {
+    transform: rotate(90deg);
+}
+
+.character-db-table-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary, #333);
+}
+
+.character-db-table-count {
+    font-size: 11px;
+    color: var(--text-muted, #999);
+    flex-shrink: 0;
+}
+
+/* ---- 展开内容 ---- */
+.character-db-table-body {
+    padding: 0 16px 12px 16px;
+}
+
+.character-db-table-error {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #ff4d4f;
+    padding: 8px 0;
+}
+
+.character-db-table-empty {
+    font-size: 12px;
+    color: var(--text-muted, #999);
+    padding: 8px 0;
+    text-align: center;
+}
+
+/* ---- 数据表格 ---- */
+.character-db-table-wrap {
+    overflow-x: auto;
+    border: 1px solid #e8e8e8;
+    border-radius: 6px;
+    background: #fff;
+}
+
+.character-db-data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+
+.character-db-data-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.character-db-data-table th {
+    background: #f5f5f5;
+    padding: 6px 10px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-primary, #333);
+    border-bottom: 2px solid #e8e8e8;
+    border-right: 1px solid #eee;
+    white-space: nowrap;
+}
+
+.character-db-data-table th:last-child {
+    border-right: none;
+}
+
+.character-db-col-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.character-db-col-name {
+    font-size: 12px;
+}
+
+.character-db-col-type {
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--text-muted, #999);
+}
+
+.character-db-col-badge {
+    font-size: 8px;
+    font-weight: 600;
+    padding: 0 3px;
+    border-radius: 2px;
+    line-height: 14px;
+}
+
+.character-db-col-badge.pk {
+    background: #fff7e6;
+    color: #d46b08;
+    border: 1px solid #ffd591;
+}
+
+.character-db-col-badge.nn {
+    background: #fff1f0;
+    color: #cf1322;
+    border: 1px solid #ffa39e;
+}
+
+.character-db-data-table td {
+    padding: 5px 10px;
+    border-bottom: 1px solid #f0f0f0;
+    border-right: 1px solid #f5f5f5;
+    color: var(--text-secondary, #555);
+    word-break: break-word;
+    white-space: normal;
+}
+
+.character-db-data-table td:last-child {
+    border-right: none;
+}
+
+.character-db-data-table tr:last-child td {
+    border-bottom: none;
+}
+
+.character-db-data-table tr:hover td {
+    background: #fafafa;
+}
+
+.character-db-data-table .null-cell {
+    color: #bbb;
+    font-style: italic;
+}
+
+/* ---- 移动端遮罩 ---- */
+.character-db-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 99;
+    transition: opacity 0.3s ease;
+}
+
+.character-db-overlay.visible {
+    display: block;
+}
+
+@media (max-width: 768px) {
+    .character-db-overlay {
+        z-index: 999;
+    }
+}
+
+/* ============================================
+   移动端 — 全屏面板
+   ============================================ */
+@media (max-width: 768px) {
+    .character-db-panel {
+        width: 100dvw;
+        max-width: none;
+        padding-bottom: env(safe-area-inset-bottom);
+        z-index: 1000;
+    }
+}

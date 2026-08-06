@@ -37,9 +37,9 @@ public class ToolContextBuilder {
     }
 
     public static Map<String, Object> minimumBuild(WebSocketSession session, ChatSession chatSession) {
-        return Map.of(
-                "session", session,
-                "chatSession", chatSession
-        );
+        HashMap<String, Object> context = new HashMap<>();
+        context.put("session", session);
+        context.put("chatSession", chatSession);
+        return context;
     }
 }
