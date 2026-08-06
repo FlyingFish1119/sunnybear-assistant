@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.Map;
 
 @ToolKitComponent(NetToolKit.class)
-@ConditionalOnExpression("${engine.tool.net.enable:true} && ${engine.tool.net.meta-soai-search.enable:true}")
+@ConditionalOnExpression("${engine.tool.net.enable:true} && ${engine.tool.net.web-search-tool.enable:true}")
 public class WebSearchTool implements ToolHandler {
 
     public static final String NAME = "web_search_tool";
