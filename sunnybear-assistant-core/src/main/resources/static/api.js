@@ -18,6 +18,9 @@ const API = (function () {
         return path.substring(0, lastSlash + 1);
     })();
 
+    // WebSocket 协议跟随页面协议：https 页面必须用 wss（浏览器禁止混合内容）
+    const WS_PROTO = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+
     /* ==================== 底层请求 ==================== */
     async function get(path) {
         const response = await fetch(BASE_PATH + path);
@@ -66,8 +69,8 @@ const API = (function () {
         post: post,
 
         ws: {
-            url: 'ws://' + window.location.host + BASE_PATH + 'ws/chat',
-            characterUrl: 'ws://' + window.location.host + BASE_PATH + 'ws/character-chat'
+            url: WS_PROTO + window.location.host + BASE_PATH + 'ws/chat',
+            characterUrl: WS_PROTO + window.location.host + BASE_PATH + 'ws/character-chat'
         },
 
         /** 文件代理 URL（用于图片/音视频等本地文件的展示） */
