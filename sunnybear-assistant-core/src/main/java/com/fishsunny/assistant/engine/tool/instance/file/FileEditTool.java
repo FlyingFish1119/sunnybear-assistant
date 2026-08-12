@@ -99,6 +99,7 @@ public class FileEditTool implements ToolHandler {
     @Override
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         String uuid = UUID.randomUUID().toString();
+        FilePathLock.LockHandle lock = null;
         try {
             if (!(context.get("session") instanceof WebSocketSession session)) {
                 throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
@@ -117,6 +118,10 @@ public class FileEditTool implements ToolHandler {
 
             // 路径规范化
             Path filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
+
+            // 加锁：须覆盖 AI 安全检测与用户确认等待，保证 read-modify-write 整体原子化，
+            // 防止并发编辑同一文件时互相覆盖（lost update）
+            lock = FilePathLock.acquire(filePath);
 
             // 检查文件
             validateFile(filePath);
@@ -198,6 +203,7 @@ public class FileEditTool implements ToolHandler {
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         } finally {
+            if (lock != null) lock.close();
             ChatController.cleanupConfirm(uuid);
         }
     }

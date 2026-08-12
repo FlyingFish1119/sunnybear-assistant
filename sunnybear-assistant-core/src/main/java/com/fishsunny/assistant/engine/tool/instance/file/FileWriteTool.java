@@ -80,6 +80,7 @@ public class FileWriteTool implements ToolHandler {
     @Override
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         String uuid = UUID.randomUUID().toString();
+        FilePathLock.LockHandle lock = null;
         try {
             if (!(context.get("session") instanceof WebSocketSession session)) {
                 throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
@@ -95,6 +96,9 @@ public class FileWriteTool implements ToolHandler {
 
             // 路径规范化
             Path filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
+
+            // 加锁：须覆盖 AI 安全检测与用户确认等待，防止确认期间文件被其他会话修改
+            lock = FilePathLock.acquire(filePath);
 
             switch (settings.getMode()) {
                 case NEVER_ASKED:
@@ -161,6 +165,7 @@ public class FileWriteTool implements ToolHandler {
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         } finally {
+            if (lock != null) lock.close();
             ChatController.cleanupConfirm(uuid);
         }
     }

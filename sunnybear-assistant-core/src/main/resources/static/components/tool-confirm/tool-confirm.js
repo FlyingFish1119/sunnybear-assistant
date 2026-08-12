@@ -1,16 +1,20 @@
 /**
- * 工具确认弹窗组件（自包含版）
+ * 工具确认弹窗组件（自包含版 · 多标签）
  *
  * 将 WebSocket 通信、图标/标题映射、markdown 渲染、倒计时全部内聚在组件内部。
  * 父组件只需：
  *   1. 传入 ws / mainColor / renderMarkdown 三个 props
  *   2. 调用 this.$refs.toolConfirm.show(toolAsk) 即可
  *
+ * 并发支持：多个确认请求以"浏览器标签页"形式共存于一个弹窗内，
+ * 每标签独立倒计时（与服务端每 ask 独立 30s 超时对应），可点击标签栏切换查看，
+ * 新到达的 ask 自动激活。超时/接受/拒绝只作用于对应的标签，互不影响。
+ *
  * Props:
  *   mainColor      — String     主题色
  *
  * 公开方法（通过 ref 调用）：
- *   show(toolAsk)  — 弹出确认对话框，toolAsk 为服务端下发的 { id, toolName, message } 对象
+ *   show(toolAsk)  — 弹出/追加确认对话框，toolAsk 为服务端下发的 { id, toolName, message } 对象
  */
 const ToolConfirm = {
     name: 'ToolConfirm',
@@ -22,26 +26,43 @@ const ToolConfirm = {
            ref="dialog"
            @keydown.esc="reject"
            @keydown.enter.ctrl.prevent="accept">
-        <div class="tool-confirm-header">
+        <!-- 标签栏：多个并发确认以标签页形式共存，可切换 -->
+        <div class="tool-confirm-tabs" role="tablist" :style="{'--main-color': mainColor}">
+          <button v-for="(ask, idx) in asks" :key="ask.id"
+                  class="tool-confirm-tab"
+                  :class="{ 'is-active': idx === activeIndex }"
+                  role="tab"
+                  :aria-selected="idx === activeIndex"
+                  @click="selectTab(idx)">
+            <i :data-lucide="ask.icon"></i>
+            <span class="tool-confirm-tab-title">{{ ask.title }}</span>
+            <span class="tool-confirm-tab-countdown"
+                  :class="{ 'is-danger': ask.countdown <= 3 }">{{ ask.countdown }}</span>
+          </button>
+        </div>
+        <!-- 内容区：只渲染当前激活的标签。
+             注意：各区块必须保持为弹窗 flex 容器的直接子项，
+             包一层 v-if 中间层会使 .tool-confirm-body 的 flex 收缩失效，footer 会被挤出对话框 -->
+        <div v-if="activeAsk" class="tool-confirm-header">
           <div class="tool-confirm-icon-wrap">
-            <i :data-lucide="icon"></i>
+            <i :data-lucide="activeAsk.icon"></i>
           </div>
           <div class="tool-confirm-header-text">
-            <span class="tool-confirm-title">{{ title }}</span>
+            <span class="tool-confirm-title">{{ activeAsk.title }}</span>
             <span class="tool-confirm-subtitle">AI 请求执行以下操作，请确认是否允许</span>
           </div>
         </div>
-        <div class="tool-confirm-body">
-          <div class="markdown-body" v-html="renderedMessage"></div>
+        <div v-if="activeAsk" class="tool-confirm-body">
+          <div class="markdown-body" v-html="activeAsk.renderedMessage"></div>
         </div>
-        <div class="tool-confirm-progress">
+        <div v-if="activeAsk" class="tool-confirm-progress">
           <div class="tool-confirm-progress-track">
             <div class="tool-confirm-progress-bar"
-                 :style="{width: progressPercent + '%', '--main-color': mainColor}"
-                 :class="{'is-warning': progressPercent <= 30, 'is-danger': progressPercent <= 10}">
+                 :style="{width: activeAsk.progressPercent + '%', '--main-color': mainColor}"
+                 :class="{'is-warning': activeAsk.progressPercent <= 30, 'is-danger': activeAsk.progressPercent <= 10}">
             </div>
           </div>
-          <span class="tool-confirm-progress-text">{{ countdown }} 秒后自动拒绝</span>
+          <span class="tool-confirm-progress-text">{{ activeAsk.countdown }} 秒后自动拒绝</span>
         </div>
         <div class="tool-confirm-footer">
           <button class="tool-confirm-btn tool-confirm-btn-cancel" @click="reject">
@@ -66,15 +87,11 @@ const ToolConfirm = {
 
     data() {
         return {
-            visible: false,
-            confirmId: '',
-            title: '',
-            icon: 'wrench',
-            renderedMessage: '',
+            // 待确认的标签队列：每项独立 id/标题/倒计时/timer，互不干扰
+            asks: [],
+            // 当前激活标签的下标，-1 表示无
+            activeIndex: -1,
             TOTAL: 30,
-            countdown: 30,
-            progressPercent: 100,
-            _timer: null,
             // 工具名 → 图标 / 标题映射
             iconMap: {
                 'command_tool': 'terminal',
@@ -95,55 +112,115 @@ const ToolConfirm = {
         };
     },
 
+    computed: {
+        visible() {
+            return this.asks.length > 0;
+        },
+        activeAsk() {
+            return this.asks[this.activeIndex] || null;
+        }
+    },
+
     methods: {
         /* ---- 公开方法 ---- */
         show(toolAsk) {
-            this.confirmId = toolAsk.id;
-            this.title = this.titleMap[toolAsk.toolName] || toolAsk.toolName || '工具执行确认';
-            this.icon = this.iconMap[toolAsk.toolName] || 'wrench';
-            this.renderedMessage = MarkdownUtils.render(toolAsk.message || '');
-            this.visible = true;
-            this.$nextTick(() => this.startCountdown());
-        },
-
-        /* ---- 内部方法 ---- */
-        startCountdown() {
-            this.clearTimer();
-            this.countdown = this.TOTAL;
-            this.progressPercent = 100;
-            this._timer = setInterval(() => {
-                this.countdown--;
-                this.progressPercent = Math.round((this.countdown / this.TOTAL) * 100);
-                if (this.countdown <= 0) {
-                    this.reject();
-                }
-            }, 1000);
+            // 防御：同一 id 重复推送（如 WebSocket 重连后的重复消息）直接忽略
+            if (this.asks.some(a => a.id === toolAsk.id)) return;
+            const tab = {
+                id: toolAsk.id,
+                title: this.titleMap[toolAsk.toolName] || toolAsk.toolName || '工具执行确认',
+                icon: this.iconMap[toolAsk.toolName] || 'wrench',
+                renderedMessage: MarkdownUtils.render(toolAsk.message || ''),
+                countdown: this.TOTAL,
+                progressPercent: 100,
+                resolved: false,
+                _timer: null
+            };
+            this.asks.push(tab);
+            // 浏览器行为：新标签自动激活
+            this.activeIndex = this.asks.length - 1;
             this.$nextTick(() => {
-                const el = this.$refs.dialog;
-                if (el) el.focus();
-                this.refreshIcons();
+                if (!this.asks.includes(tab)) return; // 防御：期间标签已被移除
+                this.startCountdown(tab);
+                this.focusDialog();
             });
         },
 
-        clearTimer() {
-            if (this._timer) {
-                clearInterval(this._timer);
-                this._timer = null;
+        /* ---- 内部方法 ---- */
+        // 每标签独立倒计时，全部并行走（与服务端每 ask 独立 30s 超时一致）
+        startCountdown(tab) {
+            this.clearTimer(tab);
+            tab.countdown = this.TOTAL;
+            tab.progressPercent = 100;
+            tab._timer = setInterval(() => {
+                tab.countdown--;
+                tab.progressPercent = Math.round((tab.countdown / this.TOTAL) * 100);
+                if (tab.countdown <= 0) {
+                    // 超时自动拒绝：只拒绝自己（用本标签自己的 id 发送）
+                    this.resolveTab(tab.id, false);
+                }
+            }, 1000);
+        },
+
+        clearTimer(tab) {
+            if (tab._timer) {
+                clearInterval(tab._timer);
+                tab._timer = null;
             }
         },
 
-        sendResult(confirm) {
-            API.chat.confirm({ id: this.confirmId, confirm: confirm })
+        // 解决（接受/拒绝/超时）一个标签：用其自身 id 发送确认结果，然后移除
+        resolveTab(id, confirm) {
+            const tab = this.asks.find(a => a.id === id);
+            if (!tab || tab.resolved) return;
+            tab.resolved = true;
+            API.chat.confirm({ id: tab.id, confirm })
                 .catch(err => console.error('确认请求发送失败:', err));
-            this.visible = false;
+            this.removeTab(id);
+        },
+
+        removeTab(id) {
+            const idx = this.asks.findIndex(a => a.id === id);
+            if (idx === -1) return;
+            this.clearTimer(this.asks[idx]);
+            this.asks.splice(idx, 1);
+            if (this.asks.length === 0) {
+                // 全部解决 → 整个弹窗关闭
+                this.activeIndex = -1;
+                return;
+            }
+            // 浏览器行为：删除激活标签 → 激活右侧邻居；删除背景标签 → 激活项不变或左移
+            this.activeIndex = Math.min(idx, this.asks.length - 1);
+            this.$nextTick(() => this.focusDialog());
         },
 
         accept() {
-            this.sendResult(true);
+            const t = this.activeAsk;
+            if (!t) return;
+            // 防连击：解决标签后新标签会自动激活，双击可能误确认下一个标签，加 300ms 窗口
+            if (this._resolving) return;
+            this._resolving = true;
+            this.resolveTab(t.id, true);
+            setTimeout(() => { this._resolving = false; }, 300);
         },
 
         reject() {
-            this.sendResult(false);
+            const t = this.activeAsk;
+            if (!t) return;
+            if (this._resolving) return;
+            this._resolving = true;
+            this.resolveTab(t.id, false);
+            setTimeout(() => { this._resolving = false; }, 300);
+        },
+
+        selectTab(idx) {
+            this.activeIndex = idx;
+            this.$nextTick(() => this.focusDialog());
+        },
+
+        focusDialog() {
+            const el = this.$refs.dialog;
+            if (el) el.focus();
         },
 
         refreshIcons() {
@@ -153,14 +230,9 @@ const ToolConfirm = {
         }
     },
 
-    watch: {
-        visible(val) {
-            if (!val) this.clearTimer();
-        }
-    },
-
     mounted() {
-        if (this.visible) this.startCountdown();
+        // 防御：父组件在组件挂载前调用 show() 的极端情况
+        this.asks.forEach(t => this.startCountdown(t));
     },
 
     updated() {
@@ -168,6 +240,6 @@ const ToolConfirm = {
     },
 
     beforeUnmount() {
-        this.clearTimer();
+        this.asks.forEach(t => this.clearTimer(t));
     }
 };

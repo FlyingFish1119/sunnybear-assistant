@@ -42,6 +42,86 @@
     to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ---- 标签栏：多个并发确认以标签页形式共存 ---- */
+.tool-confirm-tabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    padding: 12px 14px 0;
+    overflow-x: auto;               /* 标签过多时横向滚动 */
+    flex-shrink: 0;
+}
+.tool-confirm-tabs::-webkit-scrollbar {
+    height: 4px;
+}
+.tool-confirm-tabs::-webkit-scrollbar-track {
+    background: transparent;
+}
+.tool-confirm-tabs::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 2px;
+}
+
+.tool-confirm-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border: 1px solid #eee;
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;   /* 顶部圆角，与白底圆角风格一致 */
+    background: #f6f6f6;
+    color: #777;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+.tool-confirm-tab i {
+    width: 14px;
+    height: 14px;
+    color: currentColor;
+}
+.tool-confirm-tab-title {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tool-confirm-tab:hover {
+    background: #ececec;
+    color: #444;
+}
+.tool-confirm-tab.is-active {
+    background: #fff;
+    color: var(--main-color, lightsalmon);
+    border-color: var(--main-color, lightsalmon);
+    font-weight: 600;
+}
+
+/* 倒计时徽标 */
+.tool-confirm-tab-countdown {
+    min-width: 20px;
+    text-align: center;
+    padding: 1px 5px;
+    border-radius: 9px;
+    background: rgba(0, 0, 0, 0.07);
+    color: inherit;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;     /* 等宽数字，倒计时不跳动 */
+}
+.tool-confirm-tab-countdown.is-danger {
+    background: #ff4d4f;
+    color: #fff;
+    animation: tc-pulse 1s ease infinite;
+}
+@keyframes tc-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.6; }
+}
+
 /* ---- header ---- */
 .tool-confirm-header {
     display: flex;
@@ -153,6 +233,7 @@
     gap: 10px;
     padding: 14px 26px 20px 26px;
     border-top: 1px solid #f5f5f5;
+    flex-shrink: 0;             /* 按钮区永不被压缩/挤出，溢出由 body 收缩吸收 */
 }
 
 .tool-confirm-btn {
@@ -196,6 +277,21 @@
         max-width: 96%;
         max-height: 85dvh;
         border-radius: 14px;
+    }
+
+    .tool-confirm-tabs {
+        padding: 8px 8px 0;
+        gap: 4px;
+    }
+
+    .tool-confirm-tab {
+        padding: 6px 9px;
+        font-size: 12px;
+    }
+
+    .tool-confirm-tab-countdown {
+        min-width: 16px;
+        font-size: 11px;
     }
 
     .tool-confirm-header {

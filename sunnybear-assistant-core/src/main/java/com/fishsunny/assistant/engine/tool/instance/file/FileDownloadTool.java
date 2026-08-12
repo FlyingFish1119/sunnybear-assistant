@@ -68,6 +68,7 @@ public class FileDownloadTool implements ToolHandler {
     @Override
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         String uuid = UUID.randomUUID().toString();
+        FilePathLock.LockHandle lock = null;
         try {
             if (!(context.get("session") instanceof WebSocketSession session)) {
                 throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
@@ -83,6 +84,9 @@ public class FileDownloadTool implements ToolHandler {
 
             // 路径规范化
             Path savePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
+
+            // 加锁：须覆盖用户确认等待，防止下载写入期间保存路径被其他会话修改
+            lock = FilePathLock.acquire(savePath);
 
             // 安全检测
             switch (settings.getMode()) {
@@ -161,6 +165,7 @@ public class FileDownloadTool implements ToolHandler {
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         } finally {
+            if (lock != null) lock.close();
             ChatController.cleanupConfirm(uuid);
         }
     }
