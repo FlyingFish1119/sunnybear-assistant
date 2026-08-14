@@ -93,7 +93,7 @@
                 <connection-indicator
                     :ws-url="wsUrl"
                     @connected="ws = $event; ws.onmessage = (e) => handleStreamChunk(e)"
-                    @disconnected="ws = null">
+                    @disconnected="sending = false; ws = null">
                 </connection-indicator>
                 <button class="sidebar-toggle-btn" @click="toggleAgentLog"
                         :title="agentLogVisible ? '折叠 Agent Log' : '展开 Agent Log'"
@@ -331,7 +331,7 @@
                 <button v-else
                         class="send-area-submit-button"
                         @click="sendMessage()"
-                        :disabled="!isStreaming && !inputText && uploadedFiles.length === 0"
+                        :disabled="sending || (!isStreaming && !inputText && uploadedFiles.length === 0)"
                 >
                     <i style="margin-top: 5px; margin-left: -5px" data-lucide="send"></i>
                 </button>
@@ -398,6 +398,8 @@
 
                 // 输入框内容
                 inputText: '',
+                // 已发送但尚未收到服务端 init_user 确认 —— 防止窗口期内重复点击发送重复消息
+                sending: false,
                 // 当前正在处理的 session，对象应该直接引用 sessions 里的对象
                 currentSession: {},
                 // 当前正在展示的 messages
@@ -827,6 +829,10 @@
              * 根据是否已选中会话自动选择 create / append 模式
              */
             async sendMessage() {
+                if (this.sending) {
+                    return; // 等待服务端 init_user 确认期间禁止重复发送
+                }
+                this.sending = true;
                 let mode = this.currentSessionId ? 'append' : 'create';
                 let request = {
                     mode: mode,
@@ -908,6 +914,7 @@
                 switch (response.status) {
                     case 'init_user': {
                         console.log('init_user', response)
+                        this.sending = false; // 服务端已确认收到消息，恢复可发送
                         await this.$refs.sidebar.refresh();
                         if (!this.currentSession.id) {
                             let session = {id: response.sessionId}
@@ -942,6 +949,16 @@
                         if (response.sessionId === this.currentSessionId) {
                             this.currentMessages.push(...response.messages);
                             this.currentMessages.push(assistantMessage);
+                        }
+                        break;
+                    }
+                    case 'error': {
+                        // 服务端处理失败（例如模型异常）：恢复可发送，并把错误消息展示出来
+                        console.warn('服务端错误:', response)
+                        this.sending = false;
+                        if (response.messages && response.messages.length > 0) {
+                            this.currentMessages.push(...response.messages);
+                            this.scrollToBottom(true);
                         }
                         break;
                     }
