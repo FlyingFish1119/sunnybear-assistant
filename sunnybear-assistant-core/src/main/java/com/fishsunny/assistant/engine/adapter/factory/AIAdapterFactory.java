@@ -30,9 +30,11 @@ public class AIAdapterFactory {
 
     private final static Logger logger = LoggerFactory.getLogger(AIAdapterFactory.class);
 
-    private final Map<String, AIAdapterRegister> adapterMap = new HashMap<>();
+    /** 非流式适配器配方表；volatile 支持热替换（reload 后新请求即按新配方制造适配器） */
+    private volatile Map<String, AIAdapterRegister> adapterMap = new HashMap<>();
 
-    private final Map<String, AIAdapterRegister> streamAdapterMap = new HashMap<>();
+    /** 流式适配器配方表 */
+    private volatile Map<String, AIAdapterRegister> streamAdapterMap = new HashMap<>();
 
     private final HttpClient httpClient;
 
@@ -40,28 +42,48 @@ public class AIAdapterFactory {
     public AIAdapterFactory(AIAdapterProperties properties, HttpClient httpClient) {
         this.httpClient = httpClient;
         List<AIAdapterRegister> registers = properties.getRegister();
-        int successCount = 0;
         if (CollectionUtils.isEmpty(registers)) {
             throw new IllegalStateException("No adapter registered. Please configure 'adapter-register.register' in application.yml");
         }
+        rebuild(registers);
+    }
 
+    /**
+     * 热替换适配器配方（工厂本体不变，重新制造产品）：
+     * 之后每次 getAdapter() 产出的适配器实例都将基于新配置。
+     * 解析或加载全部失败时抛异常，由调用方决定保留旧配方。
+     */
+    public synchronized void reload(List<AIAdapterRegister> registers) {
+        if (CollectionUtils.isEmpty(registers)) {
+            throw new IllegalArgumentException("Register list is empty, keep current adapters");
+        }
+        rebuild(registers);
+        logger.info("Adapter config reloaded, available adapters: {}", getAvailableAdapterNames());
+    }
+
+    /** 按新的 register 列表重建配方表；全部失败时抛异常，旧配方不受影响 */
+    private void rebuild(List<AIAdapterRegister> registers) {
+        Map<String, AIAdapterRegister> newAdapterMap = new HashMap<>();
+        Map<String, AIAdapterRegister> newStreamAdapterMap = new HashMap<>();
+        int successCount = 0;
         for (AIAdapterRegister register : registers) {
             try {
-                addAdapter(register);
+                if (register.getStream()) {
+                    newStreamAdapterMap.put(register.getApiName(), register);
+                } else {
+                    newAdapterMap.put(register.getApiName(), register);
+                }
                 successCount++;
             } catch (Exception e) {
                 logger.error("Add adapter failed: {}", e.getMessage());
             }
         }
-        logger.info("expected adapter count: {}, success adapter count: {}", registers.size(), successCount);
-    }
-
-    private void addAdapter(AIAdapterRegister register) {
-        if (register.getStream()) {
-            streamAdapterMap.put(register.getApiName(), register);
-        } else {
-            adapterMap.put(register.getApiName(), register);
+        if (successCount == 0) {
+            throw new IllegalArgumentException("No adapter loaded from register list");
         }
+        this.adapterMap = newAdapterMap;
+        this.streamAdapterMap = newStreamAdapterMap;
+        logger.info("expected adapter count: {}, success adapter count: {}", registers.size(), successCount);
     }
 
     public AIAdapterRegister getRegister(String apiName, boolean stream) {

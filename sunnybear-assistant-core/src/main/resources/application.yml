@@ -149,3 +149,25 @@ engine:
         targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
         targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextStreamAIResponse
+
+      # opencode 非流式
+      - apiName: opencode
+        baseUrl: https://opencode.ai/zen/go/v1/chat/completions
+        apiKey: ${OPEN_CODE_API_KEY}
+        stream: false
+        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextAIResponse
+
+      # opencode 流式
+      - apiName: opencode
+        baseUrl: https://opencode.ai/zen/go/v1/chat/completions
+        apiKey: ${OPEN_CODE_API_KEY}
+        stream: true
+        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextStreamAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextStreamAIResponse
