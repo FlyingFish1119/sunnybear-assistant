@@ -19,6 +19,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
+import com.fishsunny.assistant.engine.tool.instance.SystemPrompts;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
@@ -123,10 +124,12 @@ public class ImageCaptionTool implements ToolHandler {
 
         String userPrompt = "请用中文解释图片中的内容。\n[任务目标]\n" + arguments.getTarget();
         ImageContent imageContent = new ImageContent(imageBase64);
-        ChatMessage message = new ChatMessage().user(userPrompt, imageContent);
         ChatRequest request = new ChatRequest()
                 .loadSettings(aiSettings)
-                .setMessages(List.of(message));
+                .setMessages(List.of(
+                        new ChatMessage().system(SystemPrompts.OCR),
+                        new ChatMessage().user(userPrompt, imageContent)
+                ));
         return execute(request);
     }
 
@@ -138,10 +141,12 @@ public class ImageCaptionTool implements ToolHandler {
 
         String userPrompt = "请用中文解释视频中的内容。\n[任务目标]\n" + arguments.getTarget();
         VideoContent videoContent = new VideoContent(videoDataUrl);
-        ChatMessage message = new ChatMessage().user(userPrompt, videoContent);
         ChatRequest request = new ChatRequest()
                 .loadSettings(aiSettings)
-                .setMessages(List.of(message));
+                .setMessages(List.of(
+                        new ChatMessage().system(SystemPrompts.OCR),
+                        new ChatMessage().user(userPrompt, videoContent)
+                ));
         return execute(request);
 
     }

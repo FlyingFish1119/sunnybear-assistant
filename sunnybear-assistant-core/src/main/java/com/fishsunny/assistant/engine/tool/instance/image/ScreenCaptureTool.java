@@ -17,6 +17,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
+import com.fishsunny.assistant.engine.tool.instance.SystemPrompts;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
@@ -145,10 +146,12 @@ public class ScreenCaptureTool implements ToolHandler {
 
         // 发送给 AI 识别
         AtomicReference<String> caption = new AtomicReference<>("");
-        ChatMessage message = new ChatMessage().user(prompt, imageBase64);
         ChatRequest request = new ChatRequest()
                 .loadSettings(aiSettings)
-                .setMessages(List.of(message));
+                .setMessages(List.of(
+                        new ChatMessage().system(SystemPrompts.OCR),
+                        new ChatMessage().user(prompt, imageBase64)
+                ));
         chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
                 aiSettings.getStream() != null ? aiSettings.getStream() : true,
                 null,
@@ -177,10 +180,12 @@ public class ScreenCaptureTool implements ToolHandler {
         }
 
         AtomicReference<String> caption = new AtomicReference<>("");
-        ChatMessage message = new ChatMessage().user(prompt, imageBase64);
         ChatRequest request = new ChatRequest()
                 .loadSettings(aiSettings)
-                .setMessages(List.of(message));
+                .setMessages(List.of(
+                        new ChatMessage().system(SystemPrompts.OCR),
+                        new ChatMessage().user(prompt, imageBase64)
+                ));
         chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
                 aiSettings.getStream() != null ? aiSettings.getStream() : true,
                 null,

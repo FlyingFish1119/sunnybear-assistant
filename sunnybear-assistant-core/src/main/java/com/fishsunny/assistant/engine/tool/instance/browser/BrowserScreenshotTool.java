@@ -19,6 +19,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
+import com.fishsunny.assistant.engine.tool.instance.SystemPrompts;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -90,10 +91,12 @@ public class BrowserScreenshotTool implements ToolHandler {
 
             // 3. 发送给 AI 视觉模型分析
             AtomicReference<String> caption = new AtomicReference<>("");
-            ChatMessage message = new ChatMessage().user(prompt, imageBase64);
             ChatRequest request = new ChatRequest()
                     .loadSettings(aiSettings)
-                    .setMessages(List.of(message));
+                    .setMessages(List.of(
+                            new ChatMessage().system(SystemPrompts.OCR),
+                            new ChatMessage().user(prompt, imageBase64)
+                    ));
             chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
                     aiSettings.getStream() != null ? aiSettings.getStream() : true,
                     null,
