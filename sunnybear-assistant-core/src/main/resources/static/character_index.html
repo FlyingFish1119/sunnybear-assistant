@@ -975,6 +975,10 @@
                             this.currentMessages.push(assistantMessage);
                         }
                         this.scrollToBottom(true);
+                        // 用户消息中可能包含 mermaid 图表，收到确认后立即渲染（无需等流结束）
+                        this.$nextTick(() => {
+                            MermaidUtils.renderAll();
+                        });
                         break;
                     }
                     case 'tool_response': {
@@ -987,16 +991,6 @@
                         this.streamingMessages.push(assistantMessage);
                         if (response.sessionId === this.currentSessionId) {
                             this.currentMessages.push(assistantMessage);
-                        }
-                        break;
-                    }
-                    case 'error': {
-                        // 服务端处理失败（例如模型异常）：恢复可发送，并把错误消息展示出来
-                        console.warn('服务端错误:', response)
-                        this.sending = false;
-                        if (response.messages && response.messages.length > 0) {
-                            this.currentMessages.push(...response.messages);
-                            this.scrollToBottom(true);
                         }
                         break;
                     }
@@ -1076,6 +1070,7 @@
                     }
                     case "error": {
                         console.error('AI 对话错误:', response);
+                        this.sending = false; // 服务端处理失败，恢复可发送（允许重试）
                         // 清理该会话的流式消息，避免界面卡在"等待回复"状态
                         if (response.sessionId) {
                             let idx = this.streamingMessages.findIndex(m => m.sessionId === response.sessionId);
@@ -1359,6 +1354,10 @@
                                 targetMsg.contents.push({ type: 'text', content: this.editDraft });
                             }
                         }
+                        // 内容已更新（可能包含 mermaid 图表），重新渲染图表
+                        this.$nextTick(() => {
+                            MermaidUtils.renderAll();
+                        });
                         ElementPlus.ElMessage.success('消息已更新');
                     } else {
                         ElementPlus.ElMessage.error(result.message || '更新消息失败');
