@@ -9,6 +9,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.plug.android.service.AndroidBridgeService;
+import com.fishsunny.assistant.engine.tool.instance.SystemPrompts;
 import com.fishsunny.assistant.settings.AISettings;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -31,16 +32,16 @@ public class AndroidGetUiTreeTool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final ToolRegister register;
     private final AndroidBridgeService bridgeService;
-    private final AISettings summarySettings;
+    private final AISettings taskAISettings;
     private final ChatHttpHandler chatHttpHandler;
 
     public AndroidGetUiTreeTool(ObjectMapper objectMapper,
                                 AndroidBridgeService bridgeService,
-                                @Qualifier(AISettings.SUMMARY) AISettings summarySettings,
+                                @Qualifier(AISettings.TASK) AISettings taskAISettings,
                                 ChatHttpHandler chatHttpHandler) {
         this.objectMapper = objectMapper;
         this.bridgeService = bridgeService;
-        this.summarySettings = summarySettings;
+        this.taskAISettings = taskAISettings;
         this.chatHttpHandler = chatHttpHandler;
 
         this.register = new ToolRegister()
@@ -122,14 +123,14 @@ public class AndroidGetUiTreeTool implements ToolHandler {
 
         ChatRequest request = new ChatRequest()
                 .setMessages(List.of(
-                        new ChatMessage().system(summarySettings.getPrompt()),
+                        new ChatMessage().system(SystemPrompts.SUMMARY),
                         new ChatMessage().user(prompt + "\n\nUI树结构:\n```\n" + uiTree + "\n```")
                 ))
-                .loadSettings(summarySettings);
+                .loadSettings(taskAISettings);
 
         AtomicReference<String> result = new AtomicReference<>("");
-        chatHttpHandler.translate(UUID.randomUUID().toString(), summarySettings.getAdapterName(), request,
-                summarySettings.getStream() != null ? summarySettings.getStream() : true,
+        chatHttpHandler.translate(UUID.randomUUID().toString(), taskAISettings.getAdapterName(), request,
+                taskAISettings.getStream() != null ? taskAISettings.getStream() : true,
                 null,
                 (r, lastRes) -> result.set(r.content())
         );

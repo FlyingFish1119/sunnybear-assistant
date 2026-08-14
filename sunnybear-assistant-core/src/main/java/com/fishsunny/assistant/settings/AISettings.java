@@ -19,11 +19,11 @@ public class AISettings {
 
     public static final String CHAT = "chat";
     public static final String CHAT_PRO = "chat_pro";
-    public static final String SUMMARY = "summary";
-    public static final String TITLE = "title";
     public static final String OCR = "ocr";
     public static final String MISSION = "mission";
     public static final String TASK = "task";
+    /** 最轻量级任务使用的 AI（如标题生成），层级：主AI > 任务AI > cub */
+    public static final String CUB = "cub";
 
     private String prompt;
 

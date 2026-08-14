@@ -58,6 +58,18 @@ public class ServiceProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(ServiceProcessor.class);
 
+    /** 会话标题生成器系统提示词（由 cub AI 承担该任务，prompt 固化在此） */
+    private static final String TITLE_PROMPT = """
+            你是一个专业的对话标题生成器。你的任务是根据给定的AI系统提示词和用户的第一条消息，为整段对话生成一个简洁、自然的标题。
+
+            要求：
+            - 标题长度尽量控制在15个汉字（或10个英文单词）以内。
+            - 准确概括对话的核心主题或用户的主要意图，而不是简单重复原话。
+            - 不要使用[对话]、[聊天]、[关于]、[求助]这类泛指词，要给出具体信息。
+            - 标题语言要与用户输入的语言保持一致。
+            - 只输出标题本身，不要添加任何解释、标点包裹或多余的换行。
+            """;
+
     @Value("${assistant.file.base-path:}")
     private String basePath;
 
@@ -68,7 +80,7 @@ public class ServiceProcessor {
     private final UserSettings userSettings;
     private final AssistantSettings assistantSettings;
     private final ChatHttpHandler chatHttpHandler;
-    private final AISettings titleAISettings;
+    private final AISettings cubAISettings;
     private final AISettings missionAISettings;
     public ServiceProcessor(ChatMessageService chatMessageService,
                             ChatSessionService chatSessionService,
@@ -77,7 +89,7 @@ public class ServiceProcessor {
                             UserSettings userSettings,
                             AssistantSettings assistantSettings,
                             ChatHttpHandler chatHttpHandler,
-                            @Qualifier(AISettings.TITLE) AISettings titleAISettings,
+                            @Qualifier(AISettings.CUB) AISettings cubAISettings,
                             @Qualifier(AISettings.MISSION) AISettings missionAISettings
                             ) {
         this.chatMessageService = chatMessageService;
@@ -87,7 +99,7 @@ public class ServiceProcessor {
         this.userSettings = userSettings;
         this.assistantSettings = assistantSettings;
         this.chatHttpHandler = chatHttpHandler;
-        this.titleAISettings = titleAISettings;
+        this.cubAISettings = cubAISettings;
         this.missionAISettings = missionAISettings;
     }
 
@@ -212,7 +224,7 @@ public class ServiceProcessor {
                 """.formatted(userQuestion);
 
         ChatRequest request = new ChatRequest()
-                .loadSettings(missionAISettings)
+                .loadSettings(cubAISettings)
                 .setMessages(List.of(
                         new ChatMessage().system(judgmentPrompt),
                         new ChatMessage().user(userQuestion)
@@ -220,12 +232,8 @@ public class ServiceProcessor {
 
         try {
             AtomicBoolean result = new AtomicBoolean(false);
-            chatHttpHandler.translate(
-                    java.util.UUID.randomUUID().toString(),
-                    missionAISettings.getAdapterName(),
-                    request,
-                    false,
-                    null,
+            chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(),
+                    request, cubAISettings.getStream(), null,
                     (trResult, lastRes) -> {
                         String content = trResult.content();
                         if (content != null) {
@@ -252,16 +260,16 @@ public class ServiceProcessor {
         prompt = prompt.replace("${assistantPrompt}", responsePrompt);
 
         ChatRequest request = new ChatRequest()
-                .loadSettings(titleAISettings)
+                .loadSettings(cubAISettings)
                 .setMessages(List.of(
-                        new ChatMessage().system(titleAISettings.getPrompt()),
+                        new ChatMessage().system(TITLE_PROMPT),
                         new ChatMessage().user(prompt)
                 ));
         try {
             ChatHttpHandler.CompleteCallback onComplete = (result, lastRes) -> {
                 chatSession.setName(result.content());
             };
-            chatHttpHandler.translate(UUID.randomUUID().toString(), titleAISettings.getAdapterName(), request, titleAISettings.getStream(),
+            chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request, cubAISettings.getStream(),
                     null, onComplete);
             chatSessionService.update(chatSession);
             session.sendMessage(new TextMessage(ControlSign.UPDATE_SESSION + objectMapper.writeValueAsString(chatSession)));

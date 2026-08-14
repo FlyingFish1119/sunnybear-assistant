@@ -52,6 +52,7 @@ import java.net.InetAddress;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 
 /**
  * 本类主要用于处理核心对话逻辑，包括消息的传输与落盘
@@ -142,7 +143,8 @@ public class ChatProcessor {
 
         // 斜杠指令拦截：以 / 开头的消息走本地处理，不调用 AI
         String userText = userMessage.resolveText();
-        if (userText != null && userText.startsWith("/")) {
+        Pattern pattern = Pattern.compile("^/[a-zA-Z]+");
+        if (userText != null && pattern.matcher(userText).find()) {
             return handleSlashCommand(userText, chatSession, session, collector, originMessages);
         }
 

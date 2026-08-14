@@ -84,11 +84,10 @@ public class SettingsController {
             AssistantSettings assistantSettings,
             @Qualifier(AISettings.CHAT) AISettings chatAISettings,
             @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
-            @Qualifier(AISettings.SUMMARY) AISettings summaryAISettings,
-            @Qualifier(AISettings.TITLE) AISettings titleAISettings,
             @Qualifier(AISettings.OCR) AISettings ocrAISettings,
             @Qualifier(AISettings.MISSION) AISettings missionAISettings,
             @Qualifier(AISettings.TASK) AISettings taskAISettings,
+            @Qualifier(AISettings.CUB) AISettings cubAISettings,
             @Qualifier(CommandTool.SETTINGS) CommandTool.Settings commandToolSettings,
             @Qualifier(ExtensionScriptTool.SETTINGS) ExtensionScriptTool.Settings extensionScriptToolSettings,
             @Qualifier(WebSearchTool.SETTINGS) WebSearchTool.Settings webSearchToolSettings,
@@ -113,11 +112,10 @@ public class SettingsController {
         this.aiSettingsMap = new LinkedHashMap<>();
         this.aiSettingsMap.put(AISettings.CHAT, chatAISettings);
         this.aiSettingsMap.put(AISettings.CHAT_PRO, chatProAISettings);
-        this.aiSettingsMap.put(AISettings.SUMMARY, summaryAISettings);
-        this.aiSettingsMap.put(AISettings.TITLE, titleAISettings);
         this.aiSettingsMap.put(AISettings.OCR, ocrAISettings);
         this.aiSettingsMap.put(AISettings.MISSION, missionAISettings);
         this.aiSettingsMap.put(AISettings.TASK, taskAISettings);
+        this.aiSettingsMap.put(AISettings.CUB, cubAISettings);
         this.toolSettingsMap = new LinkedHashMap<>();
         this.toolSettingsMap.put(CommandTool.SETTINGS, commandToolSettings);
         this.toolSettingsMap.put(ExtensionScriptTool.SETTINGS, extensionScriptToolSettings);
@@ -141,14 +139,6 @@ public class SettingsController {
     public RestResponse getChatProAISettings() {
         return new RestResponse().success(aiSettingsMap.get(AISettings.CHAT_PRO));
     }
-    @RequestMapping("/summary/get")
-    public RestResponse getSummaryAISettings() {
-        return new RestResponse().success(aiSettingsMap.get(AISettings.SUMMARY));
-    }
-    @RequestMapping("/title/get")
-    public RestResponse getTitleAISettings() {
-        return new RestResponse().success(aiSettingsMap.get(AISettings.TITLE));
-    }
     @RequestMapping("/ocr/get")
     public RestResponse getOcrAISettings() {
         return new RestResponse().success(aiSettingsMap.get(AISettings.OCR));
@@ -160,6 +150,10 @@ public class SettingsController {
     @RequestMapping("/task/get")
     public RestResponse getTaskAISettings() {
         return new RestResponse().success(aiSettingsMap.get(AISettings.TASK));
+    }
+    @RequestMapping("/cub/get")
+    public RestResponse getCubAISettings() {
+        return new RestResponse().success(aiSettingsMap.get(AISettings.CUB));
     }
 
     /**
@@ -219,38 +213,6 @@ public class SettingsController {
         }
         return new RestResponse().success("保存成功");
     }
-    @PostMapping("/summary/save")
-    public RestResponse saveSummaryAISettings(@RequestBody(required = false) AISettings settings) {
-        if (!validateAISettings(settings)) {
-            return new RestResponse().error("Invalid settings");
-        }
-        AISettings summaryAISettings = aiSettingsMap.get(AISettings.SUMMARY);
-        summaryAISettings.copy(settings);
-        aiSettingsMap.put(AISettings.SUMMARY, summaryAISettings);
-        try {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
-        } catch (Exception e) {
-            log.error("保存 AI summary 设置失败: {}", e.getMessage());
-            return new RestResponse().error("保存失败");
-        }
-        return new RestResponse().success("保存成功");
-    }
-    @PostMapping("/title/save")
-    public RestResponse saveTitleAISettings(@RequestBody(required = false) AISettings settings) {
-        if (!validateAISettings(settings)) {
-            return new RestResponse().error("Invalid settings");
-        }
-        AISettings titleAISettings = aiSettingsMap.get(AISettings.TITLE);
-        titleAISettings.copy(settings);
-        aiSettingsMap.put(AISettings.TITLE, titleAISettings);
-        try {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
-        } catch (Exception e) {
-            log.error("保存 AI title 设置失败: {}", e.getMessage());
-            return new RestResponse().error("保存失败");
-        }
-        return new RestResponse().success("保存成功");
-    }
     @PostMapping("/ocr/save")
     public RestResponse saveOcrAISettings(@RequestBody(required = false) AISettings settings) {
         if (!validateAISettings(settings)) {
@@ -295,6 +257,22 @@ public class SettingsController {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
         } catch (Exception e) {
             log.error("保存 AI task 设置失败: {}", e.getMessage());
+            return new RestResponse().error("保存失败");
+        }
+        return new RestResponse().success("保存成功");
+    }
+    @PostMapping("/cub/save")
+    public RestResponse saveCubAISettings(@RequestBody(required = false) AISettings settings) {
+        if (!validateAISettings(settings)) {
+            return new RestResponse().error("Invalid settings");
+        }
+        AISettings cubAISettings = aiSettingsMap.get(AISettings.CUB);
+        cubAISettings.copy(settings);
+        aiSettingsMap.put(AISettings.CUB, cubAISettings);
+        try {
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
+        } catch (Exception e) {
+            log.error("保存 AI cub 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");

@@ -109,14 +109,6 @@ const API = (function () {
                 get: function () { return get('settings/chat_pro/get'); },
                 save: function (data) { return post('settings/chat_pro/save', data); }
             },
-            summary: {
-                get: function () { return get('settings/summary/get'); },
-                save: function (data) { return post('settings/summary/save', data); }
-            },
-            title: {
-                get: function () { return get('settings/title/get'); },
-                save: function (data) { return post('settings/title/save', data); }
-            },
             ocr: {
                 get: function () { return get('settings/ocr/get'); },
                 save: function (data) { return post('settings/ocr/save', data); }
@@ -128,6 +120,10 @@ const API = (function () {
             task: {
                 get: function () { return get('settings/task/get'); },
                 save: function (data) { return post('settings/task/save', data); }
+            },
+            cub: {
+                get: function () { return get('settings/cub/get'); },
+                save: function (data) { return post('settings/cub/save', data); }
             },
             command: {
                 get: function () { return get('settings/command/get'); },

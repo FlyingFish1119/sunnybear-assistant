@@ -117,7 +117,7 @@ sunnybear-assistant/
 - **chat**：标准对话（默认使用 DeepSeek V4 Flash）
 - **chat_pro**：专业模式（默认使用 DeepSeek V4 Pro），支持自动切换
 
-具体使用哪些模型由 `settings/ai_settings.json` 配置决定，支持为不同场景（对话、摘要、标题、OCR、任务）指定不同的模型。
+具体使用哪些模型由 `settings/ai_settings.json` 配置决定，支持为不同场景（对话、OCR、任务、cub 等）指定不同的模型。其中标题生成等最轻量任务由 cub（小熊崽）模型承担，网页摘要等由任务模型承担。
 
 ### 2. 工具系统（15 大类，60+ 工具）
 
@@ -199,10 +199,9 @@ Core Server ←→ WebSocket ←→ ComfyUI Agent JAR ←→ HTTP ←→ 本地 
 
 ### 6. 知识库 & 长期记忆
 
-- **知识库**：Wiki 式词条管理，通过 Embedding 做语义检索（BGE-M3 模型），自动匹配相关知识注入对话上下文
+- **知识库**：Wiki 式词条管理，对话时由 cub（小熊崽）模型从全部词条中智能筛选相关知识注入上下文（会话级去重、保证连续性）；词条列表的语义搜索仍使用 Embedding（BGE-M3 模型）
 - **长期记忆**：对话过程中自动积累核心信息，注入系统提示词
 - 会话级知识注入追踪，保证连续性
-- 相似度阈值可配置（默认 0.7）
 
 ### 7. 任务调度
 
@@ -405,7 +404,7 @@ engine:
 
 | 文件 | 说明 |
 |------|------|
-| `ai_settings.json` | AI 场景配置（chat / chat_pro / summary / title / ocr / mission / task） |
+| `ai_settings.json` | AI 场景配置（chat / chat_pro / ocr / mission / task / cub） |
 | `assistant_settings.json` | 助手名称 + 头像 |
 | `user_settings.json` | 用户信息 + 背景 + 主题色 + 自动切换模型开关 |
 | `tool_settings.json` | 工具行为参数（命令超时、输出限制、搜索 API Key 等） |

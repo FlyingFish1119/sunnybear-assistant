@@ -10,23 +10,29 @@ package com.fishsunny.assistant.mvc.service.implement;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.EmbeddingHttpHandler;
 import com.fishsunny.assistant.engine.protocol.EmbeddingAPI;
 import com.fishsunny.assistant.engine.protocol.embedding.StandardEmbeddingRequest;
 import com.fishsunny.assistant.engine.protocol.embedding.StandardEmbeddingResponse;
+import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.KnowledgeRecord;
 import com.fishsunny.assistant.engine.protocol.project.entity.SessionKnowledgeRecord;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.mvc.dao.KnowledgeRepository;
 import com.fishsunny.assistant.mvc.dao.SessionKnowledgeRepository;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
+import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.KnowledgeSettings;
 import com.fishsunny.assistant.utils.CosineSimilarityUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @Service
@@ -37,25 +43,54 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     public static final String MODE_ADD = "add";
     public static final String MODE_UPDATE = "update";
 
+    /** 每轮 cub 最多选择的条目数 */
+    private static final int MAX_SELECT_PER_ROUND = 5;
+
+    /**
+     * 知识库条目选择器提示词（由 cub 承担该任务，prompt 固化在此）。
+     * cub 输出 {"ids": [...]} 选择与当前问题相关的条目，再与 session 已注入的去重。
+     */
+    private static final String KNOWLEDGE_SELECT_PROMPT = """
+            你是一个知识库条目选择器。用户正在进行一段对话，你需要从知识库条目中选出与用户当前问题相关、对回答有帮助的条目。
+
+            [知识库条目]
+            ${entries}
+
+            [用户当前问题]
+            ${query}
+
+            要求：
+            1. 只输出 JSON 对象，格式为 {"ids": [条目id列表]}，不要输出任何其他文字或解释。
+            2. 只选择与用户当前问题明显相关的条目，宁缺毋滥；如果都不相关，输出 {"ids": []}。
+            3. 最多选择 ${max} 条。
+            4. 只根据条目标题判断相关性。
+            """;
+
     private final KnowledgeRepository knowledgeRepository;
     private final SessionKnowledgeRepository sessionKnowledgeRepository;
     private final EmbeddingHttpHandler embeddingHttpHandler;
     private final EmbeddingAPI embeddingAPI;
     private final KnowledgeSettings knowledgeSettings;
     private final ObjectMapper objectMapper;
+    private final AISettings cubAISettings;
+    private final ChatHttpHandler chatHttpHandler;
 
     public KnowledgeServiceImplement(KnowledgeRepository knowledgeRepository,
                                      SessionKnowledgeRepository sessionKnowledgeRepository,
                                      EmbeddingHttpHandler embeddingHttpHandler,
                                      EmbeddingAPI embeddingAPI,
                                      KnowledgeSettings knowledgeSettings,
-                                     ObjectMapper objectMapper) {
+                                     ObjectMapper objectMapper,
+                                     @Qualifier(AISettings.CUB) AISettings cubAISettings,
+                                     ChatHttpHandler chatHttpHandler) {
         this.knowledgeRepository = knowledgeRepository;
         this.sessionKnowledgeRepository = sessionKnowledgeRepository;
         this.embeddingHttpHandler = embeddingHttpHandler;
         this.embeddingAPI = embeddingAPI;
         this.knowledgeSettings = knowledgeSettings;
         this.objectMapper = objectMapper;
+        this.cubAISettings = cubAISettings;
+        this.chatHttpHandler = chatHttpHandler;
     }
 
 
@@ -192,42 +227,36 @@ public class KnowledgeServiceImplement implements KnowledgeService {
             return "";
         }
 
-        float threshold = knowledgeSettings.getSimilarityThreshold() != null
-                ? knowledgeSettings.getSimilarityThreshold() : 0.7f;
-
-        // 1. 对用户查询文本做 embedding
-        List<Float> queryEmbedding = encodeTitle(queryText);
-        if (queryEmbedding == null || queryEmbedding.isEmpty()) {
-            log.warn("查询 embedding 失败，跳过知识库匹配");
-            return buildFromExistingOnly(sessionId);
-        }
-
-        // 2. 加载所有知识条目，计算余弦相似度
+        // 1. 加载所有知识条目
         List<KnowledgeRecord> allEntries = knowledgeRepository.selectAll();
         if (allEntries.isEmpty()) {
             return "";
         }
 
-        // 3. 加载 session 已注入的知识 ID 集合
+        // 2. 加载 session 已注入的知识 ID 集合
         Set<Integer> injectedIds = getInjectedKnowledgeIds(sessionId);
 
-        // 4. 匹配新条目（过滤掉已注入的，避免重复判断）
-        for (KnowledgeRecord entry : allEntries) {
-            if (injectedIds.contains(entry.getId())) {
-                continue; // 已注入的不需要重新匹配
+        // 3. 让 cub 从全部条目中选出与当前问题相关的条目
+        List<Integer> selectedIds = selectKnowledgeByCub(allEntries, queryText);
+        if (selectedIds == null) {
+            // cub 调用/解析失败，降级为只注入历史已注入条目
+            return buildFromExistingOnly(sessionId);
+        }
+
+        // 4. 与已注入的去重合并（只接受真实存在的条目 id）
+        Set<Integer> validIds = allEntries.stream()
+                .map(KnowledgeRecord::getId)
+                .collect(Collectors.toSet());
+        boolean hasNew = false;
+        for (Integer id : selectedIds) {
+            if (id != null && validIds.contains(id) && injectedIds.add(id)) {
+                hasNew = true;
+                log.debug("知识库 cub 选择新条目: id={}", id);
             }
-            if (entry.getEmbedding() == null || entry.getEmbedding().isEmpty()) {
-                continue;
-            }
-            try {
-                float similarity = CosineSimilarityUtil.cosine(queryEmbedding, entry.getEmbedding());
-                if (similarity >= threshold) {
-                    injectedIds.add(entry.getId());
-                    log.debug("知识库匹配: title={}, similarity={}", entry.getTitle(), similarity);
-                }
-            } catch (Exception e) {
-                log.warn("计算相似度失败: title={}, error={}", entry.getTitle(), e.getMessage());
-            }
+        }
+        // 本轮没有新条目，只注入历史已注入条目
+        if (!hasNew) {
+            return buildFromExistingOnly(sessionId);
         }
 
         // 5. 更新 session 映射表（合并新旧 ID）
@@ -251,6 +280,85 @@ public class KnowledgeServiceImplement implements KnowledgeService {
 
         // 7. 格式化输出
         return formatKnowledgeSection(allInjected);
+    }
+
+    /**
+     * 调用 cub 模型，从全部知识条目中选出与用户问题相关的条目 id 列表。
+     *
+     * @return 选中的条目 id 列表；cub 调用或解析失败时返回 null（由调用方降级为历史注入）
+     */
+    private List<Integer> selectKnowledgeByCub(List<KnowledgeRecord> allEntries, String queryText) {
+        try {
+            StringBuilder entriesText = new StringBuilder();
+            for (KnowledgeRecord entry : allEntries) {
+                entriesText.append(entry.getId()).append(". ").append(entry.getTitle()).append("\n");
+            }
+            String prompt = KNOWLEDGE_SELECT_PROMPT
+                    .replace("${entries}", entriesText.toString().trim())
+                    .replace("${query}", queryText)
+                    .replace("${max}", String.valueOf(MAX_SELECT_PER_ROUND));
+
+            ChatRequest request = new ChatRequest()
+                    .loadSettings(new AISettings().copy(cubAISettings).setResponseFormat("json_object"))
+                    .setMessages(List.of(new ChatMessage().user(prompt)));
+
+            AtomicReference<String> rawJson = new AtomicReference<>();
+            chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request,
+                    cubAISettings.getStream(), null,
+                    (result, lastRes) -> rawJson.set(result.content()));
+
+            List<Integer> ids = parseKnowledgeIds(rawJson.get());
+            if (ids == null) {
+                log.warn("知识库 cub 选择解析失败，降级为历史注入。raw={}", rawJson.get());
+                return null;
+            }
+            log.info("知识库 cub 选择: ids={}, query={}", ids, queryText);
+            return ids;
+        } catch (Exception e) {
+            log.error("知识库 cub 选择调用失败: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * 从 cub 返回的文本中解析知识条目 id 列表，期望格式：{"ids": [1, 3, 5]}
+     * 容错处理 ```json 代码块包裹和字符串数字。
+     */
+    private List<Integer> parseKnowledgeIds(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String json = raw.trim()
+                .replaceAll("^```(json)?\\s*", "")
+                .replaceAll("```\\s*$", "")
+                .trim();
+        try {
+            Map<String, Object> map = objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+            Object idsObj = map.get("ids");
+            if (idsObj == null) {
+                return null;
+            }
+            List<Integer> ids = new ArrayList<>();
+            if (idsObj instanceof List<?> list) {
+                for (Object item : list) {
+                    if (item instanceof Number num) {
+                        ids.add(num.intValue());
+                    } else if (item instanceof String s) {
+                        try {
+                            ids.add(Integer.parseInt(s.trim()));
+                        } catch (NumberFormatException ignored) {
+                            // 忽略非数字项
+                        }
+                    }
+                }
+            } else if (idsObj instanceof Number num) {
+                ids.add(num.intValue());
+            }
+            return ids;
+        } catch (Exception e) {
+            log.warn("解析 cub 知识选择结果失败: {}", e.getMessage());
+            return null;
+        }
     }
 
     // ========================= 私有辅助方法 =========================

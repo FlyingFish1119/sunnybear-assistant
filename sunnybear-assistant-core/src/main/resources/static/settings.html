@@ -111,29 +111,16 @@
                         <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
                     </div>
                 </div>
-                <div class="settings-item" @click="openDialog('ai', 'summary')">
+                <div class="settings-item" @click="openDialog('ai', 'cub')">
                     <div class="settings-item-left">
-                        <div class="settings-item-icon"><i data-lucide="file-text" style="width:16px;height:16px"></i></div>
+                        <div class="settings-item-icon"><i data-lucide="paw-print" style="width:16px;height:16px"></i></div>
                         <div class="settings-item-info">
-                            <span class="settings-item-label">摘要模型</span>
-                            <span class="settings-item-desc">{{ getAiSummary('summary') }}</span>
+                            <span class="settings-item-label">小熊崽模型</span>
+                            <span class="settings-item-desc">{{ getAiSummary('cub') }} · 最轻量任务（如标题生成）</span>
                         </div>
                     </div>
                     <div class="settings-item-right">
-                        <span class="settings-item-value">{{ getAiShort('summary') }}</span>
-                        <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
-                    </div>
-                </div>
-                <div class="settings-item" @click="openDialog('ai', 'title')">
-                    <div class="settings-item-left">
-                        <div class="settings-item-icon"><i data-lucide="heading" style="width:16px;height:16px"></i></div>
-                        <div class="settings-item-info">
-                            <span class="settings-item-label">标题模型</span>
-                            <span class="settings-item-desc">{{ getAiSummary('title') }}</span>
-                        </div>
-                    </div>
-                    <div class="settings-item-right">
-                        <span class="settings-item-value">{{ getAiShort('title') }}</span>
+                        <span class="settings-item-value">{{ getAiShort('cub') }}</span>
                         <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
                     </div>
                 </div>
@@ -1227,11 +1214,10 @@
 const AI_TYPE_NAMES = {
     chat: '对话模型',
     chat_pro: '高级对话模型',
-    summary: '摘要模型',
-    title: '标题模型',
     ocr: 'OCR 模型',
     mission: '任务模型',
-    task: 'TaskAI 模型'
+    task: 'TaskAI 模型',
+    cub: '小熊崽模型'
 };
 
 const MODE_LABELS = {
@@ -1254,7 +1240,7 @@ const app = Vue.createApp({
             // 所有设置原始数据
             userSettings: {},
             assistantSettings: {},
-            aiSettings: { chat: {}, chat_pro: {}, summary: {}, title: {}, ocr: {}, mission: {}, task: {} },
+            aiSettings: { chat: {}, chat_pro: {}, ocr: {}, mission: {}, task: {}, cub: {} },
             commandSettings: {},
             webSearchSettings: {},
             fileWriteSettings: {},
@@ -2294,7 +2280,7 @@ const app = Vue.createApp({
                 { key: 'knowledgeSettings', url: 'settings/knowledgesettings/get' },
             ];
 
-            const aiTypes = ['chat', 'chat_pro', 'summary', 'title', 'ocr', 'mission', 'task'];
+            const aiTypes = ['chat', 'chat_pro', 'ocr', 'mission', 'task', 'cub'];
             const aiFetchers = aiTypes.map(type => ({
                 key: type,
                 url: 'settings/' + type + '/get',

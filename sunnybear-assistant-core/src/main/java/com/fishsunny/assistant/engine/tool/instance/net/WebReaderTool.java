@@ -18,6 +18,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.NetToolKit;
+import com.fishsunny.assistant.engine.tool.instance.SystemPrompts;
 import com.github.benmanes.caffeine.cache.Cache;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -57,7 +58,7 @@ public class WebReaderTool implements ToolHandler {
 
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
-    private final AISettings summarySettings;
+    private final AISettings taskAISettings;
     private final ChatHttpHandler chatHttpHandler;
     private final Settings settings;
     private final PlaywrightBrowserService playwrightBrowserService;
@@ -66,7 +67,7 @@ public class WebReaderTool implements ToolHandler {
     private static final Logger log = LoggerFactory.getLogger(WebReaderTool.class);
 
     public WebReaderTool(ObjectMapper objectMapper,
-                         @Qualifier(AISettings.SUMMARY) AISettings summarySettings,
+                         @Qualifier(AISettings.CUB) AISettings taskAISettings,
                          ChatHttpHandler chatHttpHandler,
                          @Qualifier(SETTINGS) Settings settings,
                          PlaywrightBrowserService playwrightBrowserService,
@@ -106,7 +107,7 @@ public class WebReaderTool implements ToolHandler {
         register.setTimeoutMs(settings.getBrowserTimeoutMs() * 2);
 
         this.objectMapper = objectMapper;
-        this.summarySettings = summarySettings;
+        this.taskAISettings = taskAISettings;
         this.chatHttpHandler = chatHttpHandler;
         this.settings = settings;
         this.playwrightBrowserService = playwrightBrowserService;
@@ -218,11 +219,11 @@ public class WebReaderTool implements ToolHandler {
                 .replace("${content}", cleanedText)
                 .replace("${target}", target);
         ChatRequest request = new ChatRequest()
-                .setMessages(List.of(new ChatMessage().system(summarySettings.getPrompt()), new ChatMessage().user(userPrompt)))
-                .loadSettings(summarySettings);
+                .setMessages(List.of(new ChatMessage().system(SystemPrompts.SUMMARY), new ChatMessage().user(userPrompt)))
+                .loadSettings(taskAISettings);
         AtomicReference<String> afterResolve = new AtomicReference<>("");
-        chatHttpHandler.translate(UUID.randomUUID().toString(), summarySettings.getAdapterName(), request,
-                summarySettings.getStream(),
+        chatHttpHandler.translate(UUID.randomUUID().toString(), taskAISettings.getAdapterName(), request,
+                taskAISettings.getStream(),
                 null,
                 (result, lastRes) -> afterResolve.set(result.content()));
         return afterResolve.get();

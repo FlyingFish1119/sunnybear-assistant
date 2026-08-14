@@ -19,6 +19,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
+import com.fishsunny.assistant.engine.tool.instance.SystemPrompts;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -43,16 +44,16 @@ public class BrowserReadContentTool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final ToolRegister register;
     private final PlaywrightBrowserService browserService;
-    private final AISettings summarySettings;
+    private final AISettings taskAISettings;
     private final ChatHttpHandler chatHttpHandler;
 
     public BrowserReadContentTool(ObjectMapper objectMapper,
                                   PlaywrightBrowserService browserService,
-                                  @Qualifier(AISettings.SUMMARY) AISettings summarySettings,
+                                  @Qualifier(AISettings.TASK) AISettings taskAISettings,
                                   ChatHttpHandler chatHttpHandler) {
         this.objectMapper = objectMapper;
         this.browserService = browserService;
-        this.summarySettings = summarySettings;
+        this.taskAISettings = taskAISettings;
         this.chatHttpHandler = chatHttpHandler;
 
         register = new ToolRegister()
@@ -151,14 +152,14 @@ public class BrowserReadContentTool implements ToolHandler {
 
         ChatRequest request = new ChatRequest()
                 .setMessages(List.of(
-                        new ChatMessage().system(summarySettings.getPrompt()),
+                        new ChatMessage().system(SystemPrompts.SUMMARY),
                         new ChatMessage().user(prompt + "\n\n页面HTML:\n```html\n" + html + "\n```")
                 ))
-                .loadSettings(summarySettings);
+                .loadSettings(taskAISettings);
 
         AtomicReference<String> result = new AtomicReference<>("");
-        chatHttpHandler.translate(UUID.randomUUID().toString(), summarySettings.getAdapterName(), request,
-                summarySettings.getStream() != null ? summarySettings.getStream() : true,
+        chatHttpHandler.translate(UUID.randomUUID().toString(), taskAISettings.getAdapterName(), request,
+                taskAISettings.getStream() != null ? taskAISettings.getStream() : true,
                 null,
                 (r, lastRes) -> result.set(r.content())
         );

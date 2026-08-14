@@ -68,11 +68,10 @@ public class CharacterController {
             AssistantSettings assistantSettings,
             UserSettings userSettings,
             @Qualifier(AISettings.CHAT) AISettings chatAISettings,
-            @Qualifier(AISettings.SUMMARY) AISettings summaryAISettings,
-            @Qualifier(AISettings.TITLE) AISettings titleAISettings,
             @Qualifier(AISettings.OCR) AISettings ocrAISettings,
             @Qualifier(AISettings.MISSION) AISettings missionAISettings,
             @Qualifier(AISettings.TASK) AISettings taskAISettings,
+            @Qualifier(AISettings.CUB) AISettings cubAISettings,
             @Value("${assistant-settings.path:settings/assistant_settings.json}") String assistantSettingsPath,
             @Value("${ai-settings.path:settings/ai_settings.json}") String aiSettingsPath,
             @Value("${user-settings.path:settings/user_settings.json}") String userSettingsPath) {
@@ -89,11 +88,10 @@ public class CharacterController {
         this.userSettingsPath = userSettingsPath;
         this.aiSettingsMap = new LinkedHashMap<>();
         this.aiSettingsMap.put(AISettings.CHAT, chatAISettings);
-        this.aiSettingsMap.put(AISettings.SUMMARY, summaryAISettings);
-        this.aiSettingsMap.put(AISettings.TITLE, titleAISettings);
         this.aiSettingsMap.put(AISettings.OCR, ocrAISettings);
         this.aiSettingsMap.put(AISettings.MISSION, missionAISettings);
         this.aiSettingsMap.put(AISettings.TASK, taskAISettings);
+        this.aiSettingsMap.put(AISettings.CUB, cubAISettings);
     }
 
     // ==================== 角色 CRUD ====================

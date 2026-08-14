@@ -167,18 +167,6 @@ public class SettingsLoader {
         return chatPro;
     }
 
-    @Bean(AISettings.SUMMARY)
-    public AISettings summaryAISettings() {
-        initAISettingsFile();
-        return aiSettingsCache.getOrDefault(AISettings.SUMMARY, new AISettings());
-    }
-
-    @Bean(AISettings.TITLE)
-    public AISettings titleAISettings() {
-        initAISettingsFile();
-        return aiSettingsCache.getOrDefault(AISettings.TITLE, new AISettings());
-    }
-
     @Bean(AISettings.OCR)
     public AISettings ocrAISettings() {
         initAISettingsFile();
@@ -194,6 +182,12 @@ public class SettingsLoader {
     public AISettings taskAISettings() {
         initAISettingsFile();
         return aiSettingsCache.getOrDefault(AISettings.TASK, new AISettings());
+    }
+
+    @Bean(AISettings.CUB)
+    public AISettings cubAISettings() {
+        initAISettingsFile();
+        return aiSettingsCache.getOrDefault(AISettings.CUB, new AISettings());
     }
 
     private void initAISettingsFile() {
@@ -227,11 +221,10 @@ public class SettingsLoader {
        return Map.of(
                 AISettings.CHAT, new AISettings().setModel("deepseek-v4-pro").setStream(true),
                 AISettings.CHAT_PRO, new AISettings().setModel("deepseek-v4-pro").setStream(true),
-                AISettings.SUMMARY, new AISettings().setModel("deepseek-v4-flash").setStream(false),
-                AISettings.TITLE, new AISettings().setModel("deepseek-v4-flash").setStream(false),
                 AISettings.OCR, new AISettings().setModel("kimi-k2.6").setStream(false),
                 AISettings.MISSION, new AISettings().setModel("deepseek-v4-flash").setStream(false),
-                AISettings.TASK, new AISettings().setModel("deepseek-v4-flash").setStream(false)
+                AISettings.TASK, new AISettings().setModel("deepseek-v4-flash").setStream(false),
+                AISettings.CUB, new AISettings().setModel("deepseek-v4-flash").setStream(false)
         );
     }
 
