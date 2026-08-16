@@ -228,6 +228,57 @@
     .sidebar-session-item {
         font-size: 16px;
     }
+
+    /* 移动端会话知识库对话框全屏化 */
+    .session-knowledge-dialog {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 100dvh !important;
+        max-height: 100dvh !important;
+        margin: 0 !important;
+        --el-dialog-border-radius: 0;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    .session-knowledge-dialog .el-dialog__header {
+        padding: 14px 14px 10px;
+        flex-shrink: 0;
+    }
+
+    .session-knowledge-dialog .el-dialog__body {
+        padding: 12px 14px;
+        flex: 1;
+        overflow-y: auto;
+        max-height: none;
+    }
+
+    .session-knowledge-dialog .el-dialog__footer {
+        padding: 10px 14px calc(14px + env(safe-area-inset-bottom));
+        flex-shrink: 0;
+    }
+
+    /* 条目列表取消固定高度，铺满弹窗 */
+    .session-knowledge-dialog .entry-list {
+        max-height: none;
+    }
+
+    /* 标题中的会话名称过长时省略号截断 */
+    .session-knowledge-dialog .dialog-header-wrap span:last-child {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* 条目内容两行截断，适配小屏 */
+    .session-knowledge-dialog .entry-item-content {
+        max-width: 100%;
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+    }
 }
 
 /* ==================== 会话知识库对话框（样式参考 settings 的知识条目管理） ==================== */
