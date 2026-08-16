@@ -83,7 +83,7 @@
                 <button class="sidebar-toggle-btn" @click="toggleSidebar" title="展开/收起侧边栏">
                     <i data-lucide="menu" style="width: 18px; height: 18px;"></i>
                 </button>
-                {{ displayModel }} ·
+                <span class="model-name-tag">{{ displayModel }} ·</span>
                 <session-name
                     :current-session="currentSession"
                     :main-color="mainColor"

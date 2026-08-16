@@ -170,15 +170,17 @@ public class ChatProcessor {
             ChatMessage lastUserMsg = ObjectUtils.getLast(originMessages);
             if (lastUserMsg != null) {
                 String queryText = lastUserMsg.resolveText();
-                String knowledgeSection = knowledgeService.buildKnowledgeSection(chatSession.getId(), queryText);
-                if (org.springframework.util.StringUtils.hasText(knowledgeSection)) {
-                    systemPrompt += knowledgeSection;
+                KnowledgeService.KnowledgeSection knowledgeResult = knowledgeService.buildKnowledgeSection(chatSession.getId(), queryText);
+                if (StringUtils.hasText(knowledgeResult.text())) {
+                    systemPrompt += knowledgeResult.text();
                     log.debug("知识库注入成功");
-                    // 控制信号通知前端：本轮回合自动注入了知识库内容
-                    try {
-                        session.sendMessage(new TextMessage(ControlSign.SIGN_KNOWLEDGE_HIT + chatSession.getId()));
-                    } catch (Exception e) {
-                        log.warn("发送知识库命中信号失败: {}", e.getMessage());
+                    // 控制信号通知前端：仅当本轮去重后注入了新知识条目时才推送命中信号
+                    if (knowledgeResult.hasNew()) {
+                        try {
+                            session.sendMessage(new TextMessage(ControlSign.SIGN_KNOWLEDGE_HIT + chatSession.getId()));
+                        } catch (Exception e) {
+                            log.warn("发送知识库命中信号失败: {}", e.getMessage());
+                        }
                     }
                 }
             }
@@ -190,7 +192,7 @@ public class ChatProcessor {
         // 注入核心记忆
         try {
             String memorySection = memoryService.buildMemorySection();
-            if (org.springframework.util.StringUtils.hasText(memorySection)) {
+            if (StringUtils.hasText(memorySection)) {
                 systemPrompt += memorySection;
                 log.debug("核心记忆注入成功");
             }
@@ -201,7 +203,7 @@ public class ChatProcessor {
         // 注入扩展脚本描述
         try {
             String scriptSection = extensionScriptService.buildScriptSection();
-            if (org.springframework.util.StringUtils.hasText(scriptSection)) {
+            if (StringUtils.hasText(scriptSection)) {
                 systemPrompt += scriptSection;
                 log.debug("扩展脚本描述注入成功");
             }

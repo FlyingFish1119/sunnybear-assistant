@@ -70,7 +70,7 @@ public class TaskRunTool implements ToolHandler {
     @Autowired
     public TaskRunTool(TaskService taskService, ObjectMapper objectMapper,
                        @Qualifier(AISettings.TASK) AISettings taskAISettings,
-                       @Qualifier(AISettings.MISSION) AISettings missionAISettings,
+                       @Qualifier(AISettings.CUB) AISettings missionAISettings,
                        TaskPromptService taskPromptService,
                        ChatHttpHandler chatHttpHandler,
                        @Lazy ToolExecutor toolExecutor,

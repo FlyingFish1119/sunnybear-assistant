@@ -566,6 +566,20 @@
         font-size: var(--text-md, 14px);
     }
 
+    /* 移动端隐藏模型名称，只保留会话名称 */
+    .model-name-tag {
+        display: none;
+    }
+
+    /* 移动端会话名称过长时省略号截断，避免换行 */
+    .message-area-top .session-name-editable {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
     .connection-text {
         width: 0;
         overflow: hidden;

@@ -81,7 +81,6 @@ public class ServiceProcessor {
     private final AssistantSettings assistantSettings;
     private final ChatHttpHandler chatHttpHandler;
     private final AISettings cubAISettings;
-    private final AISettings missionAISettings;
     public ServiceProcessor(ChatMessageService chatMessageService,
                             ChatSessionService chatSessionService,
                             CronJobService cronJobService,
@@ -89,8 +88,7 @@ public class ServiceProcessor {
                             UserSettings userSettings,
                             AssistantSettings assistantSettings,
                             ChatHttpHandler chatHttpHandler,
-                            @Qualifier(AISettings.CUB) AISettings cubAISettings,
-                            @Qualifier(AISettings.MISSION) AISettings missionAISettings
+                            @Qualifier(AISettings.CUB) AISettings cubAISettings
                             ) {
         this.chatMessageService = chatMessageService;
         this.chatSessionService = chatSessionService;
@@ -100,7 +98,6 @@ public class ServiceProcessor {
         this.assistantSettings = assistantSettings;
         this.chatHttpHandler = chatHttpHandler;
         this.cubAISettings = cubAISettings;
-        this.missionAISettings = missionAISettings;
     }
 
     public ChatSessionModeParseResult handleChatSession(ChatMessageRequest request, WebSocketSession safeSession, boolean isEnablePro) throws Exception {

@@ -53,9 +53,10 @@ public interface KnowledgeService {
      *
      * @param sessionId 当前会话 ID
      * @param queryText 用于匹配的查询文本（用户最新消息）
-     * @return 格式化的知识库文本，无匹配时返回空字符串
+     * @return 构建结果：text 为格式化的知识库片段（无匹配时为空字符串），
+     *         hasNew 表示本轮去重后是否注入了新条目（仅此时调用方才应推送命中信号）
      */
-    String buildKnowledgeSection(String sessionId, String queryText);
+    KnowledgeSection buildKnowledgeSection(String sessionId, String queryText);
 
     /**
      * 查询某会话已注入的知识条目列表（来自 session_knowledge 映射表）
@@ -82,5 +83,14 @@ public interface KnowledgeService {
     void clearSessionKnowledge(String sessionId);
 
     public record ListKnowledgeResult(List<KnowledgeRecord> items, int total, int offset, int limit) {
+    }
+
+    /**
+     * 知识库构建结果。
+     *
+     * @param text   格式化后的 [knowledge] 片段，无匹配时为空字符串
+     * @param hasNew 本轮去重后是否新增了知识条目（true 时调用方才应推送命中信号）
+     */
+    public record KnowledgeSection(String text, boolean hasNew) {
     }
 }

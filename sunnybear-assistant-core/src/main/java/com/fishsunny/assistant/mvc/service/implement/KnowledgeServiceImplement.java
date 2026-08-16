@@ -245,18 +245,18 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     // ========================= 匹配与注入 =========================
 
     @Override
-    public String buildKnowledgeSection(String sessionId, String queryText) {
+    public KnowledgeSection buildKnowledgeSection(String sessionId, String queryText) {
         if (!Boolean.TRUE.equals(knowledgeSettings.getEnable())) {
-            return "";
+            return new KnowledgeSection("", false);
         }
         if (!StringUtils.hasText(queryText)) {
-            return "";
+            return new KnowledgeSection("", false);
         }
 
         // 1. 加载所有知识条目
         List<KnowledgeRecord> allEntries = knowledgeRepository.selectAll();
         if (allEntries.isEmpty()) {
-            return "";
+            return new KnowledgeSection("", false);
         }
 
         // 2. 加载 session 已注入的知识 ID 集合
@@ -266,7 +266,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
         List<Integer> selectedIds = selectKnowledgeByCub(allEntries, queryText);
         if (selectedIds == null) {
             // cub 调用/解析失败，降级为只注入历史已注入条目
-            return buildFromExistingOnly(sessionId);
+            return new KnowledgeSection(buildFromExistingOnly(sessionId), false);
         }
 
         // 4. 与已注入的去重合并（只接受真实存在的条目 id）
@@ -280,9 +280,9 @@ public class KnowledgeServiceImplement implements KnowledgeService {
                 log.debug("知识库 cub 选择新条目: id={}", id);
             }
         }
-        // 本轮没有新条目，只注入历史已注入条目
+        // 本轮没有新条目，只注入历史已注入条目（不视为本轮命中）
         if (!hasNew) {
-            return buildFromExistingOnly(sessionId);
+            return new KnowledgeSection(buildFromExistingOnly(sessionId), false);
         }
 
         // 5. 更新 session 映射表（合并新旧 ID）
@@ -301,11 +301,11 @@ public class KnowledgeServiceImplement implements KnowledgeService {
                 .collect(Collectors.toList());
 
         if (allInjected.isEmpty()) {
-            return "";
+            return new KnowledgeSection("", false);
         }
 
         // 7. 格式化输出
-        return formatKnowledgeSection(allInjected);
+        return new KnowledgeSection(formatKnowledgeSection(allInjected), true);
     }
 
     /**
