@@ -68,7 +68,7 @@ public class FileDeleteTool implements ToolHandler {
 
     public FileDeleteTool(ObjectMapper objectMapper,
                           @Qualifier(SETTINGS) Settings settings,
-                          @Qualifier(AISettings.MISSION) AISettings aiSettings,
+                          @Qualifier(AISettings.CUB) AISettings aiSettings,
                           ChatHttpHandler chatHttpHandler) {
         this.objectMapper = objectMapper;
         this.settings = settings;

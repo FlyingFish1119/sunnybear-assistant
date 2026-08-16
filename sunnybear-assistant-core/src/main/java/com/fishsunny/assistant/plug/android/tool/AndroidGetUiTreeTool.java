@@ -37,7 +37,7 @@ public class AndroidGetUiTreeTool implements ToolHandler {
 
     public AndroidGetUiTreeTool(ObjectMapper objectMapper,
                                 AndroidBridgeService bridgeService,
-                                @Qualifier(AISettings.TASK) AISettings taskAISettings,
+                                @Qualifier(AISettings.CUB) AISettings taskAISettings,
                                 ChatHttpHandler chatHttpHandler) {
         this.objectMapper = objectMapper;
         this.bridgeService = bridgeService;

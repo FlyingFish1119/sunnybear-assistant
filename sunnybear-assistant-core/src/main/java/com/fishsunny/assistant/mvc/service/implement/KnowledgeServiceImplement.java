@@ -43,29 +43,6 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     public static final String MODE_ADD = "add";
     public static final String MODE_UPDATE = "update";
 
-    /** 每轮 cub 最多选择的条目数 */
-    private static final int MAX_SELECT_PER_ROUND = 5;
-
-    /**
-     * 知识库条目选择器提示词（由 cub 承担该任务，prompt 固化在此）。
-     * cub 输出 {"ids": [...]} 选择与当前问题相关的条目，再与 session 已注入的去重。
-     */
-    private static final String KNOWLEDGE_SELECT_PROMPT = """
-            你是一个知识库条目选择器。用户正在进行一段对话，你需要从知识库条目中选出与用户当前问题相关、对回答有帮助的条目。
-
-            [知识库条目]
-            ${entries}
-
-            [用户当前问题]
-            ${query}
-
-            要求：
-            1. 只输出 JSON 对象，格式为 {"ids": [条目id列表]}，不要输出任何其他文字或解释。
-            2. 只选择与用户当前问题明显相关的条目，宁缺毋滥；如果都不相关，输出 {"ids": []}。
-            3. 最多选择 ${max} 条。
-            4. 只根据条目标题判断相关性。
-            """;
-
     private final KnowledgeRepository knowledgeRepository;
     private final SessionKnowledgeRepository sessionKnowledgeRepository;
     private final EmbeddingHttpHandler embeddingHttpHandler;
@@ -216,6 +193,55 @@ public class KnowledgeServiceImplement implements KnowledgeService {
         return new ListKnowledgeResult(page, total, offset, limit);
     }
 
+    // ========================= 会话知识库管理 =========================
+
+    @Override
+    public List<KnowledgeRecord> listSessionKnowledge(String sessionId) {
+        Set<Integer> injectedIds = getInjectedKnowledgeIds(sessionId);
+        if (injectedIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        return knowledgeRepository.selectAll().stream()
+                .filter(e -> injectedIds.contains(e.getId()))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public boolean removeSessionKnowledge(String sessionId, Integer knowledgeId) {
+        if (!StringUtils.hasText(sessionId) || knowledgeId == null) {
+            return false;
+        }
+        try {
+            SessionKnowledgeRecord mapping = sessionKnowledgeRepository.selectBySessionId(sessionId);
+            if (mapping == null || !StringUtils.hasText(mapping.getKnowledgeIds())) {
+                return false;
+            }
+            List<Integer> ids = objectMapper.readValue(mapping.getKnowledgeIds(), new TypeReference<List<Integer>>() {});
+            if (!ids.remove(knowledgeId)) {
+                return false;
+            }
+            if (ids.isEmpty()) {
+                sessionKnowledgeRepository.deleteBySessionId(sessionId);
+            } else {
+                SessionKnowledgeRecord updated = new SessionKnowledgeRecord()
+                        .setSessionId(sessionId)
+                        .setKnowledgeIds(objectMapper.writeValueAsString(ids));
+                sessionKnowledgeRepository.upsertBySessionId(updated);
+            }
+            log.info("从会话 {} 移除知识条目: id={}", sessionId, knowledgeId);
+            return true;
+        } catch (Exception e) {
+            log.error("移除会话知识失败: sessionId={}, knowledgeId={}, error={}", sessionId, knowledgeId, e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public void clearSessionKnowledge(String sessionId) {
+        sessionKnowledgeRepository.deleteBySessionId(sessionId);
+        log.info("已清空会话 {} 的知识注入记录", sessionId);
+    }
+
     // ========================= 匹配与注入 =========================
 
     @Override
@@ -293,13 +319,25 @@ public class KnowledgeServiceImplement implements KnowledgeService {
             for (KnowledgeRecord entry : allEntries) {
                 entriesText.append(entry.getId()).append(". ").append(entry.getTitle()).append("\n");
             }
-            String prompt = KNOWLEDGE_SELECT_PROMPT
-                    .replace("${entries}", entriesText.toString().trim())
-                    .replace("${query}", queryText)
-                    .replace("${max}", String.valueOf(MAX_SELECT_PER_ROUND));
+            String prompt = """
+            你是一个知识库条目选择器。用户正在进行一段对话，你需要从知识库条目中选出与用户当前问题相关、对回答有帮助的条目。
 
+            [知识库条目]
+            ${entries}
+
+            [用户当前问题]
+            ${query}
+
+            要求：
+            1. 只输出一个 JSON 数组，格式为 [条目id列表]，例如 [1, 3, 5]，不要输出任何其他文字或解释。
+            2. 只选择与用户当前问题明显相关的条目；如果都不相关，输出 []。
+            3. 只根据条目标题判断相关性。
+            """.replace("${entries}", entriesText.toString().trim())
+            .replace("${query}", queryText);
+
+            // 注意：不能设置 json_object 响应格式 —— 该模式下不允许输出 JSON 数组
             ChatRequest request = new ChatRequest()
-                    .loadSettings(new AISettings().copy(cubAISettings).setResponseFormat("json_object"))
+                    .loadSettings(new AISettings().copy(cubAISettings))
                     .setMessages(List.of(new ChatMessage().user(prompt)));
 
             AtomicReference<String> rawJson = new AtomicReference<>();
@@ -312,7 +350,6 @@ public class KnowledgeServiceImplement implements KnowledgeService {
                 log.warn("知识库 cub 选择解析失败，降级为历史注入。raw={}", rawJson.get());
                 return null;
             }
-            log.info("知识库 cub 选择: ids={}, query={}", ids, queryText);
             return ids;
         } catch (Exception e) {
             log.error("知识库 cub 选择调用失败: {}", e.getMessage(), e);
@@ -321,8 +358,8 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     }
 
     /**
-     * 从 cub 返回的文本中解析知识条目 id 列表，期望格式：{"ids": [1, 3, 5]}
-     * 容错处理 ```json 代码块包裹和字符串数字。
+     * 从 cub 返回的文本中解析知识条目 id 列表，期望格式：[1, 3, 5]
+     * 容错处理 ```json 代码块包裹。
      */
     private List<Integer> parseKnowledgeIds(String raw) {
         if (!StringUtils.hasText(raw)) {
@@ -333,28 +370,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
                 .replaceAll("```\\s*$", "")
                 .trim();
         try {
-            Map<String, Object> map = objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
-            Object idsObj = map.get("ids");
-            if (idsObj == null) {
-                return null;
-            }
-            List<Integer> ids = new ArrayList<>();
-            if (idsObj instanceof List<?> list) {
-                for (Object item : list) {
-                    if (item instanceof Number num) {
-                        ids.add(num.intValue());
-                    } else if (item instanceof String s) {
-                        try {
-                            ids.add(Integer.parseInt(s.trim()));
-                        } catch (NumberFormatException ignored) {
-                            // 忽略非数字项
-                        }
-                    }
-                }
-            } else if (idsObj instanceof Number num) {
-                ids.add(num.intValue());
-            }
-            return ids;
+            return objectMapper.readValue(json, new TypeReference<List<Integer>>() {});
         } catch (Exception e) {
             log.warn("解析 cub 知识选择结果失败: {}", e.getMessage());
             return null;

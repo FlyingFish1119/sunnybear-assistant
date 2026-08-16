@@ -164,7 +164,10 @@ public class CommandTool implements ToolHandler {
     @Value("${assistant.file.base-path:}")
     private String basePath;
 
-    public CommandTool(ObjectMapper objectMapper, @Qualifier(SETTINGS) Settings settings,@Qualifier(AISettings.MISSION) AISettings aiSettings, ChatHttpHandler chatHttpHandler) {
+    public CommandTool(ObjectMapper objectMapper,
+                       @Qualifier(SETTINGS) Settings settings,
+                       @Qualifier(AISettings.CUB) AISettings aiSettings,
+                       ChatHttpHandler chatHttpHandler) {
         this.objectMapper = objectMapper;
         this.settings = settings;
         this.chatHttpHandler = chatHttpHandler;

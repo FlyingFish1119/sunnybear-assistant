@@ -35,6 +35,7 @@ import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.ToolContextBuilder;
+import com.fishsunny.assistant.variable.ControlSign;
 import com.fishsunny.assistant.variable.PromptReplaceVariable;
 import com.fishsunny.assistant.variable.RoleVariable;
 import com.fishsunny.assistant.websocket.ChatProvider;
@@ -120,7 +121,7 @@ public class ChatProcessor {
         if (chatProvider.getSystemProvider() != null) {
             systemPrompt = chatProvider.getSystemProvider().apply(context);
         } else {
-            systemPrompt = defaultSystemPrompt(context, effectiveAISettings.getModel());
+            systemPrompt = defaultSystemPrompt(context, effectiveAISettings.getModel(), session);
         }
 
         List<ChatMessage> messages = new ArrayList<>();
@@ -152,7 +153,8 @@ public class ChatProcessor {
         return collector;
     }
 
-    private String defaultSystemPrompt(ChatProvider.SystemProviderContext context, String effectiveModelName) throws Exception {
+    private String defaultSystemPrompt(ChatProvider.SystemProviderContext context, String effectiveModelName,
+                                       WebSocketSession session) throws Exception {
         ChatSession chatSession = context.chatSession();
         List<ChatMessage> originMessages = context.originMessages();
 
@@ -172,6 +174,12 @@ public class ChatProcessor {
                 if (org.springframework.util.StringUtils.hasText(knowledgeSection)) {
                     systemPrompt += knowledgeSection;
                     log.debug("知识库注入成功");
+                    // 控制信号通知前端：本轮回合自动注入了知识库内容
+                    try {
+                        session.sendMessage(new TextMessage(ControlSign.SIGN_KNOWLEDGE_HIT + chatSession.getId()));
+                    } catch (Exception e) {
+                        log.warn("发送知识库命中信号失败: {}", e.getMessage());
+                    }
                 }
             }
         } catch (Exception e) {

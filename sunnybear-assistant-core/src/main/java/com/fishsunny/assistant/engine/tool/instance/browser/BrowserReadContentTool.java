@@ -49,7 +49,7 @@ public class BrowserReadContentTool implements ToolHandler {
 
     public BrowserReadContentTool(ObjectMapper objectMapper,
                                   PlaywrightBrowserService browserService,
-                                  @Qualifier(AISettings.TASK) AISettings taskAISettings,
+                                  @Qualifier(AISettings.CUB) AISettings taskAISettings,
                                   ChatHttpHandler chatHttpHandler) {
         this.objectMapper = objectMapper;
         this.browserService = browserService;

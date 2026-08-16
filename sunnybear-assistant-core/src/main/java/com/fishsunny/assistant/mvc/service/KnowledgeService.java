@@ -57,6 +57,30 @@ public interface KnowledgeService {
      */
     String buildKnowledgeSection(String sessionId, String queryText);
 
+    /**
+     * 查询某会话已注入的知识条目列表（来自 session_knowledge 映射表）
+     *
+     * @param sessionId 会话 ID
+     * @return 已注入的知识条目列表，无记录时返回空列表
+     */
+    List<KnowledgeRecord> listSessionKnowledge(String sessionId);
+
+    /**
+     * 从会话的注入列表中移除一条知识条目（不删除知识条目本身）
+     *
+     * @param sessionId   会话 ID
+     * @param knowledgeId 要移除的知识条目 ID
+     * @return 是否移除成功（记录不存在或 id 不在列表中返回 false）
+     */
+    boolean removeSessionKnowledge(String sessionId, Integer knowledgeId);
+
+    /**
+     * 清空某会话的全部知识注入记录
+     *
+     * @param sessionId 会话 ID
+     */
+    void clearSessionKnowledge(String sessionId);
+
     public record ListKnowledgeResult(List<KnowledgeRecord> items, int total, int offset, int limit) {
     }
 }

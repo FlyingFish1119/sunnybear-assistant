@@ -10,14 +10,16 @@ package com.fishsunny.assistant.mvc.service;
 
 import com.fishsunny.assistant.engine.protocol.project.entity.AiGreeting;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface AiGreetingService {
 
     /**
-     * 使用 mission AI 设置，为所有时间段各生成一条问候语并存储
+     * 使用 mission AI 设置，为所有时间段各生成 3 条问候语并存储。
+     * 生成提示词中会附带核心记忆，使问候语更贴合用户
      *
-     * @return 生成的问候语列表（上午、中午、下午、晚上、深夜）
+     * @return 生成的问候语列表（每时段 3 条：上午、中午、下午、晚上、深夜）
      */
     public List<AiGreeting> generateGreeting() throws Exception;
 
@@ -27,4 +29,12 @@ public interface AiGreetingService {
      * @return 匹配当前时段的问候语，若表中无数据则返回 null
      */
     public AiGreeting getCurrentGreeting() throws Exception;
+
+    /**
+     * 删除创建时间早于指定时间的问候语
+     *
+     * @param cutoff 时间边界，早于该时间的问候语会被删除
+     * @return 删除的条数
+     */
+    public int deleteBefore(LocalDateTime cutoff);
 }

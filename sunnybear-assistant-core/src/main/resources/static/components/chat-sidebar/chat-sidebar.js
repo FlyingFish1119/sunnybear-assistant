@@ -61,6 +61,10 @@ const ChatSidebar = {
                 <i data-lucide="zap" style="width: 16px; height: 16px;"></i>
                 <span>{{ contextMenu.session.enablePro ? '当前：高级' : '当前：普通' }}</span>
             </div>
+            <div class="session-context-menu-item" @click="openSessionKnowledge(contextMenu.session)">
+                <i data-lucide="database" style="width: 16px; height: 16px;"></i>
+                <span>查看知识库</span>
+            </div>
         </div>
         <div class="sidebar-footer">
             <el-button class="sidebar-settings"
@@ -87,7 +91,42 @@ const ChatSidebar = {
     <div class="sidebar-overlay" :class="{ visible: sidebarOpen }" @click="closeSidebar"></div>
 
     <!-- 通用确认弹窗 -->
-    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>`,
+    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+
+    <!-- 会话知识库查看对话框（样式参考 settings 的知识条目管理） -->
+    <el-dialog v-model="sessionKnowledgeDialog" title="" width="800px"
+               class="session-knowledge-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="database" style="width:20px;height:20px"></i>
+                <span>会话知识库</span>
+                <span style="font-size:13px;font-weight:400;color:var(--text-secondary)">
+                    {{ sessionKnowledgeSession ? ' · ' + sessionKnowledgeSession.name : '' }}
+                </span>
+            </div>
+        </template>
+        <div v-if="sessionKnowledgeLoading" style="text-align:center;padding:40px;color:#909399">加载中...</div>
+        <div v-else-if="sessionKnowledgeList.length === 0" style="text-align:center;padding:40px;color:#909399">该会话暂无注入的知识库内容</div>
+        <div v-else class="entry-list">
+            <div v-for="item in sessionKnowledgeList" :key="item.id" class="entry-item">
+                <div class="entry-item-body">
+                    <div class="entry-item-title">{{ item.title }}</div>
+                    <div class="entry-item-content">{{ item.content }}</div>
+                    <div class="entry-item-time">{{ (item.createTime || '').replace('T', ' ') }}</div>
+                </div>
+                <div class="entry-item-actions">
+                    <button type="button" class="entry-action-btn delete" @click="removeSessionKnowledgeItem(item)" title="从会话移除">
+                        <i data-lucide="trash-2" style="width:15px;height:15px"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <template #footer>
+            <div class="dialog-footer">
+                <button type="button" class="dialog-btn dialog-btn-cancel" @click="sessionKnowledgeDialog = false">关闭</button>
+            </div>
+        </template>
+    </el-dialog>`,
 
     props: {
         currentSession: { type: Object, default: null },
@@ -109,7 +148,12 @@ const ChatSidebar = {
                 x: 0,
                 y: 0,
                 session: null
-            }
+            },
+            /** 会话知识库查看对话框 */
+            sessionKnowledgeDialog: false,
+            sessionKnowledgeList: [],
+            sessionKnowledgeSession: null,
+            sessionKnowledgeLoading: false
         };
     },
 
@@ -278,6 +322,67 @@ const ChatSidebar = {
                 ElementPlus.ElMessage.error('网络请求失败');
                 console.error('切换模式失败:', error);
             }
+        },
+
+        /**
+         * 查看会话已注入的知识库条目：弹出知识库对话框
+         */
+        openSessionKnowledge: function (session) {
+            this.closeContextMenu();
+            this.sessionKnowledgeSession = session;
+            this.sessionKnowledgeList = [];
+            this.sessionKnowledgeDialog = true;
+            // 对话框内容挂载后手动刷新 lucide 图标（与 settings 打开弹窗的做法一致）
+            this.$nextTick(function () { lucide.createIcons(); });
+            this.loadSessionKnowledge();
+        },
+
+        /**
+         * 加载当前查看会话的已注入知识条目
+         */
+        loadSessionKnowledge: async function () {
+            if (!this.sessionKnowledgeSession) return;
+            this.sessionKnowledgeLoading = true;
+            try {
+                var result = await API.knowledge.sessionList(this.sessionKnowledgeSession.id);
+                this.sessionKnowledgeList = (result.status === 200 && result.data) ? result.data : [];
+            } catch (error) {
+                console.error('获取会话知识库失败:', error);
+                this.sessionKnowledgeList = [];
+            } finally {
+                this.sessionKnowledgeLoading = false;
+                // 列表 v-else 渲染完成后刷新 lucide 图标
+                this.$nextTick(function () { lucide.createIcons(); });
+            }
+        },
+
+        /**
+         * 从会话中移除一条知识条目（不影响知识条目本身），复用项目通用确认弹窗
+         */
+        removeSessionKnowledgeItem: function (item) {
+            var self = this;
+            var session = this.sessionKnowledgeSession;
+            if (!session) return;
+            this.$refs.confirmDialog.show({
+                title: '移除确认',
+                message: '确定从该会话移除知识条目「' + item.title + '」吗？',
+                confirmText: '移除',
+                cancelText: '取消',
+                type: 'warning'
+            }).then(async function () {
+                try {
+                    var result = await API.knowledge.sessionRemove(session.id, item.id);
+                    if (result.status === 200) {
+                        ElementPlus.ElMessage.success('已移除');
+                        await self.loadSessionKnowledge();
+                    } else {
+                        ElementPlus.ElMessage.error(result.message || '移除失败');
+                    }
+                } catch (error) {
+                    ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
+                    console.error('移除会话知识失败:', error);
+                }
+            }).catch(function () { /* 用户取消 */ });
         },
 
         /**

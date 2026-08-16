@@ -257,7 +257,16 @@ const API = (function () {
             list: function () { return get('knowledge/list'); },
             get: function (id) { return get('knowledge/get?id=' + encodeURIComponent(id)); },
             save: function (data) { return post('knowledge/save', data); },
-            delete: function (id) { return get('knowledge/delete?id=' + encodeURIComponent(id)); }
+            delete: function (id) { return get('knowledge/delete?id=' + encodeURIComponent(id)); },
+            /** 查询某会话已注入的知识条目列表 */
+            sessionList: function (sessionId) { return get('knowledge/session/list?sessionId=' + encodeURIComponent(sessionId)); },
+            /** 从会话注入列表中移除一条知识条目 */
+            sessionRemove: function (sessionId, knowledgeId) {
+                return get('knowledge/session/remove?sessionId=' + encodeURIComponent(sessionId)
+                    + '&knowledgeId=' + encodeURIComponent(knowledgeId));
+            },
+            /** 清空某会话的全部知识注入记录 */
+            sessionClear: function (sessionId) { return get('knowledge/session/clear?sessionId=' + encodeURIComponent(sessionId)); }
         },
 
         /* ---------- 记忆 ---------- */

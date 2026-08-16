@@ -14,6 +14,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.AiGreeting;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.mvc.dao.AiGreetingRepository;
 import com.fishsunny.assistant.mvc.service.AiGreetingService;
+import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AISettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +25,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -39,17 +41,20 @@ public class AiGreetingServiceImplement implements AiGreetingService {
 
     private final AiGreetingRepository aiGreetingRepository;
     private final ChatHttpHandler chatHttpHandler;
+    private final MemoryService memoryService;
     private final AISettings missionAISettings;
     private final AISettings chatAISettings;
     private final TaskExecutor taskExecutor;
 
     public AiGreetingServiceImplement(AiGreetingRepository aiGreetingRepository,
                                       ChatHttpHandler chatHttpHandler,
+                                      MemoryService memoryService,
                                       @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                                       @Qualifier(AISettings.CHAT) AISettings chatAISettings,
                                       @Qualifier("chatAsyncExecutor") TaskExecutor taskExecutor) {
         this.aiGreetingRepository = aiGreetingRepository;
         this.chatHttpHandler = chatHttpHandler;
+        this.memoryService = memoryService;
         this.missionAISettings = missionAISettings;
         this.chatAISettings = chatAISettings;
         this.taskExecutor = taskExecutor;
@@ -64,9 +69,24 @@ public class AiGreetingServiceImplement implements AiGreetingService {
             Map.entry("深夜",   "晚上10点到第二天凌晨6点之前")
     );
 
+    /** 每个时间段生成的问候语数量 */
+    private static final int GREETINGS_PER_PERIOD = 3;
+
     @Override
     public List<AiGreeting> generateGreeting() throws Exception {
         String currentDate = LocalDateTime.now().format(FORMATTER);
+
+        // 读取核心记忆，作为生成问候语的上下文注入提示词
+        String memorySection;
+        try {
+            memorySection = memoryService.buildMemorySection();
+        } catch (Exception e) {
+            log.warn("读取核心记忆失败，本次生成不带记忆: {}", e.getMessage());
+            memorySection = "";
+        }
+        String memoryHint = StringUtils.hasText(memorySection)
+                ? "\n\n额外要求：可以在问候语中自然融入下面的核心记忆（不要生硬堆砌，没有合适的就不提）：\n" + memorySection
+                : "";
 
         // mission AI 作为专业的问候语生成器
         String generatorSystemPrompt = """
@@ -78,8 +98,8 @@ public class AiGreetingServiceImplement implements AiGreetingService {
                 - 语气要欢快、有活力、带点俏皮，让人一看到就心情变好
                 - 只输出问候语本身，不要添加任何解释、引号或多余的标点""";
 
-        // 并行生成所有时间段的问候语
-        List<CompletableFuture<AiGreeting>> futures = TIME_PERIODS.stream()
+        // 并行生成所有时间段的问候语（每个时段按序生成 3 条，并发控制在时段数以内）
+        List<CompletableFuture<List<AiGreeting>>> futures = TIME_PERIODS.stream()
                 .map(period -> CompletableFuture.supplyAsync(() -> {
                     String timeOfDay = period.getKey();
                     String timeDesc = period.getValue();
@@ -91,49 +111,53 @@ public class AiGreetingServiceImplement implements AiGreetingService {
                             目标时间段：%s（%s）
 
                             角色设定：
+                            %s
                             %s""",
-                            currentDate, timeOfDay, timeDesc, chatAISettings.getPrompt());
+                            currentDate, timeOfDay, timeDesc, chatAISettings.getPrompt(), memoryHint);
 
-                    ChatRequest request = new ChatRequest()
-                            .loadSettings(missionAISettings)
-                            .setMessages(List.of(
-                                    new ChatMessage().system(generatorSystemPrompt),
-                                    new ChatMessage().user(userPrompt)
-                            ));
-                    AtomicReference<String> generatedText = new AtomicReference<>();
-                    try {
-                        ChatHttpHandler.CompleteCallback onComplete = (result, lastRes) -> {
-                            generatedText.set(result.content() != null ? result.content().trim() : null);
-                        };
-                        chatHttpHandler.translate(UUID.randomUUID().toString(), missionAISettings.getAdapterName(), request,
-                                missionAISettings.getStream() != null ? missionAISettings.getStream() : true,
-                                null, onComplete);
+                    List<AiGreeting> periodGreetings = new ArrayList<>();
+                    for (int i = 0; i < GREETINGS_PER_PERIOD; i++) {
+                        ChatRequest request = new ChatRequest()
+                                .loadSettings(missionAISettings)
+                                .setMessages(List.of(
+                                        new ChatMessage().system(generatorSystemPrompt),
+                                        new ChatMessage().user(userPrompt)
+                                ));
+                        AtomicReference<String> generatedText = new AtomicReference<>();
+                        try {
+                            ChatHttpHandler.CompleteCallback onComplete = (result, lastRes) -> {
+                                generatedText.set(result.content() != null ? result.content().trim() : null);
+                            };
+                            chatHttpHandler.translate(UUID.randomUUID().toString(), missionAISettings.getAdapterName(), request,
+                                    missionAISettings.getStream(),
+                                    null, onComplete);
 
-                        if (!StringUtils.hasText(generatedText.get())) {
-                            log.warn("AI 未能为[{}]生成有效的问候语，跳过", timeOfDay);
-                            return null;
+                            if (!StringUtils.hasText(generatedText.get())) {
+                                log.warn("AI 未能为[{}]生成有效的问候语（第{}条），跳过", timeOfDay, i + 1);
+                                continue;
+                            }
+
+                            AiGreeting greeting = new AiGreeting()
+                                    .setId(UUID.randomUUID().toString())
+                                    .setText(generatedText.get())
+                                    .setGreetingTime(timeOfDay)
+                                    .setCreateTime(LocalDateTime.now());
+
+                            AiGreeting saved = aiGreetingRepository.insert(greeting);
+                            periodGreetings.add(saved);
+                            log.info("已生成[{}]问候语(第{}条): {}", timeOfDay, i + 1, generatedText.get());
+                        } catch (Exception e) {
+                            log.error("生成[{}]问候语失败(第{}条): {}", timeOfDay, i + 1, e.getMessage(), e);
                         }
-
-                        AiGreeting greeting = new AiGreeting()
-                                .setId(UUID.randomUUID().toString())
-                                .setText(generatedText.get())
-                                .setGreetingTime(timeOfDay)
-                                .setCreateTime(LocalDateTime.now());
-
-                        AiGreeting saved = aiGreetingRepository.insert(greeting);
-                        log.info("已生成[{}]问候语: {}", timeOfDay, generatedText.get());
-                        return saved;
-                    } catch (Exception e) {
-                        log.error("生成[{}]问候语失败: {}", timeOfDay, e.getMessage(), e);
-                        return null;
                     }
+                    return periodGreetings;
                 }, taskExecutor))
                 .toList();
 
         // 等待所有任务完成，收集结果
         List<AiGreeting> greetings = futures.stream()
                 .map(CompletableFuture::join)
-                .filter(g -> g != null)
+                .flatMap(List::stream)
                 .toList();
 
         if (greetings.isEmpty()) {
@@ -171,6 +195,13 @@ public class AiGreetingServiceImplement implements AiGreetingService {
         if (hour >= AFTERNOON_START_HOUR && hour < EVENING_START_HOUR) return "下午";
         if (hour >= EVENING_START_HOUR && hour < NIGHT_START_HOUR) return "晚上";
         return "深夜";
+    }
+
+    @Override
+    public int deleteBefore(LocalDateTime cutoff) {
+        int deleted = aiGreetingRepository.deleteBefore(cutoff);
+        log.info("已删除 {} 条创建时间早于 {} 的问候语", deleted, cutoff.format(FORMATTER));
+        return deleted;
     }
 
 }

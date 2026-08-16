@@ -10,6 +10,7 @@ package com.fishsunny.assistant.mvc.dao;
 
 import com.fishsunny.assistant.engine.protocol.project.entity.AiGreeting;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface AiGreetingRepository {
@@ -31,4 +32,12 @@ public interface AiGreetingRepository {
     public List<AiGreeting> selectAll();
 
     public int deleteById(String id);
+
+    /**
+     * 删除创建时间早于指定时间的问候语（用于定时清理过期数据）
+     *
+     * @param cutoff 时间边界（含边界值之前的都会被删除）
+     * @return 删除的条数
+     */
+    public int deleteBefore(LocalDateTime cutoff);
 }

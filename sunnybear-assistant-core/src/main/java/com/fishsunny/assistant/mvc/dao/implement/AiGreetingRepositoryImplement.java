@@ -99,4 +99,10 @@ public class AiGreetingRepositoryImplement implements AiGreetingRepository {
         String sql = "DELETE FROM ai_greeting WHERE id = ?";
         return jdbcTemplate.update(sql, id);
     }
+
+    @Override
+    public int deleteBefore(LocalDateTime cutoff) {
+        String sql = "DELETE FROM ai_greeting WHERE create_time < ?";
+        return jdbcTemplate.update(sql, cutoff.format(FORMATTER));
+    }
 }

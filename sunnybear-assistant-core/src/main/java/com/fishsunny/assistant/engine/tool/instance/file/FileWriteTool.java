@@ -69,7 +69,7 @@ public class FileWriteTool implements ToolHandler {
 
     public FileWriteTool(ObjectMapper objectMapper,
                          @Qualifier(SETTINGS) Settings settings,
-                         @Qualifier(AISettings.MISSION) AISettings aiSettings,
+                         @Qualifier(AISettings.CUB) AISettings aiSettings,
                          ChatHttpHandler chatHttpHandler) {
         this.objectMapper = objectMapper;
         this.settings = settings;

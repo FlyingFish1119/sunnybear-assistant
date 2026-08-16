@@ -110,4 +110,41 @@ public class KnowledgeController {
             return new RestResponse().error("删除知识条目失败: " + e.getMessage());
         }
     }
+
+    /** 查询某会话已注入的知识条目列表 */
+    @RequestMapping("/session/list")
+    public RestResponse sessionList(@RequestParam("sessionId") String sessionId) {
+        try {
+            List<KnowledgeRecord> list = knowledgeService.listSessionKnowledge(sessionId);
+            return new RestResponse().success(list);
+        } catch (Exception e) {
+            log.error("查询会话知识库失败: {}", e.getMessage(), e);
+            return new RestResponse().error("查询会话知识库失败: " + e.getMessage());
+        }
+    }
+
+    /** 从会话注入列表中移除一条知识条目（不影响知识条目本身） */
+    @RequestMapping("/session/remove")
+    public RestResponse sessionRemove(@RequestParam("sessionId") String sessionId,
+                                      @RequestParam("knowledgeId") Integer knowledgeId) {
+        try {
+            boolean removed = knowledgeService.removeSessionKnowledge(sessionId, knowledgeId);
+            return new RestResponse().success(removed);
+        } catch (Exception e) {
+            log.error("移除会话知识失败: {}", e.getMessage(), e);
+            return new RestResponse().error("移除会话知识失败: " + e.getMessage());
+        }
+    }
+
+    /** 清空某会话的全部知识注入记录 */
+    @RequestMapping("/session/clear")
+    public RestResponse sessionClear(@RequestParam("sessionId") String sessionId) {
+        try {
+            knowledgeService.clearSessionKnowledge(sessionId);
+            return new RestResponse().success(true);
+        } catch (Exception e) {
+            log.error("清空会话知识失败: {}", e.getMessage(), e);
+            return new RestResponse().error("清空会话知识失败: " + e.getMessage());
+        }
+    }
 }

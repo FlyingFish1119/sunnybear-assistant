@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover">
-    <title>Vue 3 + Element Plus 基础页面</title>
+    <title>SunnyBear 助手</title>
+    <link rel="icon" type="image/png" href="icon/ComfyUI_23337_.png">
     <!-- Element Plus 样式 -->
     <link rel="stylesheet" href="lib/element-plus.css">
     <!-- Vue 3 -->
@@ -90,6 +91,9 @@
                 </session-name>
             </div>
             <div style="display: flex; align-items: center; gap: 16px;">
+                <span v-if="knowledgeFlashVisible" class="knowledge-hit-flash" title="已自动检索知识库内容">
+                    <i data-lucide="database"></i>
+                </span>
                 <connection-indicator
                     :ws-url="wsUrl"
                     @connected="ws = $event; ws.onmessage = (e) => handleStreamChunk(e)"
@@ -414,6 +418,8 @@
                 editTargetRole: null,
                 // 问候语
                 greetingText: '',
+                // 知识库命中闪现提示
+                knowledgeFlashVisible: false,
                 // 桌面端侧边栏折叠
                 sidebarCollapsed: false,
                 // 折叠状态：key = msgId_section, value = true(折叠)/false(展开)
@@ -690,6 +696,17 @@
                 }
             },
 
+            /**
+             * 知识库命中：顶部栏闪现图标，约 5 秒后自动消失（与 CSS 动画时长一致）
+             */
+            showKnowledgeFlash() {
+                this.knowledgeFlashVisible = true;
+                clearTimeout(this._knowledgeFlashTimer);
+                this._knowledgeFlashTimer = setTimeout(() => {
+                    this.knowledgeFlashVisible = false;
+                }, 5000);
+            },
+
             selectSession(session) {
                 this.closeSidebar();
                 this.$md.clearCache();
@@ -899,6 +916,11 @@
                     if (session.id === this.currentSessionId) {
                         this.currentSession = ref;
                     }
+                    return;
+                }
+                if (event.data.startsWith('###KNOWLEDGE_HIT###')) {
+                    // 知识库内容被自动注入到提示词，顶部栏闪现图标提示
+                    this.showKnowledgeFlash();
                     return;
                 }
                 if (event.data.startsWith('###')) {
