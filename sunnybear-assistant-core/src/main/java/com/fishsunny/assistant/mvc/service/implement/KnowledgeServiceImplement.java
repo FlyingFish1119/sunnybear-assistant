@@ -329,15 +329,21 @@ public class KnowledgeServiceImplement implements KnowledgeService {
             ${query}
 
             要求：
-            1. 只输出一个 JSON 数组，格式为 [条目id列表]，例如 [1, 3, 5]，不要输出任何其他文字或解释。
-            2. 只选择与用户当前问题明显相关的条目；如果都不相关，输出 []。
+            1. 只输出一个 JSON 对象，格式为
+            {
+                "ids": []
+            }
+            例如：
+            {
+                "ids": [1, 3, 5]
+            }
+            2. 只选择与用户当前问题明显相关的条目；如果都不相关，输出：{"ids": []}。
             3. 只根据条目标题判断相关性。
             """.replace("${entries}", entriesText.toString().trim())
             .replace("${query}", queryText);
 
-            // 注意：不能设置 json_object 响应格式 —— 该模式下不允许输出 JSON 数组
             ChatRequest request = new ChatRequest()
-                    .loadSettings(new AISettings().copy(cubAISettings))
+                    .loadSettings(new AISettings().copy(cubAISettings).json())
                     .setMessages(List.of(new ChatMessage().user(prompt)));
 
             AtomicReference<String> rawJson = new AtomicReference<>();
@@ -358,7 +364,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     }
 
     /**
-     * 从 cub 返回的文本中解析知识条目 id 列表，期望格式：[1, 3, 5]
+     * 从 cub 返回的文本中解析知识条目 id 列表，期望格式：{"ids": [1, 3, 5]}
      * 容错处理 ```json 代码块包裹。
      */
     private List<Integer> parseKnowledgeIds(String raw) {
@@ -370,7 +376,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
                 .replaceAll("```\\s*$", "")
                 .trim();
         try {
-            return objectMapper.readValue(json, new TypeReference<List<Integer>>() {});
+            return objectMapper.readValue(json, new TypeReference<Map<String, List<Integer>>>() {}).get("ids");
         } catch (Exception e) {
             log.warn("解析 cub 知识选择结果失败: {}", e.getMessage());
             return null;

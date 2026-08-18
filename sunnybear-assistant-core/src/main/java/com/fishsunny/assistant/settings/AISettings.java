@@ -78,4 +78,9 @@ public class AISettings {
                 .setTemperature(settings.getTemperature())
                 .setTop_p(settings.getTop_p());
     }
+
+    public AISettings json() {
+        this.setResponseFormat("json_object");
+        return this;
+    }
 }

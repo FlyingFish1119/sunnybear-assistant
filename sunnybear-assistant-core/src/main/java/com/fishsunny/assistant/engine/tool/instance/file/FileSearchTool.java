@@ -13,13 +13,14 @@ import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
-import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import lombok.Data;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
@@ -27,7 +28,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.Paths;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +40,7 @@ import java.util.stream.Stream;
  * 在指定目录下递归搜索文件内容，支持正则表达式匹配、glob 文件过滤和结果分页。
  * 用于根据文字内容查找相关文件。
  */
+@Slf4j
 @ToolKitComponent(FileToolKit.class)
 @ConditionalOnExpression("${engine.tool.file.enable:true} && ${engine.tool.file.file-search.enable:true}")
 public class FileSearchTool implements ToolHandler {
@@ -55,9 +56,6 @@ public class FileSearchTool implements ToolHandler {
     /** 最大递归深度 */
     private static final int MAX_DEPTH = 10;
 
-    /** 单文件最大读取行数（防止超大文件拖垮性能） */
-    private static final int MAX_LINES_PER_FILE = 50_000;
-
     /** 上下文行数上限 */
     private static final int MAX_CONTEXT_LINES = 5;
 
@@ -69,7 +67,8 @@ public class FileSearchTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("搜索文件内容的首选工具（比执行 findstr/grep 命令更安全、无需用户确认、无输出限制）。支持正则匹配和 glob 文件过滤，根据文字/关键词快速查找相关文件。返回匹配的文件路径、行号和内容，可显示上下文行。")
+                .setDescription("搜索文件内容的首选工具（比执行 findstr/grep 命令更安全、无需用户确认、无输出限制）。支持正则匹配和 glob 文件过滤，根据文字/关键词快速查找相关文件。返回匹配的文件路径、行号和内容，可显示上下文行。" +
+                        "注意：永远不要尝试从根目录开始搜索，这几乎一定会超时。")
                 .setRequired(List.of("path", "pattern"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("path", "string", "搜索的起始目录路径，例如 D:\\projects 或 /home/user"),
@@ -80,7 +79,7 @@ public class FileSearchTool implements ToolHandler {
                         new ToolRegister.Parameters("caseSensitive", "boolean", "是否区分大小写，默认 false（不区分大小写）"),
                         new ToolRegister.Parameters("contextLines", "integer", "匹配行前后各显示多少行上下文，默认 0（仅显示匹配行），最大 " + MAX_CONTEXT_LINES),
                         new ToolRegister.Parameters("maxResults", "integer", "最大返回匹配数，默认 " + DEFAULT_MAX_RESULTS + "，上限 " + MAX_RESULTS_LIMIT)
-                )).setTimeoutMs(60000);
+                )).setTimeoutMs(30000);
     }
 
     @Override
@@ -220,20 +219,14 @@ public class FileSearchTool implements ToolHandler {
             List<Path> children = stream.sorted().toList();
             for (Path child : children) {
                 if (results.size() >= maxResults) break;
-
-                String fileName = child.getFileName().toString();
-                if (fileName.startsWith(".")) continue;
-
                 try {
                     if (Files.isDirectory(child)) {
-                        // 跳过常见的非代码目录以提升性能
-                        if (isSkippableDir(fileName)) continue;
                         searchFiles(rootDir, child, remainingDepth - 1, pattern, fileMatcher, contextLines, maxResults, results);
                     } else if (Files.isReadable(child)) {
                         // 文件过滤
                         if (fileMatcher != null && !fileMatcher.matches(child.getFileName())) continue;
                         // 跳过二进制/大文件
-                        if (isBinaryOrTooLarge(child)) continue;
+                        if (isBinary(child)) continue;
                         searchInFile(rootDir, child, pattern, contextLines, maxResults, results);
                     }
                 } catch (IOException ignored) {
@@ -249,10 +242,16 @@ public class FileSearchTool implements ToolHandler {
     private void searchInFile(Path rootDir, Path file, Pattern pattern,
                               int contextLines, int maxResults, List<Match> results) {
         try {
-            List<String> allLines = Files.readAllLines(file, StandardCharsets.UTF_8);
-            if (allLines.size() > MAX_LINES_PER_FILE) {
-                // 文件太大，截断读取
-                allLines = allLines.subList(0, MAX_LINES_PER_FILE);
+            List<String> allLines;
+            try {
+                allLines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            } catch (MalformedInputException e) {
+                try {
+                    allLines = Files.readAllLines(file, Charset.defaultCharset());
+                } catch (IOException ignored) {
+                    log.warn("文件 {} 读取失败", file);
+                    return;
+                }
             }
 
             String relativePath = rootDir.relativize(file).toString();
@@ -288,66 +287,42 @@ public class FileSearchTool implements ToolHandler {
                     results.add(match);
                 }
             }
-        } catch (MalformedInputException e) {
-            // 非 UTF-8 文件，静默跳过
         } catch (IOException e) {
             // 读取失败，静默跳过
         }
     }
 
     /**
-     * 判断是否为可跳过的非代码目录
-     */
-    private boolean isSkippableDir(String dirName) {
-        return switch (dirName) {
-            case "node_modules", ".git", ".svn", "__pycache__", ".idea",
-                 "vendor", "target", "minimumBuild", "dist", ".next", ".nuxt",
-                 "venv", ".venv", ".tox", ".eggs", ".mypy_cache",
-                 ".pytest_cache", ".ruff_cache", "bower_components" -> true;
-            default -> false;
-        };
-    }
-
-    /**
      * 判断文件是否为二进制或过大（不搜索）
      */
-    private boolean isBinaryOrTooLarge(Path file) {
-        try {
-            BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-            // 跳过大于 10MB 的文件
-            if (attrs.size() > 10 * 1024 * 1024) {
-                return true;
-            }
-            // 检查扩展名：跳过常见的二进制/媒体文件
-            String name = file.getFileName().toString().toLowerCase();
-            return name.endsWith(".class") || name.endsWith(".jar")
-                    || name.endsWith(".war") || name.endsWith(".ear")
-                    || name.endsWith(".exe") || name.endsWith(".dll")
-                    || name.endsWith(".so") || name.endsWith(".dylib")
-                    || name.endsWith(".zip") || name.endsWith(".tar")
-                    || name.endsWith(".gz") || name.endsWith(".7z")
-                    || name.endsWith(".rar") || name.endsWith(".bz2")
-                    || name.endsWith(".png") || name.endsWith(".jpg")
-                    || name.endsWith(".jpeg") || name.endsWith(".gif")
-                    || name.endsWith(".bmp") || name.endsWith(".ico")
-                    || name.endsWith(".svg") || name.endsWith(".webp")
-                    || name.endsWith(".mp3") || name.endsWith(".mp4")
-                    || name.endsWith(".avi") || name.endsWith(".mov")
-                    || name.endsWith(".wav") || name.endsWith(".flac")
-                    || name.endsWith(".ttf") || name.endsWith(".otf")
-                    || name.endsWith(".woff") || name.endsWith(".woff2")
-                    || name.endsWith(".eot") || name.endsWith(".pdf")
-                    || name.endsWith(".doc") || name.endsWith(".docx")
-                    || name.endsWith(".xls") || name.endsWith(".xlsx")
-                    || name.endsWith(".ppt") || name.endsWith(".pptx")
-                    || name.endsWith(".bin") || name.endsWith(".dat")
-                    || name.endsWith(".db") || name.endsWith(".sqlite")
-                    || name.endsWith(".o") || name.endsWith(".obj")
-                    || name.endsWith(".pyc") || name.endsWith(".pyo")
-                    || name.endsWith(".lock");
-        } catch (IOException e) {
-            return true;
-        }
+    private boolean isBinary(Path file) {
+        // 检查扩展名：跳过常见的二进制/媒体文件
+        String name = file.getFileName().toString().toLowerCase();
+        return name.endsWith(".class") || name.endsWith(".jar")
+                || name.endsWith(".war") || name.endsWith(".ear")
+                || name.endsWith(".exe") || name.endsWith(".dll")
+                || name.endsWith(".so") || name.endsWith(".dylib")
+                || name.endsWith(".zip") || name.endsWith(".tar")
+                || name.endsWith(".gz") || name.endsWith(".7z")
+                || name.endsWith(".rar") || name.endsWith(".bz2")
+                || name.endsWith(".png") || name.endsWith(".jpg")
+                || name.endsWith(".jpeg") || name.endsWith(".gif")
+                || name.endsWith(".bmp") || name.endsWith(".ico")
+                || name.endsWith(".svg") || name.endsWith(".webp")
+                || name.endsWith(".mp3") || name.endsWith(".mp4")
+                || name.endsWith(".avi") || name.endsWith(".mov")
+                || name.endsWith(".wav") || name.endsWith(".flac")
+                || name.endsWith(".ttf") || name.endsWith(".otf")
+                || name.endsWith(".woff") || name.endsWith(".woff2")
+                || name.endsWith(".eot") || name.endsWith(".pdf")
+                || name.endsWith(".doc") || name.endsWith(".docx")
+                || name.endsWith(".xls") || name.endsWith(".xlsx")
+                || name.endsWith(".ppt") || name.endsWith(".pptx")
+                || name.endsWith(".bin") || name.endsWith(".dat")
+                || name.endsWith(".db") || name.endsWith(".sqlite")
+                || name.endsWith(".o") || name.endsWith(".obj")
+                || name.endsWith(".pyc") || name.endsWith(".pyo")
+                || name.endsWith(".lock");
     }
 
     @Override

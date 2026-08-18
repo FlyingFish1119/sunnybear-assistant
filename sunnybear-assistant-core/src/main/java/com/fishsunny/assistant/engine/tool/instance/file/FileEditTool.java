@@ -186,14 +186,13 @@ public class FileEditTool implements ToolHandler {
             Files.writeString(filePath, resultContent, StandardCharsets.UTF_8);
 
             // 构建元数据描述
-            StringBuilder metaBuilder = new StringBuilder();
-            metaBuilder.append("文件编辑成功\n\n");
-            metaBuilder.append("文件路径: ").append(filePath).append("\n");
-            metaBuilder.append("编辑模式: ").append(modeDesc).append("\n");
-            metaBuilder.append("匹配行范围: 第 ").append(match.startLine + 1)
-                       .append(" ~ ").append(match.endLine + 1).append(" 行\n");
-            metaBuilder.append("文件编辑前总行数: ").append(totalLines).append("\n");
-            metaBuilder.append("\n变更预览:\n");
+            String metaBuilder = "文件编辑成功\n\n" +
+                    "文件路径: " + filePath + "\n" +
+                    "编辑模式: " + modeDesc + "\n" +
+                    "匹配行范围: 第 " + (match.startLine + 1) +
+                    " ~ " + (match.endLine + 1) + " 行\n" +
+                    "文件编辑前总行数: " + totalLines + "\n" +
+                    "\n变更预览:\n";
 
             return new ToolExecutor.ToolExecuteResponse(name(), metaBuilder + diffPreview);
         } catch (ToolExecutor.ToolExecuteException e) {
@@ -421,7 +420,7 @@ public class FileEditTool implements ToolHandler {
         AtomicBoolean isDanger = new AtomicBoolean(false);
         AtomicReference<String> exceptionMessage = new AtomicReference<>("");
         chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
-                aiSettings.getStream() != null ? aiSettings.getStream() : true,
+                aiSettings.getStream(),
                 null,
                 ((result, lastRes) -> {
                     String answer = result.content() != null ? result.content().trim().toLowerCase() : "";
@@ -482,7 +481,6 @@ public class FileEditTool implements ToolHandler {
     @Override
     public ToolRegister getRegister() {
         String modeDesc = switch (settings.getMode()) {
-            case NEVER_ASKED -> "";
             case ALWAYS_ASKED -> "（每次需确认）";
             case AUTO -> "（危险操作需确认）";
             case ALWAYS_REJECT_DANGER -> "（危险操作直接拒绝）";

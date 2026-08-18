@@ -425,7 +425,7 @@ public class CommandTool implements ToolHandler {
         AtomicBoolean isDanger = new AtomicBoolean(false);
         AtomicReference<String> exceptionMessage = new AtomicReference<>("");
         chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
-                aiSettings.getStream() != null ? aiSettings.getStream() : true,
+                aiSettings.getStream(),
                 null,
                 ((result, lastRes) -> {
                     String answer = result.content() != null ? result.content().trim().toLowerCase() : "";

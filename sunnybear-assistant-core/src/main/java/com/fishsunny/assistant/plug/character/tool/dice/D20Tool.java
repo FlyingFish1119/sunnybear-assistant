@@ -333,7 +333,7 @@ public class D20Tool implements ToolHandler {
                         new ChatMessage().user(buildUserPrompt(characterSetting, recentHistory,
                                 event, difficulty, modifier, roll, finalResult, rollDetail, outcome))
                 ))
-                .loadSettings(new AISettings().copy(missionAISettings).setResponseFormat("json_object"));
+                .loadSettings(new AISettings().copy(missionAISettings).json());
 
         AtomicReference<String> afterResolve = new AtomicReference<>("");
         chatHttpHandler.translate(

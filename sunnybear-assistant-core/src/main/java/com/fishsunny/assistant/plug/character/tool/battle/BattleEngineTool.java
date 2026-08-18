@@ -261,7 +261,7 @@ public class BattleEngineTool implements ToolHandler {
                         new ChatMessage().system(systemPrompt),
                         new ChatMessage().user(userPrompt)
                 ))
-                .loadSettings(new AISettings().copy(missionAISettings).setResponseFormat("json_object"));
+                .loadSettings(new AISettings().copy(missionAISettings).json());
 
         AtomicReference<String> afterResolve = new AtomicReference<>("");
         chatHttpHandler.translate(
@@ -568,7 +568,7 @@ public class BattleEngineTool implements ToolHandler {
 
         // 敌人行动 - JSON 模式
         ChatRequest request = new ChatRequest()
-                .loadSettings(new AISettings().copy(missionAISettings).setResponseFormat("json_object"))
+                .loadSettings(new AISettings().copy(missionAISettings).json())
                 .setMessages(List.of(new ChatMessage().system(systemPrompt), new ChatMessage().user(userPrompt.toString())));
         AtomicReference<String> content = new AtomicReference<>();
         chatHttpHandler.translate(UUID.randomUUID().toString(), missionAISettings.getAdapterName(), request, missionAISettings.getStream(), null,

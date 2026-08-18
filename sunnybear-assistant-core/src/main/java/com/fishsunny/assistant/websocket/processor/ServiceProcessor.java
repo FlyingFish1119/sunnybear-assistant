@@ -29,6 +29,7 @@ import com.fishsunny.assistant.utils.Base64Utils;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.variable.ControlSign;
 import com.fishsunny.assistant.variable.RoleVariable;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +48,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -67,7 +69,7 @@ public class ServiceProcessor {
             - 准确概括对话的核心主题或用户的主要意图，而不是简单重复原话。
             - 不要使用[对话]、[聊天]、[关于]、[求助]这类泛指词，要给出具体信息。
             - 标题语言要与用户输入的语言保持一致。
-            - 只输出标题本身，不要添加任何解释、标点包裹或多余的换行。
+            - 只输出一个 JSON 对象，格式为 {"title": "标题"}，不要包含 markdown 代码块标记或任何其他文字。
             """;
 
     @Value("${assistant.file.base-path:}")
@@ -257,14 +259,14 @@ public class ServiceProcessor {
         prompt = prompt.replace("${assistantPrompt}", responsePrompt);
 
         ChatRequest request = new ChatRequest()
-                .loadSettings(cubAISettings)
+                .loadSettings(new AISettings().copy(cubAISettings).json())
                 .setMessages(List.of(
                         new ChatMessage().system(TITLE_PROMPT),
                         new ChatMessage().user(prompt)
                 ));
         try {
             ChatHttpHandler.CompleteCallback onComplete = (result, lastRes) -> {
-                chatSession.setName(result.content());
+                chatSession.setName(parseTitle(result.content()));
             };
             chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request, cubAISettings.getStream(),
                     null, onComplete);
@@ -273,6 +275,31 @@ public class ServiceProcessor {
         } catch (Exception e) {
             log.error("Error title generate: {}", e.getMessage());
         }
+    }
+
+    /**
+     * 从 cub 返回的 JSON 中解析标题字段，期望格式：{"title": "标题"}。
+     * 容错处理 ```json 代码块包裹，解析失败时回退为原始文本。
+     */
+    private String parseTitle(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return raw;
+        }
+        String json = raw.trim()
+                .replaceAll("^```(json)?\\s*", "")
+                .replaceAll("```\\s*$", "")
+                .trim();
+        try {
+            Map<String, String> parsed = objectMapper.readValue(json, new TypeReference<>() {
+            });
+            String title = parsed.get("title");
+            if (StringUtils.hasText(title)) {
+                return title.trim();
+            }
+        } catch (Exception e) {
+            log.warn("解析标题 JSON 失败，回退为原始文本: {}", e.getMessage());
+        }
+        return raw.trim();
     }
 
     private ChatSession findChatSession(String sessionId) throws Exception {
