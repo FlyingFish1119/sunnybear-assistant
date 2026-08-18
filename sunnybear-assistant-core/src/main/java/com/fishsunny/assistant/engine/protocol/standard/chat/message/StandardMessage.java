@@ -27,5 +27,5 @@ import com.fishsunny.assistant.engine.protocol.standard.chat.message.role.Standa
         @JsonSubTypes.Type(value = StandardAssistantMessage.class, name = "assistant"),
         @JsonSubTypes.Type(value = StandardToolMessage.class, name = "tool"),
 })
-public interface StandardMessage {
+public abstract class StandardMessage {
 }

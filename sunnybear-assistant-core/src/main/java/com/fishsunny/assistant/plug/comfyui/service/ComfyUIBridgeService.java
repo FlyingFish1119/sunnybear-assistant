@@ -38,7 +38,7 @@ public class ComfyUIBridgeService extends TextWebSocketHandler {
     private final Map<String, CompletableFuture<String>> pendingRequests = new ConcurrentHashMap<>();
 
     /** 命令超时（秒），默认 1800（30 分钟），可在 application.yml 中配置 */
-    @Value("${plug.comfyui.bridge.command-timeout:1800}")
+    @Value("${plug.comfyui.bridge.command-timeout-s:1800}")
     private int commandTimeout;
 
     public ComfyUIBridgeService(ObjectMapper objectMapper) {

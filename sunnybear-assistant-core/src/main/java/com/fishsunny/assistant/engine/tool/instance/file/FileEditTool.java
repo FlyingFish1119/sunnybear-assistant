@@ -540,7 +540,7 @@ public class FileEditTool implements ToolHandler {
         private String mode;
 
         public Settings() {
-            this.mode = AUTO;
+            this.mode = ALWAYS_ASKED;
         }
 
         public Settings(String mode) {

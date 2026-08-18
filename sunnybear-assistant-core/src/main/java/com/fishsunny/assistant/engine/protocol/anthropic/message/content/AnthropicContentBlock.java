@@ -15,5 +15,5 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = AnthropicToolResultContent.class, name = "tool_result"),
         @JsonSubTypes.Type(value = AnthropicThinkingContent.class, name = "thinking")
 })
-public interface AnthropicContentBlock {
+public abstract class AnthropicContentBlock {
 }

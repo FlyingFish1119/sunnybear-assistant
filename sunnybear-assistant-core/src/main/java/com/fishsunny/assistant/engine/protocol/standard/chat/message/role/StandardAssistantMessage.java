@@ -12,7 +12,7 @@ import java.util.List;
 @Data
 @Accessors
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class StandardAssistantMessage implements StandardMessage {
+public class StandardAssistantMessage extends StandardMessage {
 
     private final String role = "assistant";
 

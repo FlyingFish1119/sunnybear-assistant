@@ -13,6 +13,7 @@ import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.os.CommandTool;
 import com.fishsunny.assistant.engine.tool.instance.os.ExtensionScriptTool;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,22 +46,32 @@ public class SettingsLoader {
 
     private final Logger log = LoggerFactory.getLogger(SettingsLoader.class);
 
+    private static final String USER_SETTINGS_JSON = "user_settings.json";
+    private static final String ASSISTANT_SETTINGS_JSON = "assistant_settings.json";
+    private static final String AI_SETTINGS_JSON = "ai_settings.json";
+    private static final String TOOL_SETTINGS_JSON = "tool_settings.json";
+    private static final String KNOWLEDGE_SETTINGS_JSON = "knowledge_settings.json";
+
     // ============================== 字段 & 构造 ==============================
 
-    /**
-     * 用户设置文件的路径，可在 application.yml 中通过 user-settings.path 配置
-     * 默认值为运行目录下的 user_settings.json
-     */
-    @Value("${user-settings.path:settings/user_settings.json}")
+
+    @Value("${assistant.settings.base-path:settings/}")
+    private String basePath;
+
     private String userSettingsPath;
-    @Value("${assistant-settings.path:settings/assistant_settings.json}")
     private String assistantSettingsPath;
-    @Value("${ai-settings.path:settings/ai_settings.json}")
     private String aiSettingsPath;
-    @Value("${tool-settings.path:settings/tool_settings.json}")
     private String toolSettingsPath;
-    @Value("${knowledge-settings.path:settings/knowledge_settings.json}")
     private String knowledgeSettingsPath;
+
+    @PostConstruct
+    public void init() {
+        userSettingsPath = basePath + "/" + USER_SETTINGS_JSON;
+        assistantSettingsPath = basePath + "/" + ASSISTANT_SETTINGS_JSON;
+        aiSettingsPath = basePath + "/" + AI_SETTINGS_JSON;
+        toolSettingsPath = basePath + "/" + TOOL_SETTINGS_JSON;
+        knowledgeSettingsPath = basePath + "/" + KNOWLEDGE_SETTINGS_JSON;
+    }
 
     private final ObjectMapper objectMapper;
 
@@ -219,12 +230,24 @@ public class SettingsLoader {
 
     private Map<String, AISettings> loadDefaultAISettings() {
        return Map.of(
-                AISettings.CHAT, new AISettings().setModel("deepseek-v4-pro").setStream(true),
-                AISettings.CHAT_PRO, new AISettings().setModel("deepseek-v4-pro").setStream(true),
-                AISettings.OCR, new AISettings().setModel("kimi-k2.6").setStream(false),
-                AISettings.MISSION, new AISettings().setModel("deepseek-v4-flash").setStream(false),
-                AISettings.TASK, new AISettings().setModel("deepseek-v4-flash").setStream(false),
-                AISettings.CUB, new AISettings().setModel("deepseek-v4-flash").setStream(false)
+                AISettings.CHAT, new AISettings().setModel("deepseek-v4-flash")
+                       .setStream(true)
+                       .setThinking(true),
+                AISettings.CHAT_PRO, new AISettings().setModel("deepseek-v4-pro")
+                       .setStream(true)
+                       .setThinking(true),
+                AISettings.OCR, new AISettings().setModel("kimi-k2.6")
+                       .setStream(false)
+                       .setThinking(false),
+                AISettings.MISSION, new AISettings().setModel("deepseek-v4-flash")
+                       .setStream(false)
+                       .setThinking(false),
+                AISettings.TASK, new AISettings().setModel("deepseek-v4-pro")
+                       .setStream(false)
+                       .setThinking(true),
+                AISettings.CUB, new AISettings().setModel("deepseek-v4-flash")
+                       .setStream(false)
+                       .setThinking(false)
         );
     }
 
@@ -326,12 +349,12 @@ public class SettingsLoader {
                 ))
                 .setMaxOutputSize(32768L).setSafetyOutputSize(8192L));
         defaults.put(WebSearchTool.SETTINGS, new WebSearchTool.Settings("", ""));
-        defaults.put(ExtensionScriptTool.SETTINGS, new ExtensionScriptTool.Settings(30L, 65536L));
-        defaults.put(ImageCaptionTool.SETTINGS, new ImageCaptionTool.Settings(1280));
-        defaults.put(FileWriteTool.SETTINGS, new FileWriteTool.Settings(FileWriteTool.AUTO));
-        defaults.put(FileEditTool.SETTINGS, new FileEditTool.Settings(FileEditTool.AUTO));
-        defaults.put(FileDeleteTool.SETTINGS, new FileDeleteTool.Settings(FileDeleteTool.AUTO));
-        defaults.put(FileDownloadTool.SETTINGS, new FileDownloadTool.Settings(FileDownloadTool.ALWAYS_ASKED));
+        defaults.put(ExtensionScriptTool.SETTINGS, new ExtensionScriptTool.Settings());
+        defaults.put(ImageCaptionTool.SETTINGS, new ImageCaptionTool.Settings());
+        defaults.put(FileWriteTool.SETTINGS, new FileWriteTool.Settings());
+        defaults.put(FileEditTool.SETTINGS, new FileEditTool.Settings());
+        defaults.put(FileDeleteTool.SETTINGS, new FileDeleteTool.Settings());
+        defaults.put(FileDownloadTool.SETTINGS, new FileDownloadTool.Settings());
         defaults.put(WebReaderTool.SETTINGS, new WebReaderTool.Settings());
         return defaults;
     }

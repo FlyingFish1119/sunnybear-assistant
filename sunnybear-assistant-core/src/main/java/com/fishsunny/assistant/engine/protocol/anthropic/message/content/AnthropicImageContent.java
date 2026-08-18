@@ -7,7 +7,7 @@ import lombok.experimental.Accessors;
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class AnthropicImageContent implements AnthropicContentBlock {
+public class AnthropicImageContent extends AnthropicContentBlock {
 
     private final String type = "image";
 

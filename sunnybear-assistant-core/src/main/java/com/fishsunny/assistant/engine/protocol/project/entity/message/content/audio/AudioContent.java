@@ -15,7 +15,7 @@ import lombok.experimental.Accessors;
 
 @Data
 @Accessors(chain = true)
-public class AudioContent implements MessageContent {
+public class AudioContent extends MessageContent {
 
     private final String type = ContentTypeVariable.AUDIO;
 

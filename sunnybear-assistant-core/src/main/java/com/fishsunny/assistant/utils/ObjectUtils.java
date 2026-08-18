@@ -266,4 +266,34 @@ public class ObjectUtils {
         String base64 = Base64.getEncoder().encodeToString(data);
         return "data:" + mimeType + ";base64," + base64;
     }
+
+    private static final Set<String> READABLE_FILE_TYPES = Set.of(
+            // 纯文本
+            "txt", "md", "log",
+            // 代码
+            "java", "py", "js", "ts", "jsx", "tsx", "c", "h", "cpp", "hpp",
+            "go", "rs", "rb", "php", "kt", "swift", "scala", "lua", "pl", "r",
+            "sql", "html", "htm", "css", "scss", "less", "vue", "svelte",
+            "sh", "bash", "zsh", "bat", "cmd", "ps1",
+            // 配置
+            "json", "jsonl", "xml", "yaml", "yml", "toml", "ini", "cfg",
+            "conf", "properties", "env", "gradle", "lock",
+            // 数据 & 其他
+            "csv", "tsv", "diff", "patch", "rst", "adoc", "org"
+    );
+
+    public static boolean canHumanReadFile(String filePath) {
+        return READABLE_FILE_TYPES.contains(getFileExtension(filePath));
+    }
+
+    public static String getFileExtension(String fileName) {
+        if (fileName == null || fileName.isEmpty()) {
+            return "";
+        }
+        int lastDotIdx = fileName.lastIndexOf('.');
+        if (lastDotIdx < 0) {
+            return "";
+        }
+        return fileName.substring(lastDotIdx + 1).toLowerCase();
+    }
 }

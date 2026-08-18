@@ -14,7 +14,7 @@ import lombok.experimental.Accessors;
 
 @Data
 @Accessors(chain = true)
-public class TextContent implements MessageContent {
+public class TextContent extends MessageContent {
 
     private final String type = "text";
 

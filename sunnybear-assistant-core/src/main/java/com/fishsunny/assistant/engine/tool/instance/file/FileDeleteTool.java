@@ -344,7 +344,7 @@ public class FileDeleteTool implements ToolHandler {
         private String mode;
 
         public Settings() {
-            this.mode = AUTO;
+            this.mode = ALWAYS_ASKED;
         }
 
         public Settings(String mode) {

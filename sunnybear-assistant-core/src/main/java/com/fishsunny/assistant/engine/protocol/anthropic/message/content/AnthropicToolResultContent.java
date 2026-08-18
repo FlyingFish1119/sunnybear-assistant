@@ -7,7 +7,7 @@ import lombok.experimental.Accessors;
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class AnthropicToolResultContent implements AnthropicContentBlock {
+public class AnthropicToolResultContent extends AnthropicContentBlock {
 
     private final String type = "tool_result";
 

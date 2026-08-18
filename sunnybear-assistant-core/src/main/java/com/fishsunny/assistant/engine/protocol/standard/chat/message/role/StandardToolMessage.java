@@ -8,7 +8,7 @@ import lombok.experimental.Accessors;
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class StandardToolMessage implements StandardMessage {
+public class StandardToolMessage extends StandardMessage {
 
     private final String role = "tool";
 

@@ -46,12 +46,15 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 @ToolKitComponent(NetToolKit.class)
 @ConditionalOnExpression("${engine.tool.net.enable:true} && ${engine.tool.net.web-reader.enable:true}")
 public class WebReaderTool implements ToolHandler {
+
+    private static final Integer DEFAULT_TIMEOUT = 20000;
 
     public static final String NAME = "web_reader_tool";
     public static final String SETTINGS = "web_reader_tool_settings";
@@ -312,7 +315,15 @@ public class WebReaderTool implements ToolHandler {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Settings {
         /** 无头浏览器页面加载超时（毫秒），默认15000 */
-        private Integer browserTimeoutMs = 15000;
+        private Integer browserTimeoutMs;
+
+        public Settings() {
+            this.browserTimeoutMs = DEFAULT_TIMEOUT;
+        }
+
+        public Settings(Integer browserTimeoutMs) {
+            this.browserTimeoutMs = browserTimeoutMs;
+        }
     }
 
     @Data

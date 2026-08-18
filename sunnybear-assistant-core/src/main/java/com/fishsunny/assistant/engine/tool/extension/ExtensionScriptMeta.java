@@ -18,6 +18,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Accessors(chain = true)
@@ -63,6 +64,28 @@ public class ExtensionScriptMeta {
                 sb.append(" - ").append(description);
             }
             return sb.toString();
+        }
+
+        public static boolean containsName(List<Parameter> parameters, String name) {
+            for (Parameter parameter : parameters) {
+                if (parameter.getName().equals(name)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public static void validateParameters(List<Parameter> parameters, Map.Entry<String, Object> entry) {
+            Parameter parameter = parameters.stream()
+                    .filter(p -> p.getName().equals(entry.getKey()))
+                    .findFirst()
+                    .orElse(null);
+            if (parameter == null) {
+                throw new RuntimeException("参数 " + entry.getKey() + " 不存在");
+            }
+            if (parameter.isRequired() && entry.getValue() == null) {
+                throw new RuntimeException("参数 " + entry.getKey() + " 不能为空");
+            }
         }
     }
 

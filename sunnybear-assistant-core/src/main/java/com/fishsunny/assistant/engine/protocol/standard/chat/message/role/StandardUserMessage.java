@@ -13,7 +13,7 @@ import java.util.List;
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class StandardUserMessage implements StandardMessage {
+public class StandardUserMessage extends StandardMessage {
 
     private final String role = "user";
 

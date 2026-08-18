@@ -9,7 +9,7 @@ import java.util.Map;
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public class AnthropicToolUseContent implements AnthropicContentBlock {
+public class AnthropicToolUseContent extends AnthropicContentBlock {
 
     private final String type = "tool_use";
 

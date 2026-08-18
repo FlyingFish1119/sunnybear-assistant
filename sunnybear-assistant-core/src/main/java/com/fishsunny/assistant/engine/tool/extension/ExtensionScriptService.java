@@ -8,6 +8,7 @@ package com.fishsunny.assistant.engine.tool.extension;
  * @Date 2026/7/9
  */
 
+import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,15 +16,22 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 扫描 tool-extension/ 目录下的 .yaml/.yml 脚本文件，
@@ -37,10 +45,233 @@ public class ExtensionScriptService {
     /** 临时脚本存放子目录 */
     private static final String TEMP_DIR = "temp";
 
-    private final String extensionDir;
+    @Value("${engine.tool.extension.dir:tool-extension/}")
+    private String extensionDir;
 
-    public ExtensionScriptService(@Value("${engine.tool.extension.dir:tool-extension}") String extensionDir) {
-        this.extensionDir = extensionDir;
+    /** 会话文件基目录（后台日志输出用），与 CommandTool 保持一致 */
+    @Value("${assistant.file.base-path:}")
+    private String basePath;
+
+    public String runScript(String name, Map<String, Object> arguments, long timeout) throws Exception {
+        PreparedScript prepared = prepareScript(name, arguments);
+
+        Process process = null;
+        try {
+            process = prepared.processBuilder().start();
+            String result;
+            if (timeout < 0) {
+                result = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            } else {
+                ExecutorService executor = Executors.newSingleThreadExecutor();
+                final Process finalProcess = process;
+                Future<String> future = executor.submit(() -> {
+                    byte[] bytes = finalProcess.getInputStream().readAllBytes();
+                    return new String(bytes, StandardCharsets.UTF_8);
+                });
+                try {
+                    result = future.get(timeout, TimeUnit.SECONDS);
+                } catch (TimeoutException e) {
+                    process.destroyForcibly();
+                    throw new ToolExecutor.ToolExecuteException(
+                            "脚本执行超时（" + timeout + "秒）: " + prepared.script().getName());
+                } finally {
+                    executor.shutdownNow();
+                }
+            }
+
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                throw new ToolExecutor.ToolExecuteException(
+                        "脚本执行失败，退出码：" + exitCode + "，输出：" + result);
+            }
+            return result;
+        } finally {
+            if (process != null) {
+                process.destroyForcibly();
+            }
+            deleteTempScript(prepared.tempFile());
+        }
+    }
+
+    /**
+     * 后台执行脚本：将脚本放入守护线程执行，输出以追加模式写入 session/file 目录。
+     * <p>
+     * 后台模式特点（与 CommandTool 后台执行对齐）：
+     * <ul>
+     *   <li>无超时限制 —— 脚本可以运行任意长时间</li>
+     *   <li>无输出大小限制 —— 输出直接写入文件，不经过内存缓存</li>
+     *   <li>输出实时写入 —— 使用流式读取，每读取到数据立即 flush 到文件</li>
+     *   <li>返回文件路径 —— AI 可通过 session_file_tool 或 file_read_tool 查看输出</li>
+     * </ul>
+     * </p>
+     *
+     * @param name      脚本名称
+     * @param arguments 脚本参数
+     * @param sessionId 会话 ID，用于确定日志文件目录
+     * @return 包含日志文件路径的响应
+     */
+    public String runScriptAsync(String name, Map<String, Object> arguments, String sessionId) throws Exception {
+        // 1. 同步准备脚本（查找、参数校验、占位符替换、写临时文件），错误即时反馈
+        PreparedScript prepared = prepareScript(name, arguments);
+
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String fileName = "script_" + timestamp + ".log";
+        Path logDir = Paths.get(basePath, "session", sessionId, "file");
+        Path logFile = logDir.resolve(fileName);
+
+        try {
+            Files.createDirectories(logDir);
+        } catch (IOException e) {
+            throw new ToolExecutor.ToolExecuteException("无法创建后台输出目录 [" + logDir + "]: " + e.getMessage());
+        }
+
+        // 2. 写入日志文件头（同步）
+        try (BufferedWriter headerWriter = Files.newBufferedWriter(logFile, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+            headerWriter.write("=== 后台脚本执行日志 ===");
+            headerWriter.newLine();
+            headerWriter.write("启动时间: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            headerWriter.newLine();
+            headerWriter.write("脚本: " + prepared.script().getName() + " (" + prepared.script().getType() + ")");
+            headerWriter.newLine();
+            headerWriter.write("脚本文件: " + prepared.script().getFilePath());
+            headerWriter.newLine();
+            headerWriter.write("日志文件: " + logFile.toAbsolutePath());
+            headerWriter.newLine();
+            headerWriter.write("=".repeat(60));
+            headerWriter.newLine();
+            headerWriter.newLine();
+            headerWriter.flush();
+        } catch (IOException e) {
+            throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + logFile + "]: " + e.getMessage());
+        }
+
+        // 3. 在守护线程中执行脚本，流式写入输出
+        Thread thread = new Thread(() -> runScriptToFile(prepared, logFile), "script-executor-" + timestamp);
+        thread.setDaemon(true);
+        thread.start();
+
+        return "脚本已在后台启动执行。\n"
+                + "输出日志文件: " + logFile.toAbsolutePath() + "\n"
+                + "> 提示：使用 file_read_tool 读取日志文件内容查看脚本输出。"
+                + "脚本执行完成后，日志末尾会写入退出码和结束时间。";
+    }
+
+    /**
+     * 查找脚本、校验并替换参数、写入临时脚本文件，返回可执行的预备结果。
+     */
+    private PreparedScript prepareScript(String name, Map<String, Object> arguments) throws Exception {
+        log.info("Running script: {}", name);
+        arguments = arguments == null ? Map.of() : arguments;
+
+        // 1. 查找脚本
+        ExtensionScriptMeta script = findScript(name);
+        if (script == null) {
+            List<ExtensionScriptMeta> available = getAvailableScripts();
+            StringBuilder names = new StringBuilder();
+            for (ExtensionScriptMeta meta : available) {
+                names.append(meta.getName()).append(", ");
+            }
+            throw new RuntimeException("未找到脚本 [" + name + "]，当前可用的脚本: " + names);
+        }
+
+        // 2. 替换脚本体中的参数占位符
+        String scriptBody = script.getScriptBody();
+        for (Map.Entry<String, Object> entry : arguments.entrySet()) {
+            List<ExtensionScriptMeta.Parameter> parameters = script.getParameters();
+            ExtensionScriptMeta.Parameter.validateParameters(parameters, entry);
+            String placeholder = "{{" + entry.getKey() + "}}";
+            String value = entry.getValue() != null ? entry.getValue().toString() : "";
+            scriptBody = scriptBody.replace(placeholder, value);
+        }
+
+        // 检查是否还有未替换的占位符
+        Pattern placeholderPattern = Pattern.compile("\\{\\{[^}]+}}");
+        StringBuilder errorMessage = new StringBuilder();
+        Matcher matcher = placeholderPattern.matcher(scriptBody);
+        while (matcher.find()) {
+            errorMessage.append("未替换的参数占位符：").append(matcher.group()).append("\n");
+        }
+        if (StringUtils.hasText(errorMessage)) {
+            throw new ToolExecutor.ToolExecuteException(errorMessage.toString());
+        }
+
+        // 3. 写入临时脚本文件并构建进程
+        Path path = writeTempScript(scriptBody, script.getType());
+        ProcessBuilder processBuilder = buildProcess(script.getType(), path);
+        processBuilder.redirectErrorStream(true);
+        return new PreparedScript(script, path, processBuilder);
+    }
+
+    /**
+     * 在后台执行已准备的脚本，将输出流式写入日志文件，结束后写入退出码和结束时间。
+     */
+    private void runScriptToFile(PreparedScript prepared, Path logFile) {
+        Process process = null;
+        try {
+            process = prepared.processBuilder().start();
+
+            try (InputStream inputStream = process.getInputStream();
+                 OutputStream outputStream = Files.newOutputStream(logFile,
+                         StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                    outputStream.flush();
+                }
+            }
+
+            int exitCode = process.waitFor();
+            appendFooter(logFile, "脚本执行完成，退出码: " + exitCode);
+        } catch (Exception e) {
+            log.error("Error executing script in background: {}", e.getMessage());
+            appendFooter(logFile, "脚本执行异常: " + e.getMessage());
+        } finally {
+            if (process != null) {
+                process.destroyForcibly();
+            }
+            deleteTempScript(prepared.tempFile());
+        }
+    }
+
+    /**
+     * 向日志文件追加结束标记（退出码/异常信息 + 结束时间）。
+     */
+    private void appendFooter(Path logFile, String message) {
+        try (BufferedWriter footerWriter = Files.newBufferedWriter(logFile, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+            footerWriter.newLine();
+            footerWriter.write("=".repeat(60));
+            footerWriter.newLine();
+            footerWriter.write(message);
+            footerWriter.newLine();
+            footerWriter.write("结束时间: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            footerWriter.newLine();
+            footerWriter.flush();
+        } catch (IOException ignored) {
+            // 无法写入结束信息，静默忽略
+        }
+    }
+
+    private static final boolean IS_WINDOWS = System.getProperty("os.name").toLowerCase().contains("win");
+
+    private ProcessBuilder buildProcess(String type, Path tempFile) throws ToolExecutor.ToolExecuteException {
+        return switch (type) {
+            case "cmd" -> IS_WINDOWS
+                    ? new ProcessBuilder("cmd.exe", "/c", tempFile.toString())
+                    : new ProcessBuilder("bash", tempFile.toString());
+            case "powershell" -> IS_WINDOWS
+                    ? new ProcessBuilder("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tempFile.toString())
+                    : new ProcessBuilder("pwsh", "-NoProfile", "-File", tempFile.toString());
+            case "python" -> IS_WINDOWS
+                    ? new ProcessBuilder("python", tempFile.toString())
+                    : new ProcessBuilder("python3", tempFile.toString());
+            case "bash" -> new ProcessBuilder("bash", tempFile.toString());
+            default -> throw new ToolExecutor.ToolExecuteException(
+                    "不支持的脚本类型: " + type + "，支持的类型: cmd, powershell, python, bash");
+        };
     }
 
     /**
@@ -76,7 +307,7 @@ public class ExtensionScriptService {
     public String buildScriptSection() {
         List<ExtensionScriptMeta> scripts = getAvailableScripts();
         if (scripts.isEmpty()) {
-            return "";
+            return "当前无可用脚本";
         }
 
         StringBuilder sb = new StringBuilder("\n[tool_extension_scripts]\n");
@@ -181,4 +412,13 @@ public class ExtensionScriptService {
             }
         }
     }
+
+    /**
+     * 已准备的脚本：包含脚本元数据、临时脚本文件路径以及可启动的进程构建器。
+     */
+    private record PreparedScript(
+            ExtensionScriptMeta script,
+            Path tempFile,
+            ProcessBuilder processBuilder
+    ) {}
 }

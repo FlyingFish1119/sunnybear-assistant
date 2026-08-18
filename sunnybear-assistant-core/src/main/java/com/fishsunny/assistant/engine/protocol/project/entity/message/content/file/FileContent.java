@@ -15,7 +15,7 @@ import lombok.experimental.Accessors;
 
 @Data
 @Accessors(chain = true)
-public class FileContent implements MessageContent {
+public class FileContent extends MessageContent {
 
     private final String type = ContentTypeVariable.FILE;
 

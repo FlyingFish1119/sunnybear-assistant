@@ -38,7 +38,7 @@ import java.util.List;
         @JsonSubTypes.Type(value = AudioContent.class, name = ContentTypeVariable.AUDIO),
         @JsonSubTypes.Type(value = FileContent.class, name = ContentTypeVariable.FILE)
 })
-public interface MessageContent {
+public abstract class MessageContent {
 
     public static final Logger log = LoggerFactory.getLogger(MessageContent.class);
 
@@ -66,7 +66,7 @@ public interface MessageContent {
         return messageContents;
     }
 
-    public static List<MessageContent> fillFile(List<MessageContent> contents) {
+    public static List<MessageContent> loadContentFile(List<MessageContent> contents) {
         if (contents == null) {
             return new ArrayList<>();
         }
@@ -120,6 +120,9 @@ public interface MessageContent {
             }
             if (content instanceof FileContent fileContent) {
                 String path = fileContent.getUrl();
+                if (! ObjectUtils.canHumanReadFile(path)) {
+                    messageContents.add(new TextContent("用户上传了文件：" + fileContent.getUrl()));
+                }
                 File file = new File(path);
                 if (!file.exists()) {
                     continue;

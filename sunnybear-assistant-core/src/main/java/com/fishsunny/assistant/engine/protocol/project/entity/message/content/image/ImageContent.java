@@ -15,7 +15,7 @@ import lombok.experimental.Accessors;
 
 @Data
 @Accessors(chain = true)
-public class ImageContent implements MessageContent {
+public class ImageContent extends MessageContent {
 
     private final String type = ContentTypeVariable.IMAGE;
 

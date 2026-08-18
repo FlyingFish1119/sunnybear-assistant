@@ -161,7 +161,7 @@ public class ChatMessage {
     public static List<ChatMessage> fillAllFile(List<ChatMessage> messages) {
         List<ChatMessage> resultMessages = new ArrayList<>();
         for (ChatMessage message : messages) {
-            List<MessageContent> contents = MessageContent.fillFile(message.getContents());
+            List<MessageContent> contents = MessageContent.loadContentFile(message.getContents());
             message.setContents(contents);
             resultMessages.add(message);
         }

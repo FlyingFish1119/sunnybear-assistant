@@ -26,6 +26,8 @@ spring:
 assistant:
   file:
     base-path: data/
+  settings:
+    base-path: settings/
   cache:
     max-size: 1000
     expire-minutes: 10
@@ -48,14 +50,15 @@ plug:
       enable: true
   comfyui:
     bridge:
-      command-timeout: 1800
+      command-timeout-s: 1800
     tool:
       enable: true
+
 
 engine:
   tool:
     extension:
-      dir: tool-extension
+      dir: tool-extension/
     os:
       enable: true
     net:

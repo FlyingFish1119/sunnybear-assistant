@@ -15,7 +15,7 @@ import lombok.experimental.Accessors;
 
 @Data
 @Accessors(chain = true)
-public class VideoContent implements MessageContent {
+public class VideoContent extends MessageContent {
 
     private final String type = ContentTypeVariable.VIDEO;
 

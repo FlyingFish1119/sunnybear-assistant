@@ -53,6 +53,7 @@ public class ImageCaptionTool implements ToolHandler {
     public static final String SETTINGS = "image_caption_tool_settings";
 
     private static final Long MAX_TIMEOUT = 15L;
+    private static final Integer DEFAULT_IMAGE_LENGTH = 1024;
 
     private static final String TYPE_IMAGE = "image";
     private static final String TYPE_VIDEO = "video";
@@ -236,6 +237,7 @@ public class ImageCaptionTool implements ToolHandler {
     public static class Settings{
         private Integer maxLength;
         public Settings(){
+            this.maxLength = DEFAULT_IMAGE_LENGTH;
         }
         public Settings(Integer maxLength){
             this.maxLength = maxLength;
