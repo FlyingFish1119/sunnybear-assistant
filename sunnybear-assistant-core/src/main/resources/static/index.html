@@ -141,6 +141,7 @@
                                 <div class="message-area-bubble-meta reasoning-header" @click="toggleCollapse(msg.id, 'thinking')">
                                     <i style="width: 10px; height: 10px" data-lucide="sparkle"></i>
                                     <span>思考过程:</span>
+                                    <span v-if="isThinkingMsg(msg)" :style="{'--main-color': mainColor}" class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
                                     <i :class="['reasoning-chevron', { collapsed: isCollapsed(msg.id, 'thinking') }]" style="width: 14px; height: 14px" data-lucide="chevron-down"></i>
                                 </div>
                                 <div :class="['collapsible-content', { collapsed: isCollapsed(msg.id, 'thinking') }]" :data-collapse-key="msg.id + '_thinking'">
@@ -1443,6 +1444,14 @@
              * @param {string} section - 区域标识：'thinking' | 'tool' | 'toolcalls'
              * @returns {boolean} 是否折叠
              */
+            isThinkingMsg(msg) {
+                if (!this.isStreaming || !this.streamingMessages.includes(msg)) return false;
+                const hasReasoning = msg.reasoningContent != null && msg.reasoningContent.length > 0;
+                const lastContent = Utils.getLast(msg.contents);
+                const bodyStarted = lastContent && lastContent.content && lastContent.content.length > 0;
+                return hasReasoning && !bodyStarted;
+            },
+
             isCollapsed(msgId, section) {
                 const key = msgId + '_' + section;
                 if (this.collapsedState[key] !== undefined) {
@@ -1511,6 +1520,16 @@
         mounted() {
             lucide.createIcons();
             this.init();
+            // 代码块复制按钮（v-html 生成，无法用 Vue @click，走事件委托）
+            document.addEventListener('click', (e) => {
+                const btn = e.target.closest('.code-copy-btn');
+                if (!btn) return;
+                const wrapper = btn.closest('.code-block-wrapper');
+                const code = wrapper && wrapper.querySelector('pre code');
+                if (code) {
+                    this.writeToClipboard(code.textContent);
+                }
+            });
         },
 
         watch: {

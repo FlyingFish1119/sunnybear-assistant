@@ -16,26 +16,24 @@ const MarkdownUtils = (function () {
             code: function (obj) {
                 var text = obj.text;
                 var lang = obj.lang;
-            if (lang === 'mermaid') {
-                return '<div class="mermaid-wrapper"><div class="mermaid">' + text + '</div></div>';
-            }
-            var langLabel = lang || '';
-            var supported = lang && hljs.getLanguage(lang);
-            var highlighted = supported
-                ? hljs.highlight(text, { language: lang }).value
-                : hljs.highlightAuto(text).value;
-            if (langLabel) {
+                if (lang === 'mermaid') {
+                    return '<div class="mermaid-wrapper"><div class="mermaid">' + text + '</div></div>';
+                }
+                var langLabel = lang || '';
+                var supported = lang && hljs.getLanguage(lang);
+                var highlighted = supported
+                    ? hljs.highlight(text, { language: lang }).value
+                    : hljs.highlightAuto(text).value;
+                var copyBtn = '<button type="button" class="code-copy-btn" title="复制代码"><i data-lucide="copy"></i></button>';
                 return '<div class="code-block-wrapper">'
-                    + '<div class="code-block-header"><span class="code-block-lang">' + langLabel + '</span></div>'
+                    + '<div class="code-block-header">'
+                    + (langLabel ? '<span class="code-block-lang">' + langLabel + '</span>' : '')
+                    + copyBtn
+                    + '</div>'
                     + '<pre><code class="hljs' + (supported ? ' language-' + lang : '') + '">'
                     + highlighted
                     + '</code></pre></div>';
             }
-            return '<div class="code-block-wrapper">'
-                + '<pre><code class="hljs">'
-                + highlighted
-                + '</code></pre></div>';
-        }
     }
     });
 

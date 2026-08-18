@@ -78,6 +78,8 @@
 }
 
 .markdown-body .code-block-header {
+    display: flex;
+    align-items: center;
     background: #2d2d44;
     padding: 6px 16px;
     font-size: 0.75em;
@@ -86,6 +88,32 @@
     border-bottom: 1px solid #3d3d5c;
     border-radius: 8px 8px 0 0;
     user-select: none;
+}
+
+.markdown-body .code-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #b0b0c8;
+    cursor: pointer;
+    margin-left: auto;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.markdown-body .code-copy-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.markdown-body .code-copy-btn svg {
+    width: 14px;
+    height: 14px;
 }
 
 .markdown-body pre {
