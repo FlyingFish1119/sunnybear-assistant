@@ -12,6 +12,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.Me
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
+import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.variable.RoleVariable;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
@@ -166,5 +167,10 @@ public class ChatMessage {
             resultMessages.add(message);
         }
         return resultMessages;
+    }
+
+    public static String getParentId(List<ChatMessage> originMessages) {
+        ChatMessage last = ObjectUtils.getLast(originMessages);
+        return last != null ? last.getId() : null;
     }
 }

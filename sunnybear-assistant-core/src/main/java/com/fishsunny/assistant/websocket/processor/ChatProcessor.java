@@ -16,11 +16,9 @@ import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.extension.ExtensionScriptService;
 import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.exception.UserException;
@@ -410,7 +408,7 @@ public class ChatProcessor {
                     **用法**：`/look <sessionId> [关注点]`
                     
                     请提供要查看的会话 ID。在输入框中输入 `/look` 可从侧边栏选择会话。""";
-            ChatMessage errorMsg = appendAssistantMessage(chatSession.getId(), getParentId(originMessages), null, usage, List.of());
+            ChatMessage errorMsg = appendAssistantMessage(chatSession.getId(), ChatMessage.getParentId(originMessages), null, usage, List.of());
             sendAssistantResponse(session, chatSession.getId(), errorMsg);
             collector.add(errorMsg);
             return collector;
@@ -422,14 +420,14 @@ public class ChatProcessor {
             history = chatMessageService.getConversationHistory(sessionId.trim());
         } catch (Exception e) {
             String err = "**查询失败**：会话 `" + sessionId + "` 不存在或无法访问。";
-            ChatMessage errorMsg = appendAssistantMessage(chatSession.getId(), getParentId(originMessages), null, err, List.of());
+            ChatMessage errorMsg = appendAssistantMessage(chatSession.getId(), ChatMessage.getParentId(originMessages), null, err, List.of());
             sendAssistantResponse(session, chatSession.getId(), errorMsg);
             collector.add(errorMsg);
             return collector;
         }
         if (! StringUtils.hasText(sessionId)) {
             String empty = "**会话 `" + sessionId + "` 暂无对话记录。**";
-            ChatMessage emptyMsg = appendAssistantMessage(chatSession.getId(), getParentId(originMessages), null, empty, List.of());
+            ChatMessage emptyMsg = appendAssistantMessage(chatSession.getId(), ChatMessage.getParentId(originMessages), null, empty, List.of());
             sendAssistantResponse(session, chatSession.getId(), emptyMsg);
             collector.add(emptyMsg);
             return collector;
@@ -499,7 +497,7 @@ public class ChatProcessor {
                 },
                 (trResult, lastRes) -> {
                     try {
-                        ChatMessage saved = appendAssistantMessage(chatSession.getId(), getParentId(originMessages),
+                        ChatMessage saved = appendAssistantMessage(chatSession.getId(), ChatMessage.getParentId(originMessages),
                                 trResult.reasoning(), header + trResult.content(), List.of());
                         sendAssistantResponse(session, chatSession.getId(), saved);
                         collector.add(saved);
@@ -512,10 +510,6 @@ public class ChatProcessor {
         return collector;
     }
 
-    private String getParentId(List<ChatMessage> originMessages) {
-        ChatMessage last = ObjectUtils.getLast(originMessages);
-        return last != null ? last.getId() : null;
-    }
 
     private void sendAssistantResponse(WebSocketSession session, String sessionId, ChatMessage msg) throws Exception {
         ChatResponse resp = new ChatResponse()
