@@ -24,10 +24,6 @@ public abstract class SlashCommandHandler {
 
     protected static final Logger log = LoggerFactory.getLogger(SlashCommandHandler.class);
 
-    protected String command;
-
-    protected List<String> args;
-
     protected WebSocketSession session;
 
     protected ChatSession chatSession;
@@ -36,9 +32,9 @@ public abstract class SlashCommandHandler {
 
     protected List<ChatMessage> resultMessage;
 
-    protected abstract SlashCommand resolve(String command);
+    protected abstract List<String> resolveArgs(String originArgs);
 
-    protected abstract void handle() throws Exception;
+    protected abstract void handle(List<String> args) throws Exception;
 
     protected void insertMessage(ChatMessage chatMessage, ChatMessageService chatMessageService) {
         try {
@@ -57,20 +53,12 @@ public abstract class SlashCommandHandler {
         }
     }
 
-    public final void run(SlashCommandContext context) throws Exception {
-        SlashCommand slashCommand = resolve(context.originCommand());
-        this.command = slashCommand.command();
-        this.args = slashCommand.args();
-
+    public final void run(SlashCommandContext context, String originArgs) throws Exception {
         this.chatSession = context.chatSession();
         this.originMessages = context.originMessages();
         this.session = context.session();
         this.resultMessage = context.resultMessage();
-        handle();
-    }
-
-
-    protected record SlashCommand(String command, List<String> args) {
+        handle(resolveArgs(originArgs));
     }
 
     public record SlashCommandContext(
