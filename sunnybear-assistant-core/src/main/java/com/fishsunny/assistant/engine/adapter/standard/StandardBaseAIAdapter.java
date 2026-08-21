@@ -8,7 +8,6 @@ package com.fishsunny.assistant.engine.adapter.standard;
  * @Date 2026/6/29 05:52
  */
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
@@ -17,24 +16,23 @@ import com.fishsunny.assistant.engine.protocol.AIResponse;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.content.audio.AudioContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.content.video.VideoContent;
 import com.fishsunny.assistant.engine.protocol.standard.chat.message.StandardMessage;
 import com.fishsunny.assistant.engine.protocol.standard.chat.message.role.StandardAssistantMessage;
 import com.fishsunny.assistant.engine.protocol.standard.chat.message.role.StandardSystemMessage;
 import com.fishsunny.assistant.engine.protocol.standard.chat.message.role.StandardToolMessage;
 import com.fishsunny.assistant.engine.protocol.standard.chat.message.role.StandardUserMessage;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.audio.AudioContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.video.VideoContent;
 import com.fishsunny.assistant.engine.protocol.standard.chat.message.role.content.StandardContent;
 import com.fishsunny.assistant.engine.protocol.standard.chat.message.role.content.audio.StandardAudioContent;
 import com.fishsunny.assistant.engine.protocol.standard.chat.message.role.content.image.StandardImageContent;
 import com.fishsunny.assistant.engine.protocol.standard.chat.message.role.content.text.StandardTextContent;
-import com.fishsunny.assistant.utils.Base64Utils;
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.request.StandardToolRequest;
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.request.StandardToolRequestFunction;
+import com.fishsunny.assistant.utils.Base64Utils;
 import com.fishsunny.assistant.utils.ObjectMapperFactory;
-import com.fishsunny.assistant.variable.RoleVariable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -121,12 +119,12 @@ public abstract class StandardBaseAIAdapter extends AIAdapter {
         List<StandardMessage> standardMessages = new ArrayList<>();
         for (ChatMessage message : messages) {
             switch (message.getRole()) {
-                case RoleVariable.ROLE_USER:
+                case "user":
                     StandardUserMessage standardUserMessage = new StandardUserMessage();
                     standardUserMessage.setContent(convertToStandardContent(message.getContents()));
                     standardMessages.add(standardUserMessage);
                     break;
-                case RoleVariable.ROLE_ASSISTANT:
+                case "assistant":
                     StandardAssistantMessage standardAssistantMessage = new StandardAssistantMessage(message.resolveText(), message.getReasoningContent());
                     standardMessages.add(standardAssistantMessage);
                     List<StandardToolRequest> standardToolRequests = new ArrayList<>();
@@ -139,11 +137,11 @@ public abstract class StandardBaseAIAdapter extends AIAdapter {
                     }
                     standardAssistantMessage.setTool_calls(standardToolRequests.isEmpty() ? null : standardToolRequests);
                     break;
-                case RoleVariable.ROLE_SYSTEM:
+                case "system":
                     StandardSystemMessage standardSystemMessage = new StandardSystemMessage(message.resolveText());
                     standardMessages.add(standardSystemMessage);
                     break;
-                case RoleVariable.ROLE_TOOL:
+                case "tool":
                     StandardToolMessage standardToolMessage = new StandardToolMessage(message.getToolCallId(), message.resolveText());
                     standardMessages.add(standardToolMessage);
                     break;
@@ -159,14 +157,14 @@ public abstract class StandardBaseAIAdapter extends AIAdapter {
         for (StandardMessage standardMessage : standardMessages) {
             if (standardMessage instanceof StandardUserMessage standardUserMessage) {
                 ChatMessage message = new ChatMessage();
-                message.setRole(RoleVariable.ROLE_USER);
+                message.setRole("user");
                 message.setContents(convertToMessageContent(standardUserMessage.getContent()));
                 messages.add(message);
                 continue;
             }
             if (standardMessage instanceof StandardAssistantMessage standardAssistantMessage) {
                 ChatMessage message = new ChatMessage();
-                message.setRole(RoleVariable.ROLE_ASSISTANT)
+                message.setRole("assistant")
                         .text(standardAssistantMessage.getContent())
                         .setReasoningContent(standardAssistantMessage.getReasoning_content());
 
@@ -188,7 +186,7 @@ public abstract class StandardBaseAIAdapter extends AIAdapter {
             }
             if (standardMessage instanceof StandardToolMessage toolMessage) {
                 ChatMessage message = new ChatMessage();
-                message.setRole(RoleVariable.ROLE_TOOL)
+                message.setRole("tool")
                         .setToolCallId(toolMessage.getTool_call_id())
                         .text(toolMessage.getContent());
                 messages.add(message);

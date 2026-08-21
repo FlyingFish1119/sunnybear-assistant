@@ -9,13 +9,10 @@ package com.fishsunny.assistant.engine.protocol.project;
  */
 
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
-import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Data
 @Accessors(chain = true)

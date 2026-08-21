@@ -15,7 +15,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Map;
 
 @Component
 @ConditionalOnProperty(name = "engine.tool.os.enable", havingValue = "true", matchIfMissing = true)

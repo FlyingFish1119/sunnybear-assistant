@@ -12,11 +12,15 @@ import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.settings.ChatSettings;
-import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.*;
-import com.fishsunny.assistant.variable.RoleVariable;
+import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegisterParameter;
+import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegisterProperty;
 import org.springframework.util.CollectionUtils;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 public class AnthropicStreamAIAdapter extends AnthropicBaseAIAdapter {
 
@@ -98,7 +102,7 @@ public class AnthropicStreamAIAdapter extends AnthropicBaseAIAdapter {
                         if (delta instanceof AnthropicTextDelta textDelta && textDelta.getText() != null) {
                             chatResponse.setStatus(ChatResponse.STATUS_CHUNK);
                             ChatMessage msg = new ChatMessage()
-                                    .setRole(RoleVariable.ROLE_ASSISTANT)
+                                    .setRole("assistant")
                                     .text(textDelta.getText());
                             chatResponse.setMessages(List.of(msg));
                         } else if (delta instanceof AnthropicInputJsonDelta) {
@@ -107,7 +111,7 @@ public class AnthropicStreamAIAdapter extends AnthropicBaseAIAdapter {
                             if (meta != null) {
                                 chatResponse.setStatus(ChatResponse.STATUS_CHUNK);
                                 ChatMessage msg = new ChatMessage()
-                                        .setRole(RoleVariable.ROLE_ASSISTANT);
+                                        .setRole("assistant");
                                 com.fishsunny.assistant.engine.protocol.project.ChatToolRequest toolReq =
                                         new com.fishsunny.assistant.engine.protocol.project.ChatToolRequest();
                                 toolReq.setId(meta.id);

@@ -14,11 +14,9 @@ import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.variable.ControlSign;
-import com.fishsunny.assistant.variable.RoleVariable;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -29,7 +27,10 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.security.Principal;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -155,7 +156,7 @@ public class ChatWebSocketProxy {
                         continue;
                     }
 
-                    if (RoleVariable.ROLE_TOOL.equals(msg.getRole())) {
+                    if (ChatMessage.ROLE_TOOL.equals(msg.getRole())) {
                         progressCallback.accept("[工具结果] " + (text.length() > 1000 ? text.substring(0, 1000) + "..." : text));
                     } else {
                         progressCallback.accept(text);

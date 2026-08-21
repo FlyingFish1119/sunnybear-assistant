@@ -8,12 +8,12 @@ package com.fishsunny.assistant.plug.character.service;
  * @Date 2026/7/9
  */
 
+import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
 import com.fishsunny.assistant.plug.character.entity.CharacterSessionMapping;
 import com.fishsunny.assistant.plug.character.repository.CharacterGlossaryRepository;
 import com.fishsunny.assistant.plug.character.repository.CharacterInfoRepository;
 import com.fishsunny.assistant.plug.character.repository.CharacterSessionMappingRepository;
-import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.utils.image.Database64ScaleImageHelper;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
 import org.slf4j.Logger;
@@ -30,8 +30,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Comparator;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 

@@ -10,18 +10,13 @@ package com.fishsunny.assistant.plug.character.tool.state;
  * @Date 2026/7/14
  */
 
-import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
-import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
-import com.fishsunny.assistant.plug.character.entity.CharacterSessionMapping;
-import com.fishsunny.assistant.plug.character.service.CharacterSessionMappingService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Map;
 
 @Component
 @ConditionalOnProperty(name = "plug.character.tool.sql.enable", havingValue = "true", matchIfMissing = false)

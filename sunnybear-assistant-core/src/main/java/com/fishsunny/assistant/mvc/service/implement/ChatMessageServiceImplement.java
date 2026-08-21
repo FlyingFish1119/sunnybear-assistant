@@ -14,14 +14,16 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.te
 import com.fishsunny.assistant.mvc.dao.ChatMessageRepository;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.validator.ChatMessageValidator;
-import com.fishsunny.assistant.variable.RoleVariable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.UUID;
 
 @Service
 public class ChatMessageServiceImplement implements ChatMessageService {
@@ -37,8 +39,10 @@ public class ChatMessageServiceImplement implements ChatMessageService {
     @Override
     @Transactional
     public ChatMessage save(ChatMessage chatMessage) throws Exception {
+        if (! chatMessage.isCanInsert()) {
+            throw new RuntimeException("消息不能插入");
+        }
         ChatMessageValidator.save(chatMessage);
-
         chatMessage.setId(UUID.randomUUID().toString())
                 .setCreateTime(LocalDateTime.now());
         ChatMessage saved = chatMessageRepository.insert(chatMessage);
@@ -219,7 +223,7 @@ public class ChatMessageServiceImplement implements ChatMessageService {
         if (message == null) {
             throw new IllegalArgumentException("消息不存在: " + id);
         }
-        if (!RoleVariable.ROLE_ASSISTANT.equals(message.getRole())) {
+        if (!ChatMessage.ROLE_ASSISTANT.equals(message.getRole())) {
             throw new IllegalArgumentException("只能编辑助手消息，当前消息角色为: " + message.getRole());
         }
 

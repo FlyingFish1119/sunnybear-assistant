@@ -8,6 +8,8 @@ package com.fishsunny.assistant.engine.protocol.project.entity.message.content;
  * @Date 2026/6/27 20:28
  */
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.audio.AudioContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.file.FileContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
@@ -15,8 +17,6 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.te
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.video.VideoContent;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.variable.ContentTypeVariable;
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,7 +42,7 @@ public abstract class MessageContent {
 
     public static final Logger log = LoggerFactory.getLogger(MessageContent.class);
 
-    public static List<MessageContent> loadFileContent(List<String> filePaths) {
+    public static List<MessageContent> files(List<String> filePaths) {
         if (filePaths == null) {
             return new ArrayList<>();
         }
@@ -66,7 +66,7 @@ public abstract class MessageContent {
         return messageContents;
     }
 
-    public static List<MessageContent> loadContentFile(List<MessageContent> contents) {
+    public static List<MessageContent> fillFiles(List<MessageContent> contents) {
         if (contents == null) {
             return new ArrayList<>();
         }

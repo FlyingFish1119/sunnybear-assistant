@@ -8,12 +8,10 @@ package com.fishsunny.assistant.plug.qq.entity;
  * @Date 2026/7/11 15:30
  */
 
-import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Data

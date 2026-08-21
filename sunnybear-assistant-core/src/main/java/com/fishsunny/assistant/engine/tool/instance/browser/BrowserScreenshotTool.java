@@ -95,10 +95,10 @@ public class BrowserScreenshotTool implements ToolHandler {
                     .loadSettings(aiSettings)
                     .setMessages(List.of(
                             new ChatMessage().system(SystemPrompts.OCR),
-                            new ChatMessage().user(prompt, imageBase64)
+                            new ChatMessage().userWithImage(prompt, imageBase64)
                     ));
             chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
-                    aiSettings.getStream() != null ? aiSettings.getStream() : true,
+                    aiSettings.getStream() == null || aiSettings.getStream(),
                     null,
                     (result, lastRes) -> caption.set(result.content())
             );

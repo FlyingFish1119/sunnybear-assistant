@@ -8,7 +8,6 @@ package com.fishsunny.assistant.engine.adapter.text;
  * @Date 2026/7/6 10:30
  */
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
@@ -24,7 +23,6 @@ import com.fishsunny.assistant.engine.protocol.text.messages.role.TextSystemMess
 import com.fishsunny.assistant.engine.protocol.text.messages.role.TextToolMessage;
 import com.fishsunny.assistant.engine.protocol.text.messages.role.TextUserMessage;
 import com.fishsunny.assistant.utils.ObjectMapperFactory;
-import com.fishsunny.assistant.variable.RoleVariable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -116,10 +114,10 @@ public abstract class TextBaseAIAdapter extends AIAdapter {
         List<TextMessage> textMessages = new ArrayList<>();
         for (ChatMessage message : messages) {
             switch (message.getRole()) {
-                case RoleVariable.ROLE_USER:
+                case "user":
                     textMessages.add(new TextUserMessage(message.resolveText()));
                     break;
-                case RoleVariable.ROLE_ASSISTANT:
+                case "assistant":
                     TextAssistantMessage assistantMessage = new TextAssistantMessage(message.resolveText(), message.getReasoningContent());
                     List<StandardToolRequest> standardToolRequests = new ArrayList<>();
                     for (ChatToolRequest toolRequest : message.getToolCalls()) {
@@ -133,10 +131,10 @@ public abstract class TextBaseAIAdapter extends AIAdapter {
                     assistantMessage.setTool_calls(standardToolRequests.isEmpty() ? null : standardToolRequests);
                     textMessages.add(assistantMessage);
                     break;
-                case RoleVariable.ROLE_SYSTEM:
+                case "system":
                     textMessages.add(new TextSystemMessage(message.resolveText()));
                     break;
-                case RoleVariable.ROLE_TOOL:
+                case "tool":
                     textMessages.add(new TextToolMessage(message.getToolCallId(), message.resolveText()));
                     break;
                 default:
@@ -154,14 +152,14 @@ public abstract class TextBaseAIAdapter extends AIAdapter {
         for (TextMessage textMessage : textMessages) {
             if (textMessage instanceof TextUserMessage userMessage) {
                 ChatMessage message = new ChatMessage();
-                message.setRole(RoleVariable.ROLE_USER);
+                message.setRole("user");
                 message.text(userMessage.getContent());
                 messages.add(message);
                 continue;
             }
             if (textMessage instanceof TextAssistantMessage assistantMessage) {
                 ChatMessage message = new ChatMessage();
-                message.setRole(RoleVariable.ROLE_ASSISTANT)
+                message.setRole("assistant")
                         .text(assistantMessage.getContent())
                         .setReasoningContent(assistantMessage.getReasoning_content());
 
@@ -184,9 +182,7 @@ public abstract class TextBaseAIAdapter extends AIAdapter {
             }
             if (textMessage instanceof TextToolMessage toolMessage) {
                 ChatMessage message = new ChatMessage();
-                message.setRole(RoleVariable.ROLE_TOOL)
-                        .setToolCallId(toolMessage.getTool_call_id())
-                        .text(toolMessage.getContent());
+                message.tool(toolMessage.getTool_call_id(), toolMessage.getContent());
                 messages.add(message);
                 continue;
             }

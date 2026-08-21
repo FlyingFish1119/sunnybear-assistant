@@ -2,8 +2,6 @@ package com.fishsunny.assistant.plug.comfyui.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
-import com.fishsunny.assistant.plug.comfyui.dto.HistoryEntry;
-import com.fishsunny.assistant.plug.comfyui.dto.ViewImageResult;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
@@ -13,6 +11,8 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.NetToolKit;
+import com.fishsunny.assistant.plug.comfyui.dto.HistoryEntry;
+import com.fishsunny.assistant.plug.comfyui.dto.ViewImageResult;
 import com.fishsunny.assistant.plug.comfyui.service.ComfyUIBridgeService;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;

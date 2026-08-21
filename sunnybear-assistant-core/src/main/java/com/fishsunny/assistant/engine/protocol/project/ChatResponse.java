@@ -42,17 +42,26 @@ public class ChatResponse implements AIResponse {
     public ChatResponse() {
     }
 
-    public ChatResponse afterAIResponse(ChatMessage message, String sessionId) {
+    public ChatResponse afterAIResponse(ChatMessage message) {
         this.status = STATUS_INIT_ASSISTANT;
         this.messages = List.of(message);
-        this.sessionId = sessionId;
+        this.sessionId = message.getSessionId();
         return this;
     }
 
-    public ChatResponse afterToolCall(List<ChatMessage> message, String sessionId) {
+    public ChatResponse afterUserInput(ChatMessage message) {
+        this.status = STATUS_INIT_USER;
+        this.messages = List.of(message);
+        this.sessionId = message.getSessionId();
+        return this;
+    }
+
+    public ChatResponse afterToolCall(List<ChatMessage> message) {
         this.status = STATUS_TOOL_RESPONSE;
         this.messages = new ArrayList<>(message);
-        this.sessionId = sessionId;
+        if (!message.isEmpty()) {
+            this.sessionId = message.getFirst().getSessionId();
+        }
         return this;
     }
 

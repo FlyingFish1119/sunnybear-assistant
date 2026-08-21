@@ -11,7 +11,6 @@ package com.fishsunny.assistant.mvc.service.implement;
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskPrompt;
 import com.fishsunny.assistant.mvc.dao.TaskPromptRepository;
 import com.fishsunny.assistant.mvc.service.TaskPromptService;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;

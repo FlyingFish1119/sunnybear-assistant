@@ -8,17 +8,19 @@ package com.fishsunny.assistant.websocket.processor;
  * @Date 2026/6/27
  */
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.dto.ChatMessageRequest;
 import com.fishsunny.assistant.dto.FileData;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
-import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
-import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
+import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
+import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.mvc.service.CronJobService;
@@ -28,9 +30,6 @@ import com.fishsunny.assistant.settings.UserSettings;
 import com.fishsunny.assistant.utils.Base64Utils;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.variable.ControlSign;
-import com.fishsunny.assistant.variable.RoleVariable;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -332,7 +331,7 @@ public class ServiceProcessor {
         if (replacedMsg == null) {
             throw new UserException("要替换的消息不存在: " + replaceMessageId);
         }
-        if (!RoleVariable.ROLE_ASSISTANT.equals(replacedMsg.getRole())) {
+        if (!ChatMessage.ROLE_ASSISTANT.equals(replacedMsg.getRole())) {
             throw new UserException("只能替换助手消息，当前消息角色为: " + replacedMsg.getRole());
         }
 
@@ -342,7 +341,7 @@ public class ServiceProcessor {
             throw new UserException("要替换的消息没有父消息");
         }
         ChatMessage parentMsg = chatMessageService.findById(parentId);
-        if (parentMsg == null || (!RoleVariable.ROLE_USER.equals(parentMsg.getRole()) && !RoleVariable.ROLE_TOOL.equals(parentMsg.getRole()))) {
+        if (parentMsg == null || (!ChatMessage.ROLE_USER.equals(parentMsg.getRole()) && !ChatMessage.ROLE_TOOL.equals(parentMsg.getRole()))) {
             throw new UserException("被替换消息的父消息必须是用户消息或工具消息");
         }
 
@@ -368,7 +367,7 @@ public class ServiceProcessor {
         if (oldUserMsg == null) {
             throw new UserException("要编辑的消息不存在: " + editMessageId);
         }
-        if (!RoleVariable.ROLE_USER.equals(oldUserMsg.getRole())) {
+        if (!ChatMessage.ROLE_USER.equals(oldUserMsg.getRole())) {
             throw new UserException("只能编辑用户消息，当前消息角色为: " + oldUserMsg.getRole());
         }
 
@@ -389,15 +388,18 @@ public class ServiceProcessor {
         chatMessageService.deactivateBranch(editMessageId);
 
         // 创建新的用户消息：新文本 + 保留的旧文件附件
-        ChatMessage chatMessage = new ChatMessage();
-        chatMessage.setName(userSettings.getUsername());
-        chatMessage.setRole(RoleVariable.ROLE_USER);
-        chatMessage.setSessionId(request.getSessionId());
-        chatMessage.setParentId(parentId);
-        List<MessageContent> contents = new ArrayList<>();
-        contents.add(new TextContent(request.getContent()));
-        contents.addAll(preservedContents);
-        chatMessage.setContents(contents);
+        //ChatMessage chatMessage = new ChatMessage();
+        //chatMessage.setName(userSettings.getUsername());
+        //chatMessage.setRole(ChatMessage.ROLE_USER);
+        //chatMessage.setSessionId(request.getSessionId());
+        //chatMessage.setParentId(parentId);
+        //List<MessageContent> contents = new ArrayList<>();
+        //contents.add(new TextContent(request.getContent()));
+        //contents.addAll(preservedContents);
+        //chatMessage.setContents(contents);
+        ChatMessage chatMessage = new ChatMessage()
+                .user(request.getContent(), preservedContents)
+                .makeInsertable(request.getSessionId(), parentId, userSettings.getUsername());
 
         try {
             ChatMessage message = chatMessageService.save(chatMessage);
@@ -428,26 +430,14 @@ public class ServiceProcessor {
     private ChatMessage appendUserMessage(String sessionId, String parentId, String prompt,
                                           List<String> fileUrls, WebSocketSession session) throws Exception {
 
-        ChatMessage chatMessage = new ChatMessage();
-        chatMessage.setName(userSettings.getUsername());
-        chatMessage.setRole(RoleVariable.ROLE_USER);
-        chatMessage.setSessionId(sessionId);
-        chatMessage.setParentId(parentId);
-        List<MessageContent> contents = new ArrayList<>();
-        contents.add(new TextContent(prompt));
-
-        // 将文件附加到消息中
-        List<MessageContent> fileContents = MessageContent.loadFileContent(fileUrls);
-        contents.addAll(fileContents);
-
-        chatMessage.setContents(contents);
+        List<MessageContent> fileContents = MessageContent.files(fileUrls);
+        ChatMessage chatMessage = new ChatMessage()
+                .user(prompt, fileContents)
+                .makeInsertable(sessionId, parentId, userSettings.getUsername());
 
         try {
             ChatMessage message = chatMessageService.save(chatMessage);
-            ChatResponse response = new ChatResponse()
-                    .setMessages(List.of(message))
-                    .setStatus(ChatResponse.STATUS_INIT_USER)
-                    .setSessionId(sessionId);
+            ChatResponse response = new ChatResponse().afterUserInput(message);
             session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
             return message;
         } catch (UserException e) {

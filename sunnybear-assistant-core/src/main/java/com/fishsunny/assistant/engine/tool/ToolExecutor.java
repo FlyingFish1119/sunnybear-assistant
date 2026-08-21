@@ -19,19 +19,10 @@ import lombok.Getter;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.Function;
 
 @Component
@@ -52,7 +43,7 @@ public class ToolExecutor {
                 toolMap.put(tool.name(), tool);
             }
         }
-        this.executorService = Executors.newCachedThreadPool();
+        this.executorService = Executors.newVirtualThreadPerTaskExecutor();
     }
 
     @PreDestroy
@@ -84,27 +75,6 @@ public class ToolExecutor {
             }
         }
         return responses;
-    }
-
-    //// ======================== 同步版本（不使用线程池，顺序执行） ========================
-    //public List<ToolExecuteResponse> execute(List<ToolRequest> requests, Map<String, Object> context) {
-    //    if (requests == null || requests.isEmpty()) {
-    //        return new ArrayList<>();
-    //    }
-    //    List<ToolExecuteResponse> responses = new ArrayList<>(requests.size());
-    //    for (ToolRequest request : requests) {
-    //        try {
-    //            responses.add(doExecute(request.getToolName(), request.getArguments(), context));
-    //        } catch (Exception e) {
-    //            responses.add(new ToolExecuteResponse(request.getToolName(),
-    //                    "工具[" + request.getToolName() + "]执行异常，原因是：" + e.getMessage()).setSucceed(false));
-    //        }
-    //    }
-    //    return responses;
-    //}
-
-    public ToolExecuteResponse execute(String toolName, String arguments, Map<String, Object> context) {
-        return doExecute(toolName, arguments, context);
     }
 
     private ToolExecuteResponse doExecute(String toolName, String arguments, Map<String, Object> context) {

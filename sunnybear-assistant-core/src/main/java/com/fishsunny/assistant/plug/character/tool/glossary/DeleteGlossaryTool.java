@@ -18,7 +18,6 @@ import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
 import com.fishsunny.assistant.plug.character.service.CharacterGlossaryService;
 import lombok.Data;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
-import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;

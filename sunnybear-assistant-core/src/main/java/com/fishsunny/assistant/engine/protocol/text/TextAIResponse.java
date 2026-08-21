@@ -1,6 +1,5 @@
 package com.fishsunny.assistant.engine.protocol.text;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
 import com.fishsunny.assistant.engine.protocol.standard.chat.response.usage.StandardUsage;
 import com.fishsunny.assistant.engine.protocol.text.response.TextChoice;

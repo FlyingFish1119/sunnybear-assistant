@@ -20,7 +20,6 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
 import com.fishsunny.assistant.engine.tool.instance.SystemPrompts;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
@@ -29,6 +28,7 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
 import java.io.File;
@@ -41,9 +41,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.Map;
 
 @ToolKitComponent(ImageToolKit.class)
 @ConditionalOnExpression("${engine.tool.image.enable:true} && ${engine.tool.image.image-caption.enable:true}")
@@ -121,15 +121,13 @@ public class ImageCaptionTool implements ToolHandler {
      * image 模式：处理图片URL，构建 ImageContent 发送给 AI。
      */
     private ToolExecutor.ToolExecuteResponse executeImageMode(Arguments arguments) throws Exception {
-        String imageBase64 = findImage(arguments);
 
         String userPrompt = "请用中文解释图片中的内容。\n[任务目标]\n" + arguments.getTarget();
-        ImageContent imageContent = new ImageContent(imageBase64);
         ChatRequest request = new ChatRequest()
                 .loadSettings(aiSettings)
                 .setMessages(List.of(
                         new ChatMessage().system(SystemPrompts.OCR),
-                        new ChatMessage().user(userPrompt, imageContent)
+                        new ChatMessage().userWithImage(userPrompt, findImage(arguments))
                 ));
         return execute(request);
     }
@@ -138,15 +136,12 @@ public class ImageCaptionTool implements ToolHandler {
      * video 模式：处理视频URL，构建 VideoContent 发送给 AI。
      */
     private ToolExecutor.ToolExecuteResponse executeVideoMode(Arguments arguments) throws Exception {
-        String videoDataUrl = findVideo(arguments);
-
         String userPrompt = "请用中文解释视频中的内容。\n[任务目标]\n" + arguments.getTarget();
-        VideoContent videoContent = new VideoContent(videoDataUrl);
         ChatRequest request = new ChatRequest()
                 .loadSettings(aiSettings)
                 .setMessages(List.of(
                         new ChatMessage().system(SystemPrompts.OCR),
-                        new ChatMessage().user(userPrompt, videoContent)
+                        new ChatMessage().userWithVideo(userPrompt, findVideo(arguments))
                 ));
         return execute(request);
 
@@ -154,7 +149,7 @@ public class ImageCaptionTool implements ToolHandler {
     private ToolExecutor.ToolExecuteResponse execute(ChatRequest request) throws Exception {
         AtomicReference<String> caption = new AtomicReference<>("");
         chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
-                aiSettings.getStream() != null ? aiSettings.getStream() : true,
+                aiSettings.getStream(),
                 null,
                 (result, lastRes) -> caption.set(result.content()));
         return new ToolExecutor.ToolExecuteResponse(name(), caption.get());

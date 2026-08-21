@@ -14,7 +14,9 @@ import com.fishsunny.assistant.engine.protocol.anthropic.tools.AnthropicToolRegi
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.settings.ChatSettings;
-import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.*;
+import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegisterParameter;
+import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegisterProperty;
 import org.springframework.util.CollectionUtils;
 
 import java.util.ArrayList;

@@ -9,9 +9,9 @@ package com.fishsunny.assistant.engine;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.engine.protocol.EmbeddingAPI;
 import com.fishsunny.assistant.engine.protocol.EmbeddingRequest;
 import com.fishsunny.assistant.engine.protocol.EmbeddingResponse;
-import com.fishsunny.assistant.engine.protocol.EmbeddingAPI;
 import jakarta.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

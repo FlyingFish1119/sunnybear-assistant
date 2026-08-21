@@ -13,14 +13,13 @@ import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
-import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
+import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
@@ -31,8 +30,9 @@ import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.ToolContextBuilder;
 import com.fishsunny.assistant.variable.ControlSign;
 import com.fishsunny.assistant.variable.PromptReplaceVariable;
-import com.fishsunny.assistant.variable.RoleVariable;
 import com.fishsunny.assistant.websocket.ChatProvider;
+import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandExecutor;
+import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandHandler;
 import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,8 +46,6 @@ import org.springframework.web.socket.WebSocketSession;
 import java.net.InetAddress;
 import java.time.LocalDate;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Pattern;
 
 /**
  * 本类主要用于处理核心对话逻辑，包括消息的传输与落盘
@@ -66,6 +64,7 @@ public class ChatProcessor {
     private final ToolExecutor toolExecutor;
     private final KnowledgeService knowledgeService;
     private final MemoryService memoryService;
+    private final SlashCommandExecutor slashCommandExecutor;
 
     public ChatProcessor(ChatMessageService chatMessageService,
                             ObjectMapper objectMapper,
@@ -75,6 +74,7 @@ public class ChatProcessor {
                             MemoryService memoryService,
                             @Qualifier(AISettings.CHAT) AISettings aiSettings,
                             @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
+                            SlashCommandExecutor slashCommandExecutor,
                             ChatHttpHandler chatHttpHandler) {
         this.chatMessageService = chatMessageService;
         this.objectMapper = objectMapper;
@@ -84,6 +84,7 @@ public class ChatProcessor {
         this.memoryService = memoryService;
         this.aiSettings = aiSettings;
         this.chatProAISettings = chatProAISettings;
+        this.slashCommandExecutor = slashCommandExecutor;
         this.chatHttpHandler = chatHttpHandler;
     }
 
@@ -123,17 +124,17 @@ public class ChatProcessor {
         if (userMessage == null) {
             throw new UserException("用户消息为空");
         }
-        if (!RoleVariable.ROLE_USER.equals(userMessage.getRole()) && !RoleVariable.ROLE_TOOL.equals(userMessage.getRole())) {
+        if (!ChatMessage.ROLE_USER.equals(userMessage.getRole()) && !ChatMessage.ROLE_TOOL.equals(userMessage.getRole())) {
             throw new UserException("用户消息角色无效: " + userMessage.getRole());
         }
 
-
-        // 斜杠指令拦截
-        String userText = userMessage.resolveText();
-        Pattern pattern = Pattern.compile("^/[a-zA-Z]+");
-        if (userText != null && pattern.matcher(userText).find()) {
-            return handleSlashCommand(userText, chatSession, session, originMessages);
+        SlashCommandHandler.SlashCommandContext slashCommandContext = new SlashCommandHandler.SlashCommandContext(
+                userMessage.resolveText(), session, chatSession, originMessages, new ArrayList<>()
+        );
+        if (slashCommandExecutor.runSlashFactory(slashCommandContext)) {
+            return slashCommandContext.resultMessage();
         }
+
         List<ChatMessage> collector = new ArrayList<>();
         toolCallCycle(collector, effectiveAISettings, request, chatSession, session, chatProvider);
         return collector;
@@ -262,7 +263,7 @@ public class ChatProcessor {
                     assistantMessage.setReasoningSignature(reasoningSignature);
                 }
                 // 添加助手消息
-                ChatResponse response = new ChatResponse().afterAIResponse(assistantMessage, chatSession.getId());
+                ChatResponse response = new ChatResponse().afterAIResponse(assistantMessage);
                 session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
                 request.getMessages().add(assistantMessage);
                 collector.add(assistantMessage);
@@ -293,9 +294,10 @@ public class ChatProcessor {
                     AIAdapter.ToolCall toolcall = toolCalls.get(i);
                     ToolExecutor.ToolExecuteResponse toolResult = toolResults.get(i);
                     try {
-                        toolMessages.add(new ChatMessage().tool(
-                                chatSession.getId(), last.getId(), toolcall.getId(),
-                                toolcall.getFunction().getName(), objectMapper.writeValueAsString(toolResult)));
+                        toolMessages.add(new ChatMessage()
+                                .tool(chatSession.getId(), objectMapper.writeValueAsString(toolResult))
+                                .makeInsertable(last.getId(), toolcall.getFunction().getName(), toolcall.getId())
+                        );
                     } catch (Exception e) {
                         log.error("构建工具消息失败: {}", e.getMessage());
                     }
@@ -304,7 +306,7 @@ public class ChatProcessor {
                 try {
                     List<ChatMessage> toolResponseMessages = appendToolMessage(toolMessages);
                     request.getMessages().addAll(toolResponseMessages);
-                    ChatResponse response = new ChatResponse().afterToolCall(toolResponseMessages, chatSession.getId());
+                    ChatResponse response = new ChatResponse().afterToolCall(toolResponseMessages);
                     session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
                     collector.addAll(toolResponseMessages);
                 } catch (Exception e) {
@@ -327,13 +329,8 @@ public class ChatProcessor {
     private ChatMessage appendAssistantMessage(String sessionId, String parentId, String reasoning, String content, List<ChatToolRequest> toolCalls) throws Exception {
 
         ChatMessage chatMessage = new ChatMessage()
-                .setName(assistantSettings.getAssistantName())
-                .setRole(RoleVariable.ROLE_ASSISTANT)
-                .setSessionId(sessionId)
-                .setParentId(parentId)
-                .setToolCalls(toolCalls)
-                .setReasoningContent(reasoning)
-                .setContents(new ArrayList<>(List.of(new TextContent(content))));
+                .assistant(content, reasoning, toolCalls)
+                .makeInsertable(sessionId, parentId, assistantSettings.getAssistantName());
 
         try {
             return chatMessageService.save(chatMessage);
@@ -358,158 +355,6 @@ public class ChatProcessor {
             throw new Exception("保存工具结果消息失败，系统发生了未知错误: " + e.getMessage());
         }
     }
-
-    // ==================== 斜杠指令处理 ====================
-
-    /**
-     * 斜杠指令分发 —— 以 / 开头的消息不走 AI，本地处理、落盘、返回。
-     */
-    private List<ChatMessage> handleSlashCommand(String content, ChatSession chatSession, WebSocketSession session,
-                                                  List<ChatMessage> originMessages) throws Exception {
-        String[] parts = content.split("\\s+", 2);
-        String cmd = parts[0].toLowerCase();
-        String args = parts.length > 1 ? parts[1] : "";
-
-        // /look 走流式传输：MissionAI 逐字生成摘要
-        if ("/look".equals(cmd)) {
-            String[] lookParts = args.split("\\s+", 2);
-            String sessionId = lookParts.length > 0 ? lookParts[0] : "";
-            String prompt = lookParts.length > 1 ? lookParts[1] : "";
-            return lookSessionStreaming(sessionId, prompt, chatSession, session, originMessages);
-        }
-
-        // 其他指令：非流式，直接生成完整结果
-        String result = switch (cmd) {
-            default -> "**未知指令**：`" + cmd + "`\n\n当前仅支持 `/look <sessionId>` 查看会话记录。";
-        };
-
-        ChatMessage lastOrigin = ObjectUtils.getLast(originMessages);
-        String parentId = lastOrigin != null ? lastOrigin.getId() : null;
-        ChatMessage assistantMessage = appendAssistantMessage(chatSession.getId(), parentId, null, result, List.of());
-
-        ChatResponse response = new ChatResponse()
-                .setStatus(ChatResponse.STATUS_INIT_ASSISTANT)
-                .setMessages(List.of(assistantMessage))
-                .setSessionId(chatSession.getId());
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
-
-        return new ArrayList<>(List.of(assistantMessage));
-    }
-
-    /** /look <sessionId> [关注点] —— 拉取会话历史，流式输出 MissionAI 摘要 */
-    private List<ChatMessage> lookSessionStreaming(String sessionId, String prompt,
-                                                    ChatSession chatSession, WebSocketSession session,
-                                                    List<ChatMessage> originMessages) throws Exception {
-        List<ChatMessage> collector = new ArrayList<>();
-
-        // 参数校验
-        if (! StringUtils.hasText(sessionId)) {
-            String usage = """
-                    **用法**：`/look <sessionId> [关注点]`
-                    
-                    请提供要查看的会话 ID。在输入框中输入 `/look` 可从侧边栏选择会话。""";
-            ChatMessage errorMsg = appendAssistantMessage(chatSession.getId(), ChatMessage.getParentId(originMessages), null, usage, List.of());
-            sendAssistantResponse(session, chatSession.getId(), errorMsg);
-            collector.add(errorMsg);
-            return collector;
-        }
-
-        // 拉取历史
-        List<ChatMessage> history;
-        try {
-            history = chatMessageService.getConversationHistory(sessionId.trim());
-        } catch (Exception e) {
-            String err = "**查询失败**：会话 `" + sessionId + "` 不存在或无法访问。";
-            ChatMessage errorMsg = appendAssistantMessage(chatSession.getId(), ChatMessage.getParentId(originMessages), null, err, List.of());
-            sendAssistantResponse(session, chatSession.getId(), errorMsg);
-            collector.add(errorMsg);
-            return collector;
-        }
-        if (! StringUtils.hasText(sessionId)) {
-            String empty = "**会话 `" + sessionId + "` 暂无对话记录。**";
-            ChatMessage emptyMsg = appendAssistantMessage(chatSession.getId(), ChatMessage.getParentId(originMessages), null, empty, List.of());
-            sendAssistantResponse(session, chatSession.getId(), emptyMsg);
-            collector.add(emptyMsg);
-            return collector;
-        }
-
-        // 拼接对话历史
-        StringBuilder historyText = new StringBuilder();
-        for (ChatMessage msg : history) {
-            String role = msg.getRole();
-            String text = msg.resolveText();
-            if (!StringUtils.hasText(text)) {
-                continue;
-            }
-            String label = switch (role) {
-                case "user" -> "用户";
-                case "assistant" -> "助手";
-                case "tool" -> "工具";
-                default -> role;
-            };
-            historyText.append("[").append(label).append("] ")
-                    .append(msg.getName() == null ? "" : msg.getName() + "：").append(text)
-                    .append("\n\n");
-        }
-
-        // 提取 chat AI 的系统提示词，与待总结文本一同放入 user prompt
-        String focusLine = StringUtils.hasText(prompt) ? "请重点关注以下方面：" + prompt + "\n" : "";
-        String chatSystemPrompt = aiSettings.getPrompt() != null ? aiSettings.getPrompt() : "";
-
-        String userPrompt = """
-                ## 当前角色设定
-                %s
-
-                ## 会话 ID：%s
-                %s
-                ## 对话历史
-                %s
-
-                请以当前角色设定的视角，对上述对话历史生成一段简洁有条理的摘要（3-5 段）。
-                如果指定了关注重点，请围绕该重点展开；否则概括全文的要点和关键信息。
-                使用 Markdown 格式输出，包含标题和分点。"""
-                .formatted(
-                        StringUtils.hasText(chatSystemPrompt) ? chatSystemPrompt : "（无特殊角色设定）",
-                        sessionId.trim(),
-                        focusLine,
-                        historyText.toString()
-                );
-
-        ChatRequest request = new ChatRequest()
-                .loadSettings(aiSettings)
-                .setMessages(List.of(new ChatMessage().user(userPrompt)));
-
-        String header = "## 📜 会话摘要：`" + sessionId.trim() + "`\n\n";
-        AtomicBoolean isFirst = new AtomicBoolean(true);
-        chatHttpHandler.translate(chatSession.getId(), aiSettings.getAdapterName(), request, aiSettings.getStream(),
-                tr -> {
-                    ChatResponse masterResp = (ChatResponse) tr;
-                    if (isFirst.get() && StringUtils.hasText(masterResp.getText())) {
-                        masterResp.appendTextAtStart(header);
-                        isFirst.set(false);
-                    }
-                    masterResp.setSessionId(chatSession.getId());
-                    try {
-                        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(masterResp)));
-                    } catch (Exception e) {
-                        log.warn("流式推送 /look chunk 失败: {}", e.getMessage());
-                    }
-                },
-                (trResult, lastRes) -> {
-                    try {
-                        ChatMessage saved = appendAssistantMessage(chatSession.getId(), ChatMessage.getParentId(originMessages),
-                                trResult.reasoning(), header + trResult.content(), List.of());
-                        sendAssistantResponse(session, chatSession.getId(), saved);
-                        collector.add(saved);
-                    } catch (Exception e) {
-                        log.error("/look 落盘失败: {}", e.getMessage());
-                    }
-                }
-        );
-
-        return collector;
-    }
-
 
     private void sendAssistantResponse(WebSocketSession session, String sessionId, ChatMessage msg) throws Exception {
         ChatResponse resp = new ChatResponse()

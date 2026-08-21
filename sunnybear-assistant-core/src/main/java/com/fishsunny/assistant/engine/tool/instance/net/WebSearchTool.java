@@ -20,10 +20,10 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.NetToolKit;
 import com.fishsunny.assistant.engine.tool.instance.net.search.SearchEngine;
 import com.fishsunny.assistant.engine.tool.instance.net.search.SearchEngineFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
 import java.util.Arrays;

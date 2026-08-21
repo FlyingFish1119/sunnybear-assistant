@@ -19,7 +19,6 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.variable.ControlSign;
-import jdk.jfr.DataAmount;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
@@ -105,8 +104,10 @@ public class ToolCallLoop {
     public static class AgentLoopHook {
         private Consumer<AgentLogEntry> logback;
         private ToolResultHook resultHook;
+
         public AgentLoopHook() {
         }
+
         public AgentLoopHook(Consumer<AgentLogEntry> logback, ToolResultHook resultHook) {
             this.logback = logback;
             this.resultHook = resultHook;
@@ -116,7 +117,8 @@ public class ToolCallLoop {
     /**
      * 单轮单次工具调用的结果快照。
      */
-    public record RoundResult(String toolName, String arguments, String result) {}
+    public record RoundResult(String toolName, String arguments, String result) {
+    }
 
     // ==================== 公开入口 ====================
 
@@ -155,10 +157,13 @@ public class ToolCallLoop {
 
     // ==================== 递归循环 ====================
 
-    private void loop(AISettings settings, Map<String, Object> context,
-                      AtomicReference<String> result, ChatRequest request,
+    private void loop(AISettings settings,
+                      Map<String, Object> context,
+                      AtomicReference<String> result,
+                      ChatRequest request,
                       AgentLoopHook hook,
-                      int iteration) throws Exception {
+                      int iteration
+    ) throws Exception {
 
         Consumer<AgentLogEntry> logCallback = hook != null ? hook.getLogback() : null;
 
@@ -168,23 +173,18 @@ public class ToolCallLoop {
                 request,
                 settings.getStream(),
                 null, // 无流式回调
-                (tr, lastRes) -> {
-                    var toolCalls = tr.toolCalls();
+                (translateResult, lastRes) -> {
+                    List<AIAdapter.ToolCall> toolCalls = translateResult.toolCalls();
                     List<ChatMessage> messages = request.getMessages();
 
                     // 追加 assistant 消息（含 tool_calls 声明）
-                    List<ChatToolRequest> chatToolReqs = new ArrayList<>();
-                    for (AIAdapter.ToolCall tc : toolCalls) {
-                        chatToolReqs.add(new ChatToolRequest()
-                                .setId(tc.getId())
-                                .setName(tc.getFunction().getName())
-                                .setArguments(tc.getFunction().getArguments()));
-                    }
-                    messages.add(new ChatMessage().assistant(tr.content(), tr.reasoning(), chatToolReqs));
+                    List<ChatToolRequest> chatToolReqs = ChatToolRequest.convert(toolCalls);
+
+                    messages.add(new ChatMessage().assistant(translateResult.content(), translateResult.reasoning(), chatToolReqs));
 
                     // 无工具调用 → 返回最终文本
                     if (CollectionUtils.isEmpty(toolCalls)) {
-                        result.set(tr.content());
+                        result.set(translateResult.content());
                         if (logCallback != null) {
                             logCallback.accept(new AgentLogEntry()
                                     .setId(UUID.randomUUID().toString())
@@ -206,17 +206,12 @@ public class ToolCallLoop {
                                 .setPhase(AgentLogEntry.PHASE_ITERATION)
                                 .setAgentName("ToolCallLoop")
                                 .setTitle("第" + iteration + "轮：AI 决定调用 " + String.join(", ", toolNames))
-                                .setContent(AgentLogEntry.truncate(tr.content()))
+                                .setContent(AgentLogEntry.truncate(translateResult.content()))
                                 .setIteration(iteration));
                     }
 
                     // 并行执行工具
-                    List<ToolExecutor.ToolRequest> reqs = new ArrayList<>();
-                    for (AIAdapter.ToolCall tc : toolCalls) {
-                        reqs.add(new ToolExecutor.ToolRequest(
-                                tc.getFunction().getName(),
-                                tc.getFunction().getArguments()));
-                    }
+                    List<ToolExecutor.ToolRequest> reqs = ToolExecutor.ToolRequest.convert(toolCalls);
 
                     // 日志回调：每个工具调用（参数）
                     if (logCallback != null) {
@@ -232,25 +227,7 @@ public class ToolCallLoop {
                     }
 
                     List<ToolExecutor.ToolExecuteResponse> toolResults;
-                    try {
-                        toolResults = toolExecutor.execute(reqs, context);
-                    } catch (Exception e) {
-                        log.error("工具执行失败: {}", e.getMessage(), e);
-                        if (logCallback != null) {
-                            logCallback.accept(new AgentLogEntry()
-                                    .setId(UUID.randomUUID().toString())
-                                    .setPhase(AgentLogEntry.PHASE_TOOL_RESULT)
-                                    .setAgentName("ToolCallLoop")
-                                    .setTitle("工具执行异常")
-                                    .setContent(e.getMessage())
-                                    .setLevel("error")
-                                    .setIteration(iteration));
-                        }
-                        messages.add(new ChatMessage().tool(toolCalls.get(0).getId(),
-                                "工具执行异常: " + e.getMessage()));
-                        result.set("工具执行失败: " + e.getMessage());
-                        return;
-                    }
+                    toolResults = toolExecutor.execute(reqs, context);
 
                     // --- Hook 回调：收集本轮工具结果 ---
                     if (hook != null && hook.getResultHook() != null) {
@@ -262,9 +239,9 @@ public class ToolCallLoop {
                                     reqs.get(i).getArguments(),
                                     trResp.getResult()));
                         }
-                        if (!hook.getResultHook().onRound(roundResults, tr.content())) {
+                        if (!hook.getResultHook().onRound(roundResults, translateResult.content())) {
                             // hook 返回 false → 终止循环
-                            result.set(tr.content());
+                            result.set(translateResult.content());
                             return;
                         }
                     }
@@ -272,9 +249,10 @@ public class ToolCallLoop {
                     // 追加 tool 结果消息 + 日志回调：工具结果
                     for (int i = 0; i < toolCalls.size(); i++) {
                         String toolResult = toolResults.get(i).getResult();
-                        messages.add(new ChatMessage().tool(
-                                toolCalls.get(i).getId(),
-                                toolResult));
+                        messages.add(new ChatMessage()
+                                .tool(toolCalls.get(i).getId(), toolResult)
+                                .setName(toolCalls.get(i).getFunction().getName())
+                        );
                         if (logCallback != null) {
                             boolean succeed = toolResults.get(i).isSucceed();
                             logCallback.accept(new AgentLogEntry()
@@ -295,6 +273,7 @@ public class ToolCallLoop {
                         log.error("工具调用循环异常: {}", e.getMessage(), e);
                         throw new RuntimeException(e);
                     }
-                });
+                }
+        );
     }
 }

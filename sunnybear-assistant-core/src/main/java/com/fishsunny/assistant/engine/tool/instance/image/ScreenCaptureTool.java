@@ -18,13 +18,13 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
 import com.fishsunny.assistant.engine.tool.instance.SystemPrompts;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
 import com.fishsunny.assistant.utils.image.ScaleImageHelper;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
 import javax.imageio.ImageIO;
@@ -32,9 +32,9 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.Map;
 
 @ToolKitComponent(ImageToolKit.class)
 @ConditionalOnExpression("${engine.tool.image.enable:true} && ${engine.tool.image.screen-capture.enable:true}")
@@ -150,7 +150,7 @@ public class ScreenCaptureTool implements ToolHandler {
                 .loadSettings(aiSettings)
                 .setMessages(List.of(
                         new ChatMessage().system(SystemPrompts.OCR),
-                        new ChatMessage().user(prompt, imageBase64)
+                        new ChatMessage().userWithImage(prompt, imageBase64)
                 ));
         chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
                 aiSettings.getStream() != null ? aiSettings.getStream() : true,
@@ -184,7 +184,7 @@ public class ScreenCaptureTool implements ToolHandler {
                 .loadSettings(aiSettings)
                 .setMessages(List.of(
                         new ChatMessage().system(SystemPrompts.OCR),
-                        new ChatMessage().user(prompt, imageBase64)
+                        new ChatMessage().userWithImage(prompt, imageBase64)
                 ));
         chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
                 aiSettings.getStream() != null ? aiSettings.getStream() : true,

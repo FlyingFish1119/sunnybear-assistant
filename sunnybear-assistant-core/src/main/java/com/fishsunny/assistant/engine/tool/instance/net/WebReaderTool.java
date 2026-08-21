@@ -14,39 +14,37 @@ import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.engine.tool.extension.PlaywrightBrowserService;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.NetToolKit;
 import com.fishsunny.assistant.engine.tool.instance.SystemPrompts;
-import com.github.benmanes.caffeine.cache.Cache;
-import org.checkerframework.checker.nullness.qual.NonNull;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
-import com.fishsunny.assistant.engine.tool.extension.PlaywrightBrowserService;
 import com.fishsunny.assistant.settings.AISettings;
+import com.github.benmanes.caffeine.cache.Cache;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.parser.ParseContext;
 import org.apache.tika.parser.html.HtmlParser;
 import org.apache.tika.sax.BodyContentHandler;
+import org.checkerframework.checker.nullness.qual.NonNull;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Comment;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.nodes.Node;
-
 import org.jsoup.select.NodeFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -222,7 +220,9 @@ public class WebReaderTool implements ToolHandler {
                 .replace("${content}", cleanedText)
                 .replace("${target}", target);
         ChatRequest request = new ChatRequest()
-                .setMessages(List.of(new ChatMessage().system(SystemPrompts.SUMMARY), new ChatMessage().user(userPrompt)))
+                .setMessages(List.of(
+                        new ChatMessage().system(SystemPrompts.SUMMARY),
+                        new ChatMessage().user(userPrompt)))
                 .loadSettings(taskAISettings);
         AtomicReference<String> afterResolve = new AtomicReference<>("");
         chatHttpHandler.translate(UUID.randomUUID().toString(), taskAISettings.getAdapterName(), request,

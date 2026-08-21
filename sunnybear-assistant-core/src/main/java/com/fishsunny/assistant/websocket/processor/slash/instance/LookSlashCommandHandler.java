@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket.processor.slash;
+package com.fishsunny.assistant.websocket.processor.slash.instance;
 
 /*
  * @Usage
@@ -15,24 +15,22 @@ import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.settings.AISettings;
-import com.fishsunny.assistant.utils.ObjectUtils;
-import com.fishsunny.assistant.websocket.ChatProvider;
+import com.fishsunny.assistant.settings.AssistantSettings;
+import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandComponent;
+import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandHandler;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.TextMessage;
-import org.springframework.web.socket.WebSocketSession;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-@SlashCommandComponent
-public class LookSlashCommandExecutor extends SlashCommandExecutor {
+@SlashCommandComponent("/look")
+public class LookSlashCommandHandler extends SlashCommandHandler {
 
-    private static final Logger log = org.slf4j.LoggerFactory.getLogger(LookSlashCommandExecutor.class);
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(LookSlashCommandHandler.class);
 
     private final ChatMessageService chatMessageService;
 
@@ -40,15 +38,19 @@ public class LookSlashCommandExecutor extends SlashCommandExecutor {
 
     private final AISettings aiSettings;
 
+    private final AssistantSettings assistantSettings;
+
     private final ObjectMapper objectMapper;
 
-    public LookSlashCommandExecutor(ChatMessageService chatMessageService,
-                                    ChatHttpHandler chatHttpHandler,
-                                    @Qualifier(AISettings.CHAT) AISettings aiSettings,
-                                    ObjectMapper objectMapper
+    public LookSlashCommandHandler(ChatMessageService chatMessageService,
+                                   ChatHttpHandler chatHttpHandler,
+                                   @Qualifier(AISettings.CHAT) AISettings aiSettings,
+                                   AssistantSettings assistantSettings,
+                                   ObjectMapper objectMapper
                                     ) {
         this.chatMessageService = chatMessageService;
         this.chatHttpHandler = chatHttpHandler;
+        this.assistantSettings = assistantSettings;
         this.aiSettings = aiSettings;
         this.objectMapper = objectMapper;
     }
@@ -56,17 +58,14 @@ public class LookSlashCommandExecutor extends SlashCommandExecutor {
     @Override
     protected SlashCommand resolve(String originCommand) {
         List<String> parts = Arrays.asList(originCommand.split("\\s+", 3));
-        return new SlashCommand(parts.get(0), parts.subList(1, parts.size()));
+        return new SlashCommand(parts.getFirst(), parts.subList(1, parts.size()));
     }
 
     @Override
-    protected List<ChatMessage> handle() {
-        WebSocketSession session = super.session;
+    protected void handle() throws Exception {
         String sessionId = super.chatSession.getId();
 
         String prompt = super.args.get(1);
-
-        List<ChatMessage> collector = new ArrayList<>();
 
         // 参数校验
         if (!StringUtils.hasText(sessionId)) {
@@ -77,8 +76,8 @@ public class LookSlashCommandExecutor extends SlashCommandExecutor {
             ChatMessage errorMsg = new ChatMessage()
                     .assistant(usage, "", List.of())
                     .setSessionId(sessionId);
-            collector.add(errorMsg);
-            return collector;
+            super.resultMessage.add(errorMsg);
+            return;
         }
 
         // 拉取历史
@@ -87,17 +86,22 @@ public class LookSlashCommandExecutor extends SlashCommandExecutor {
             history = chatMessageService.getConversationHistory(sessionId.trim());
         } catch (Exception e) {
             String err = "**查询失败**：会话 `" + sessionId + "` 不存在或无法访问。";
-            ChatMessage errorMsg = appendAssistantMessage(chatSession.getId(), ChatMessage.getParentId(originMessages), null, err, List.of());
-            sendAssistantResponse(session, chatSession.getId(), errorMsg);
-            collector.add(errorMsg);
-            return collector;
+            ChatMessage errorMsg =  new ChatMessage()
+                    .assistant(err, "", List.of())
+                    .makeInsertable(chatSession.getId(), ChatMessage.getParentId(originMessages), assistantSettings.getAssistantName());
+            super.insertMessage(errorMsg, chatMessageService);
+            super.sendMessage(errorMsg, objectMapper);
+            super.resultMessage.add(errorMsg);
+            return;
         }
         if (!StringUtils.hasText(sessionId)) {
             String empty = "**会话 `" + sessionId + "` 暂无对话记录。**";
-            ChatMessage emptyMsg = appendAssistantMessage(chatSession.getId(), ChatMessage.getParentId(originMessages), null, empty, List.of());
-            sendAssistantResponse(session, chatSession.getId(), emptyMsg);
-            collector.add(emptyMsg);
-            return collector;
+            ChatMessage emptyMsg = new ChatMessage()
+                    .assistant(empty, "", List.of())
+                    .makeInsertable(chatSession.getId(), ChatMessage.getParentId(originMessages), assistantSettings.getAssistantName());
+
+            super.resultMessage.add(emptyMsg);
+            return;
         }
 
         // 拼接对话历史
@@ -164,16 +168,16 @@ public class LookSlashCommandExecutor extends SlashCommandExecutor {
                 },
                 (trResult, lastRes) -> {
                     try {
-                        ChatMessage saved = appendAssistantMessage(chatSession.getId(), ChatMessage.getParentId(originMessages),
-                                trResult.reasoning(), header + trResult.content(), List.of());
-                        sendAssistantResponse(session, chatSession.getId(), saved);
-                        collector.add(saved);
+                        ChatMessage savedMessage = new ChatMessage()
+                                .assistant(header + trResult.content(), "", List.of())
+                                .makeInsertable(chatSession.getId(), ChatMessage.getParentId(originMessages), assistantSettings.getAssistantName());
+                        super.insertMessage(savedMessage, chatMessageService);
+                        super.sendMessage(savedMessage, objectMapper);
+                        super.resultMessage.add(savedMessage);
                     } catch (Exception e) {
                         log.error("/look 落盘失败: {}", e.getMessage());
                     }
                 }
         );
-
-        return collector;
     }
 }

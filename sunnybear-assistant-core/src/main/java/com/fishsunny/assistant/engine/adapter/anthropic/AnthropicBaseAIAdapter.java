@@ -17,7 +17,6 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.im
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.utils.Base64Utils;
 import com.fishsunny.assistant.utils.ObjectMapperFactory;
-import com.fishsunny.assistant.variable.RoleVariable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -120,14 +119,13 @@ public abstract class AnthropicBaseAIAdapter extends AIAdapter {
         List<AnthropicMessage> anthropicMessages = new ArrayList<>();
         List<AnthropicToolResultContent> pendingToolResults = new ArrayList<>();
 
-        for (int i = 0; i < messages.size(); i++) {
-            ChatMessage message = messages.get(i);
-            if (RoleVariable.ROLE_SYSTEM.equals(message.getRole())) {
+        for (ChatMessage message : messages) {
+            if ("system".equals(message.getRole())) {
                 // System messages are handled separately via extractSystemPrompt()
                 continue;
             }
             switch (message.getRole()) {
-                case RoleVariable.ROLE_USER: {
+                case "user": {
                     // Flush pending tool results before adding user message
                     flushToolResults(anthropicMessages, pendingToolResults);
                     AnthropicUserMessage userMessage = new AnthropicUserMessage();
@@ -135,7 +133,7 @@ public abstract class AnthropicBaseAIAdapter extends AIAdapter {
                     anthropicMessages.add(userMessage);
                     break;
                 }
-                case RoleVariable.ROLE_ASSISTANT: {
+                case "assistant": {
                     // Flush pending tool results before adding assistant message
                     flushToolResults(anthropicMessages, pendingToolResults);
                     AnthropicAssistantMessage assistantMessage = new AnthropicAssistantMessage();
@@ -174,7 +172,7 @@ public abstract class AnthropicBaseAIAdapter extends AIAdapter {
                     anthropicMessages.add(assistantMessage);
                     break;
                 }
-                case RoleVariable.ROLE_TOOL:
+                case "tool":
                     // Collect tool results; flush as one user message when the next
                     // non-tool message arrives (or at end). Anthropic requires all
                     // tool_result blocks for an assistant's tool_use blocks to be in
@@ -206,17 +204,17 @@ public abstract class AnthropicBaseAIAdapter extends AIAdapter {
     protected String extractSystemPrompt(List<ChatMessage> messages) {
         StringBuilder sb = new StringBuilder();
         for (ChatMessage message : messages) {
-            if (RoleVariable.ROLE_SYSTEM.equals(message.getRole())) {
+            if ("system".equals(message.getRole())) {
                 String text = message.resolveText();
                 if (text != null && !text.isEmpty()) {
-                    if (sb.length() > 0) {
+                    if (!sb.isEmpty()) {
                         sb.append("\n\n");
                     }
                     sb.append(text);
                 }
             }
         }
-        return sb.length() > 0 ? sb.toString() : null;
+        return !sb.isEmpty() ? sb.toString() : null;
     }
 
     // ==================== Content Block Conversion ====================
@@ -261,7 +259,7 @@ public abstract class AnthropicBaseAIAdapter extends AIAdapter {
         List<ChatMessage> messages = new ArrayList<>();
 
         ChatMessage assistantMessage = new ChatMessage();
-        assistantMessage.setRole(RoleVariable.ROLE_ASSISTANT);
+        assistantMessage.setRole("assistant");
 
         StringBuilder textBuilder = new StringBuilder();
         StringBuilder reasoningBuilder = new StringBuilder();
