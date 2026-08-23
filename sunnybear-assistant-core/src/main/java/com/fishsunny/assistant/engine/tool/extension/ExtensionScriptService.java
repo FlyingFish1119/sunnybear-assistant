@@ -180,6 +180,13 @@ public class ExtensionScriptService {
             scriptBody = scriptBody.replace(placeholder, value);
         }
 
+        // 未传入的可选参数（required=false）：直接移除其占位符，不再触发未替换检查
+        for (ExtensionScriptMeta.Parameter param : script.getParameters()) {
+            if (!param.isRequired() && !arguments.containsKey(param.getName())) {
+                scriptBody = scriptBody.replace("{{" + param.getName() + "}}", "");
+            }
+        }
+
         // 检查是否还有未替换的占位符
         Pattern placeholderPattern = Pattern.compile("\\{\\{[^}]+}}");
         StringBuilder errorMessage = new StringBuilder();
