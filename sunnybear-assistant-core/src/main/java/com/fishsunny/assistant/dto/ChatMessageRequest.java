@@ -20,10 +20,13 @@ import java.util.List;
 @Accessors(chain = true)
 public class ChatMessageRequest {
 
+    private static final String TEMP = "temp_";
+
     public static final String MODE_CREATE = "create";
     public static final String MODE_APPEND = "append";
     public static final String MODE_REPLACE = "replace";
     public static final String MODE_EDIT = "edit";
+    public static final String MODE_TEMP_WHAT_IS_THIS = TEMP + "what_is_this";
 
     private String sessionId;
 
@@ -56,6 +59,7 @@ public class ChatMessageRequest {
         try {
             ChatMessageRequest request = objectMapper.readValue(payload, ChatMessageRequest.class);
             switch (request.getMode()) {
+                case ChatMessageRequest.MODE_TEMP_WHAT_IS_THIS:
                 case ChatMessageRequest.MODE_CREATE:
                     if (!StringUtils.hasText(request.getContent())) {
                         throw new UserException("内容为空");
@@ -77,5 +81,9 @@ public class ChatMessageRequest {
         } catch (Exception e) {
             throw new UserException("消息格式无效: " + e.getMessage());
         }
+    }
+
+    public boolean isTemp() {
+        return this.mode.startsWith(TEMP);
     }
 }

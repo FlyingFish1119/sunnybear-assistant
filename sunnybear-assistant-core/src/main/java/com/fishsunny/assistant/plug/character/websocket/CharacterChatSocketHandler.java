@@ -26,6 +26,7 @@ import com.fishsunny.assistant.websocket.ChatProvider;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
+import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +54,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
 
     @Autowired
     public CharacterChatSocketHandler(ServiceProcessor serviceProcessor,
+                                       TempChatProcessor tempChatProcessor,
                                        ChatProcessor chatProcessor,
                                        TaskExecutor chatAsyncExecutor,
                                        CharacterInfoRepository characterInfoRepository,
@@ -60,7 +62,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                                        CharacterGlossaryService glossaryService,
                                        ObjectMapper objectMapper,
                                        BattleDbManager battleDbManager) {
-        super(serviceProcessor, chatProcessor, chatAsyncExecutor, objectMapper);
+        super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper);
         this.characterInfoRepository = characterInfoRepository;
         this.mappingService = mappingService;
         this.glossaryService = glossaryService;

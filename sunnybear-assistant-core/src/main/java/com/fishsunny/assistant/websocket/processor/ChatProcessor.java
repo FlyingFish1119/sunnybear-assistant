@@ -34,8 +34,7 @@ import com.fishsunny.assistant.websocket.ChatProvider;
 import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandExecutor;
 import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandHandler;
 import lombok.Getter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -51,9 +50,8 @@ import java.util.*;
  * 本类主要用于处理核心对话逻辑，包括消息的传输与落盘
  */
 @Component
+@Slf4j
 public class ChatProcessor {
-
-    private static final Logger log = LoggerFactory.getLogger(ChatProcessor.class);
 
     private final ChatMessageService chatMessageService;
     private final ObjectMapper objectMapper;
@@ -229,11 +227,9 @@ public class ChatProcessor {
             try {
                 chatResponse.setSessionId(chatSession.getId());
                 for (ChatMessage message : chatResponse.getMessages()) {
-                    message.setSessionId(chatSession.getId());
-                    message.setName(assistantSettings.getAssistantName());
                     ChatMessage last = ObjectUtils.getLast(request.getMessages());
                     String parentId = last == null ? null : last.getId();
-                    message.setParentId(parentId);
+                    message.makeInsertable(chatSession.getId(), parentId, assistantSettings.getAssistantName());
                 }
                 session.sendMessage(new TextMessage(objectMapper.writeValueAsString(chatResponse)));
             } catch (Exception e) {

@@ -141,7 +141,7 @@ public class ChatHttpHandler {
         String reasoningSignature
     ) {}
 
-    public static interface  InTranslateCallback {
+    public static interface InTranslateCallback {
         public void onTranslate(AIResponse response);
     }
 

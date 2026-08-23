@@ -15,10 +15,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.te
 import lombok.Data;
 import lombok.experimental.Accessors;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Data
 @Accessors(chain = true)
@@ -30,6 +27,8 @@ public class ChatResponse implements AIResponse {
     public final static String STATUS_CHUNK = "chunk";
     public final static String STATUS_DONE = "done";
     public final static String STATUS_ERROR = "error";
+    public final static String STATUS_TEMP = "temp";
+    public final static String STATUS_TEMP_CHUNK = "temp_chunk";
 
     private String sessionId;
 
@@ -72,6 +71,13 @@ public class ChatResponse implements AIResponse {
         if (!message.isEmpty()) {
             this.sessionId = message.getFirst().getSessionId();
         }
+        return this;
+    }
+
+    public ChatResponse afterTemp(String content, String reasoningContent) {
+        this.status = STATUS_TEMP;
+        this.messages = List.of(new ChatMessage().assistant(content, reasoningContent, List.of()));
+        this.sessionId = UUID.randomUUID().toString();
         return this;
     }
 

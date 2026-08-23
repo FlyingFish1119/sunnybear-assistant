@@ -17,6 +17,7 @@ import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.variable.ControlSign;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
+import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
 import lombok.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private static final Logger log = LoggerFactory.getLogger(ChatWebSocketHandler.class);
 
     private final ServiceProcessor serviceProcessor;
+    private final TempChatProcessor tempChatProcessor;
     private final ChatProcessor chatProcessor;
     private final TaskExecutor chatAsyncExecutor;
     private final ObjectMapper objectMapper;
@@ -51,10 +53,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final Map<String, Integer> activeTaskCount = new ConcurrentHashMap<>();
 
     public ChatWebSocketHandler(ServiceProcessor serviceProcessor,
+                                TempChatProcessor tempChatProcessor,
                                 ChatProcessor chatProcessor,
                                 TaskExecutor chatAsyncExecutor,
                                 ObjectMapper objectMapper) {
         this.serviceProcessor = serviceProcessor;
+        this.tempChatProcessor = tempChatProcessor;
         this.chatProcessor = chatProcessor;
         this.chatAsyncExecutor = chatAsyncExecutor;
         this.objectMapper = objectMapper;
@@ -115,6 +119,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
                 // 检查请求
                 ChatMessageRequest request = new ChatMessageRequest().parseAndValidate(payload, objectMapper);
+
+                if (request.isTemp()) {
+                    tempChatProcessor.chat(request, safeSession);
+                    return;
+                }
 
                 // 处理会话
                 ServiceProcessor.ChatSessionModeParseResult parseResult = serviceProcessor.handleChatSession(request, safeSession, isProModelEnabled());
