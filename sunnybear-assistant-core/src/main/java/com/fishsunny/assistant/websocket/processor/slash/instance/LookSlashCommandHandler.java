@@ -19,6 +19,7 @@ import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandComponent;
 import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandHandler;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -30,10 +31,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+@Slf4j
 @SlashCommandComponent("/look")
 public class LookSlashCommandHandler extends SlashCommandHandler {
-
-    private static final Logger log = LoggerFactory.getLogger(LookSlashCommandHandler.class);
 
     private final ChatMessageService chatMessageService;
 
@@ -187,7 +187,7 @@ public class LookSlashCommandHandler extends SlashCommandHandler {
 
         String header = "## 📜 会话摘要：`" + sessionId.trim() + "`\n\n";
         AtomicBoolean isFirst = new AtomicBoolean(true);
-        chatHttpHandler.translate(chatSession.getId(), aiSettings.getAdapterName(), request, aiSettings.getStream(),
+        chatHttpHandler.translate(chatSession.getId(), aiSettings.getAdapterName(), request, chatAiSettings.getStream(),
                 tr -> {
                     ChatResponse masterResp = (ChatResponse) tr;
                     if (isFirst.get() && StringUtils.hasText(masterResp.getText())) {

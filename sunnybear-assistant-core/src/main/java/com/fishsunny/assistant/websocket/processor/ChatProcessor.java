@@ -291,8 +291,8 @@ public class ChatProcessor {
                     ToolExecutor.ToolExecuteResponse toolResult = toolResults.get(i);
                     try {
                         toolMessages.add(new ChatMessage()
-                                .tool(chatSession.getId(), objectMapper.writeValueAsString(toolResult))
-                                .makeInsertable(last.getId(), toolcall.getFunction().getName(), toolcall.getId())
+                                .tool(toolcall.getId(), objectMapper.writeValueAsString(toolResult))
+                                .makeInsertable(chatSession.getId(), last.getId(), toolcall.getFunction().getName())
                         );
                     } catch (Exception e) {
                         log.error("构建工具消息失败: {}", e.getMessage());
