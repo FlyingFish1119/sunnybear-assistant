@@ -20,6 +20,11 @@ public class StandardAIRequest implements AIRequest {
 
     private List<StandardMessage> messages = new ArrayList<>();
 
+    public StandardAIRequest setMessages(List<StandardMessage> messages) {
+        this.messages = messages == null ? new ArrayList<>() : messages;
+        return this;
+    }
+
     private Boolean stream = false;
 
     private StandardAIThinking thinking;
@@ -40,6 +45,11 @@ public class StandardAIRequest implements AIRequest {
     private ResponseFormat response_format;
 
     private List<StandardToolRegister> tools = new ArrayList<>();
+
+    public StandardAIRequest setTools(List<StandardToolRegister> tools) {
+        this.tools = tools == null ? new ArrayList<>() : tools;
+        return this;
+    }
 
     public StandardAIRequest() {
     }

@@ -20,6 +20,11 @@ public class TextAIResponse implements AIResponse {
 
     private TextChoice[] choices = new TextChoice[0];
 
+    public TextAIResponse setChoices(TextChoice[] choices) {
+        this.choices = choices == null ? new TextChoice[0] : choices;
+        return this;
+    }
+
     private StandardUsage usage;
 
     private String system_fingerprint;

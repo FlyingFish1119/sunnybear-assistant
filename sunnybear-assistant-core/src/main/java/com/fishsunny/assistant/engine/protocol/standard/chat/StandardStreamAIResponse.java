@@ -19,6 +19,11 @@ public class StandardStreamAIResponse implements AIResponse {
 
     private StandardStreamChoice[] choices = new StandardStreamChoice[0];
 
+    public StandardStreamAIResponse setChoices(StandardStreamChoice[] choices) {
+        this.choices = choices == null ? new StandardStreamChoice[0] : choices;
+        return this;
+    }
+
     private String system_fingerprint;
 
     public StandardStreamAIResponse() {

@@ -17,6 +17,11 @@ public class TextStreamAIResponse implements AIResponse {
 
     private TextStreamChoice[] choices = new TextStreamChoice[0];
 
+    public TextStreamAIResponse setChoices(TextStreamChoice[] choices) {
+        this.choices = choices == null ? new TextStreamChoice[0] : choices;
+        return this;
+    }
+
     private String system_fingerprint;
 
     public TextStreamAIResponse() {

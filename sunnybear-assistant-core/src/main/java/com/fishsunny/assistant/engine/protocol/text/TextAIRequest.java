@@ -28,6 +28,11 @@ public class TextAIRequest implements AIRequest {
 
     private List<TextMessage> messages = new ArrayList<>();
 
+    public TextAIRequest setMessages(List<TextMessage> messages) {
+        this.messages = messages == null ? new ArrayList<TextMessage>() : messages;
+        return this;
+    }
+
     private Boolean stream = false;
 
     private StandardAIThinking thinking;
@@ -48,6 +53,10 @@ public class TextAIRequest implements AIRequest {
     private ResponseFormat response_format;
 
     private List<StandardToolRegister> tools = new ArrayList<>();
+
+    public void setTools(List<StandardToolRegister> tools) {
+        this.tools = tools == null ? new ArrayList<StandardToolRegister>() : tools;
+    }
 
     @Data
     @Accessors(chain = true)

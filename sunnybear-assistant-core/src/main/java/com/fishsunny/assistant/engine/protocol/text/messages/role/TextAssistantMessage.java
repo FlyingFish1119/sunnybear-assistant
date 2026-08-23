@@ -30,6 +30,11 @@ public class TextAssistantMessage implements TextMessage {
 
     private List<StandardToolRequest> tool_calls = new ArrayList<>();
 
+    public TextAssistantMessage setTool_calls(List<StandardToolRequest> tool_calls) {
+        this.tool_calls = tool_calls;
+        return this;
+    }
+
     public TextAssistantMessage() {
     }
 

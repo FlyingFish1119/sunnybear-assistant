@@ -25,9 +25,19 @@ public class ChatRequest implements AIRequest {
 
     private List<ChatMessage> messages = new ArrayList<>();
 
+    public ChatRequest setMessages(List<ChatMessage> messages) {
+        this.messages = messages == null ? new ArrayList<>() : messages;
+        return this;
+    }
+
     private ChatSettings settings;
 
     private List<StandardToolRegister> tools = new ArrayList<>();
+
+    public ChatRequest setTools(List<StandardToolRegister> tools) {
+        this.tools = tools == null ? new ArrayList<>() : tools;
+        return this;
+    }
 
     public ChatRequest() {
     }

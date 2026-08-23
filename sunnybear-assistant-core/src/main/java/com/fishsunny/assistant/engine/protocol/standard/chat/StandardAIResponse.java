@@ -20,6 +20,11 @@ public class StandardAIResponse implements AIResponse {
 
     private StandardChoice[] choices = new StandardChoice[0];
 
+    public StandardAIResponse setChoices(StandardChoice[] choices) {
+        this.choices = choices == null ? new StandardChoice[0] : choices;
+        return this;
+    }
+
     private StandardUsage usage;
 
     private String system_fingerprint;

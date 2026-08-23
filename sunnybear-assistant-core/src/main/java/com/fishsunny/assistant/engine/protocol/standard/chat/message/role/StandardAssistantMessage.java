@@ -22,6 +22,11 @@ public class StandardAssistantMessage extends StandardMessage {
 
     private List<StandardToolRequest> tool_calls = new ArrayList<>();
 
+    public StandardAssistantMessage setTool_calls(List<StandardToolRequest> tool_calls) {
+        this.tool_calls = tool_calls == null ? new ArrayList<>() : tool_calls;
+        return this;
+    }
+
     public StandardAssistantMessage() {
     }
 

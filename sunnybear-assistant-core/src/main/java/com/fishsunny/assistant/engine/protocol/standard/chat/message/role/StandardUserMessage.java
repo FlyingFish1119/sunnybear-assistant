@@ -19,6 +19,11 @@ public class StandardUserMessage extends StandardMessage {
 
     private List<StandardContent> content = new ArrayList<>();
 
+    public StandardUserMessage setContent(List<StandardContent> content) {
+        this.content = content == null ? new ArrayList<>() : content;
+        return this;
+    }
+
     public StandardUserMessage() {
     }
 

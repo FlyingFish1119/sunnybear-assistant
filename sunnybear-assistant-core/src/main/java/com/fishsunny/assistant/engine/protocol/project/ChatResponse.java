@@ -37,7 +37,17 @@ public class ChatResponse implements AIResponse {
 
     private List<ChatMessage> messages = new ArrayList<>();
 
+    public ChatResponse setMessages(List<ChatMessage> messages) {
+        this.messages = messages == null ? new ArrayList<>() : messages;
+        return this;
+    }
+
     private Map<String, Object> metadata = new HashMap<>();
+
+    public ChatResponse setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata == null ? new HashMap<>() : metadata;
+        return this;
+    }
 
     public ChatResponse() {
     }
