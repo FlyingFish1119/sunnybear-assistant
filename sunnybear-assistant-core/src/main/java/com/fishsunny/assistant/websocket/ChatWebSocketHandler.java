@@ -172,10 +172,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     /** 将错误信息通过 ChatResponse 推送到前端 */
     private void sendErrorToFrontend(WebSocketSession safeSession, String sessionId, String errorMessage) {
         try {
-            ChatResponse errorResp = new ChatResponse()
-                    .setStatus(ChatResponse.STATUS_ERROR)
-                    .setSessionId(sessionId != null ? sessionId : "")
-                    .setMessages(List.of(new ChatMessage().assistant(errorMessage, null, null)));
+            ChatResponse errorResp = new ChatResponse().afterError(sessionId != null ? sessionId : "", errorMessage);
             safeSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(errorResp)));
         } catch (Exception ignored) {
             log.warn("发送错误信息到前端失败，连接可能已断开");

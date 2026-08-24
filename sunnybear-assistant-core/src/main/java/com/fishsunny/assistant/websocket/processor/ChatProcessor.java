@@ -127,7 +127,7 @@ public class ChatProcessor {
         }
 
         SlashCommandHandler.SlashCommandContext slashCommandContext = new SlashCommandHandler.SlashCommandContext(
-                userMessage.resolveText(), session, chatSession, originMessages, new ArrayList<>()
+                userMessage.resolveText(), session, chatSession, messages, new ArrayList<>()
         );
         if (slashCommandExecutor.runSlashFactory(slashCommandContext)) {
             return slashCommandContext.resultMessage();

@@ -28,7 +28,8 @@ public abstract class SlashCommandHandler {
 
     protected ChatSession chatSession;
 
-    protected List<ChatMessage> originMessages;
+    /** 组装完成的完整消息列表（首条为处理后的 system 提示词，其后为对话消息） */
+    protected List<ChatMessage> messages;
 
     protected List<ChatMessage> resultMessage;
 
@@ -55,7 +56,7 @@ public abstract class SlashCommandHandler {
 
     public final void run(SlashCommandContext context, String originArgs) throws Exception {
         this.chatSession = context.chatSession();
-        this.originMessages = context.originMessages();
+        this.messages = context.messages();
         this.session = context.session();
         this.resultMessage = context.resultMessage();
         handle(resolveArgs(originArgs));
@@ -65,7 +66,8 @@ public abstract class SlashCommandHandler {
             String originCommand,
             WebSocketSession session,
             ChatSession chatSession,
-            List<ChatMessage> originMessages,
+            /** 组装完成的完整消息列表（首条为处理后的 system 提示词，其后为对话消息） */
+            List<ChatMessage> messages,
             List<ChatMessage> resultMessage
     ) { }
 }

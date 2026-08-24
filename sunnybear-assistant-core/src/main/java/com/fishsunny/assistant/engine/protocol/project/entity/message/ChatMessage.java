@@ -57,10 +57,25 @@ public class ChatMessage {
 
     private List<MessageContent> contents = new ArrayList<>();
 
+    public ChatMessage setContents(List<MessageContent> contents) {
+        this.contents = contents == null ? new ArrayList<>() : contents;
+        return this;
+    }
+
     // role = "assistant"
     private List<ChatToolRequest> toolCalls = new ArrayList<>();
 
+    public ChatMessage setToolCalls(List<ChatToolRequest> toolCalls) {
+        this.toolCalls = toolCalls == null ? new ArrayList<>() : toolCalls;
+        return this;
+    }
+
     private Map<String, Object> extension = new HashMap<>();
+
+    public ChatMessage setExtension(Map<String, Object> extension) {
+        this.extension = extension == null ? new HashMap<>() : extension;
+        return this;
+    }
 
     private Boolean active;
 
@@ -84,60 +99,60 @@ public class ChatMessage {
     }
 
     public ChatMessage tool(String toolCallId, String result) {
-        this.toolCallId = toolCallId;
-        this.role = ROLE_TOOL;
+        setToolCallId(toolCallId);
+        setRole(ROLE_TOOL);
         text(result);
         return this;
     }
 
     public ChatMessage user(String text) {
-        this.role = ROLE_USER;
+        setRole(ROLE_USER);
         text(text);
         return this;
     }
     public ChatMessage user(String text, MessageContent content) {
-        this.role = ROLE_USER;
+        setRole(ROLE_USER);
         text(text);
         this.contents.add(content);
         return this;
     }
     public ChatMessage user(String text, List<MessageContent> contents) {
-        this.role = ROLE_USER;
+        setRole(ROLE_USER);
         text(text); 
         this.contents.addAll(contents);
         return this;
     }
     public ChatMessage userWithImage(String text, String imageUrl) {
-        this.role = ROLE_USER;
+        setRole(ROLE_USER);
         text(text);
         this.contents.add(new ImageContent(imageUrl));
         return this;
     }
     public ChatMessage userWithVideo(String text, String videoUrl) {
-        this.role = ROLE_USER;
+        setRole(ROLE_USER);
         text(text);
         this.contents.add(new VideoContent(videoUrl));
         return this;
     }
 
     public ChatMessage system(String text) {
-        this.role = ROLE_SYSTEM;
+        setRole(ROLE_SYSTEM);
         text(text);
         return this;
     }
     
     public ChatMessage assistant(String text, String reasoningContent, List<ChatToolRequest> toolCalls) {
-        this.role = ROLE_ASSISTANT;
+        setRole(ROLE_ASSISTANT);
         text(text);
-        this.reasoningContent = reasoningContent;
-        this.toolCalls = toolCalls == null ? new ArrayList<>() : toolCalls;
+        setReasoningContent(reasoningContent);
+        setToolCalls(toolCalls);
         return this;
     }
 
     public ChatMessage text(String text) {
         List<MessageContent> contents = new ArrayList<>();
         contents.add(new TextContent(text));
-        this.contents = contents;
+        setContents(contents);
         return this;
     }
 
@@ -147,10 +162,14 @@ public class ChatMessage {
         }
 
         StringBuilder text = new StringBuilder();
-        for (MessageContent content : contents) {
+        for (int i = 0; i < contents.size(); i++) {
+            MessageContent content = contents.get(i);
             if (content instanceof TextContent textContent) {
                 String append = textContent.getContent() == null ? "" : textContent.getContent();
-                text.append(append).append("\n\n");
+                text.append(append);
+                if (i < contents.size() - 1) {
+                    text.append("\n\n");
+                }
             }
         }
         return text.toString();

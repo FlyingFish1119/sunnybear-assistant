@@ -214,7 +214,7 @@ public class LookSlashCommandHandler extends SlashCommandHandler {
     private void handleMessage(String content) {
         ChatMessage msg =  new ChatMessage()
                 .assistant(content, "", List.of())
-                .makeInsertable(chatSession.getId(), ChatMessage.getParentId(originMessages), assistantSettings.getAssistantName());
+                .makeInsertable(chatSession.getId(), ChatMessage.getParentId(messages), assistantSettings.getAssistantName());
         super.insertMessage(msg, chatMessageService);
         super.sendMessage(msg, objectMapper);
         super.resultMessage.add(msg);

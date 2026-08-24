@@ -21,12 +21,13 @@ import java.util.*;
 @Accessors(chain = true)
 public class ChatResponse implements AIResponse {
 
+    public final static String STATUS_CHUNK = "chunk";
+    public final static String STATUS_DONE = "done";
+
+    public final static String STATUS_ERROR = "error";
     public final static String STATUS_INIT_USER = "init_user";
     public final static String STATUS_INIT_ASSISTANT = "init_assistant";
     public final static String STATUS_TOOL_RESPONSE = "tool_response";
-    public final static String STATUS_CHUNK = "chunk";
-    public final static String STATUS_DONE = "done";
-    public final static String STATUS_ERROR = "error";
     public final static String STATUS_TEMP = "temp";
     public final static String STATUS_TEMP_CHUNK = "temp_chunk";
 
@@ -74,6 +75,24 @@ public class ChatResponse implements AIResponse {
         return this;
     }
 
+    public ChatResponse afterError(String sessionId, String errorMes) {
+        this.status = STATUS_ERROR;
+        this.messages = List.of(new ChatMessage().assistant(errorMes, null, null));
+        this.sessionId = sessionId;
+        return this;
+    }
+
+    public ChatResponse afterTemp(ChatResponse response) {
+        switch (response.getStatus()) {
+            case STATUS_CHUNK -> this.status = STATUS_TEMP_CHUNK;
+            case STATUS_DONE -> this.status = STATUS_TEMP;
+            default -> throw new RuntimeException("Invalid status: " + response.getStatus());
+        }
+        setMessages(response.getMessages());
+        setMetadata(response.getMetadata());
+        this.sessionId = response.getSessionId();
+        return this;
+    }
     public ChatResponse afterTemp(String content, String reasoningContent) {
         this.status = STATUS_TEMP;
         this.messages = List.of(new ChatMessage().assistant(content, reasoningContent, List.of()));

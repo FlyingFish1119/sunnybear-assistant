@@ -77,7 +77,7 @@ public class NetExploreTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        联网探索信息的子 Agent（每次需确认）。接受一个收集目标，自动搜索、阅读网页、评估结果，\
+                        联网探索信息的子 Agent。接受一个收集目标，自动搜索、阅读网页、评估结果，\
                         最终返回一份结构化的收集报告。适合需要深度调研某个主题的场景。\
                         设置 fast=true 可跳过深度探索，直接返回搜索结果。""")
                 .setRequired(List.of("target"));
@@ -115,12 +115,42 @@ public class NetExploreTool implements ToolHandler {
         // ========== fast 模式：直接调用搜索引擎返回结果（无需确认） ==========
         if (arguments.isFast()) {
             try {
-                Map<String, Object> searchArgs = Map.of(
+                Map<String, Object> metasoSearchArgs = Map.of(
                         "q", arguments.getTarget(),
-                        "size", 10,
-                        "scope", "webpage"
+                        "size", 5,
+                        "scope", "webpage",
+                        "engineName", "metaso"
                 );
-                return webSearchTool.action(objectMapper.writeValueAsString(searchArgs), context);
+                Map<String, Object> serperSearchArgs = Map.of(
+                        "q", arguments.getTarget(),
+                        "size", 5,
+                        "scope", "webpage",
+                        "engineName", "serper"
+                );
+                boolean metasoSuccess = false;
+                boolean serperSuccess = false;
+                ToolExecutor.ToolExecuteResponse metasoResp;
+                ToolExecutor.ToolExecuteResponse serperResp;
+                try {
+                    metasoResp = webSearchTool.action(objectMapper.writeValueAsString(metasoSearchArgs), context);
+                    metasoSuccess = true;
+                } catch (ToolExecutor.ToolExecuteException e) {
+                    log.warn("Metaso search failed: {}", e.getMessage());
+                    metasoResp = new ToolExecutor.ToolExecuteResponse(NAME, "Metaso search failed: " + e.getMessage());
+                }
+                try {
+                    serperResp = webSearchTool.action(objectMapper.writeValueAsString(serperSearchArgs), context);
+                    serperSuccess = true;
+                } catch (ToolExecutor.ToolExecuteException e) {
+                    log.warn("Serper search failed: {}", e.getMessage());
+                    serperResp = new ToolExecutor.ToolExecuteResponse(NAME, "Serper search failed: " + e.getMessage());
+                }
+                String resp = objectMapper.writeValueAsString(List.of(metasoResp, serperResp));
+                if (metasoSuccess || serperSuccess) {
+                    return new ToolExecutor.ToolExecuteResponse(NAME, resp);
+                } else {
+                    throw new ToolExecutor.ToolExecuteException(resp);
+                }
             } catch (ToolExecutor.ToolExecuteException e) {
                 throw e;
             } catch (Exception e) {
@@ -307,7 +337,10 @@ public class NetExploreTool implements ToolHandler {
                 - 从**多个角度、多个关键词**搜索，确保覆盖面
                 - 对高质量来源（官方文档、权威媒体、学术论文）优先深入阅读
                 - 遇到矛盾信息时交叉验证
-                - 连续两轮无有价值发现时，停止收集
+                - 在三轮搜索仍无有价值发现时，停止收集。比如：
+                    1. 已经尝试了多个关键词和搜索角度，但仍然没有有价值发现。
+                    2. 搜集到的信息无法验证其真实性或可靠性。
+                    3. 信息之间始终互相矛盾，无法确定真相。
 
                 ## 最终报告格式
                 当你认为信息已收集充分时，**停止调用工具**，输出最终报告：

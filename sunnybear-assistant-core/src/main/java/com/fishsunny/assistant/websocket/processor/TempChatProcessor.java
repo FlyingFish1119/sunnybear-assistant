@@ -59,11 +59,8 @@ public class TempChatProcessor {
         String tempId = UUID.randomUUID().toString();
 
         ChatHttpHandler.InTranslateCallback inTranslateCallback = response -> {
-            ChatResponse chatResponse = (ChatResponse) response;
-            chatResponse.setStatus(ChatResponse.STATUS_TEMP_CHUNK).setSessionId(tempId);
-            String respJson ;
             try {
-                respJson = objectMapper.writeValueAsString(chatResponse);
+                String respJson = objectMapper.writeValueAsString(new ChatResponse().afterTemp((ChatResponse) response));
                 session.sendMessage(new TextMessage(respJson));
             } catch (Exception e) {
                 log.warn("Failed to write chat response to JSON in inTranslateCallback: {}", e.getMessage());

@@ -383,6 +383,8 @@
      */
     const SLASH_COMMANDS = [
         { name: '/look', desc: '查看指定会话的对话记录', usage: '/look', icon: 'eye', subCommand: 'sessions' },
+        { name: '/preview', desc: '显示当前处理后的系统提示词', usage: '/preview', icon: 'scroll-text' },
+        { name: '/fast-search', desc: '联网快速搜索并整理为易读简报', usage: '/fast-search <关键字>', icon: 'search' },
     ];
 
     const app = Vue.createApp({
@@ -743,6 +745,7 @@
             },
 
             /**
+             * 
              * 斜杠指令面板键盘导航。
              * 由 auto-resize-textarea 的 @keydown 事件触发。
              */

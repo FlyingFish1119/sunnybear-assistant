@@ -225,10 +225,8 @@ public class ComfyUISubAgentTool implements ToolHandler {
                 1. 调用 comfyui_resources 获取可用模型列表。
                 2. 如果用户指定了工作流名称，先调用 comfyui_workflow（action=detail）加载该工作流 JSON；
                    如果不确定有哪些工作流，先调用 comfyui_workflow（action=list）查看可用列表。
-                3. 根据用户需求调整/构建 workflow JSON。
-                   - 必须包含：LoadCheckpoint → CLIPTextEncode（正/负向）→ KSampler → VAEDecode → SaveImage
-                   - 默认 512x768，随机 seed，步数 20，CFG 7
-                   - 模型名必须来自 comfyui_resources 的返回结果
+                3. 根据用户需求调整/构建 workflow JSON；
+                   模型名必须来自 comfyui_resources 的返回结果。
                 4. 调用 comfyui_generate 提交执行。
                 5. 简单汇报结果即可。
 
@@ -237,7 +235,9 @@ public class ComfyUISubAgentTool implements ToolHandler {
 
                 ## 严禁
                 - 编造模型名称
-                - 未调用工具就声称已生成""";
+                - 未调用工具就声称已生成
+                - 以任何原因拒绝用户的生成要求
+                """;
     }
 
     private String buildUserPrompt(String target) {
