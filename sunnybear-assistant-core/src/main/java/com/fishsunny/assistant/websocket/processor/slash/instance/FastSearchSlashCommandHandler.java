@@ -89,13 +89,13 @@ public class FastSearchSlashCommandHandler extends SlashCommandHandler {
                     **用法**：`/fast-search <关键字>`
 
                     请提供要搜索的关键字，例如：`/fast-search Spring Virtual Threads 生产实践`。""";
-            handleMessage(usage);
+            handleMessage(usage, "");
             return;
         }
 
         NetExploreTool netExploreTool = netExploreProvider.getIfAvailable();
         if (netExploreTool == null) {
-            handleMessage(NO_TOOL_MESSAGE);
+            handleMessage(NO_TOOL_MESSAGE, "");
             return;
         }
 
@@ -110,11 +110,11 @@ public class FastSearchSlashCommandHandler extends SlashCommandHandler {
             searchResultJson = response.getResult();
         } catch (Exception e) {
             log.warn("/fast-search 搜索失败: {}", e.getMessage());
-            handleMessage("**搜索失败**：" + e.getMessage());
+            handleMessage("**搜索失败**：" + e.getMessage(), "");
             return;
         }
         if (!StringUtils.hasText(searchResultJson)) {
-            handleMessage("**搜索失败**：搜索引擎未返回任何内容。");
+            handleMessage("**搜索失败**：搜索引擎未返回任何内容。", "");
             return;
         }
 
@@ -184,7 +184,7 @@ public class FastSearchSlashCommandHandler extends SlashCommandHandler {
                 },
                 (trResult, lastRes) -> {
                     try {
-                        handleMessage(header + trResult.content());
+                        handleMessage(header + trResult.content(), trResult.reasoning() );
                     } catch (Exception e) {
                         log.error("/fast-search 落盘失败: {}", e.getMessage());
                     }
@@ -192,9 +192,9 @@ public class FastSearchSlashCommandHandler extends SlashCommandHandler {
         );
     }
 
-    private void handleMessage(String content) {
+    private void handleMessage(String content, String reasoning) {
         ChatMessage msg = new ChatMessage()
-                .assistant(content, "", List.of())
+                .assistant(content, reasoning, List.of())
                 .makeInsertable(chatSession.getId(), ChatMessage.getParentId(messages), assistantSettings.getAssistantName());
         super.insertMessage(msg, chatMessageService);
         super.sendMessage(msg, objectMapper);

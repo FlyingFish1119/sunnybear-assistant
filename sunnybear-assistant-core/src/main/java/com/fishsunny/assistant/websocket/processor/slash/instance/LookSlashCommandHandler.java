@@ -77,7 +77,7 @@ public class LookSlashCommandHandler extends SlashCommandHandler {
                     **用法**：`/look <sessionId> [关注点]`
                     
                     请提供要查看的会话 ID。在输入框中输入 `/look` 可从侧边栏选择会话。""";
-            handleMessage(usage);
+            handleMessage(usage, "");
             return;
         }
 
@@ -87,12 +87,12 @@ public class LookSlashCommandHandler extends SlashCommandHandler {
             history = chatMessageService.getConversationHistory(sessionId.trim());
         } catch (Exception e) {
             String err = "**查询失败**：会话 `" + sessionId + "` 不存在或无法访问。";
-            handleMessage(err);
+            handleMessage(err, "");
             return;
         }
         if (CollectionUtils.isEmpty(history)) {
             String empty = "**会话 `" + sessionId + "` 暂无对话记录。**";
-            handleMessage(empty);
+            handleMessage(empty, "");
             return;
         }
 
@@ -203,7 +203,7 @@ public class LookSlashCommandHandler extends SlashCommandHandler {
                 },
                 (trResult, lastRes) -> {
                     try {
-                        handleMessage(header + trResult.content());
+                        handleMessage(header + trResult.content(), trResult.reasoning());
                     } catch (Exception e) {
                         log.error("/look 落盘失败: {}", e.getMessage());
                     }
@@ -211,9 +211,9 @@ public class LookSlashCommandHandler extends SlashCommandHandler {
         );
     }
 
-    private void handleMessage(String content) {
+    private void handleMessage(String content, String reasoning) {
         ChatMessage msg =  new ChatMessage()
-                .assistant(content, "", List.of())
+                .assistant(content, reasoning, List.of())
                 .makeInsertable(chatSession.getId(), ChatMessage.getParentId(messages), assistantSettings.getAssistantName());
         super.insertMessage(msg, chatMessageService);
         super.sendMessage(msg, objectMapper);

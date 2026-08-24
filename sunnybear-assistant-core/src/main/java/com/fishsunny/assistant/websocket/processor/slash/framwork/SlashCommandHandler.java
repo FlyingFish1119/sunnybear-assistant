@@ -66,7 +66,6 @@ public abstract class SlashCommandHandler {
             String originCommand,
             WebSocketSession session,
             ChatSession chatSession,
-            /** 组装完成的完整消息列表（首条为处理后的 system 提示词，其后为对话消息） */
             List<ChatMessage> messages,
             List<ChatMessage> resultMessage
     ) { }
