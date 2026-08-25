@@ -33,7 +33,6 @@
         <poi.version>5.2.5</poi.version>
         <pdfbox.version>3.0.2</pdfbox.version>
         <playwright.version>1.49.0</playwright.version>
-        <mcp.version>2.0.0</mcp.version>
     </properties>
 
     <dependencies>

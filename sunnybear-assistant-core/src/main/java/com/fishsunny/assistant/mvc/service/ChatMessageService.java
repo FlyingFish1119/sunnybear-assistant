@@ -31,6 +31,14 @@ public interface ChatMessageService {
     public ChatMessage update(ChatMessage chatMessage) throws Exception;
 
     /**
+     * 替换一条聊天消息
+     *
+     * @param chatMessage 消息对象（需包含 id）
+     * @return 受影响的行数
+     */
+    public ChatMessage replace(ChatMessage chatMessage) throws Exception;
+
+    /**
      * 根据 ID 删除一条消息
      *
      * @param id 消息 ID

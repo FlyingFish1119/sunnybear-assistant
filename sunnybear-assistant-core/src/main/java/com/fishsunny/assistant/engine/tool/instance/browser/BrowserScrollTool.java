@@ -11,7 +11,7 @@ package com.fishsunny.assistant.engine.tool.instance.browser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.extension.PlaywrightBrowserService;
+import com.fishsunny.assistant.engine.tool.service.browser.PlaywrightBrowserService;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;

@@ -46,7 +46,7 @@ public class ChatAsyncConfig {
 
     /**
      * 共享 HttpClient 实例，供所有 AI 适配器复用。
-     * 使用 HTTP/1.1 避免 HTTP/2 连接复用带来的潜在死锁问题。
+     * 使用 HTTP/1.1 避免 HTTP/2 连接复用
      */
     @Bean
     public HttpClient sharedHttpClient() {

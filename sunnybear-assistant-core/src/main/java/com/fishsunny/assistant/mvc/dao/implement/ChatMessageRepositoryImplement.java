@@ -159,6 +159,45 @@ public class ChatMessageRepositoryImplement implements ChatMessageRepository {
     }
 
     @Override
+    public ChatMessage replace(ChatMessage chatMessage) {
+        String sql = """
+                UPDATE chat_message
+                SET parent_id = ?,
+                    tool_call_id = ?,
+                    name = ?,
+                    role = ?,
+                    reasoning_content = ?,
+                    contents = ?,
+                    active = ?,
+                    tool_calls = ?,
+                    extension = ?,
+                    reasoning_signature = ?
+                WHERE id = ?
+                """;
+        String contentsJson;
+        try {
+            contentsJson = objectMapper.writeValueAsString(chatMessage.getContents());
+        } catch (Exception e) {
+            log.error("转换消息内容失败: {}", e.getMessage(), e);
+            throw new RuntimeException("转换消息内容失败: " + e.getMessage());
+        }
+        jdbcTemplate.update(sql,
+                chatMessage.getParentId(),
+                chatMessage.getToolCallId(),
+                chatMessage.getName(),
+                chatMessage.getRole(),
+                chatMessage.getReasoningContent(),
+                contentsJson,
+                chatMessage.getActive(),
+                chatMessage.getToolCalls(),
+                chatMessage.getExtension(),
+                chatMessage.getReasoningSignature(),
+                chatMessage.getId()
+        );
+        return selectById(chatMessage.getId());
+    }
+
+    @Override
     public ChatMessage deleteById(String id) {
         ChatMessage chatMessage = selectById(id);
         if (chatMessage == null) {

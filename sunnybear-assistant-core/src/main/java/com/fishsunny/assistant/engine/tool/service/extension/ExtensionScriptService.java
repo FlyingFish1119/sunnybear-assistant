@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.tool.extension;
+package com.fishsunny.assistant.engine.tool.service.extension;
 
 /*
  * @Usage 扩展脚本服务：扫描 tool-extension/ 目录，解析脚本元数据，构建注入描述

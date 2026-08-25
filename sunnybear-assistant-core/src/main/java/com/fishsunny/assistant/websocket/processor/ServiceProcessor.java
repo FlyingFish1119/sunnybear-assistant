@@ -32,9 +32,11 @@ import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.variable.ControlSign;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -387,16 +389,6 @@ public class ServiceProcessor {
         // 停用旧的用户消息分支（包括所有子孙消息）
         chatMessageService.deactivateBranch(editMessageId);
 
-        // 创建新的用户消息：新文本 + 保留的旧文件附件
-        //ChatMessage chatMessage = new ChatMessage();
-        //chatMessage.setName(userSettings.getUsername());
-        //chatMessage.setRole(ChatMessage.ROLE_USER);
-        //chatMessage.setSessionId(request.getSessionId());
-        //chatMessage.setParentId(parentId);
-        //List<MessageContent> contents = new ArrayList<>();
-        //contents.add(new TextContent(request.getContent()));
-        //contents.addAll(preservedContents);
-        //chatMessage.setContents(contents);
         ChatMessage chatMessage = new ChatMessage()
                 .user(request.getContent(), preservedContents)
                 .makeInsertable(request.getSessionId(), parentId, userSettings.getUsername());
@@ -430,6 +422,22 @@ public class ServiceProcessor {
     private ChatMessage appendUserMessage(String sessionId, String parentId, String prompt,
                                           List<String> fileUrls, WebSocketSession session) throws Exception {
 
+        if (StringUtils.hasText(parentId)) {
+            ChatMessage lastMessage = chatMessageService.findById(parentId);
+            if (ChatMessage.ROLE_TOOL.equals(lastMessage.getRole())) {
+                ChatMessage paddingAssistant = new ChatMessage()
+                        .assistant("", "", List.of())
+                        .makeInsertable(sessionId, lastMessage.getParentId(), userSettings.getUsername());
+                ChatMessage saved = chatMessageService.save(paddingAssistant);
+                parentId = saved.getId();
+            }
+            if (ChatMessage.ROLE_ASSISTANT.equals(lastMessage.getRole()) && !CollectionUtils.isEmpty(lastMessage.getToolCalls())) {
+                ChatMessage fixAssistant = new ChatMessage();
+                BeanUtils.copyProperties(lastMessage, fixAssistant);
+                fixAssistant.setToolCalls(List.of());
+                chatMessageService.replace(fixAssistant);
+            }
+        }
         List<MessageContent> fileContents = MessageContent.files(fileUrls);
         ChatMessage chatMessage = new ChatMessage()
                 .user(prompt, fileContents)

@@ -72,6 +72,11 @@ public class ChatMessageServiceImplement implements ChatMessageService {
     }
 
     @Override
+    public ChatMessage replace(ChatMessage chatMessage) throws Exception {
+        return chatMessageRepository.replace(chatMessage);
+    }
+
+    @Override
     @Transactional
     public ChatMessage deleteById(String id) {
         return chatMessageRepository.deleteById(id);

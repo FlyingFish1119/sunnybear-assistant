@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.tool.extension;
+package com.fishsunny.assistant.engine.tool.service.browser;
 
 /*
  * @Usage 无头浏览器服务 - 使用 Playwright 渲染 JS 动态页面，终极反爬对抗 + 浏览器自动化交互

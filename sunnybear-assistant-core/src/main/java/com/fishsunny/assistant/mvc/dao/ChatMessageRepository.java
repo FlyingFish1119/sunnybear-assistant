@@ -18,6 +18,8 @@ public interface ChatMessageRepository {
 
     public ChatMessage update(ChatMessage chatMessage);
 
+    public ChatMessage replace(ChatMessage chatMessage);
+
     public ChatMessage deleteById(String id);
 
     public int deleteBySessionId(String sessionId);

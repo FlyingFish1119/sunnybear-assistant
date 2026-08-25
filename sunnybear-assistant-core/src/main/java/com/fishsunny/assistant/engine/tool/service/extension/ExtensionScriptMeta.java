@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.tool.extension;
+package com.fishsunny.assistant.engine.tool.service.extension;
 
 /*
  * @Usage 扩展脚本元数据，使用 Jackson YAML 解析 tool-extension/ 目录下的 .yaml/.yml 脚本文件
