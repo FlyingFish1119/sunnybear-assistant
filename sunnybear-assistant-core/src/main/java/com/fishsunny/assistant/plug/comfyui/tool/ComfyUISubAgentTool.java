@@ -6,8 +6,9 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.engine.tool.AgentToolKit;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framwork.SubAgentToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.NetToolKit;
@@ -30,9 +31,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
-@ToolKitComponent(NetToolKit.class)
-@ConditionalOnExpression("${plug.comfyui.tool.enable:true} && ${plug.comfyui.tool.agent.enable:true}")
-public class ComfyUISubAgentTool implements ToolHandler {
+@ToolKitComponent(AgentToolKit.class)
+@ConditionalOnExpression("${engine.tool.agent.enable:true} && ${plug.comfyui.tool.agent.enable:true}")
+public class ComfyUISubAgentTool implements SubAgentToolHandler {
 
     public static final String NAME = "comfyui_tool";
 

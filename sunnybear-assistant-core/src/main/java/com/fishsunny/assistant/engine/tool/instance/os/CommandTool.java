@@ -23,6 +23,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.utils.ToolContextBuilder;
 import com.fishsunny.assistant.variable.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -182,32 +183,35 @@ public class CommandTool implements ToolHandler {
                 throw new ToolExecutor.ToolExecuteException("参数 command 不能为空");
             }
 
-            switch (settings.getMode()) {
-                case AUTO:
-                    if (isBlacklisted(arguments.getCommand())) {
-                        ask(uuid, session, arguments);
-                    } else if (!isWhitelisted(arguments.getCommand())) {
-                        if (isDanger(arguments)) {
+            // 无审查模式：跳过黑名单/白名单/AI 危险检测与用户确认，直接执行
+            if (!ToolContextBuilder.isUnreviewed(context)) {
+                switch (settings.getMode()) {
+                    case AUTO:
+                        if (isBlacklisted(arguments.getCommand())) {
                             ask(uuid, session, arguments);
+                        } else if (!isWhitelisted(arguments.getCommand())) {
+                            if (isDanger(arguments)) {
+                                ask(uuid, session, arguments);
+                            }
                         }
-                    }
-                    break;
-                case ALWAYS_ASKED:
-                    ask(uuid, session, arguments);
-                    break;
-                case NEVER_ASKED:
-                    break;
-                case ALWAYS_REJECT_DANGER:
-                    if (isBlacklisted(arguments.getCommand())) {
-                        throw new ToolExecutor.ToolExecuteException("此命令行命令被拒绝执行");
-                    } else if (!isWhitelisted(arguments.getCommand())) {
-                        if (isDanger(arguments)) {
+                        break;
+                    case ALWAYS_ASKED:
+                        ask(uuid, session, arguments);
+                        break;
+                    case NEVER_ASKED:
+                        break;
+                    case ALWAYS_REJECT_DANGER:
+                        if (isBlacklisted(arguments.getCommand())) {
                             throw new ToolExecutor.ToolExecuteException("此命令行命令被拒绝执行");
+                        } else if (!isWhitelisted(arguments.getCommand())) {
+                            if (isDanger(arguments)) {
+                                throw new ToolExecutor.ToolExecuteException("此命令行命令被拒绝执行");
+                            }
                         }
-                    }
-                    break;
-                default:
-                    throw new ToolExecutor.ToolExecuteException("Command 工具的模式设置错误[" + settings.getMode() +"]，导致该工具无法执行");
+                        break;
+                    default:
+                        throw new ToolExecutor.ToolExecuteException("Command 工具的模式设置错误[" + settings.getMode() +"]，导致该工具无法执行");
+                }
             }
 
             if (!session.isOpen()) {

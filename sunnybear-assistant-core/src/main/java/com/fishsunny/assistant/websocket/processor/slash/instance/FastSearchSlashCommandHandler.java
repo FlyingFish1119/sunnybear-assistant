@@ -15,7 +15,7 @@ import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.instance.net.NetExploreTool;
+import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class FastSearchSlashCommandHandler extends SlashCommandHandler {
 
     private static final String NO_TOOL_MESSAGE =
-            "**fast-search 不可用**：`net_explore_tool` 当前未启用，请检查设置中的联网探索工具开关。";
+            "**fast-search 不可用**：`web_search_tool` 当前未启用，请检查设置中的联网搜索工具开关。";
 
     private final ChatMessageService chatMessageService;
 
@@ -51,8 +51,8 @@ public class FastSearchSlashCommandHandler extends SlashCommandHandler {
 
     private final ObjectMapper objectMapper;
 
-    /** net_explore_tool 为条件装配 Bean（可在设置中禁用），允许缺席 */
-    private final ObjectProvider<NetExploreTool> netExploreProvider;
+    /** web_search_tool 为条件装配 Bean（可在设置中禁用），允许缺席 */
+    private final ObjectProvider<WebSearchTool> webSearchProvider;
 
     public FastSearchSlashCommandHandler(ChatMessageService chatMessageService,
                                          AssistantSettings assistantSettings,
@@ -60,14 +60,14 @@ public class FastSearchSlashCommandHandler extends SlashCommandHandler {
                                          @Qualifier(AISettings.CUB) AISettings cubSettings,
                                          ChatHttpHandler chatHttpHandler,
                                          ObjectMapper objectMapper,
-                                         ObjectProvider<NetExploreTool> netExploreProvider) {
+                                         ObjectProvider<WebSearchTool> webSearchProvider) {
         this.chatMessageService = chatMessageService;
         this.assistantSettings = assistantSettings;
         this.chatAiSettings = chatAiSettings;
         this.cubSettings = cubSettings;
         this.chatHttpHandler = chatHttpHandler;
         this.objectMapper = objectMapper;
-        this.netExploreProvider = netExploreProvider;
+        this.webSearchProvider = webSearchProvider;
     }
 
     @Override
@@ -93,21 +93,50 @@ public class FastSearchSlashCommandHandler extends SlashCommandHandler {
             return;
         }
 
-        NetExploreTool netExploreTool = netExploreProvider.getIfAvailable();
-        if (netExploreTool == null) {
+        WebSearchTool webSearchTool = webSearchProvider.getIfAvailable();
+        if (webSearchTool == null) {
             handleMessage(NO_TOOL_MESSAGE, "");
             return;
         }
 
-        // ========== 第一步：net_explore_tool 快速模式（metaso + serper 双引擎原始结果） ==========
+        // ========== 第一步：web_search_tool 双引擎原始结果（metaso + serper） ==========
         String searchResultJson;
         try {
-            String arguments = objectMapper.writeValueAsString(Map.of(
-                    "target", keyword,
-                    "fast", true
-            ));
-            ToolExecutor.ToolExecuteResponse response = netExploreTool.action(arguments, Map.of());
-            searchResultJson = response.getResult();
+            Map<String, Object> metasoSearchArgs = Map.of(
+                    "q", keyword,
+                    "size", 5,
+                    "scope", "webpage",
+                    "engineName", "metaso"
+            );
+            Map<String, Object> serperSearchArgs = Map.of(
+                    "q", keyword,
+                    "size", 5,
+                    "scope", "webpage",
+                    "engineName", "serper"
+            );
+            boolean metasoSuccess = false;
+            boolean serperSuccess = false;
+            ToolExecutor.ToolExecuteResponse metasoResp;
+            ToolExecutor.ToolExecuteResponse serperResp;
+            try {
+                metasoResp = webSearchTool.action(objectMapper.writeValueAsString(metasoSearchArgs), Map.of());
+                metasoSuccess = true;
+            } catch (ToolExecutor.ToolExecuteException e) {
+                log.warn("Metaso search failed: {}", e.getMessage());
+                metasoResp = new ToolExecutor.ToolExecuteResponse(WebSearchTool.NAME, "Metaso search failed: " + e.getMessage());
+            }
+            try {
+                serperResp = webSearchTool.action(objectMapper.writeValueAsString(serperSearchArgs), Map.of());
+                serperSuccess = true;
+            } catch (ToolExecutor.ToolExecuteException e) {
+                log.warn("Serper search failed: {}", e.getMessage());
+                serperResp = new ToolExecutor.ToolExecuteResponse(WebSearchTool.NAME, "Serper search failed: " + e.getMessage());
+            }
+            if (!(metasoSuccess || serperSuccess)) {
+                handleMessage("**搜索失败**：metaso 与 serper 双引擎均调用失败，请稍后重试。", "");
+                return;
+            }
+            searchResultJson = objectMapper.writeValueAsString(List.of(metasoResp, serperResp));
         } catch (Exception e) {
             log.warn("/fast-search 搜索失败: {}", e.getMessage());
             handleMessage("**搜索失败**：" + e.getMessage(), "");

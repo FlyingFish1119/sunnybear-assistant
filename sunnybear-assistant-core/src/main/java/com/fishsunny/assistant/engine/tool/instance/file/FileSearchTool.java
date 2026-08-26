@@ -1,7 +1,7 @@
 package com.fishsunny.assistant.engine.tool.instance.file;
 
 /*
- * @Usage 文件内容搜索工具 - 在目录中递归搜索文件内容，支持正则匹配、glob 过滤和分页
+ * @Usage 文件内容搜索工具 - 基于 ripgrep 后端，在目录中递归搜索文件内容，支持正则/文本匹配、glob 过滤和分页
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
@@ -14,27 +14,21 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
+import com.fishsunny.assistant.engine.tool.service.file.RipgrepRunner;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
 import java.io.IOException;
-import java.nio.charset.Charset;
-import java.nio.charset.MalformedInputException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
-import java.util.stream.Stream;
 
 /**
  * 文件内容搜索工具
- * 在指定目录下递归搜索文件内容，支持正则表达式匹配、glob 文件过滤和结果分页。
- * 用于根据文字内容查找相关文件。
+ * 基于 ripgrep 后端在指定目录下递归搜索文件内容，支持正则表达式匹配、glob 文件过滤、上下文行与结果分页。
+ * 自动忽略 .gitignore 规则与常见构建/依赖目录，rg 内部多线程并行，性能远高于手写遍历。
  */
 @Slf4j
 @ToolKitComponent(FileToolKit.class)
@@ -58,12 +52,20 @@ public class FileSearchTool implements ToolHandler {
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
 
+    /** 默认排除的构建产物/依赖目录（rg 只读 .gitignore，非 git 目录下的这些目录仍需手动排除，避免超时） */
+    private static final List<String> DEFAULT_EXCLUDES = List.of(
+            "node_modules", "target", "build", "dist", "out", ".gradle", ".idea", "__pycache__", ".venv", "venv");
+
+    /** ripgrep 后端执行器 */
+    private final RipgrepRunner rgRunner;
+
     public FileSearchTool(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+        this.rgRunner = new RipgrepRunner(objectMapper);
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("搜索文件内容的首选工具（比执行 findstr/grep 命令更安全、无需用户确认、无输出限制）。支持正则匹配和 glob 文件过滤，根据文字/关键词快速查找相关文件。返回匹配的文件路径、行号和内容，可显示上下文行。" +
+                .setDescription("搜索文件内容的首选工具（基于 ripgrep，比执行 findstr/grep 命令更安全、无需用户确认、无输出限制）。支持正则/文本匹配和 glob 文件过滤，自动忽略 .gitignore 与常见构建/依赖目录，根据文字/关键词快速查找相关文件。返回匹配的文件路径、行号和内容，可显示上下文行。" +
                         "注意：永远不要尝试从根目录开始搜索，这几乎一定会超时。")
                 .setRequired(List.of("path", "pattern"))
                 .setParameters(List.of(
@@ -74,7 +76,8 @@ public class FileSearchTool implements ToolHandler {
                         new ToolRegister.Parameters("depth", "integer", "递归深度，默认 " + MAX_DEPTH + "（递归搜索所有子目录）。设为 1 仅搜索当前目录"),
                         new ToolRegister.Parameters("caseSensitive", "boolean", "是否区分大小写，默认 false（不区分大小写）"),
                         new ToolRegister.Parameters("contextLines", "integer", "匹配行前后各显示多少行上下文，默认 0（仅显示匹配行），最大 " + MAX_CONTEXT_LINES),
-                        new ToolRegister.Parameters("maxResults", "integer", "最大返回匹配数，默认 " + DEFAULT_MAX_RESULTS + "，上限 " + MAX_RESULTS_LIMIT)
+                        new ToolRegister.Parameters("maxResults", "integer", "最大返回匹配数，默认 " + DEFAULT_MAX_RESULTS + "，上限 " + MAX_RESULTS_LIMIT),
+                        new ToolRegister.Parameters("hidden", "boolean", "是否搜索隐藏文件（如 .env、.gitignore 等点文件），默认 false")
                 )).setTimeoutMs(30000);
     }
 
@@ -107,45 +110,45 @@ public class FileSearchTool implements ToolHandler {
         }
 
         // 解析参数默认值
-        int depth = arguments.getDepth() == null ? MAX_DEPTH : Math.min(Math.max(arguments.getDepth(), 1), MAX_DEPTH);
-        int maxResults = arguments.getMaxResults() == null ? DEFAULT_MAX_RESULTS : Math.min(Math.max(arguments.getMaxResults(), 1), MAX_RESULTS_LIMIT);
-        int contextLines = arguments.getContextLines() == null ? 0 : Math.min(Math.max(arguments.getContextLines(), 0), MAX_CONTEXT_LINES);
+        int depth = arguments.getDepth() == null ? MAX_DEPTH : Math.clamp(arguments.getDepth(), 1, MAX_DEPTH);
+        int maxResults = arguments.getMaxResults() == null ? DEFAULT_MAX_RESULTS : Math.clamp(arguments.getMaxResults(), 1, MAX_RESULTS_LIMIT);
+        int contextLines = arguments.getContextLines() == null ? 0 : Math.clamp(arguments.getContextLines(), 0, MAX_CONTEXT_LINES);
         boolean caseSensitive = arguments.getCaseSensitive() != null && arguments.getCaseSensitive();
         boolean useRegex = arguments.getUseRegex() != null && arguments.getUseRegex();
-        String filter = arguments.getFilter();
 
-        // 编译搜索模式
-        Pattern pattern;
+        // 构造 rg 搜索请求
+        RipgrepRunner.SearchRequest request = new RipgrepRunner.SearchRequest();
+        request.root = dirPath;
+        request.pattern = arguments.getPattern();
+        request.useRegex = useRegex;
+        request.filter = arguments.getFilter();
+        request.depth = depth;
+        request.caseSensitive = caseSensitive;
+        request.contextLines = contextLines;
+        request.maxResults = maxResults;
+        request.hidden = arguments.getHidden() != null && arguments.getHidden();
+        request.excludes = DEFAULT_EXCLUDES;
+
+        RipgrepRunner.SearchResult result;
         try {
-            if (useRegex) {
-                pattern = Pattern.compile(arguments.getPattern(),
-                        caseSensitive ? 0 : Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-            } else {
-                pattern = Pattern.compile(Pattern.quote(arguments.getPattern()),
-                        caseSensitive ? 0 : Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
-            }
-        } catch (PatternSyntaxException e) {
-            throw new ToolExecutor.ToolExecuteException("搜索表达式语法错误: " + e.getMessage());
+            result = rgRunner.search(request);
+        } catch (RipgrepRunner.RgUnavailableException e) {
+            throw new ToolExecutor.ToolExecuteException("rg 后端不可用: " + e.getMessage() + "（当前平台可能未内置 rg 二进制）");
+        } catch (RipgrepRunner.RgExecutionException | IOException e) {
+            throw new ToolExecutor.ToolExecuteException("rg 搜索失败: " + e.getMessage());
+        } catch (RipgrepRunner.RgTimeoutException e) {
+            throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }
 
-        PathMatcher matcher = null;
-        if (StringUtils.hasText(filter)) {
-            try {
-                matcher = FileSystems.getDefault().getPathMatcher("glob:" + filter);
-            } catch (Exception e) {
-                throw new ToolExecutor.ToolExecuteException("glob 过滤表达式错误: " + e.getMessage());
-            }
-        }
+        return renderResult(dirPath, arguments, useRegex, caseSensitive, depth, result, maxResults);
+    }
 
-        // 搜索
-        List<Match> allMatches = new ArrayList<>();
-        try {
-            searchFiles(dirPath, dirPath, depth, pattern, matcher, contextLines, maxResults, allMatches);
-        } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("文件搜索失败: " + e.getMessage());
-        }
-
-        // 构建输出
+    /**
+     * 将 rg 结果渲染为文件分组 + 行号 + 匹配/上下文标记的输出
+     */
+    private ToolExecutor.ToolExecuteResponse renderResult(Path dirPath, Arguments arguments, boolean useRegex,
+                                                          boolean caseSensitive, int depth,
+                                                          RipgrepRunner.SearchResult result, int maxResults) {
         StringBuilder sb = new StringBuilder();
         sb.append("搜索目录: ").append(dirPath).append("\n");
         sb.append("搜索模式: ").append(arguments.getPattern());
@@ -154,171 +157,37 @@ public class FileSearchTool implements ToolHandler {
         if (depth > 1) {
             sb.append("递归深度: ").append(depth).append("\n");
         }
-        if (StringUtils.hasText(filter)) {
-            sb.append("文件过滤: ").append(filter).append("\n");
+        if (StringUtils.hasText(arguments.getFilter())) {
+            sb.append("文件过滤: ").append(arguments.getFilter()).append("\n");
         }
-        sb.append("匹配结果: ").append(allMatches.size()).append(" 条");
-        if (allMatches.size() >= maxResults) {
+        sb.append("匹配结果: ").append(result.totalMatches).append(" 条");
+        if (result.truncated || result.totalMatches >= maxResults) {
             sb.append("（已达上限，可能有更多结果）");
         }
         sb.append("\n");
 
-        if (allMatches.isEmpty()) {
+        boolean any = false;
+        for (RipgrepRunner.FileResult file : result.files) {
+            boolean hasMatch = file.lines.stream().anyMatch(line -> line.match);
+            if (!hasMatch) {
+                continue;
+            }
+            any = true;
+            sb.append("\n┌─ ").append(file.relativePath).append("\n");
+            for (RipgrepRunner.MatchLine line : file.lines) {
+                if (line.match) {
+                    sb.append("│─ ").append(String.format("%6d─ ", line.lineNumber)).append(line.content).append("\n");
+                } else {
+                    sb.append("│  ").append(String.format("%6d  ", line.lineNumber)).append(line.content).append("\n");
+                }
+            }
+        }
+        if (!any) {
             sb.append("\n未找到匹配内容。\n");
-            return new ToolExecutor.ToolExecuteResponse(name(), sb.toString());
         }
-
-        sb.append("\n");
-
-        // 按文件分组输出
-        String currentFile = "";
-        for (Match match : allMatches) {
-            if (!match.filePath.equals(currentFile)) {
-                currentFile = match.filePath;
-                sb.append("\n┌─ ").append(currentFile).append("\n");
-            }
-
-            // 上下文行（前置）
-            if (contextLines > 0 && match.contextBefore != null) {
-                for (ContextLine cl : match.contextBefore) {
-                    sb.append("│  ").append(String.format("%6d  ", cl.lineNumber)).append(cl.content).append("\n");
-                }
-            }
-
-            // 匹配行（高亮标记）
-            sb.append("│─ ").append(String.format("%6d─ ", match.lineNumber)).append(match.content).append("\n");
-
-            // 上下文行（后置）
-            if (contextLines > 0 && match.contextAfter != null) {
-                for (ContextLine cl : match.contextAfter) {
-                    sb.append("│  ").append(String.format("%6d  ", cl.lineNumber)).append(cl.content).append("\n");
-                }
-            }
-        }
-
         sb.append("\n");
 
         return new ToolExecutor.ToolExecuteResponse(name(), sb.toString());
-    }
-
-    /**
-     * 递归搜索目录下的文件
-     */
-    private void searchFiles(Path rootDir, Path currentDir, int remainingDepth,
-                             Pattern pattern, PathMatcher fileMatcher,
-                             int contextLines, int maxResults, List<Match> results) throws IOException {
-        if (remainingDepth <= 0 || results.size() >= maxResults) {
-            return;
-        }
-
-        try (Stream<Path> stream = Files.list(currentDir)) {
-            List<Path> children = stream.sorted().toList();
-            for (Path child : children) {
-                if (results.size() >= maxResults) break;
-                try {
-                    if (Files.isDirectory(child)) {
-                        searchFiles(rootDir, child, remainingDepth - 1, pattern, fileMatcher, contextLines, maxResults, results);
-                    } else if (Files.isReadable(child)) {
-                        // 文件过滤
-                        if (fileMatcher != null && !fileMatcher.matches(child.getFileName())) continue;
-                        // 跳过二进制/大文件
-                        if (isBinary(child)) continue;
-                        searchInFile(rootDir, child, pattern, contextLines, maxResults, results);
-                    }
-                } catch (IOException ignored) {
-                    // 跳过无法访问的文件
-                }
-            }
-        }
-    }
-
-    /**
-     * 在单个文件中搜索匹配行
-     */
-    private void searchInFile(Path rootDir, Path file, Pattern pattern,
-                              int contextLines, int maxResults, List<Match> results) {
-        try {
-            List<String> allLines;
-            try {
-                allLines = Files.readAllLines(file, StandardCharsets.UTF_8);
-            } catch (MalformedInputException e) {
-                try {
-                    allLines = Files.readAllLines(file, Charset.defaultCharset());
-                } catch (IOException ignored) {
-                    log.warn("文件 {} 读取失败", file);
-                    return;
-                }
-            }
-
-            String relativePath = rootDir.relativize(file).toString();
-            int totalLines = allLines.size();
-
-            for (int i = 0; i < totalLines && results.size() < maxResults; i++) {
-                String line = allLines.get(i);
-                if (pattern.matcher(line).find()) {
-                    Match match = new Match();
-                    match.filePath = relativePath;
-                    match.lineNumber = i + 1;
-                    match.content = line;
-
-                    // 收集上下文行
-                    if (contextLines > 0) {
-                        // 前置上下文
-                        List<ContextLine> before = new ArrayList<>();
-                        int beforeStart = Math.max(0, i - contextLines);
-                        for (int j = beforeStart; j < i; j++) {
-                            before.add(new ContextLine(j + 1, allLines.get(j)));
-                        }
-                        match.contextBefore = before;
-
-                        // 后置上下文
-                        List<ContextLine> after = new ArrayList<>();
-                        int afterEnd = Math.min(totalLines, i + contextLines + 1);
-                        for (int j = i + 1; j < afterEnd; j++) {
-                            after.add(new ContextLine(j + 1, allLines.get(j)));
-                        }
-                        match.contextAfter = after;
-                    }
-
-                    results.add(match);
-                }
-            }
-        } catch (IOException e) {
-            // 读取失败，静默跳过
-        }
-    }
-
-    /**
-     * 判断文件是否为二进制或过大（不搜索）
-     */
-    private boolean isBinary(Path file) {
-        // 检查扩展名：跳过常见的二进制/媒体文件
-        String name = file.getFileName().toString().toLowerCase();
-        return name.endsWith(".class") || name.endsWith(".jar")
-                || name.endsWith(".war") || name.endsWith(".ear")
-                || name.endsWith(".exe") || name.endsWith(".dll")
-                || name.endsWith(".so") || name.endsWith(".dylib")
-                || name.endsWith(".zip") || name.endsWith(".tar")
-                || name.endsWith(".gz") || name.endsWith(".7z")
-                || name.endsWith(".rar") || name.endsWith(".bz2")
-                || name.endsWith(".png") || name.endsWith(".jpg")
-                || name.endsWith(".jpeg") || name.endsWith(".gif")
-                || name.endsWith(".bmp") || name.endsWith(".ico")
-                || name.endsWith(".svg") || name.endsWith(".webp")
-                || name.endsWith(".mp3") || name.endsWith(".mp4")
-                || name.endsWith(".avi") || name.endsWith(".mov")
-                || name.endsWith(".wav") || name.endsWith(".flac")
-                || name.endsWith(".ttf") || name.endsWith(".otf")
-                || name.endsWith(".woff") || name.endsWith(".woff2")
-                || name.endsWith(".eot") || name.endsWith(".pdf")
-                || name.endsWith(".doc") || name.endsWith(".docx")
-                || name.endsWith(".xls") || name.endsWith(".xlsx")
-                || name.endsWith(".ppt") || name.endsWith(".pptx")
-                || name.endsWith(".bin") || name.endsWith(".dat")
-                || name.endsWith(".db") || name.endsWith(".sqlite")
-                || name.endsWith(".o") || name.endsWith(".obj")
-                || name.endsWith(".pyc") || name.endsWith(".pyo")
-                || name.endsWith(".lock");
     }
 
     @Override
@@ -343,16 +212,6 @@ public class FileSearchTool implements ToolHandler {
         private Boolean caseSensitive;
         private Integer contextLines;
         private Integer maxResults;
+        private Boolean hidden;
     }
-
-    @Data
-    private static class Match {
-        private String filePath;
-        private int lineNumber;
-        private String content;
-        private List<ContextLine> contextBefore;
-        private List<ContextLine> contextAfter;
-    }
-
-    private record ContextLine(int lineNumber, String content) {}
 }

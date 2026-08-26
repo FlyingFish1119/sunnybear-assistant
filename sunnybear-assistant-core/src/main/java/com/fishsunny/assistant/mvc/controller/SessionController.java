@@ -97,6 +97,30 @@ public class SessionController {
         }
     }
 
+    /**
+     * 切换会话的无审查模式（审查中 ↔ 无审查），开启后该会话内所有工具的确认与 AI 危险审查全部失效。
+     * 直接切换无需确认，前端开启时应自行弹出安全提示确认。
+     */
+    @PostMapping("/toggle-unreviewed")
+    public RestResponse toggleUnreviewed(@RequestParam("id") String id) {
+        if (!StringUtils.hasText(id)) {
+            return new RestResponse().error("会话 ID 不能为空");
+        }
+        try {
+            ChatSession session = chatSessionService.findById(id);
+            if (session == null) {
+                return new RestResponse().error("会话不存在");
+            }
+            boolean newState = session.getUnreviewed() == null || !session.getUnreviewed();
+            session.setUnreviewed(newState);
+            chatSessionService.update(session);
+            return new RestResponse().success(session);
+        } catch (Exception e) {
+            log.error("切换无审查模式失败: id={}", id, e);
+            return new RestResponse().error("切换无审查模式失败: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/update")
     public RestResponse update(@RequestBody(required = false) ChatSession session) {
         if (session == null) {

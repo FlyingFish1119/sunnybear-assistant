@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.tool.instance.file;
+package com.fishsunny.assistant.engine.tool.service.file;
 
 /*
  * @Usage 文件路径细粒度锁管理类 —— 为文件工具的并发修改提供按路径互斥

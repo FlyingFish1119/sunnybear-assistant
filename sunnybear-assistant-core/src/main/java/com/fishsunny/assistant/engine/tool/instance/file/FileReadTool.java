@@ -182,7 +182,7 @@ public class FileReadTool implements ToolHandler {
 
         // 单文件直接输出，无需分隔符和汇总
         if (results.size() == 1) {
-            FileResult r = results.get(0);
+            FileResult r = results.getFirst();
             if (r.success()) {
                 sb.append(r.content());
             } else {

@@ -60,6 +60,13 @@
     font-weight: 700;
 }
 
+/* 无审查模式会话标识（警示色，与高级模式加粗区分） */
+.sidebar-session-item.unreviewed {
+    color: var(--el-color-danger, #f56c6c);
+    font-weight: 700;
+    border-bottom-color: var(--el-color-danger, #f56c6c);
+}
+
 .sidebar-footer {
     width: 100%;
     display: flex;

@@ -41,7 +41,7 @@ const ChatSidebar = {
             <div class="sidebar-session-item"
                  v-for="session in sessions"
                  :key="session.id"
-                 :class="{ pro: session.enablePro }"
+                 :class="{ pro: session.enablePro, unreviewed: session.unreviewed }"
                  :style="currentSession.id === session.id ? {backgroundColor: 'white', borderRadius: '10px', padding: '5px 5px 15px 5px',  borderBottomColor: 'white'} : {}"
                  @click="$emit('select-session', session)"
                  @contextmenu.prevent="showContextMenu($event, session)">
@@ -60,6 +60,10 @@ const ChatSidebar = {
             <div class="session-context-menu-item" @click="toggleProMode(contextMenu.session)">
                 <i data-lucide="zap" style="width: 16px; height: 16px;"></i>
                 <span>{{ contextMenu.session.enablePro ? '当前：高级' : '当前：普通' }}</span>
+            </div>
+            <div class="session-context-menu-item" @click="toggleUnreviewed(contextMenu.session)">
+                <i data-lucide="shield-off" style="width: 16px; height: 16px;"></i>
+                <span>{{ contextMenu.session.unreviewed ? '当前：无审查' : '当前：审查中' }}</span>
             </div>
             <div class="session-context-menu-item" @click="openSessionKnowledge(contextMenu.session)">
                 <i data-lucide="database" style="width: 16px; height: 16px;"></i>
@@ -322,6 +326,51 @@ const ChatSidebar = {
                 ElementPlus.ElMessage.error('网络请求失败');
                 console.error('切换模式失败:', error);
             }
+        },
+
+        /**
+         * 切换会话的无审查模式（审查中 ↔ 无审查）。
+         * 开启（进入无审查）时先弹确认框，提示将关闭该会话所有工具确认与 AI 危险审查，防止误触；关闭直接切换。
+         */
+        toggleUnreviewed: function (session) {
+            var self = this;
+            self.closeContextMenu();
+            var enabling = !session.unreviewed;
+            var doToggle = async function () {
+                try {
+                    var result = await API.session.toggleUnreviewed(session.id);
+                    if (result.status === 200) {
+                        // 更新内部数组中的会话对象
+                        var target = self.sessions.find(function (s) { return s.id === session.id; });
+                        if (target) {
+                            Object.assign(target, result.data);
+                        }
+                        // 同步更新 currentSession
+                        if (self.currentSession && self.currentSession.id === session.id) {
+                            Object.assign(self.currentSession, result.data);
+                        }
+                        ElementPlus.ElMessage.success(enabling ? '已开启无审查模式' : '已关闭无审查模式');
+                    } else {
+                        ElementPlus.ElMessage.error(result.message || '切换无审查模式失败');
+                    }
+                } catch (error) {
+                    ElementPlus.ElMessage.error('网络请求失败');
+                    console.error('切换无审查模式失败:', error);
+                }
+            };
+            if (!enabling) {
+                // 关闭无审查：直接切换
+                doToggle();
+                return;
+            }
+            // 开启无审查：先弹确认，防止误触
+            this.$refs.confirmDialog.show({
+                title: '无审查模式确认',
+                message: '开启后该会话内所有工具操作（文件写入/删除、命令执行、文件下载、联网探索等）将不再弹确认，也不做 AI 危险审查。请谨慎操作，确定开启吗？',
+                confirmText: '开启',
+                cancelText: '取消',
+                type: 'warning'
+            }).then(doToggle).catch(function () { /* 用户取消 */ });
         },
 
         /**

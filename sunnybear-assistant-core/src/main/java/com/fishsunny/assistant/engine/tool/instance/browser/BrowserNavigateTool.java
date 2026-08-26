@@ -18,6 +18,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
 import com.fishsunny.assistant.mvc.controller.ChatController;
+import com.fishsunny.assistant.utils.ToolContextBuilder;
 import com.fishsunny.assistant.variable.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -80,8 +81,10 @@ public class BrowserNavigateTool implements ToolHandler {
                 throw new ToolExecutor.ToolExecuteException("参数 url 不能为空");
             }
 
-            // 始终需要用户确认
-            ask(uuid, session, arguments);
+            // 始终需要用户确认（无审查模式跳过）
+            if (!ToolContextBuilder.isUnreviewed(context)) {
+                ask(uuid, session, arguments);
+            }
 
             if (!session.isOpen()) {
                 throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");

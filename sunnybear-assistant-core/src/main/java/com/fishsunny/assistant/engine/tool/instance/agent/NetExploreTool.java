@@ -1,7 +1,8 @@
-package com.fishsunny.assistant.engine.tool.instance.net;
+package com.fishsunny.assistant.engine.tool.instance.agent;
 
 /*
- * @Usage 网络探索子 Agent - 接受收集目标，联网搜索并阅读网页，收集完成后输出结构化报告
+ * @Usage 网络探索子 Agent - 接受收集目标，联网搜索并阅读网页，收集完成后输出结构化报告。
+ *        作为 SubAgentToolHandler 由 agent_tool 路由调用。
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
@@ -15,13 +16,17 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.engine.tool.AgentToolKit;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framwork.SubAgentToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.NetToolKit;
+import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
+import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.utils.ToolContextBuilder;
 import com.fishsunny.assistant.variable.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -36,9 +41,9 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.util.*;
 
-@ToolKitComponent(NetToolKit.class)
-@ConditionalOnExpression("${engine.tool.net.enable:true} && ${engine.tool.net.net-explore.enable:true}")
-public class NetExploreTool implements ToolHandler {
+@ToolKitComponent(AgentToolKit.class)
+@ConditionalOnExpression("${engine.tool.agent.enable:true} && ${engine.tool.agent.net-explore.enable:true}")
+public class NetExploreTool implements SubAgentToolHandler {
 
     public static final String NAME = "net_explore_tool";
 
@@ -61,25 +66,21 @@ public class NetExploreTool implements ToolHandler {
     private final AISettings missionAISettings;
     private final ToolCallLoop toolCallLoop;
     private final ToolExecutor toolExecutor;
-    private final WebSearchTool webSearchTool;
 
     public NetExploreTool(ObjectMapper objectMapper,
                           @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                           ToolCallLoop toolCallLoop,
-                          @Lazy ToolExecutor toolExecutor,
-                          @Lazy WebSearchTool webSearchTool) {
+                          @Lazy ToolExecutor toolExecutor) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
         this.toolCallLoop = toolCallLoop;
         this.toolExecutor = toolExecutor;
-        this.webSearchTool = webSearchTool;
 
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
                         联网探索信息的子 Agent。接受一个收集目标，自动搜索、阅读网页、评估结果，\
-                        最终返回一份结构化的收集报告。适合需要深度调研某个主题的场景。\
-                        设置 fast=true 可跳过深度探索，直接返回搜索结果。""")
+                        最终返回一份结构化的收集报告。适合需要深度调研某个主题的场景。""")
                 .setRequired(List.of("target"));
 
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
@@ -87,12 +88,7 @@ public class NetExploreTool implements ToolHandler {
                 .setType("string")
                 .setDescription("收集目标，描述你需要收集什么信息。例如'AI 安全的最新进展'、'微服务架构最佳实践'");
 
-        ToolRegister.Parameters fastParam = new ToolRegister.Parameters()
-                .setParameterName("fast")
-                .setType("boolean")
-                .setDescription("快速模式，默认 false。设为 true 时直接返回搜索结果，不进行深度探索。");
-
-        register.setParameters(List.of(targetParam, fastParam));
+        register.setParameters(List.of(targetParam));
     }
 
     @Override
@@ -112,60 +108,14 @@ public class NetExploreTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
         }
 
-        // ========== fast 模式：直接调用搜索引擎返回结果（无需确认） ==========
-        if (arguments.isFast()) {
-            try {
-                Map<String, Object> metasoSearchArgs = Map.of(
-                        "q", arguments.getTarget(),
-                        "size", 5,
-                        "scope", "webpage",
-                        "engineName", "metaso"
-                );
-                Map<String, Object> serperSearchArgs = Map.of(
-                        "q", arguments.getTarget(),
-                        "size", 5,
-                        "scope", "webpage",
-                        "engineName", "serper"
-                );
-                boolean metasoSuccess = false;
-                boolean serperSuccess = false;
-                ToolExecutor.ToolExecuteResponse metasoResp;
-                ToolExecutor.ToolExecuteResponse serperResp;
-                try {
-                    metasoResp = webSearchTool.action(objectMapper.writeValueAsString(metasoSearchArgs), context);
-                    metasoSuccess = true;
-                } catch (ToolExecutor.ToolExecuteException e) {
-                    log.warn("Metaso search failed: {}", e.getMessage());
-                    metasoResp = new ToolExecutor.ToolExecuteResponse(NAME, "Metaso search failed: " + e.getMessage());
-                }
-                try {
-                    serperResp = webSearchTool.action(objectMapper.writeValueAsString(serperSearchArgs), context);
-                    serperSuccess = true;
-                } catch (ToolExecutor.ToolExecuteException e) {
-                    log.warn("Serper search failed: {}", e.getMessage());
-                    serperResp = new ToolExecutor.ToolExecuteResponse(NAME, "Serper search failed: " + e.getMessage());
-                }
-                String resp = objectMapper.writeValueAsString(List.of(metasoResp, serperResp));
-                if (metasoSuccess || serperSuccess) {
-                    return new ToolExecutor.ToolExecuteResponse(NAME, resp);
-                } else {
-                    throw new ToolExecutor.ToolExecuteException(resp);
-                }
-            } catch (ToolExecutor.ToolExecuteException e) {
-                throw e;
-            } catch (Exception e) {
-                throw new ToolExecutor.ToolExecuteException("快速搜索失败: " + e.getMessage());
-            }
-        }
-
         try {
             Object chatSessionObj = context.get("chatSession");
             if (! (chatSessionObj instanceof ChatSession chatSession)) {
                 throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: chatSession 缺失");
             }
 
-            if (ChatSession.TYPE_CHAT.equals(chatSession.getType())) {
-                // ========== 确认机制（深度模式始终需要确认） ==========
+            if (ChatSession.TYPE_CHAT.equals(chatSession.getType()) && !ToolContextBuilder.isUnreviewed(context)) {
+                // ========== 确认机制（无审查模式跳过） ==========
                 String uuid = UUID.randomUUID().toString();
                 try {
                     if (!(context.get("session") instanceof WebSocketSession session)) {
@@ -177,24 +127,15 @@ public class NetExploreTool implements ToolHandler {
                 }
             }
 
-            // ========== 收集器与统计 ==========
+            // ========== 收集器（全量收集） ==========
             StringBuilder collector = new StringBuilder();
-            int[] usefulRounds = {0};
-            int[] discardedRounds = {0};
 
             // ========== 工具结果钩子 ==========
             ToolCallLoop.ToolResultHook hook = (roundResults, aiText) -> {
-                boolean keep = isTrueResponse(aiText);
-
-                if (keep) {
-                    usefulRounds[0]++;
-                    for (ToolCallLoop.RoundResult r : roundResults) {
-                        collector.append("### ").append(r.toolName()).append("\n");
-                        collector.append("**参数:** ").append(truncate(r.arguments(), 300)).append("\n\n");
-                        collector.append(truncate(r.result(), MAX_RESULT_LENGTH)).append("\n\n---\n\n");
-                    }
-                } else {
-                    discardedRounds[0]++;
+                for (ToolCallLoop.RoundResult r : roundResults) {
+                    collector.append("### ").append(r.toolName()).append("\n");
+                    collector.append("**参数:** ").append(truncate(r.arguments(), 300)).append("\n\n");
+                    collector.append(truncate(r.result(), MAX_RESULT_LENGTH)).append("\n\n---\n\n");
                 }
                 return true; // 始终继续循环，由 AI 决定何时停止
             };
@@ -217,7 +158,7 @@ public class NetExploreTool implements ToolHandler {
                     new ToolCallLoop.AgentLoopHook(null, hook));
 
             // ========== 组装返回结果 ==========
-            return assembleResponse(finalReport, collector.toString(), usefulRounds[0], discardedRounds[0]);
+            return assembleResponse(finalReport, collector.toString());
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
         } catch (Exception e) {
@@ -229,8 +170,7 @@ public class NetExploreTool implements ToolHandler {
     /**
      * 组装最终返回结果：AI 最终报告 + 附录（工具调用明细，单独长度保护后拼接到末尾）。
      */
-    private ToolExecutor.ToolExecuteResponse assembleResponse(String finalReport, String rawData,
-                                                               int usefulRounds, int discardedRounds) {
+    private ToolExecutor.ToolExecuteResponse assembleResponse(String finalReport, String rawData) {
         StringBuilder result = new StringBuilder();
 
         result.append(finalReport.trim());
@@ -240,9 +180,7 @@ public class NetExploreTool implements ToolHandler {
             if (!result.isEmpty()) {
                 result.append("\n\n---\n");
             }
-            result.append("## 📎 附录：工具调用明细\n");
-            result.append("> 有效轮次: ").append(usefulRounds)
-                    .append(" | 丢弃轮次: ").append(discardedRounds).append("\n\n");
+            result.append("## 📎 附录：工具调用明细\n\n");
 
             // 附录单独长度保护：截断后再拼入
             String truncatedAppendix = truncate(rawData, APPENDIX_MAX_LENGTH);
@@ -250,28 +188,6 @@ public class NetExploreTool implements ToolHandler {
         }
 
         return new ToolExecutor.ToolExecuteResponse(name(), result.toString());
-    }
-
-    /**
-     * 判断 AI 本轮输出是否表示"保留"。
-     * 支持中文"是/保留/有效"和英文 true/keep 等多种表达。
-     */
-    private boolean isTrueResponse(String aiText) {
-        if (aiText == null) return true; // 无文本默认保留
-        String lower = aiText.trim().toLowerCase();
-
-        // 明确否定词优先（避免 "false" 劣后于 "true" 的子串匹配）
-        if (lower.contains("false") || lower.contains("丢弃") || lower.contains("无效")
-                || lower.contains("不保留") || lower.contains("no")) {
-            return false;
-        }
-        // 明确肯定词
-        if (lower.contains("true") || lower.contains("保留") || lower.contains("有效")
-                || lower.contains("有价值") || lower.contains("yes") || lower.contains("继续")) {
-            return true;
-        }
-        // 默认：有工具调用但无明确评价 → 保守保留
-        return true;
     }
 
     /**
@@ -327,12 +243,10 @@ public class NetExploreTool implements ToolHandler {
                 - **web_reader_tool** — 阅读指定网页的详细内容
 
                 ## 每轮工作规则（必须严格遵守）
-                1. 在每一轮中，先**简短评估当前进展**，然后调用一个或多个工具：
-                   - 进展顺利（比如新的的信息，和之前有冲突的信息） → 输出 `true — {简短说明}`（例如 "true — 找到相关文章，深入阅读"）
-                   - 无价值发现（比如完全不相干的内容，工具调用出错） → 输出 `false — {简短说明}`（例如 "false — 搜索结果不相关，换个关键词"）
-                   - 说明不超过 20 字
-                2. 说明后立即调用工具，不要在中间输出长篇分析
-                3. 如果上一轮结果不理想，**换策略**：换关键词、换搜索角度、换来源类型
+                1. 在每一轮中，先**简短评估当前进展**（不超过 20 字），然后调用一个或多个工具。
+                2. 说明后立即调用工具，不要在中间输出长篇分析。
+                3. 如果上一轮结果不理想，**换策略**：换关键词、换搜索角度、换来源类型。
+                4. 每一轮的工具调用结果都会被记录到最终报告的附录中，无需自行判断取舍。
 
                 ## 收集策略
                 - 从**多个角度、多个关键词**搜索，确保覆盖面
@@ -400,6 +314,5 @@ public class NetExploreTool implements ToolHandler {
     @Accessors(chain = true)
     private static class Arguments {
         private String target;
-        private boolean fast = false;
     }
 }

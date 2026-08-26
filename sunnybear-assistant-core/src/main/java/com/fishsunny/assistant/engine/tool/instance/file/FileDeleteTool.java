@@ -20,8 +20,10 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
+import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.utils.ToolContextBuilder;
 import com.fishsunny.assistant.variable.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -110,25 +112,28 @@ public class FileDeleteTool implements ToolHandler {
             // 收集删除目标的信息，用于安全检测和展示
             String targetInfo = buildTargetInfo(targetPath, isDirectory, recursive);
 
-            // 安全检测
-            switch (settings.getMode()) {
-                case NEVER_ASKED:
-                    break;
-                case ALWAYS_ASKED:
-                    ask(uuid, session, arguments, targetPath, isDirectory, recursive, targetInfo);
-                    break;
-                case AUTO:
-                    if (isDanger(arguments, targetPath, isDirectory, recursive, targetInfo)) {
+            // 无审查模式：跳过 AI 危险检测与用户确认，直接执行
+            if (!ToolContextBuilder.isUnreviewed(context)) {
+                // 安全检测
+                switch (settings.getMode()) {
+                    case NEVER_ASKED:
+                        break;
+                    case ALWAYS_ASKED:
                         ask(uuid, session, arguments, targetPath, isDirectory, recursive, targetInfo);
-                    }
-                    break;
-                case ALWAYS_REJECT_DANGER:
-                    if (isDanger(arguments, targetPath, isDirectory, recursive, targetInfo)) {
-                        throw new ToolExecutor.ToolExecuteException("AI 判定此文件删除操作存在危险，操作被拒绝");
-                    }
-                    break;
-                default:
-                    throw new ToolExecutor.ToolExecuteException("FileDelete 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                        break;
+                    case AUTO:
+                        if (isDanger(arguments, targetPath, isDirectory, recursive, targetInfo)) {
+                            ask(uuid, session, arguments, targetPath, isDirectory, recursive, targetInfo);
+                        }
+                        break;
+                    case ALWAYS_REJECT_DANGER:
+                        if (isDanger(arguments, targetPath, isDirectory, recursive, targetInfo)) {
+                            throw new ToolExecutor.ToolExecuteException("AI 判定此文件删除操作存在危险，操作被拒绝");
+                        }
+                        break;
+                    default:
+                        throw new ToolExecutor.ToolExecuteException("FileDelete 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                }
             }
 
             if (!session.isOpen()) {

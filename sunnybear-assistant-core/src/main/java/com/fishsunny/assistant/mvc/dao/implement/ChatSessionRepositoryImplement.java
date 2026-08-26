@@ -48,6 +48,13 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         } catch (Exception e) {
             log.debug("Migration: type column may already exist, skipping. {}", e.getMessage());
         }
+        // 自动迁移：为旧数据库添加 unreviewed 列（无审查模式）
+        try {
+            jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN unreviewed INTEGER NOT NULL DEFAULT 0");
+            log.info("Migration: added unreviewed column to chat_session");
+        } catch (Exception e) {
+            log.debug("Migration: unreviewed column may already exist, skipping. {}", e.getMessage());
+        }
     }
 
     private final RowMapper<ChatSession> rowMapper = (resultSet, i) -> {
@@ -58,6 +65,7 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         chatSession.setCreateTime(LocalDateTime.parse(resultSet.getString("create_time"), formatter));
         chatSession.setUpdateTime(LocalDateTime.parse(resultSet.getString("update_time"), formatter));
         chatSession.setEnablePro(resultSet.getInt("enable_pro") == 1);
+        chatSession.setUnreviewed(resultSet.getInt("unreviewed") == 1);
         return chatSession;
     };
 
@@ -66,9 +74,9 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         String sql =
                 """
                 INSERT INTO chat_session
-                (id, name, type, create_time, update_time, enable_pro)
+                (id, name, type, create_time, update_time, enable_pro, unreviewed)
                 VALUES
-                (?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?)
                 """;
         jdbcTemplate.update(sql,
                 chatSession.getId(),
@@ -76,7 +84,8 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
                 chatSession.getType() != null ? chatSession.getType() : "chat",
                 chatSession.getCreateTime().format(formatter),
                 chatSession.getUpdateTime().format(formatter),
-                chatSession.getEnablePro() != null && chatSession.getEnablePro() ? 1 : 0
+                chatSession.getEnablePro() != null && chatSession.getEnablePro() ? 1 : 0,
+                chatSession.getUnreviewed() != null && chatSession.getUnreviewed() ? 1 : 0
         );
 
         ChatSession session = selectById(chatSession.getId());
@@ -88,18 +97,22 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
 
     @Override
     public ChatSession update(ChatSession chatSession) {
-        String sql =
-                """
-                UPDATE chat_session
-                SET name = ?, update_time = ?, enable_pro = ?
-                WHERE id = ?
-                """;
-        jdbcTemplate.update(sql,
+        // name/update_time 始终更新
+        jdbcTemplate.update(
+                "UPDATE chat_session SET name = ?, update_time = ? WHERE id = ?",
                 chatSession.getName(),
                 chatSession.getUpdateTime().format(formatter),
-                chatSession.getEnablePro() != null && chatSession.getEnablePro() ? 1 : 0,
                 chatSession.getId()
         );
+        // enable_pro / unreviewed 仅在请求体显式携带时更新（避免前端改名等只带 name 的请求把开关重置为 0）
+        if (chatSession.getEnablePro() != null) {
+            jdbcTemplate.update("UPDATE chat_session SET enable_pro = ? WHERE id = ?",
+                    chatSession.getEnablePro() ? 1 : 0, chatSession.getId());
+        }
+        if (chatSession.getUnreviewed() != null) {
+            jdbcTemplate.update("UPDATE chat_session SET unreviewed = ? WHERE id = ?",
+                    chatSession.getUnreviewed() ? 1 : 0, chatSession.getId());
+        }
 
         ChatSession session = selectById(chatSession.getId());
         if (session == null) {

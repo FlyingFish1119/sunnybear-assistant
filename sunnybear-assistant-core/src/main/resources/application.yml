@@ -54,11 +54,12 @@ plug:
     tool:
       enable: true
 
-
 engine:
   tool:
     extension:
       dir: tool-extension/
+    agent:
+      enable: true
     os:
       enable: true
     net:

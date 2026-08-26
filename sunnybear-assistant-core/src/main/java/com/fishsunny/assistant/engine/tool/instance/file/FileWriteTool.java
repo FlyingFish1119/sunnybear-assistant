@@ -20,8 +20,10 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
+import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.utils.ToolContextBuilder;
 import com.fishsunny.assistant.variable.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -99,24 +101,27 @@ public class FileWriteTool implements ToolHandler {
             // 加锁：须覆盖 AI 安全检测与用户确认等待，防止确认期间文件被其他会话修改
             lock = FilePathLock.acquire(filePath);
 
-            switch (settings.getMode()) {
-                case NEVER_ASKED:
-                    break;
-                case ALWAYS_ASKED:
-                    ask(uuid, session, arguments, filePath);
-                    break;
-                case AUTO:
-                    if (isDanger(arguments, filePath)) {
+            // 无审查模式：跳过 AI 危险检测与用户确认，直接执行
+            if (!ToolContextBuilder.isUnreviewed(context)) {
+                switch (settings.getMode()) {
+                    case NEVER_ASKED:
+                        break;
+                    case ALWAYS_ASKED:
                         ask(uuid, session, arguments, filePath);
-                    }
-                    break;
-                case ALWAYS_REJECT_DANGER:
-                    if (isDanger(arguments, filePath)) {
-                        throw new ToolExecutor.ToolExecuteException("AI 判定此文件写入操作存在危险，操作被拒绝");
-                    }
-                    break;
-                default:
-                    throw new ToolExecutor.ToolExecuteException("FileWrite 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                        break;
+                    case AUTO:
+                        if (isDanger(arguments, filePath)) {
+                            ask(uuid, session, arguments, filePath);
+                        }
+                        break;
+                    case ALWAYS_REJECT_DANGER:
+                        if (isDanger(arguments, filePath)) {
+                            throw new ToolExecutor.ToolExecuteException("AI 判定此文件写入操作存在危险，操作被拒绝");
+                        }
+                        break;
+                    default:
+                        throw new ToolExecutor.ToolExecuteException("FileWrite 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                }
             }
 
             if (!session.isOpen()) {

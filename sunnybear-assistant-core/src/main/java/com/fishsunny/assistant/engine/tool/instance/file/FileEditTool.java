@@ -20,8 +20,10 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
+import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.utils.ToolContextBuilder;
 import com.fishsunny.assistant.variable.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -145,25 +147,28 @@ public class FileEditTool implements ToolHandler {
             // 生成 diff 风格预览
             String diffPreview = buildDiffResult(allLines, match, newContent, filePath);
 
-            // 安全检测
-            switch (settings.getMode()) {
-                case NEVER_ASKED:
-                    break;
-                case ALWAYS_ASKED:
-                    ask(uuid, session, filePath, modeDesc, match, diffPreview);
-                    break;
-                case AUTO:
-                    if (isDanger(filePath, modeDesc, diffPreview, match)) {
+            // 无审查模式：跳过 AI 危险检测与用户确认，直接执行
+            if (!ToolContextBuilder.isUnreviewed(context)) {
+                // 安全检测
+                switch (settings.getMode()) {
+                    case NEVER_ASKED:
+                        break;
+                    case ALWAYS_ASKED:
                         ask(uuid, session, filePath, modeDesc, match, diffPreview);
-                    }
-                    break;
-                case ALWAYS_REJECT_DANGER:
-                    if (isDanger(filePath, modeDesc, diffPreview, match)) {
-                        throw new ToolExecutor.ToolExecuteException("AI 判定此文件编辑操作存在危险，操作被拒绝");
-                    }
-                    break;
-                default:
-                    throw new ToolExecutor.ToolExecuteException("FileEdit 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                        break;
+                    case AUTO:
+                        if (isDanger(filePath, modeDesc, diffPreview, match)) {
+                            ask(uuid, session, filePath, modeDesc, match, diffPreview);
+                        }
+                        break;
+                    case ALWAYS_REJECT_DANGER:
+                        if (isDanger(filePath, modeDesc, diffPreview, match)) {
+                            throw new ToolExecutor.ToolExecuteException("AI 判定此文件编辑操作存在危险，操作被拒绝");
+                        }
+                        break;
+                    default:
+                        throw new ToolExecutor.ToolExecuteException("FileEdit 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                }
             }
 
             if (!session.isOpen()) {

@@ -179,7 +179,8 @@ const API = (function () {
             getAll: function (type) { return get('session/get/all?type=' + encodeURIComponent(type || 'chat')); },
             update: function (data) { return post('session/update', data); },
             delete: function (id) { return get('session/delete?id=' + encodeURIComponent(id)); },
-            togglePro: function (id) { return post('session/toggle-pro?id=' + encodeURIComponent(id)); }
+            togglePro: function (id) { return post('session/toggle-pro?id=' + encodeURIComponent(id)); },
+            toggleUnreviewed: function (id) { return post('session/toggle-unreviewed?id=' + encodeURIComponent(id)); }
         },
 
         /* ---------- 定时任务 ---------- */

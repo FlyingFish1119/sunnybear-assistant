@@ -27,6 +27,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.*;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.mvc.service.TaskPromptService;
+import com.fishsunny.assistant.utils.ToolContextBuilder;
 import com.fishsunny.assistant.mvc.service.TaskService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.variable.ControlSign;
@@ -48,7 +49,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -60,10 +63,12 @@ public class TaskRunTool implements ToolHandler {
 
     private static final Logger log = LoggerFactory.getLogger(TaskRunTool.class);
 
+    private final AtomicBoolean cas = new AtomicBoolean(false);
+
     private final TaskService taskService;
     private final ObjectMapper objectMapper;
     private final AISettings taskAISettings;
-    private final AISettings missionAISettings;
+    private final AISettings cubAISettings;
     private final TaskPromptService taskPromptService;
     private final ChatHttpHandler chatHttpHandler;
     private final ToolExecutor toolExecutor;
@@ -73,14 +78,14 @@ public class TaskRunTool implements ToolHandler {
     @Autowired
     public TaskRunTool(TaskService taskService, ObjectMapper objectMapper,
                        @Qualifier(AISettings.TASK) AISettings taskAISettings,
-                       @Qualifier(AISettings.CUB) AISettings missionAISettings,
+                       @Qualifier(AISettings.CUB) AISettings cubAISettings,
                        TaskPromptService taskPromptService,
                        ChatHttpHandler chatHttpHandler,
                        @Lazy ToolExecutor toolExecutor,
                        ToolCallLoop toolCallLoop) {
         this.taskService = taskService;
         this.objectMapper = objectMapper;
-        this.missionAISettings = missionAISettings;
+        this.cubAISettings = cubAISettings;
         this.taskAISettings = taskAISettings;
         this.taskPromptService = taskPromptService;
         this.chatHttpHandler = chatHttpHandler;
@@ -94,6 +99,10 @@ public class TaskRunTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
         }
         try {
+            if (!cas.compareAndSet(false, true)) {
+                throw new ToolExecutor.ToolExecuteException("工具正在执行中，请稍后再试");
+            }
+
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
             if (!StringUtils.hasText(arguments.getTaskId())) {
                 throw new ToolExecutor.ToolExecuteException("缺少任务 ID");
@@ -108,10 +117,20 @@ public class TaskRunTool implements ToolHandler {
             Task task = theTask.task();
             List<TaskStep> steps = theTask.taskSteps();
 
-            // 确认机制：始终要求用户确认
+            // failed 允许重跑 —— 执行时会跳过已完成步骤、从失败处断点续跑，结果从数据库读取注入。
+            if (Task.STATUS_RUNNING.equals(task.getStatus())) {
+                throw new ToolExecutor.ToolExecuteException("任务正在执行中，不能重复启动: " + task.getTaskName());
+            }
+            if (Task.STATUS_FINISHED.equals(task.getStatus())) {
+                throw new ToolExecutor.ToolExecuteException("任务已完成，不能再次执行。如需重新执行，请创建新任务。");
+            }
+
+            // 确认机制：始终要求用户确认（无审查模式跳过）
             String uuid = UUID.randomUUID().toString();
             try {
-                ask(uuid, (WebSocketSession) context.get("session"), task, steps);
+                if (!ToolContextBuilder.isUnreviewed(context)) {
+                    ask(uuid, (WebSocketSession) context.get("session"), task, steps);
+                }
             } finally {
                 ChatController.cleanupConfirm(uuid);
             }
@@ -119,7 +138,7 @@ public class TaskRunTool implements ToolHandler {
             // 异步执行
             executor.submit(() -> {
                 try {
-                    execute(context, task, steps);
+                    execute(context, task);
                 } catch (Exception e) {
                     log.error("任务执行异常: taskId={}, error={}", task.getId(), e.getMessage(), e);
                 }
@@ -133,8 +152,10 @@ public class TaskRunTool implements ToolHandler {
 
             return new ToolExecutor.ToolExecuteResponse(name(), sb);
         } catch (ToolExecutor.ToolExecuteException e) {
+            cas.set(false);
             throw e;
         } catch (Exception e) {
+            cas.set(false);
             throw new ToolExecutor.ToolExecuteException("启动任务失败：" + e.getMessage());
         }
     }
@@ -150,15 +171,29 @@ public class TaskRunTool implements ToolHandler {
     /**
      * 异步执行任务的所有步骤
      */
-    private void execute(Map<String, Object> context, Task task, List<TaskStep> steps) {
+    private void execute(Map<String, Object> context, Task task) throws ToolExecutor.ToolExecuteException {
+        TaskService.TheTask current = taskService.selectTaskById(task.getId());
+        // 以执行时的最新快照为准（failed 重跑时步骤可能已被部分执行/部分完成）
+        List<TaskStep> steps = current.taskSteps();
         try {
             taskService.updateTaskStatus(task.getId(), Task.STATUS_RUNNING);
         } catch (Exception e) {
             log.error("任务更新异常: taskId={}, error={}", task.getId(), e.getMessage(), e);
+            throw new ToolExecutor.ToolExecuteException("任务更新异常: " + e.getMessage());
+        } finally {
+            cas.set(false);
         }
         try {
             StringBuilder flow = new StringBuilder();
             for (TaskStep step : steps) {
+                // failed 任务断点续跑：跳过已完成步骤，从数据库读取其结果注入 flow，不重新执行
+                if (Task.STATUS_FINISHED.equals(step.getStatus()) && StringUtils.hasText(step.getResult())) {
+                    flow.append("[步骤").append(step.getSort()).append("] ")
+                            .append(step.getStepName()).append("，以完成。\n[完成结果]：")
+                            .append(step.getResult()).append("\n\n");
+                    continue;
+                }
+
                 taskService.updateTaskStepStatus(step.getId(), Task.STATUS_RUNNING);
 
                 String prompt = createStepPrompt(task, step);
@@ -270,16 +305,16 @@ public class TaskRunTool implements ToolHandler {
                 .replace("${stepDesc}", step.getStepDesc());
 
         ChatRequest classificationRequest = new ChatRequest()
-                .loadSettings(new AISettings().copy(missionAISettings).json())
+                .loadSettings(new AISettings().copy(cubAISettings).json())
                 .setMessages(List.of(new ChatMessage().user(classificationPrompt)));
 
         // 3. 调用 AI 进行分类
         AtomicReference<String> rawJson = new java.util.concurrent.atomic.AtomicReference<>();
         chatHttpHandler.translate(
                 UUID.randomUUID().toString(),
-                missionAISettings.getAdapterName(),
+                cubAISettings.getAdapterName(),
                 classificationRequest,
-                missionAISettings.getStream(),
+                cubAISettings.getStream(),
                 null,
                 (result, lastRes) -> rawJson.set(result.content())
         );
@@ -329,15 +364,22 @@ public class TaskRunTool implements ToolHandler {
             if (StringUtils.hasText(step.getStepDesc())) {
                 stepList.append(" — ").append(step.getStepDesc());
             }
+            if (Task.STATUS_FINISHED.equals(step.getStatus())) {
+                stepList.append(" `✅ 已完成（将跳过）`");
+            }
             stepList.append("\n");
         }
 
-        String message = "### 任务执行请求\n\n"
+        String message = (Task.STATUS_FAILED.equals(task.getStatus())
+                ? "> ⚠️ **该任务此前执行失败，本次将断点续跑**：已完成的步骤会跳过，其结果已从数据库读取并注入后续步骤。\n\n"
+                : "")
+                + "### 任务执行请求\n\n"
                 + "AI 请求执行以下任务：\n\n"
                 + "| 属性 | 内容 |\n"
                 + "|------|------|\n"
                 + "| 任务 ID | `" + task.getId() + "` |\n"
                 + "| 任务名称 | **" + task.getTaskName() + "** |\n"
+                + "| 任务状态 | `" + task.getStatus() + "` |\n"
                 + "| 步骤数 | **" + steps.size() + "** |\n"
                 + "| 任务描述 | " + (StringUtils.hasText(task.getTaskDesc()) ? task.getTaskDesc() : "(无)") + " |\n"
                 + "\n**步骤列表：**\n" + stepList + "\n"
@@ -368,10 +410,10 @@ public class TaskRunTool implements ToolHandler {
     public ToolRegister getRegister() {
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("异步执行任务的所有步骤（每次需确认）。调用后立即返回，通过 task_read_tool 查询进度。")
+                .setDescription("异步执行任务的所有步骤（每次需确认）。仅 waiting 或 failed 状态的任务可执行：failed 任务重跑时跳过已完成步骤、从失败处断点续跑。running 或已完成的会被拒绝。调用后立即返回，通过 task_read_tool 查询进度。")
                 .setRequired(List.of("taskId"))
                 .setParameters(List.of(
-                        new ToolRegister.Parameters("taskId", "string", "要执行的任务 ID。执行前建议先用 task_read_tool 确认任务内容正确且状态为 waiting（等待执行）")
+                        new ToolRegister.Parameters("taskId", "string", "要执行的任务 ID。执行前建议先用 task_read_tool 确认任务内容正确，且状态为 waiting（等待执行）或 failed（失败后可断点续跑）")
                 ));
     }
 

@@ -17,7 +17,9 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
+import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
 import com.fishsunny.assistant.mvc.controller.ChatController;
+import com.fishsunny.assistant.utils.ToolContextBuilder;
 import com.fishsunny.assistant.variable.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -88,15 +90,18 @@ public class FileDownloadTool implements ToolHandler {
             // 加锁：须覆盖用户确认等待，防止下载写入期间保存路径被其他会话修改
             lock = FilePathLock.acquire(savePath);
 
-            // 安全检测
-            switch (settings.getMode()) {
-                case NEVER_ASKED:
-                    break;
-                case ALWAYS_ASKED:
-                    ask(uuid, session, arguments, savePath);
-                    break;
-                default:
-                    throw new ToolExecutor.ToolExecuteException("FileDownload 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+            // 无审查模式：跳过用户确认，直接执行
+            if (!ToolContextBuilder.isUnreviewed(context)) {
+                // 安全检测
+                switch (settings.getMode()) {
+                    case NEVER_ASKED:
+                        break;
+                    case ALWAYS_ASKED:
+                        ask(uuid, session, arguments, savePath);
+                        break;
+                    default:
+                        throw new ToolExecutor.ToolExecuteException("FileDownload 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                }
             }
 
             if (!session.isOpen()) {

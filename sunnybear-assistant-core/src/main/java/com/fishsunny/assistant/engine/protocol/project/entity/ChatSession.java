@@ -35,6 +35,12 @@ public class ChatSession {
 
     private Boolean enablePro = false;
 
+    /**
+     * 无审查模式：开启后该会话内所有工具的用户确认与 AI 危险审查全部失效（完全无审查）。
+     * 注意：与工具内已有的 AUTO 模式常量（FileWriteTool.AUTO 等，含义为"危险操作需确认"）语义相反，勿混淆。
+     */
+    private Boolean unreviewed = false;
+
     public ChatSession() {
     }
 

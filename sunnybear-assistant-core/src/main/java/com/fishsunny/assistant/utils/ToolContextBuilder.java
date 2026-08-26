@@ -42,4 +42,18 @@ public class ToolContextBuilder {
         context.put("chatSession", chatSession);
         return context;
     }
+
+    /**
+     * 判断当前会话是否为"无审查模式"（unreviewed=true）。
+     * <p>
+     * 无审查模式下，工具应跳过用户确认与 AI 危险审查（包括命令黑名单硬拦截），直接执行。
+     * 注意：这里的 unreviewed 与工具内 AUTO 模式常量（"危险操作需确认"）语义相反。
+     *
+     * @param context 工具上下文（须含 chatSession）
+     * @return true 表示当前会话处于无审查模式
+     */
+    public static boolean isUnreviewed(Map<String, Object> context) {
+        Object cs = context.get("chatSession");
+        return cs instanceof ChatSession s && Boolean.TRUE.equals(s.getUnreviewed());
+    }
 }

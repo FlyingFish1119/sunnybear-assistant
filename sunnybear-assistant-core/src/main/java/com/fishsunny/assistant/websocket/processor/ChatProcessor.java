@@ -19,8 +19,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
-import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
+import com.fishsunny.assistant.engine.tool.framwork.SubAgentToolHandler;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
@@ -65,12 +64,20 @@ public class ChatProcessor {
     private final MemoryService memoryService;
     private final SlashCommandExecutor slashCommandExecutor;
 
+    /**
+     * 主 Agent 不直接调用的工具集合：由 agent_tool 路由的子 Agent 工具（如 net_explore_tool），
+     * 以及各子 Agent 的原子工具（ComfyUI 原子工具由 ComfyUIToolKit 在此登记）。
+     */
+    @Getter
+    private static final Set<String> EXCLUDE_TOOLS = new HashSet<>();
+
     public ChatProcessor(ChatMessageService chatMessageService,
                             ObjectMapper objectMapper,
                             AssistantSettings assistantSettings,
                             ToolExecutor toolExecutor,
                             KnowledgeService knowledgeService,
                             MemoryService memoryService,
+                            List<SubAgentToolHandler> subAgentTools,
                             @Qualifier(AISettings.CHAT) AISettings aiSettings,
                             @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
                             SlashCommandExecutor slashCommandExecutor,
@@ -81,6 +88,9 @@ public class ChatProcessor {
         this.toolExecutor = toolExecutor;
         this.knowledgeService = knowledgeService;
         this.memoryService = memoryService;
+        for (SubAgentToolHandler subAgentTool : subAgentTools) {
+            EXCLUDE_TOOLS.add(subAgentTool.name());
+        }
         this.aiSettings = aiSettings;
         this.chatProAISettings = chatProAISettings;
         this.slashCommandExecutor = slashCommandExecutor;
@@ -194,14 +204,6 @@ public class ChatProcessor {
         }
     }
 
-    /** 主 Agent 不直接调用的工具（由子 Agent 代理：net_explore_tool、comfyui_tool） */
-    @Getter
-    private static final Set<String> EXCLUDE_TOOLS = new HashSet<>();
-    static {
-        EXCLUDE_TOOLS.add(WebSearchTool.NAME);
-        EXCLUDE_TOOLS.add(WebReaderTool.NAME);
-    }
-
     /**
      * 工具调用循环
      */
@@ -213,7 +215,7 @@ public class ChatProcessor {
                                ChatProvider chatProvider
     ) throws Exception {
 
-        // 注入工具（排除原始 net 工具，由 net_agent_tool 子 Agent 统一代理）
+        // 注入工具（排除被 agent_tool 路由的子 Agent 工具及其原子工具）
         List<StandardToolRegister> toolRegisters = StandardToolRegister.buildToolRegisterExcluding(
                 toolExecutor, EXCLUDE_TOOLS);
         if (chatProvider.getToolProvider() != null) {
