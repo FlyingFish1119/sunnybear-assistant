@@ -187,7 +187,8 @@ public class FileDownloadTool implements ToolHandler {
         ToolAsk confirmation = new ToolAsk()
                 .setId(uuid)
                 .setToolName(NAME)
-                .setMessage(message);
+                .setMessage(message)
+                .setTimeout(30);
 
         session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
         Boolean result = ChatController.awaitConfirm(uuid, 30);

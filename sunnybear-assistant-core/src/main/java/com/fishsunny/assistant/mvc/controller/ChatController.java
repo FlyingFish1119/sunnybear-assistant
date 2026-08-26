@@ -26,9 +26,6 @@ import java.util.concurrent.TimeUnit;
 @RequestMapping("/chat")
 public class ChatController {
 
-    /** 工具确认等待超时（秒） */
-    private static final int DEFAULT_CONFIRM_TIMEOUT_SECONDS = 30;
-
     /** 等待中的工具确认请求 */
     private static final Map<String, CompletableFuture<Boolean>> pendingConfirmations = new ConcurrentHashMap<>();
 
@@ -54,7 +51,7 @@ public class ChatController {
     public Map<String, Object> stopStreaming(@RequestBody Map<String, String> body) {
         String sessionId = body.get("sessionId");
         if (sessionId != null && !sessionId.isEmpty()) {
-            ChatHttpHandler.getAllowedContinue().remove(sessionId);
+            ChatHttpHandler.getSTOP_SIGN().add(sessionId);
             log.info("收到中止信号，已移除 sessionId: {}", sessionId);
             return Map.of("success", true);
         }
@@ -67,13 +64,16 @@ public class ChatController {
      * 工具调用：注册一个待确认的请求并阻塞等待用户确认。
      *
      * @param uuid            确认请求的唯一标识
-     * @param timeoutSeconds  超时时间（秒）
-     * @return TRUE=用户确认，FALSE=用户拒绝，null=超时
+     * @param timeoutSeconds  超时时间（秒）；为空或 <=0 表示不超时，一直等待用户确认
+     * @return TRUE=用户确认，FALSE=用户拒绝，null=超时/被中断
      */
-    public static Boolean awaitConfirm(String uuid, int timeoutSeconds) {
+    public static Boolean awaitConfirm(String uuid, Integer timeoutSeconds) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         pendingConfirmations.put(uuid, future);
         try {
+            if (timeoutSeconds == null || timeoutSeconds <= 0) {
+                return future.get();
+            }
             return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("工具确认等待超时或被中断: uuid={}", uuid);

@@ -17,6 +17,7 @@ import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
@@ -283,7 +284,8 @@ public class ChatProcessor {
                 if (chatProvider.getContextProvider() != null) {
                     context = chatProvider.getContextProvider().apply(context);
                 }
-                List<ToolExecutor.ToolExecuteResponse> toolResults = toolExecutor.execute(toolRequests, context);
+                List<ToolExecutor.ToolExecuteResponse> toolResults = toolExecutor.execute(toolRequests, context,
+                        ToolExecuteNotifier.buildProvider(session, chatSession.getId(), objectMapper));
                 // 构建工具消息
                 List<ChatMessage> toolMessages = new ArrayList<>();
                 for (int i = 0; i < toolCalls.size(); i++) {
@@ -302,9 +304,11 @@ public class ChatProcessor {
                 try {
                     List<ChatMessage> toolResponseMessages = appendToolMessage(toolMessages);
                     request.getMessages().addAll(toolResponseMessages);
-                    ChatResponse response = new ChatResponse().afterToolCall(toolResponseMessages);
-                    session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
                     collector.addAll(toolResponseMessages);
+
+                    String roundEnd = ControlSign.SIGN_TOOL_CALL_FINISH + chatSession.getId();;
+
+                    session.sendMessage(new TextMessage(roundEnd));
                 } catch (Exception e) {
                     log.error("保存工具消息失败: {}", e.getMessage());
                     throw new RuntimeException(e);

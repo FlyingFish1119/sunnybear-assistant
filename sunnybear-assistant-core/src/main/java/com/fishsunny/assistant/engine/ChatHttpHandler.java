@@ -21,7 +21,7 @@ import org.springframework.util.StringUtils;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.*;
 import java.util.stream.Stream;
 
 @Component
@@ -31,7 +31,7 @@ public class ChatHttpHandler {
     private final AIAdapterFactory adapterFactory;
 
     @Getter
-    private static final Set<String> allowedContinue = new ConcurrentSkipListSet<>();
+    private static final Set<String> STOP_SIGN = ConcurrentHashMap.newKeySet();
 
     @Autowired
     public ChatHttpHandler(ObjectMapper objectMapper, AIAdapterFactory adapterFactory) {
@@ -41,41 +41,42 @@ public class ChatHttpHandler {
 
 
     public record TranslateData(
-        String stopId,
-        String adapterName,
-        Boolean stream,
-        AIRequest request
-    ) {}
+            String stopId,
+            String adapterName,
+            Boolean stream,
+            AIRequest request
+    ) {
+    }
 
     public record TranslateHandler(
             InTranslateCallback inTranslate,
             CompleteCallback complete
-    ) {}
-
-    public void translate(TranslateData data, TranslateHandler handler) throws Exception {
-        translate(data.stopId(), data.adapterName(), data.request(), data.stream(), handler.inTranslate(), handler.complete());
+    ) {
     }
 
-    /**
-     * 翻译数据，根据 stream 参数选择流式或非流式适配器。
-     * 顺序为 inTranslate -> complete -> functionCall
-     * @param stopId 中断标识（用于流式中断控制）
-     * @param adapterName 适配器名称
-     * @param request 请求体
-     * @param stream 是否使用流式处理
-     * @param inTranslate 翻译过程，参数为翻译后的数据
-     * @param onComplete 传输完成，参数是工具调用列表
-     */
-    public void translate(String stopId, String adapterName, AIRequest request,
-                          Boolean stream,
-                          InTranslateCallback inTranslate,
-                          CompleteCallback onComplete) throws Exception {
-        allowedContinue.add(stopId);
-        stream = stream != null && stream;
-        AIAdapter adapter = adapterFactory.getAdapter(adapterName, stream);
+    public void translate(TranslateData data, TranslateHandler handler) throws Exception {
+        String stopId = data.stopId();
+        String adapterName = data.adapterName();
+        Boolean stream = data.stream();
+        AIRequest request = data.request();
+        InTranslateCallback inTranslate = handler.inTranslate();
+        CompleteCallback onComplete = handler.complete();
+
+        if (STOP_SIGN.contains(stopId)) {
+            STOP_SIGN.remove(stopId);
+            return;
+        }
+
+        boolean safeStream = stream != null && stream;
+        AIAdapter adapter = adapterFactory.getAdapter(adapterName, safeStream);
         try (Stream<String> lines = adapter.connect(request)) {
             AIResponse lastRes = null;
             for (Iterator<String> it = lines.iterator(); it.hasNext(); ) {
+                // 如果 ID 存在，则认为被中断
+                if (STOP_SIGN.contains(stopId)) {
+                    STOP_SIGN.remove(stopId);
+                    break;
+                }
                 String line = it.next();
                 if (!StringUtils.hasText(line) || line.equals("\n")) {
                     continue;
@@ -103,11 +104,6 @@ public class ChatHttpHandler {
                 if (inTranslate != null) {
                     inTranslate.onTranslate(adapter.convertToMaster(response));
                 }
-
-                // 如果 ID 被移除，则认为被中断
-                if (!allowedContinue.contains(stopId)) {
-                    break;
-                }
                 if (adapter.finished(response)) {
                     break;
                 }
@@ -121,12 +117,38 @@ public class ChatHttpHandler {
                         adapter.getToolCalls(), adapter.getReasoningSignature());
                 onComplete.onComplete(result, lastConverted);
             }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         } finally {
-            allowedContinue.remove(stopId);
+            STOP_SIGN.remove(stopId);
         }
     }
 
-    public static interface CompleteCallback {
+
+    /**
+     * 翻译数据，根据 stream 参数选择流式或非流式适配器。
+     * 顺序为 inTranslate -> complete -> functionCall
+     * @param stopId 中断标识（用于流式中断控制）
+     * @param adapterName 适配器名称
+     * @param request 请求体
+     * @param stream 是否使用流式处理
+     * @param inTranslate 翻译过程，参数为翻译后的数据
+     * @param onComplete 传输完成，参数是工具调用列表
+     */
+    public void translate(String stopId, String adapterName, AIRequest request,
+                          Boolean stream,
+                          InTranslateCallback inTranslate,
+                          CompleteCallback onComplete) throws Exception {
+        translate(new TranslateData(stopId, adapterName, stream, request), new TranslateHandler(inTranslate, onComplete));
+    }
+
+    public void translate(String adapterName, AIRequest request, Boolean stream,
+                          InTranslateCallback inTranslate,
+                          CompleteCallback onComplete) throws Exception {
+        translate(new TranslateData("", adapterName, stream, request), new TranslateHandler(inTranslate, onComplete));
+    }
+
+    public interface CompleteCallback {
         void onComplete(TranslateResult result, AIResponse lastRes);
     }
 
@@ -134,15 +156,14 @@ public class ChatHttpHandler {
      * 翻译完成后承载所有结果的记录，避免接口膨胀。
      * 新增字段时只需加在这里，调用方零改动。
      */
-    public static record TranslateResult(
+    public record TranslateResult(
         String reasoning,
         String content,
         List<AIAdapter.ToolCall> toolCalls,
         String reasoningSignature
     ) {}
 
-    public static interface InTranslateCallback {
-        public void onTranslate(AIResponse response);
+    public interface InTranslateCallback {
+        void onTranslate(AIResponse response);
     }
-
 }

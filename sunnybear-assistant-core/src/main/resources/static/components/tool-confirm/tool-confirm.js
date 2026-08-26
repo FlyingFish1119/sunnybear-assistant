@@ -7,14 +7,14 @@
  *   2. 调用 this.$refs.toolConfirm.show(toolAsk) 即可
  *
  * 并发支持：多个确认请求以"浏览器标签页"形式共存于一个弹窗内，
- * 每标签独立倒计时（与服务端每 ask 独立 30s 超时对应），可点击标签栏切换查看，
- * 新到达的 ask 自动激活。超时/接受/拒绝只作用于对应的标签，互不影响。
+ * 每标签独立倒计时（时间取服务端 ToolAsk.timeout，为空/<=0 则不超时一直等待），
+ * 可点击标签栏切换查看，新到达的 ask 自动激活。超时/接受/拒绝只作用于对应的标签，互不影响。
  *
  * Props:
  *   mainColor      — String     主题色
  *
  * 公开方法（通过 ref 调用）：
- *   show(toolAsk)  — 弹出/追加确认对话框，toolAsk 为服务端下发的 { id, toolName, message } 对象
+ *   show(toolAsk)  — 弹出/追加确认对话框，toolAsk 为服务端下发的 { id, toolName, message, timeout } 对象
  */
 const ToolConfirm = {
     name: 'ToolConfirm',
@@ -37,7 +37,7 @@ const ToolConfirm = {
             <i :data-lucide="ask.icon"></i>
             <span class="tool-confirm-tab-title">{{ ask.title }}</span>
             <span class="tool-confirm-tab-countdown"
-                  :class="{ 'is-danger': ask.countdown <= 3 }">{{ ask.countdown }}</span>
+                  :class="{ 'is-danger': ask.hasTimeout && ask.countdown <= 3 }">{{ ask.hasTimeout ? ask.countdown : '∞' }}</span>
           </button>
         </div>
         <!-- 内容区：只渲染当前激活的标签。
@@ -58,11 +58,17 @@ const ToolConfirm = {
         <div v-if="activeAsk" class="tool-confirm-progress">
           <div class="tool-confirm-progress-track">
             <div class="tool-confirm-progress-bar"
-                 :style="{width: activeAsk.progressPercent + '%', '--main-color': mainColor}"
-                 :class="{'is-warning': activeAsk.progressPercent <= 30, 'is-danger': activeAsk.progressPercent <= 10}">
+                 :style="activeAsk.hasTimeout ? {width: activeAsk.progressPercent + '%', '--main-color': mainColor} : {'--main-color': mainColor}"
+                 :class="{
+                   'is-warning': activeAsk.hasTimeout && activeAsk.progressPercent <= 30,
+                   'is-danger': activeAsk.hasTimeout && activeAsk.progressPercent <= 10,
+                   'is-indeterminate': !activeAsk.hasTimeout
+                 }">
             </div>
           </div>
-          <span class="tool-confirm-progress-text">{{ activeAsk.countdown }} 秒后自动拒绝</span>
+          <span class="tool-confirm-progress-text">
+            {{ activeAsk.hasTimeout ? activeAsk.countdown + ' 秒后自动拒绝' : '等待确认中…' }}
+          </span>
         </div>
         <div class="tool-confirm-footer">
           <button class="tool-confirm-btn tool-confirm-btn-cancel" @click="reject">
@@ -91,7 +97,6 @@ const ToolConfirm = {
             asks: [],
             // 当前激活标签的下标，-1 表示无
             activeIndex: -1,
-            TOTAL: 30,
             // 工具名 → 图标 / 标题映射
             iconMap: {
                 'command_tool': 'terminal',
@@ -126,12 +131,18 @@ const ToolConfirm = {
         show(toolAsk) {
             // 防御：同一 id 重复推送（如 WebSocket 重连后的重复消息）直接忽略
             if (this.asks.some(a => a.id === toolAsk.id)) return;
+            // timeout 为空/0/负数 → 不超时，一直等待用户确认；有效正整数 → 按该秒数倒计时
+            const timeout = Number(toolAsk.timeout);
+            const hasTimeout = timeout > 0;
+            const total = hasTimeout ? Math.round(timeout) : 0;
             const tab = {
                 id: toolAsk.id,
                 title: this.titleMap[toolAsk.toolName] || toolAsk.toolName || '工具执行确认',
                 icon: this.iconMap[toolAsk.toolName] || 'wrench',
                 renderedMessage: MarkdownUtils.render(toolAsk.message || ''),
-                countdown: this.TOTAL,
+                hasTimeout: hasTimeout,
+                total: total,
+                countdown: total,
                 progressPercent: 100,
                 resolved: false,
                 _timer: null
@@ -147,17 +158,27 @@ const ToolConfirm = {
         },
 
         /* ---- 内部方法 ---- */
-        // 每标签独立倒计时，全部并行走（与服务端每 ask 独立 30s 超时一致）
+        // 每标签独立倒计时，全部并行走（与服务端每 ask 独立超时一致）
         startCountdown(tab) {
             this.clearTimer(tab);
-            tab.countdown = this.TOTAL;
-            tab.progressPercent = 100;
-            tab._timer = setInterval(() => {
-                tab.countdown--;
-                tab.progressPercent = Math.round((tab.countdown / this.TOTAL) * 100);
-                if (tab.countdown <= 0) {
+            // 注意：入参 tab 可能是 push 进响应式数组前的"原始对象"，
+            // 直接改原始对象不会触发 Vue 视图更新（进度条/倒计时会冻住）。
+            // 这里从响应式数组中取回 proxy 引用，保证倒计时能实时刷新。
+            const t = this.asks.find(a => a.id === tab.id) || tab;
+            // 无超时：不启动倒计时，进度条进入等待态（由 CSS 不定态动画呈现）
+            if (!t.hasTimeout) {
+                t.countdown = 0;
+                t.progressPercent = 100;
+                return;
+            }
+            t.countdown = t.total;
+            t.progressPercent = 100;
+            t._timer = setInterval(() => {
+                t.countdown--;
+                t.progressPercent = Math.round((t.countdown / t.total) * 100);
+                if (t.countdown <= 0) {
                     // 超时自动拒绝：只拒绝自己（用本标签自己的 id 发送）
-                    this.resolveTab(tab.id, false);
+                    this.resolveTab(t.id, false);
                 }
             }, 1000);
         },

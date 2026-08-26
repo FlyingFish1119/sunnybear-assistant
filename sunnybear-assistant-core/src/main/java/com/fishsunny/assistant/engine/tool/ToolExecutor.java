@@ -10,6 +10,7 @@ package com.fishsunny.assistant.engine.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
+import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 @Component
@@ -53,15 +55,25 @@ public class ToolExecutor {
         }
     }
 
-    // ======================== 异步版本（已备注，使用线程池+CompletableFuture） ========================
+    public record ToolProvider(Consumer<ToolRequest> beforeExec, Consumer<ToolExecuteResponse> afterExec) {}
+
     public List<ToolExecuteResponse> execute(List<ToolRequest> requests, Map<String, Object> context) {
+        return execute(requests, context, new ToolProvider(null, null));
+    }
+
+    // ======================== 异步版本（已备注，使用线程池+CompletableFuture） ========================
+    public List<ToolExecuteResponse> execute(List<ToolRequest> requests, Map<String, Object> context, ToolProvider provider) {
         if (requests == null || requests.isEmpty()) {
             return new ArrayList<>();
         }
+        ToolProvider safeProvider = provider == null ? new ToolProvider(null, null) : provider;
         List<CompletableFuture<ToolExecuteResponse>> futures = new ArrayList<>(requests.size());
         for (ToolRequest request : requests) {
+            if (safeProvider.beforeExec() != null) {
+                safeProvider.beforeExec().accept(request);
+            }
             CompletableFuture<ToolExecuteResponse> future = CompletableFuture.supplyAsync(() ->
-                    doExecute(request.getToolName(), request.getArguments(), context), executorService);
+                    doExecute(request, context, safeProvider.afterExec()), executorService);
             futures.add(future);
         }
         List<ToolExecuteResponse> responses = new ArrayList<>(requests.size());
@@ -77,30 +89,42 @@ public class ToolExecutor {
         return responses;
     }
 
-    private ToolExecuteResponse doExecute(String toolName, String arguments, Map<String, Object> context) {
+    private ToolExecuteResponse doExecute(ToolRequest toolRequest, Map<String, Object> context, Consumer<ToolExecuteResponse> afterExec) {
+        String toolName = toolRequest.getToolName();
+        String arguments = toolRequest.getArguments();
+
+        ToolExecuteResponse response;
         ToolHandler handler = toolMap.get(toolName);
         if (handler == null) {
-            return new ToolExecuteResponse(toolName, "工具[" + toolName + "]不存在").setSucceed(false);
+            response = new ToolExecuteResponse(toolName, "工具[" + toolName + "]不存在").setSucceed(false);
+        } else {
+            Integer timeoutMs = handler.getRegister().getTimeoutMs();
+            if (timeoutMs == null) {
+                // 无超时限制，直接同步执行
+                response = executeNow(handler, toolName, arguments, context);
+            } else {
+                // 有超时限制，通过 CompletableFuture 做硬超时
+                CompletableFuture<ToolExecuteResponse> future = CompletableFuture.supplyAsync(
+                        () -> executeNow(handler, toolName, arguments, context), executorService);
+                try {
+                    response = future.get(timeoutMs, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    future.cancel(true);
+                    log.warn("工具[{}]执行超时（{}ms），已强制中断", toolName, timeoutMs);
+                    response = new ToolExecuteResponse(toolName,
+                            "工具[" + toolName + "]执行超时（" + timeoutMs + "ms），已强制中断").setSucceed(false);
+                } catch (Exception e) {
+                    response = new ToolExecuteResponse(toolName,
+                            "工具[" + toolName + "]执行异常，原因是：" + e.getMessage()).setSucceed(false);
+                }
+            }
         }
-        Integer timeoutMs = handler.getRegister().getTimeoutMs();
-        if (timeoutMs == null) {
-            // 无超时限制，直接同步执行
-            return executeNow(handler, toolName, arguments, context);
+        response.setToolCallId(toolRequest.getToolCallId());
+        // afterExec 在所有完成路径都触发（成功/失败/超时/工具不存在/无超时），保证 hook 不遗漏
+        if (afterExec != null) {
+            afterExec.accept(response);
         }
-        // 有超时限制，通过 CompletableFuture 做硬超时
-        CompletableFuture<ToolExecuteResponse> future = CompletableFuture.supplyAsync(
-                () -> executeNow(handler, toolName, arguments, context), executorService);
-        try {
-            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            future.cancel(true);
-            log.warn("工具[{}]执行超时（{}ms），已强制中断", toolName, timeoutMs);
-            return new ToolExecuteResponse(toolName,
-                    "工具[" + toolName + "]执行超时（" + timeoutMs + "ms），已强制中断").setSucceed(false);
-        } catch (Exception e) {
-            return new ToolExecuteResponse(toolName,
-                    "工具[" + toolName + "]执行异常，原因是：" + e.getMessage()).setSucceed(false);
-        }
+        return response;
     }
 
     /** 实际执行工具调用，抽取为独立方法供超时包装复用 */
@@ -274,6 +298,7 @@ public class ToolExecutor {
     @Data
     @Accessors(chain = true)
     public static class ToolExecuteResponse {
+        private String toolCallId;
         private String name;
         private boolean succeed;
         private String result;
@@ -281,6 +306,11 @@ public class ToolExecutor {
         public ToolExecuteResponse(String name, String result) {
             this.name = name;
             this.result = result;
+        }
+
+        public void status(String toolCallId, boolean succeed) {
+            this.toolCallId = toolCallId;
+            this.succeed = succeed;
         }
     }
 
@@ -298,6 +328,7 @@ public class ToolExecutor {
     @Data
     @Accessors(chain = true)
     public static class ToolRequest {
+        private String toolCallId;
         private String toolName;
         private String arguments;
 
@@ -312,6 +343,7 @@ public class ToolExecutor {
         public static List<ToolRequest> convert(List<AIAdapter.ToolCall> toolCalls) {
             return toolCalls.stream().map(toolCall -> {
                 ToolRequest toolRequest = new ToolRequest();
+                toolRequest.setToolCallId(toolCall.getId());
                 toolRequest.setToolName(toolCall.getFunction().getName());
                 toolRequest.setArguments(toolCall.getFunction().getArguments());
                 return toolRequest;

@@ -20,4 +20,6 @@ public class ToolAsk {
     private String toolName;
     /** 确认提示消息 */
     private String message;
+    /** 超时时间（秒） */
+    private Integer timeout;
 }

@@ -191,11 +191,10 @@
                             <div v-if="msg.toolCalls && msg.toolCalls.length > 0" :class="['tool-calls-block', { collapsed: isCollapsed(msg.id, 'toolcalls') }]">
                                 <div class="message-area-bubble-tools-header" @click="toggleCollapse(msg.id, 'toolcalls')">
                                     <i :class="['tool-chevron', { collapsed: isCollapsed(msg.id, 'toolcalls') }]" style="width: 14px; height: 14px" data-lucide="chevron-right"></i>
-                                    <span>工具调用: {{ msg.toolCalls.map(t => t.name).join(', ') }}</span>
+                                    <span class="markdown-body" v-html="$md.render(msg.toolCalls.map(t => '`' + t.name + '`').join(', '))"></span>
                                 </div>
                                 <div :class="['message-area-bubble-tools-wrap', { collapsed: isCollapsed(msg.id, 'toolcalls') }]" :data-collapse-key="msg.id + '_toolcalls'">
-                                    <div class="message-area-bubble-tools">
-                                        工具调用: {{ msg.toolCalls.map(t => t.name + (t.arguments ? ': ' + t.arguments : '')).join(', ') }}
+                                    <div class="message-area-bubble-tools markdown-body" v-html="$md.render(msg.toolCalls.map(t => '```' + t.name + '\n' + (t.arguments ? t.arguments : '') + '\n```').join('\n\n'))">
                                     </div>
                                 </div>
                             </div>
@@ -275,15 +274,23 @@
                         <div :class="['collapsible-content', { collapsed: isCollapsed(msg.id, 'tool') }]" :data-collapse-key="msg.id + '_tool'">
                             <div v-for="(content, idx) in msg.contents" :key="idx">
                                 <div v-if="content.type === 'text'">
-                                    <span v-if="$toolParsed(content).succeed" class="message-area-bubble-tools-meta">
-                                        <i style="width: 12px; height: 12px; color: #52c41a" data-lucide="circle-check"></i>
-                                        <span style="padding: 0 0 1px 4px; color: #52c41a">[{{msg.name}}]执行成功</span>
-                                    </span>
-                                    <div v-else class="message-area-bubble-tools-meta">
-                                        <i style="width: 12px; height: 12px; color: #ff4d4f" data-lucide="circle-x"></i>
-                                        <div style="padding: 0 0 1px 4px; color: #ff4d4f">[{{msg.name}}]执行失败</div>
-                                    </div>
-                                    <div class="markdown-body" v-html="$md.render($toolParsed(content).result)"></div>
+                                    <template v-if="msg.extension && msg.extension.status === 'executing'">
+                                        <div class="message-area-bubble-tools-meta">
+                                            <i style="width: 12px; height: 12px; color: #faad14" data-lucide="circle-dot"></i>
+                                            <div style="padding: 0 0 1px 4px; color: #faad14">[{{msg.name}}]执行中…</div>
+                                        </div>
+                                    </template>
+                                    <template v-else>
+                                        <span v-if="$toolParsed(content).succeed" class="message-area-bubble-tools-meta">
+                                            <i style="width: 12px; height: 12px; color: #52c41a" data-lucide="circle-check"></i>
+                                            <span style="padding: 0 0 1px 4px; color: #52c41a">[{{msg.name}}]执行成功</span>
+                                        </span>
+                                        <div v-else class="message-area-bubble-tools-meta">
+                                            <i style="width: 12px; height: 12px; color: #ff4d4f" data-lucide="circle-x"></i>
+                                            <div style="padding: 0 0 1px 4px; color: #ff4d4f">[{{msg.name}}]执行失败</div>
+                                        </div>
+                                        <div class="markdown-body" v-html="$md.render($toolParsed(content).result)"></div>
+                                    </template>
                                 </div>
                             </div>
                         </div>
@@ -429,6 +436,8 @@
                 currentMessages: [],
                 // 正在处理的message，存储 sessionId，isStreaming, message
                 streamingMessages: [],
+                // 当前正在处理的 tool call id
+                currentToolCallId: null,
 
                 // 消息编辑状态
                 currentEditId: null,
@@ -550,6 +559,10 @@
              * @returns {{ succeed: boolean, icon: string, color: string, text: string }}
              */
             $toolStatus(msg) {
+                // 工具执行中：黄色占位状态
+                if (msg.extension && msg.extension.status === 'executing') {
+                    return { succeed: true, icon: 'circle-dot', color: '#faad14', text: '执行中…' };
+                }
                 if (!msg.contents || msg.contents.length === 0) {
                     return { succeed: true, icon: 'circle-check', color: '#52c41a', text: '执行成功' };
                 }
@@ -900,6 +913,24 @@
             },
 
             /**
+             * 用真实工具结果替换对应的"执行中"占位消息（占位与结果共用同一个假 toolCallId，按 toolCallId 精确匹配）。
+             * 找不到占位时（如页面刷新后）直接追加。
+             */
+            replaceToolPlaceholder(resultMsg) {
+                if (!resultMsg || !resultMsg.toolCallId) return;
+                let idx = this.currentMessages.findIndex(m =>
+                    m.role === 'tool'
+                    && m.extension && m.extension.status === 'executing'
+                    && m.toolCallId === resultMsg.toolCallId);
+                if (idx !== -1) {
+                    this.currentMessages.splice(idx, 1, resultMsg);
+                } else {
+                    this.currentMessages.push(resultMsg);
+                }
+                this.scrollToBottom();
+            },
+
+            /**
              * 处理服务端流式推送的每一个 chunk
              * 通过 sessionId 匹配到对应 session 的消息列表后进行处理
              */
@@ -946,6 +977,23 @@
                     }
                     return;
                 }
+                if (event.data.startsWith('###TOOL_CALL_FINISH###')) {
+                    let sessionId = event.data.split('###TOOL_CALL_FINISH###')[1];
+                    // 本轮全部工具执行完毕（空 messages 的轮次边界）→ 推进流式占位到下一轮 AI 回复
+                    let index = this.streamingMessages.findIndex(m => m.sessionId === sessionId);
+                    if (index !== -1) {
+                        this.streamingMessages.splice(index, 1);
+                    }
+                    let lastMsg = Utils.getLast(this.currentMessages);
+                    let parentId = lastMsg ? lastMsg.id : null;
+                    let assistantMessage = Utils.getDefaultAssistantMessage(sessionId, parentId);
+                    this.streamingMessages.push(assistantMessage);
+                    if (sessionId === this.currentSessionId) {
+                        this.currentMessages.push(assistantMessage);
+                        this.currentToolCallId = null;
+                    }
+                    return;
+                }
                 if (event.data.startsWith('###')) {
                     console.warn("未知的信号:" + event.data);
                     return;
@@ -983,16 +1031,25 @@
                         });
                         break;
                     }
-                    case 'tool_response': {
-                        this.currentMessages.push(...response.messages);
-                        let index = this.streamingMessages.findIndex(m => m.sessionId === response.sessionId);
-                        if (index !== -1) {
-                            this.streamingMessages.splice(index, 1);
+                    case 'tool_execution': {
+                        // 工具开始执行：插入黄色"执行中"占位消息，工具结果到达后按工具名替换
+                        if (response.sessionId === this.currentSessionId
+                                && response.messages && response.messages.length > 0) {
+                            let placeholder = response.messages[0];
+                            // 兜底标记：确保渲染层能识别为"执行中"
+                            placeholder.extension = placeholder.extension || {};
+                            placeholder.extension.status = 'executing';
+                            this.currentMessages.push(placeholder);
+                            this.scrollToBottom();
                         }
-                        let assistantMessage = Utils.getDefaultAssistantMessage(response.sessionId, last.id);
-                        this.streamingMessages.push(assistantMessage);
+                        break;
+                    }
+                    case 'tool_response': {
+                        // 单个工具执行完成 → 用真实结果替换同名"执行中"占位
                         if (response.sessionId === this.currentSessionId) {
-                            this.currentMessages.push(assistantMessage);
+                            for (let m of response.messages) {
+                                this.replaceToolPlaceholder(m);
+                            }
                         }
                         break;
                     }
@@ -1016,7 +1073,6 @@
                         }
                         // 追加工具调用（修复 for 循环条件：.length 缺失）
                         if (response.messages && response.messages.length > 0) {
-                            let currentToolId = '';
                             for (let index = 0; index < response.messages.length; index++) {
                                 let message = response.messages[index];
                                 if (message.sessionId) streamingMessage.sessionId = message.sessionId;
@@ -1028,12 +1084,11 @@
                                     for (let i = 0; i < message.toolCalls.length; i++) {
                                         let eventToolCall = message.toolCalls[i];
                                         if (eventToolCall.id) {
-                                            currentToolId = eventToolCall.id;
+                                            this.currentToolCallId = eventToolCall.id;
                                         }
-                                        let toolCall = streamingMessage.toolCalls.find(tc => tc.id === currentToolId);
+                                        let toolCall = streamingMessage.toolCalls.find(tc => tc.id === this.currentToolCallId);
                                         if (!toolCall) {
-                                            // 新工具调用，创建条目
-                                            toolCall = { id: currentToolId, name: '', arguments: '' };
+                                            toolCall = {id: this.currentToolCallId, name: '', arguments: ''};
                                             streamingMessage.toolCalls.push(toolCall);
                                         }
                                         if (eventToolCall.name) {

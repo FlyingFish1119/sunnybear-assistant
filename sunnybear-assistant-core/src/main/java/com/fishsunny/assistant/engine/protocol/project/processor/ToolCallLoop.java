@@ -16,6 +16,7 @@ import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.variable.ControlSign;
@@ -227,7 +228,10 @@ public class ToolCallLoop {
                     }
 
                     List<ToolExecutor.ToolExecuteResponse> toolResults;
-                    toolResults = toolExecutor.execute(reqs, context);
+                    toolResults = toolExecutor.execute(reqs, context, ToolExecuteNotifier.buildProvider(
+                            context.get("session") instanceof WebSocketSession wsSession ? wsSession : null,
+                            context.get("chatSession") instanceof ChatSession cs ? cs.getId() : null,
+                            objectMapper));
 
                     // --- Hook 回调：收集本轮工具结果 ---
                     if (hook != null && hook.getResultHook() != null) {

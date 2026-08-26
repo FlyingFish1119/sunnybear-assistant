@@ -100,11 +100,11 @@ public class ChatMessage {
 
     public ChatMessage tool(String toolCallId, String result) {
         setToolCallId(toolCallId);
+        setName("");
         setRole(ROLE_TOOL);
         text(result);
         return this;
     }
-
     public ChatMessage user(String text) {
         setRole(ROLE_USER);
         text(text);

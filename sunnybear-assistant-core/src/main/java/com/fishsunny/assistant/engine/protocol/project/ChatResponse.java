@@ -27,6 +27,7 @@ public class ChatResponse implements AIResponse {
     public final static String STATUS_ERROR = "error";
     public final static String STATUS_INIT_USER = "init_user";
     public final static String STATUS_INIT_ASSISTANT = "init_assistant";
+    public final static String STATUS_TOOL_EXECUTION = "tool_execution";
     public final static String STATUS_TOOL_RESPONSE = "tool_response";
     public final static String STATUS_TEMP = "temp";
     public final static String STATUS_TEMP_CHUNK = "temp_chunk";
@@ -68,6 +69,14 @@ public class ChatResponse implements AIResponse {
 
     public ChatResponse afterToolCall(List<ChatMessage> message) {
         this.status = STATUS_TOOL_RESPONSE;
+        this.messages = new ArrayList<>(message);
+        if (!message.isEmpty()) {
+            this.sessionId = message.getFirst().getSessionId();
+        }
+        return this;
+    }
+    public ChatResponse afterToolExecution(List<ChatMessage> message) {
+        this.status = STATUS_TOOL_EXECUTION;
         this.messages = new ArrayList<>(message);
         if (!message.isEmpty()) {
             this.sessionId = message.getFirst().getSessionId();

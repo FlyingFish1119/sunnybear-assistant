@@ -22,4 +22,6 @@ public class ControlSign {
     public static final String SIGN_AGENT_LOG = "###AGENT_LOG###";
     // 应携带一个 sessionId 字符串（知识库内容被自动注入到对话提示词时通知前端）
     public static final String SIGN_KNOWLEDGE_HIT = "###KNOWLEDGE_HIT###";
+    // 应携带一个 sessionId 字符串
+    public static final String SIGN_TOOL_CALL_FINISH = "###TOOL_CALL_FINISH###";
 }

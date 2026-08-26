@@ -120,7 +120,8 @@ public class BrowserNavigateTool implements ToolHandler {
                 .setMessage(message);
 
         session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
-        Boolean result = ChatController.awaitConfirm(uuid, 30);
+        // 本工具确认无超时（ToolAsk 不携带 timeout），一直等待用户确认，与前端"等待确认中"一致
+        Boolean result = ChatController.awaitConfirm(uuid, null);
         if (result == null) {
             throw new ToolExecutor.ToolExecuteException("用户未确认浏览器导航操作，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整 URL。");
         }

@@ -217,6 +217,16 @@
 .tool-confirm-progress-bar.is-danger {
     background: #ff4d4f;
 }
+/* 无超时（ToolAsk.timeout 为空/<=0）：进度条不定态等待动画 */
+.tool-confirm-progress-bar.is-indeterminate {
+    width: 35%;
+    background: var(--main-color, lightsalmon);
+    animation: tc-progress-indeterminate 1.4s ease-in-out infinite;
+}
+@keyframes tc-progress-indeterminate {
+    0%   { margin-left: -35%; }
+    100% { margin-left: 100%; }
+}
 
 .tool-confirm-progress-text {
     font-size: 12px;
