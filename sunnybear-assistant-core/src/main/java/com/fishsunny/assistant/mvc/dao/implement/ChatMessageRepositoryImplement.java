@@ -170,8 +170,7 @@ public class ChatMessageRepositoryImplement implements ChatMessageRepository {
                     contents = ?,
                     active = ?,
                     tool_calls = ?,
-                    extension = ?,
-                    reasoning_signature = ?
+                    extension = ?
                 WHERE id = ?
                 """;
         String contentsJson;
@@ -191,7 +190,6 @@ public class ChatMessageRepositoryImplement implements ChatMessageRepository {
                 chatMessage.getActive(),
                 chatMessage.getToolCalls(),
                 chatMessage.getExtension(),
-                chatMessage.getReasoningSignature(),
                 chatMessage.getId()
         );
         return selectById(chatMessage.getId());
