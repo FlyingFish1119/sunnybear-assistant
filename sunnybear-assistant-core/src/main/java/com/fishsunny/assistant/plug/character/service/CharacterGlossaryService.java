@@ -8,6 +8,7 @@ package com.fishsunny.assistant.plug.character.service;
  * @Date 2026/7/13
  */
 
+import com.fishsunny.assistant.dto.GlossaryImportResult;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
 
 import java.util.List;
@@ -25,4 +26,7 @@ public interface CharacterGlossaryService {
     CharacterGlossary update(CharacterGlossary glossary);
 
     void deleteById(Long id);
+
+    /** 批量导入词条，关键词重复的条目覆盖更新，返回导入统计 */
+    GlossaryImportResult importByCharacterId(String characterId, List<CharacterGlossary> items);
 }

@@ -116,4 +116,22 @@ public class CharacterGlossaryController {
             return new RestResponse().error("删除词条失败: " + e.getMessage());
         }
     }
+
+    /** 批量导入词条（JSON 数组，关键词重复的条目覆盖更新） */
+    @PostMapping("/import")
+    public RestResponse importGlossaries(@RequestParam("characterId") String characterId,
+                                         @RequestBody(required = false) List<CharacterGlossary> items) {
+        if (!StringUtils.hasText(characterId)) {
+            return new RestResponse().error("角色 ID 不能为空");
+        }
+        if (items == null || items.isEmpty()) {
+            return new RestResponse().error("导入数据不能为空");
+        }
+        try {
+            return new RestResponse().success(glossaryService.importByCharacterId(characterId, items));
+        } catch (Exception e) {
+            log.error("导入词条失败", e);
+            return new RestResponse().error("导入词条失败: " + e.getMessage());
+        }
+    }
 }

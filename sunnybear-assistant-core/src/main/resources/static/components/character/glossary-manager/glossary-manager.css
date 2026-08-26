@@ -24,6 +24,17 @@
     color: var(--text-muted, #909399);
 }
 
+.glossary-toolbar .glossary-toolbar-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.glossary-toolbar .glossary-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .glossary-btn {
     display: inline-flex;
     align-items: center;

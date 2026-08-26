@@ -8,6 +8,7 @@ package com.fishsunny.assistant.plug.character.service;
  * @Date 2026/7/13
  */
 
+import com.fishsunny.assistant.dto.GlossaryImportResult;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
 import com.fishsunny.assistant.plug.character.repository.CharacterGlossaryRepository;
 import org.slf4j.Logger;
@@ -130,5 +131,64 @@ public class CharacterGlossaryServiceImplement implements CharacterGlossaryServi
     @Override
     public void deleteById(Long id) {
         glossaryRepository.deleteById(id);
+    }
+
+    @Override
+    public GlossaryImportResult importByCharacterId(String characterId, List<CharacterGlossary> items) {
+        if (!StringUtils.hasText(characterId)) {
+            throw new RuntimeException("角色 ID 不能为空");
+        }
+        if (items == null || items.isEmpty()) {
+            throw new RuntimeException("导入数据不能为空");
+        }
+
+        int created = 0, updated = 0, failed = 0;
+        for (CharacterGlossary item : items) {
+            try {
+                if (item == null) {
+                    failed++;
+                    continue;
+                }
+                String keyword = item.getKeyword() == null ? "" : item.getKeyword().trim();
+                if (keyword.isEmpty() || keyword.length() > MAX_KEYWORD_LENGTH) {
+                    failed++;
+                    continue;
+                }
+                String content = item.getContent() == null ? "" : item.getContent().trim();
+                if (content.isEmpty()) {
+                    failed++;
+                    continue;
+                }
+                String desc = item.getDesc() != null ? item.getDesc().trim() : "";
+
+                // 关键词重复的条目覆盖更新，否则新增
+                CharacterGlossary existing = glossaryRepository.selectByCharacterIdAndKeyword(characterId, keyword);
+                if (existing != null) {
+                    existing.setDesc(desc);
+                    existing.setContent(content);
+                    existing.setUpdateTime(LocalDateTime.now());
+                    glossaryRepository.update(existing);
+                    updated++;
+                } else {
+                    CharacterGlossary glossary = new CharacterGlossary()
+                            .setCharacterId(characterId)
+                            .setKeyword(keyword)
+                            .setDesc(desc)
+                            .setContent(content)
+                            .setCreateTime(LocalDateTime.now())
+                            .setUpdateTime(LocalDateTime.now());
+                    glossaryRepository.insert(glossary);
+                    created++;
+                }
+            } catch (Exception e) {
+                log.warn("导入单条词条失败: {}", e.getMessage());
+                failed++;
+            }
+        }
+        return new GlossaryImportResult()
+                .setTotal(items.size())
+                .setCreated(created)
+                .setUpdated(updated)
+                .setFailed(failed);
     }
 }

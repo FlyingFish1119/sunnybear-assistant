@@ -31,10 +31,24 @@ const GlossaryManager = {
             <!-- 工具栏 -->
             <div class="glossary-toolbar">
                 <span class="glossary-count">共 {{ glossaries.length }} 条词条</span>
-                <button v-if="!showForm" class="glossary-btn" @click="openCreate">
-                    <i data-lucide="plus"></i> 新增词条
-                </button>
+                <div class="glossary-toolbar-actions">
+                    <button v-if="!showForm" class="glossary-btn" @click="chooseImportFile"
+                        :disabled="importing" title="从 JSON 文件导入词条（重复关键词将被覆盖）">
+                        <i data-lucide="upload"></i> {{ importing ? '导入中...' : '导入' }}
+                    </button>
+                    <button v-if="!showForm && glossaries.length > 0" class="glossary-btn" @click="exportGlossaries"
+                        title="导出全部词条为 JSON 文件">
+                        <i data-lucide="download"></i> 导出
+                    </button>
+                    <button v-if="!showForm" class="glossary-btn" @click="openCreate">
+                        <i data-lucide="plus"></i> 新增词条
+                    </button>
+                </div>
             </div>
+
+            <!-- 隐藏的文件选择框，用于导入词条库 JSON -->
+            <input type="file" ref="importFile" accept=".json,application/json"
+                style="display:none" @change="onImportFile" />
 
             <!-- 新增/编辑表单 -->
             <div v-if="showForm" class="glossary-form-wrap">
@@ -110,6 +124,7 @@ const GlossaryManager = {
             visible: false,
             loading: false,
             saving: false,
+            importing: false,
             characterId: '',
             characterName: '',
             glossaries: [],
@@ -270,6 +285,109 @@ const GlossaryManager = {
             }
         },
 
+        /* ========== 导出（当前角色全部词条 → JSON 文件） ========== */
+        exportGlossaries() {
+            if (!this.glossaries.length) {
+                ElementPlus.ElMessage.warning('当前角色没有可导出的词条');
+                return;
+            }
+            const items = this.glossaries.map(g => ({
+                keyword: g.keyword,
+                desc: g.desc || '',
+                content: g.content || ''
+            }));
+            const blob = new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (this.characterName || this.characterId) + '_词条库_' + this.formatDate(new Date()) + '.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            ElementPlus.ElMessage.success('已导出 ' + items.length + ' 条词条');
+        },
+
+        formatDate(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return y + m + d;
+        },
+
+        /* ========== 导入 ========== */
+        chooseImportFile() {
+            this.$refs.importFile.value = '';
+            this.$refs.importFile.click();
+        },
+
+        async onImportFile(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                let items;
+                try {
+                    items = JSON.parse(text);
+                } catch (e) {
+                    ElementPlus.ElMessage.error('文件不是有效的 JSON 格式');
+                    return;
+                }
+                if (!Array.isArray(items)) {
+                    ElementPlus.ElMessage.error('JSON 内容应为词条数组，如 [{keyword, desc, content}, ...]');
+                    return;
+                }
+                const valid = items.filter(it => it && it.keyword && it.content);
+                if (!valid.length) {
+                    ElementPlus.ElMessage.warning('文件中没有有效的词条数据（每条需包含 keyword 和 content）');
+                    return;
+                }
+                const invalidCount = items.length - valid.length;
+
+                // 统计将与现有词条重复（覆盖更新）的数量
+                const existingKeywords = new Set(this.glossaries.map(g => g.keyword));
+                const duplicateCount = valid.filter(it => existingKeywords.has(it.keyword)).length;
+
+                let message = '共 ' + valid.length + ' 条词条将导入到「'
+                    + (this.characterName || this.characterId) + '」'
+                    + (duplicateCount > 0 ? '，其中 ' + duplicateCount + ' 条与现有词条关键词重复，将被覆盖更新。' : '。')
+                    + (invalidCount > 0 ? '另有 ' + invalidCount + ' 条无效条目将被忽略。' : '')
+                    + '是否继续？';
+                this.$refs.confirmDialog.show({
+                    title: '确认导入',
+                    message: message,
+                    confirmText: '确认导入',
+                    cancelText: '取消',
+                    type: 'warning'
+                }).then(() => this.doImport(valid)).catch(() => {});
+            } catch (e) {
+                console.error('读取导入文件失败:', e);
+                ElementPlus.ElMessage.error('读取文件失败');
+            }
+        },
+
+        async doImport(items) {
+            this.importing = true;
+            try {
+                const r = await API.character.glossary.import(this.characterId, items);
+                if (r.status === 200 && r.data) {
+                    const d = r.data;
+                    ElementPlus.ElMessage.success(
+                        '导入完成：新增 ' + d.created + ' 条，覆盖 ' + d.updated + ' 条'
+                        + (d.failed > 0 ? '，失败 ' + d.failed + ' 条' : '')
+                    );
+                    await this.loadGlossaries();
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '导入失败');
+                }
+            } catch (e) {
+                console.error('导入词条失败:', e);
+                ElementPlus.ElMessage.error('网络请求失败');
+            } finally {
+                this.importing = false;
+            }
+        },
+
         /* ========== 关闭弹窗 ========== */
         onClosed() {
             this.characterId = '';
@@ -278,6 +396,7 @@ const GlossaryManager = {
             this.showForm = false;
             this.editingId = null;
             this.form = { keyword: '', desc: '', content: '' };
+            this.importing = false;
         }
     },
 

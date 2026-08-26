@@ -241,7 +241,11 @@ const API = (function () {
                 },
                 create: function (data) { return post('character/glossary/create', data); },
                 update: function (data) { return post('character/glossary/update', data); },
-                delete: function (id) { return get('character/glossary/delete?id=' + id); }
+                delete: function (id) { return get('character/glossary/delete?id=' + id); },
+                /** 批量导入词条（JSON 数组 [{keyword, desc, content}]），关键词重复的条目覆盖更新 */
+                import: function (characterId, items) {
+                    return post('character/glossary/import?characterId=' + encodeURIComponent(characterId), items);
+                }
             }
         },
 
