@@ -194,6 +194,7 @@ const app = Vue.createApp({
         mainColor: {
             handler(val) {
                 document.documentElement.style.setProperty('--main-color', val);
+                document.documentElement.style.setProperty('--el-color-primary', val);
             },
             immediate: true
         }

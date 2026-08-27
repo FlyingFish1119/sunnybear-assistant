@@ -58,46 +58,6 @@ body {
    原生表单控件（与 index.html 风格统一）
    ============================================ */
 
-/* ---- 下拉框 ---- */
-.settings-select {
-    width: 100%;
-    padding: 8px 12px;
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-md);
-    font-size: 14px;
-    line-height: 1.5;
-    outline: none;
-    transition: all var(--transition-normal);
-    box-sizing: border-box;
-    font-family: inherit;
-    background: #fff;
-    color: var(--main-color);
-    cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 36px;
-}
-
-.settings-select:hover,
-.settings-select:focus {
-    border-radius: 0;
-    border-left: 4px solid var(--main-color);
-}
-
-.settings-select option {
-    background: #fff;
-    color: var(--text-primary);
-}
-
-.settings-select option:checked,
-.settings-select option:hover {
-    background: var(--main-color);
-    color: #fff;
-}
-
 /* ---- 输入框 ---- */
 .settings-input {
     width: 100%;

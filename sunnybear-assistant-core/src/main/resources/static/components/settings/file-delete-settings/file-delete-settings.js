@@ -41,12 +41,12 @@ const FileDeleteSettings = {
             </template>
             <el-form :model="fileDeleteForm" label-width="80px" label-position="left">
                 <el-form-item label="执行模式">
-                    <select class="settings-select" v-model="fileDeleteForm.mode">
-                        <option value="auto">自动 (auto)</option>
-                        <option value="alwaysAsked">始终询问 (alwaysAsked)</option>
-                        <option value="neverAsked">从不询问 (neverAsked)</option>
-                        <option value="alwaysRejectDanger">始终拒绝危险 (alwaysRejectDanger)</option>
-                    </select>
+                    <el-select v-model="fileDeleteForm.mode" style="width:100%">
+                        <el-option value="auto" label="自动 (auto)"></el-option>
+                        <el-option value="alwaysAsked" label="始终询问 (alwaysAsked)"></el-option>
+                        <el-option value="neverAsked" label="从不询问 (neverAsked)"></el-option>
+                        <el-option value="alwaysRejectDanger" label="始终拒绝危险 (alwaysRejectDanger)"></el-option>
+                    </el-select>
                 </el-form-item>
             </el-form>
             <template #footer>

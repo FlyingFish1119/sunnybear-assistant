@@ -41,10 +41,10 @@ const FileDownloadSettings = {
             </template>
             <el-form :model="fileDownloadForm" label-width="80px" label-position="left">
                 <el-form-item label="执行模式">
-                    <select class="settings-select" v-model="fileDownloadForm.mode">
-                        <option value="alwaysAsked">始终询问 (alwaysAsked)</option>
-                        <option value="neverAsked">从不询问 (neverAsked)</option>
-                    </select>
+                    <el-select v-model="fileDownloadForm.mode" style="width:100%">
+                        <el-option value="alwaysAsked" label="始终询问 (alwaysAsked)"></el-option>
+                        <el-option value="neverAsked" label="从不询问 (neverAsked)"></el-option>
+                    </el-select>
                 </el-form-item>
             </el-form>
             <template #footer>

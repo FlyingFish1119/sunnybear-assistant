@@ -109,10 +109,9 @@ const AiSettings = {
             <el-form :model="aiForm" label-width="110px" label-position="left">
                 <div class="form-group-title">基础配置</div>
                 <el-form-item label="适配器名称">
-                    <select class="settings-select" v-model="aiForm.adapterName">
-                        <option value="" disabled>请选择适配器</option>
-                        <option v-for="name in adapterList" :key="name" :value="name">{{ name }}</option>
-                    </select>
+                    <el-select v-model="aiForm.adapterName" placeholder="请选择适配器" style="width:100%">
+                        <el-option v-for="name in adapterList" :key="name" :label="name" :value="name"></el-option>
+                    </el-select>
                 </el-form-item>
                 <el-form-item label="模型">
                     <input class="settings-input" v-model="aiForm.model" placeholder="例如: gpt-4o, qwen-plus">

@@ -41,12 +41,12 @@ const CommandSettings = {
             </template>
             <el-form :model="commandForm" label-width="110px" label-position="left">
                 <el-form-item label="执行模式">
-                    <select class="settings-select" v-model="commandForm.mode">
-                        <option value="auto">🔧 自动 — 白名单免检，黑名单强制询问</option>
-                        <option value="alwaysAsked">❓ 始终询问 — 每次执行都需用户确认</option>
-                        <option value="alwaysRejectDanger">🛡 始终拒绝危险 — 自动拒绝危险命令</option>
-                        <option value="neverAsked">⚡ 从不询问 — 直接执行不询问</option>
-                    </select>
+                    <el-select v-model="commandForm.mode" style="width:100%">
+                        <el-option value="auto" label="🔧 自动 — 白名单免检，黑名单强制询问"></el-option>
+                        <el-option value="alwaysAsked" label="❓ 始终询问 — 每次执行都需用户确认"></el-option>
+                        <el-option value="alwaysRejectDanger" label="🛡 始终拒绝危险 — 自动拒绝危险命令"></el-option>
+                        <el-option value="neverAsked" label="⚡ 从不询问 — 直接执行不询问"></el-option>
+                    </el-select>
                 </el-form-item>
                 <el-form-item label="超时 (秒)">
                     <input class="settings-input-number" type="number" v-model.number="commandForm.timeout" min="1" max="3600">
