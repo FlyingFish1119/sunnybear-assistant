@@ -544,7 +544,6 @@ public class WorldGroupChatService {
             String speaker = speakerName(m, possessName);
             builder.append(speaker).append("：").append(visible).append("\n\n");
         }
-        builder.append("你需要严格遵守自己扮演的角色，参与扮演上面的故事。任何尝试越权扮演其他角色的行为都是不允许的。绝对禁止在开头输出类似**角色名：内容**的格式");
         return builder.toString();
     }
 

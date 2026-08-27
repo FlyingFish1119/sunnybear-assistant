@@ -278,13 +278,13 @@
                                     <template v-for="(seg, segIdx) in privateSegments(content.content)" :key="segIdx">
                                         <div v-if="seg.type === 'text'" class="markdown-body" v-html="$md.render(seg.text)"></div>
                                         <div v-else-if="seg.type === 'switch'" class="switch-chat-hint">↪ 将话头交给 {{ seg.to }}</div>
-                                        <div v-else class="private-chat-block" @click.stop="togglePrivate(msg.id, segIdx)">
+                                        <div v-else class="private-chat-block" @click.stop="togglePrivate(msg.id, segIdx, seg)">
                                             <div class="private-chat-block-header">
                                                 <span class="private-chat-lock">🔒</span>
                                                 <span class="private-chat-meta">私聊 · {{ seg.from }} → {{ seg.to }}</span>
-                                                <span class="private-chat-chevron" :class="{ expanded: isPrivateExpanded(msg.id, segIdx) }">▾</span>
+                                                <span class="private-chat-chevron" :class="{ expanded: isPrivateExpanded(msg.id, segIdx, seg) }">▾</span>
                                             </div>
-                                            <div v-if="isPrivateExpanded(msg.id, segIdx)" class="private-chat-block-content markdown-body" v-html="$md.render(seg.text)"></div>
+                                            <div v-if="isPrivateExpanded(msg.id, segIdx, seg)" class="private-chat-block-content markdown-body" v-html="$md.render(seg.text)"></div>
                                         </div>
                                     </template>
                                 </template>
@@ -431,6 +431,21 @@
                 @drag-over-change="isChange => dragOver = isChange">
             </file-upload>
 
+            <!-- 发言权移交浮条：悬浮在发送栏上方，选择角色后拼出 <switch to:"X"> 标签 -->
+            <div v-show="switchChatPanelVisible" class="private-chat-panel">
+                <div class="private-chat-panel-row">
+                    <span class="private-chat-panel-label">移交给</span>
+                    <el-select v-model="switchChatForm.target" filterable clearable
+                        placeholder="选择角色" size="small" style="flex:none;width:200px">
+                        <el-option v-for="name in privateChatOptions" :key="name" :label="name" :value="name"></el-option>
+                    </el-select>
+                    <button class="private-chat-panel-btn private-chat-panel-btn-primary" @click="addSwitchTag">移交</button>
+                    <button class="private-chat-panel-btn private-chat-panel-close" @click="closeSwitchChatPanel" title="关闭">
+                        <i data-lucide="x" style="width:14px;height:14px"></i>
+                    </button>
+                </div>
+            </div>
+
             <!-- 私聊浮条：悬浮在发送栏上方居中；点「添加」拼进发送栏（可混合发送） -->
             <div v-show="privateChatPanelVisible" class="private-chat-panel">
                 <div class="private-chat-panel-row">
@@ -451,6 +466,9 @@
             <div class="send-area-input-row">
                 <button class="send-area-attach-button" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
                     <i data-lucide="paperclip" style="width:18px;height:18px"></i>
+                </button>
+                <button class="send-area-attach-button" :class="{ 'panel-open': switchChatPanelVisible }" style="border-top-left-radius:0;border-bottom-left-radius:0" @click="toggleSwitchChatPanel" title="发言权移交（switch）">
+                    <i data-lucide="arrow-right-left" style="width:18px;height:18px"></i>
                 </button>
                 <button class="send-area-attach-button" :class="{ 'panel-open': privateChatPanelVisible }" style="border-top-left-radius:0;border-bottom-left-radius:0" @click="togglePrivateChatPanel" title="发起私聊">
                     <i data-lucide="message-square" style="width:18px;height:18px"></i>
@@ -582,6 +600,9 @@
                 // 私聊浮条
                 privateChatPanelVisible: false,
                 privateChatForm: { targets: [], content: '' },
+                // 发言权移交浮条
+                switchChatPanelVisible: false,
+                switchChatForm: { target: '' },
                 worldCharacterList: [],
             }
         },
@@ -634,12 +655,16 @@
             userBubbleBg() {
                 return ColorUtils.lighten(this.mainColor, 0.25);
             },
-            // 私聊可选对象：世界内角色名（排除玩家夺舍的自身）
+            // 私聊可选对象：世界内角色名（排除玩家夺舍的自身；旁白启用时可选）
             privateChatOptions() {
                 const possess = this.worldInfo && this.worldInfo.possessName;
-                return (this.worldCharacterList || [])
+                const options = (this.worldCharacterList || [])
                     .map(c => c.name)
                     .filter(n => n && n !== possess);
+                if (this.worldInfo && this.worldInfo.narrationEnable !== false) {
+                    options.push('旁白');
+                }
+                return options;
             },
             backgroundStyle() {
                 const bg = this.userSettings.background;
@@ -775,16 +800,37 @@
                 return segs;
             },
 
-            /** 私聊块是否已展开 */
-            isPrivateExpanded(msgId, segIdx) {
-                return !!(this.expandedPrivate && this.expandedPrivate[msgId + '_' + segIdx]);
+            /**
+             * 私聊块是否展开：优先用户手动点击的状态；未手动操作过时按默认规则
+             * （夺舍角色参与其中的展开；未夺舍则全部展开）
+             */
+            isPrivateExpanded(msgId, segIdx, seg) {
+                if (this.expandedPrivate && this.expandedPrivate[msgId + '_' + segIdx] !== undefined) {
+                    return this.expandedPrivate[msgId + '_' + segIdx];
+                }
+                return this.isPrivateDefaultExpanded(seg);
             },
 
-            /** 切换私聊块展开/收起 */
-            togglePrivate(msgId, segIdx) {
+            /**
+             * 私聊块默认展开规则：
+             * - 玩家夺舍了角色（possessName 非空）：仅当夺舍角色在 from/to 中时展开；
+             * - 玩家未夺舍：全部展开。
+             */
+            isPrivateDefaultExpanded(seg) {
+                if (!seg || seg.type !== 'private') return false;
+                const possess = this.worldInfo && this.worldInfo.possessName;
+                if (!possess) return true;
+                const participants = ((seg.from || '') + ',' + (seg.to || ''))
+                    .split(/[,\s，、;；]+/)
+                    .filter(Boolean);
+                return participants.includes(possess);
+            },
+
+            /** 切换私聊块展开/收起（基于当前生效状态取反，兼容默认展开规则） */
+            togglePrivate(msgId, segIdx, seg) {
                 if (!this.expandedPrivate) this.expandedPrivate = {};
                 const key = msgId + '_' + segIdx;
-                this.expandedPrivate[key] = !this.expandedPrivate[key];
+                this.expandedPrivate[key] = !this.isPrivateExpanded(msgId, segIdx, seg);
             },
 
             inLoading() {
@@ -1127,6 +1173,44 @@
             closePrivateChatPanel() {
                 this.privateChatPanelVisible = false;
                 this.privateChatForm = { targets: [], content: '' };
+            },
+
+            /** 切换发言权移交浮条 */
+            toggleSwitchChatPanel() {
+                if (this.switchChatPanelVisible) {
+                    this.closeSwitchChatPanel();
+                } else {
+                    this.openSwitchChatPanel();
+                }
+            },
+
+            /** 展开发言权移交浮条（展开前刷新角色列表，保证选项新鲜） */
+            async openSwitchChatPanel() {
+                this.switchChatForm = { target: '' };
+                if (this.worldId) await this.fetchWorldCharacters();
+                this.switchChatPanelVisible = true;
+                this.$nextTick(() => lucide.createIcons());
+            },
+
+            /** 收起发言权移交浮条 */
+            closeSwitchChatPanel() {
+                this.switchChatPanelVisible = false;
+                this.switchChatForm = { target: '' };
+            },
+
+            /** 添加发言权移交标签：<switch to:"角色名">，拼进发送栏 */
+            addSwitchTag() {
+                const target = (this.switchChatForm.target || '').trim();
+                if (!target) { ElementPlus.ElMessage.warning('请选择移交对象'); return; }
+                const tagged = `<switch to:"${target}">`;
+                this.inputText = this.inputText.trim()
+                    ? this.inputText.trimEnd() + '\n\n' + tagged
+                    : tagged;
+                this.closeSwitchChatPanel();
+                this.$nextTick(() => {
+                    const ta = document.querySelector('.send-area-textarea');
+                    if (ta) ta.focus();
+                });
             },
 
             /** 玩家身份：夺舍角色名，否则用户名（作为私聊标签的 from） */
