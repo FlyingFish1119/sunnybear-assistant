@@ -53,6 +53,9 @@ public class WorldGroupChatService {
     /** 旁白内置角色名（narration_enable 时作为调度器候选之一） */
     public static final String NARRATOR_NAME = "旁白";
 
+    /** 调度器最大尝试次数（初始 1 次 + 失败重试），仍失败则结束本轮 */
+    private static final int MAX_SCHEDULER_ATTEMPTS = 3;
+
     /** 私聊标签格式：<private from="发送者" to="接收者,逗号分隔">内容</private> */
     private static final String PRIVATE_TAG_SELECTOR = "private";
 
@@ -206,57 +209,143 @@ public class WorldGroupChatService {
 
     /**
      * 调度器 AI 调用：输入当前回合上下文 + 候选列表，JSON 输出选中角色名。
+     * 最多尝试 {@link #MAX_SCHEDULER_ATTEMPTS} 次，非法输出时携带上次原始结果反馈重试；
+     * 仍失败则返回 null（由调用方结束本轮）。
      *
-     * @return 选中角色名；无法决策 / 解析失败 / 非法名字时返回 null
+     * @return 选中角色名（含旁白）；无法决策时返回 null
      */
     public String selectSpeaker(WorldInfo world, String contextText, List<WorldCharacter> candidatesCharacters) throws Exception {
         if (CollectionUtils.isEmpty(candidatesCharacters)) {
             return null;
         }
-        List<String> candidates = candidatesCharacters.stream()
-                .map(WorldCharacter::getName)
-                .filter(StringUtils::hasText)
-                .toList();
-        List<String> candidatesWithDesc = candidatesCharacters.stream()
-                .map(character -> character.getName() + ": " + character.getIntro())
-                .filter(StringUtils::hasText)
-                .toList();
-        AISettings schedulerSettings = resolveSchedulerSettings(world);
-        String candidateDesc = String.join("\n", candidatesWithDesc);
-        String system = """
-                你是群聊场景调度器。根据最近的对话内容与候选发言者，决定下一位发言者。
+        boolean narrationEnabled = !Boolean.FALSE.equals(world.getNarrationEnable());
+        String possessName = world.getPossessName();
 
-                要求：
-                - 只输出一个 JSON 对象，格式为 {"name": "发言者名字"}，不要输出任何其他内容。
-                - 名字必须是候选发言者中的某一个。
-                - 在剧情推进、需要回应他人、出现新的冲突或转场时，选择合适的角色；旁白用于场景描述与氛围渲染。
-
-                你将收到一个角色列表，其格式如下
-                - 名字和介绍之间用冒号隔开，如 "角色名: 介绍"。
-                
-                注意：名称应该只包含角色名，而不包含介绍内容。
-
-                候选发言者：%s
-                """.formatted(candidateDesc);
-
-        ChatRequest request = new ChatRequest()
-                .loadSettings(new AISettings().copy(schedulerSettings).json())
-                .setMessages(List.of(
-                        new ChatMessage().system(system),
-                        new ChatMessage().user("对话内容：\n" + contextText)
-                ));
-
-        AtomicReference<String> chosen = new AtomicReference<>();
-        chatHttpHandler.translate(UUID.randomUUID().toString(), schedulerSettings.getAdapterName(),
-                request, false, null,
-                (result, lastRes) -> chosen.set(parseName(result.content())));
-
-        String name = chosen.get();
-        if (StringUtils.hasText(name) && !candidates.contains(name)) {
-            log.warn("调度器返回了不在候选列表中的名字 [{}]，忽略", name);
-            return null;
+        // 校验用候选名列表（旁白启用时纳入，修复"旁白永远选不出来"）
+        List<String> candidates = new ArrayList<>();
+        for (WorldCharacter character : candidatesCharacters) {
+            if (StringUtils.hasText(character.getName())) {
+                candidates.add(character.getName());
+            }
         }
-        return name;
+        if (narrationEnabled) {
+            candidates.add(NARRATOR_NAME);
+        }
+
+        // 展示用候选描述：角色名：简介，夺舍角色标注真人玩家
+        List<String> candidatesWithDesc = new ArrayList<>();
+        for (WorldCharacter character : candidatesCharacters) {
+            if (!StringUtils.hasText(character.getName())) {
+                continue;
+            }
+            String line = character.getName() + ": " + character.getIntro();
+            if (StringUtils.hasText(possessName) && possessName.equals(character.getName())) {
+                line += "（由真人玩家扮演）";
+            }
+            candidatesWithDesc.add(line);
+        }
+        if (narrationEnabled) {
+            candidatesWithDesc.add(NARRATOR_NAME + "：负责场景描述、氛围渲染与转场");
+        }
+
+        String candidateDesc = String.join("\n", candidatesWithDesc);
+        AISettings schedulerSettings = resolveSchedulerSettings(world);
+        String system = buildSchedulerSystemPrompt(candidateDesc, narrationEnabled, possessName);
+
+        String lastRaw = null;
+        for (int attempt = 0; attempt < MAX_SCHEDULER_ATTEMPTS; attempt++) {
+            String userContent = "对话内容：\n" + contextText;
+            if (attempt > 0) {
+                userContent += "\n\n【上一次决策无效】你返回了「" + (lastRaw == null ? "空内容" : lastRaw) + "」，"
+                        + "它不在候选名单中或不是合法的 JSON。请重新决策：name 必须严格等于候选名单中的某一个，只输出 JSON 对象。";
+            }
+            ChatRequest request = new ChatRequest()
+                    .loadSettings(new AISettings().copy(schedulerSettings).json())
+                    .setMessages(List.of(
+                            new ChatMessage().system(system),
+                            new ChatMessage().user(userContent)
+                    ));
+
+            AtomicReference<String> chosen = new AtomicReference<>();
+            AtomicReference<String> rawHolder = new AtomicReference<>();
+            chatHttpHandler.translate(UUID.randomUUID().toString(), schedulerSettings.getAdapterName(),
+                    request, false, null,
+                    (result, lastRes) -> {
+                        rawHolder.set(result.content());
+                        chosen.set(parseName(result.content()));
+                    });
+
+            lastRaw = rawHolder.get();
+            String name = chosen.get();
+            if (StringUtils.hasText(name) && candidates.contains(name)) {
+                return name;
+            }
+            log.warn("调度器第 {} 次决策无效 [raw={}]", attempt + 1, lastRaw);
+        }
+        log.warn("调度器 {} 次尝试均无效，本轮结束", MAX_SCHEDULER_ATTEMPTS);
+        return null;
+    }
+
+    /**
+     * 调度器系统提示词：选角原则（剧情关联度优先、旁白克制）+ 候选名单 + 夺舍/旁白特殊说明 + few-shot 示例。
+     */
+    private String buildSchedulerSystemPrompt(String candidateDesc, boolean narrationEnabled, String possessName) {
+        String special = "无";
+        if (StringUtils.hasText(possessName) || narrationEnabled) {
+            StringBuilder sb = new StringBuilder();
+            if (StringUtils.hasText(possessName)) {
+                sb.append("「").append(possessName).append("」由真人玩家扮演。\n");
+            }
+            if (narrationEnabled) {
+                sb.append("「").append(NARRATOR_NAME).append("」是本群聊的合法候选，负责场景描述、氛围渲染与转场。\n");
+            }
+            special = sb.toString().trim();
+        }
+        return """
+                你是群聊场景的【调度员】。你的唯一职责是决定：在当前剧情节点，下一位该谁发言。你不写台词、不参与剧情，只做选角决策。
+
+                你的目标是让群聊像一部好看的剧：每一次出场都顺理成章，每一句话都推动剧情或塑造人物，节奏张弛有度。
+
+                ## 输入
+                - 【当前对话】：按时间正序，格式「角色名：发言」，最后一条是剧情的最新节点。
+                - 【候选名单】：每个角色一行，格式「角色名：简介」。%s
+
+                ## 选角原则（严格按优先级）
+                1. 【剧情关联度·最高优先】只选此刻"在场景里、与当前事件/冲突/对话有直接关联、真正有话说或该有所行动"的角色。坚决避免选出与当下场景无关、没有理由在场的人。
+                2. 【直接回应】若最新一句明确点名或直指某角色（提问、对峙、打招呼、喊名字），让被针对的角色接话；除非刻意的沉默更能制造张力。
+                3. 【推动剧情】否则，选与当前冲突/情绪绑得最深、最可能让事态升级或揭示新信息的角色。
+                4. 【节奏】非必要不让同一人连续开口；当几个角色都合理在场时，优先给较久没说话的那个镜头。
+                5. 【旁白】仅在场景切换、时间流逝、需要交代环境/氛围、或对话僵住需要破局时，才选旁白。不要频繁用旁白打断对话节奏。
+                
+                ## 特殊说明
+                %s
+
+                ## 关于夺舍角色
+                若特殊说明提到某角色由真人玩家扮演：当剧情最该轮到他接话、或需要玩家做出选择时，选他（选中后回合会交还给玩家）。其余情况正常对待。
+
+                ## 输出
+                只输出一个 JSON 对象，不得有其它任何文字：
+                {"reason": "一句话理由", "name": "角色名"}
+                - reason 必须写在 name 之前（先论证理由，再定名字，最后才下结论）。
+                - name 必须严格等于候选名单中的某一个（旁白若启用也是合法选项）。
+                - reason 是内部决策依据，一句话即可，绝不能出现在任何角色发言里。
+
+                ## 示例
+                示例1：
+                对话：…「林月：你们到底是谁派来的？老实交代。」
+                候选：林月 / 陈默 / 阿澈 / 旁白
+                输出：{"reason": "林月的质问直指陈默，由他正面回应最合理", "name": "陈默"}
+
+                示例2：
+                对话：…「陈默：林月，那包裹里的东西到底和你有没有关系？」「林月：……和我没关系。」（两人已来回多轮）
+                候选：林月 / 陈默 / 阿澈 / 旁白
+                输出：{"reason": "两人对峙陷入僵局，让第三方阿澈打破平衡、推动冲突", "name": "阿澈"}
+
+                示例3：
+                对话：…「陈默：那就这么定了，明天午夜，码头见。」
+                候选：林月 / 陈默 / 阿澈 / 旁白
+                输出：{"reason": "约定达成、场景即将切换，交给旁白转场并渲染夜色氛围", "name": "旁白"}
+                """.formatted(candidateDesc, special);
     }
 
     /**
