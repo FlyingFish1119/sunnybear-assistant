@@ -647,7 +647,6 @@ public class WorldGroupChatService {
     /** 角色系统提示词：世界描述 + 世界预设 + 角色设定 + 角色知晓的知识（+ 私聊频道用法） */
     private String buildSystemPrompt(WorldInfo world, WorldCharacter character, List<String> knownKnowledge) {
         StringBuilder systemPrompt = new StringBuilder();
-        systemPrompt.append("你的唯一身份是 [").append(character.getName()).append("]，同时十分擅长使用特殊的 HTML 标签，请务必严格遵守这个身份，不要扮演其他角色。\n\n");
         if (StringUtils.hasText(world.getPreset())) {
             systemPrompt.append(world.getPreset()).append("\n\n");
         }
@@ -666,7 +665,7 @@ public class WorldGroupChatService {
         }
         systemPrompt.append(PRIVATE_USAGE);
         systemPrompt.append("\n").append(SWITCH_USAGE);
-        return systemPrompt.toString();
+        return systemPrompt.toString().replace("${character_name}", character.getName());
     }
 
     /** 角色知晓的知识（title：content），来自 world_knowledge + world_knowledge_character */
