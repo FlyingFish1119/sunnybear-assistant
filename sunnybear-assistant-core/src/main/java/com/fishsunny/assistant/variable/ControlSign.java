@@ -24,4 +24,6 @@ public class ControlSign {
     public static final String SIGN_KNOWLEDGE_HIT = "###KNOWLEDGE_HIT###";
     // 应携带一个 sessionId 字符串
     public static final String SIGN_TOOL_CALL_FINISH = "###TOOL_CALL_FINISH###";
+    // 群聊轮次边界，携带 "sessionId|角色名"（新一轮发言者开始）
+    public static final String SIGN_WORLD_ROUND = "###WORLD_ROUND###";
 }

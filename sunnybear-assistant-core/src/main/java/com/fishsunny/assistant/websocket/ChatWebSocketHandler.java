@@ -109,6 +109,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             // 用线程安全的包装器保护 session，防止多线程并发 sendMessage 时出现 TEXT_PARTIAL_WRITING
             final WebSocketSession safeSession = new SynchronizedWebSocketSession(session);
 
+            // 提升到 try 外：错误处理时需要回传 sessionId，让前端能按会话清理流式状态
+            ChatMessageRequest request = null;
             try {
                 String payload = message.getPayload();
 
@@ -118,7 +120,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 }
 
                 // 检查请求
-                ChatMessageRequest request = new ChatMessageRequest().parseAndValidate(payload, objectMapper);
+                request = new ChatMessageRequest().parseAndValidate(payload, objectMapper);
 
                 if (request.isTemp()) {
                     tempChatProcessor.chat(request, safeSession);
@@ -159,10 +161,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
             } catch (UserException e) {
                 log.warn(e.getMessage());
-                sendErrorToFrontend(safeSession, null, e.getMessage());
+                sendErrorToFrontend(safeSession, request != null ? request.getSessionId() : null, e.getMessage());
             } catch (Exception e) {
                 log.error("error: {}", e.getMessage(), e);
-                sendErrorToFrontend(safeSession, null, "系统内部错误，请稍后重试");
+                sendErrorToFrontend(safeSession, request != null ? request.getSessionId() : null, "系统内部错误，请稍后重试");
             }
 
         });

@@ -120,6 +120,13 @@ public class CharacterGlossaryRepositoryImplement implements CharacterGlossaryRe
     }
 
     @Override
+    public List<CharacterGlossary> searchByCharacterId(String characterId, String searchText) {
+        String sql = "SELECT * FROM character_glossary WHERE character_id = ? AND (keyword LIKE ? OR desc LIKE ?) ORDER BY keyword ASC";
+        String pattern = "%" + searchText + "%";
+        return jdbcTemplate.query(sql, rowMapper, characterId, pattern, pattern);
+    }
+
+    @Override
     public void deleteByCharacterId(String characterId) {
         String sql = "DELETE FROM character_glossary WHERE character_id = ?";
         jdbcTemplate.update(sql, characterId);

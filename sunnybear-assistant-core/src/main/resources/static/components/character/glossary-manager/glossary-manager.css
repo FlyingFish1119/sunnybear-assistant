@@ -5,7 +5,7 @@
 }
 .glossary-dialog .el-dialog__body {
     padding: 0 20px 20px;
-    max-height: 60vh;
+    max-height: 75vh;
     overflow-y: auto;
 }
 
@@ -33,6 +33,15 @@
 .glossary-toolbar .glossary-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+/* ---- Search box ----
+ * 组件样式见 components/search-box/search-box.css，这里只定词条库里的布局尺寸
+ */
+.glossary-search-box {
+    flex: 1 1 auto;
+    max-width: 320px;
+    min-width: 180px;
 }
 
 .glossary-btn {
@@ -184,7 +193,7 @@
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 120px;
+    max-height: 200px;
     overflow-y: auto;
     flex: 1 1 auto;
 }

@@ -70,7 +70,8 @@ const API = (function () {
 
         ws: {
             url: WS_PROTO + window.location.host + BASE_PATH + 'ws/chat',
-            characterUrl: WS_PROTO + window.location.host + BASE_PATH + 'ws/character-chat'
+            characterUrl: WS_PROTO + window.location.host + BASE_PATH + 'ws/character-chat',
+            worldUrl: WS_PROTO + window.location.host + BASE_PATH + 'ws/world-chat'
         },
 
         /** 文件代理 URL（用于图片/音视频等本地文件的展示） */
@@ -239,12 +240,76 @@ const API = (function () {
                 list: function (characterId) {
                     return get('character/glossary/list?characterId=' + encodeURIComponent(characterId));
                 },
+                /** 按关键词/描述模糊搜索词条 */
+                search: function (characterId, q) {
+                    return get('character/glossary/search?characterId=' + encodeURIComponent(characterId)
+                        + '&q=' + encodeURIComponent(q || ''));
+                },
                 create: function (data) { return post('character/glossary/create', data); },
                 update: function (data) { return post('character/glossary/update', data); },
                 delete: function (id) { return get('character/glossary/delete?id=' + id); },
                 /** 批量导入词条（JSON 数组 [{keyword, desc, content}]），关键词重复的条目覆盖更新 */
                 import: function (characterId, items) {
                     return post('character/glossary/import?characterId=' + encodeURIComponent(characterId), items);
+                }
+            }
+        },
+
+        /* ---------- 世界观 ---------- */
+        world: {
+            list: function () { return get('world/list'); },
+            get: function (id) { return get('world/get?id=' + encodeURIComponent(id)); },
+            create: function (data) { return post('world/create', data); },
+            update: function (data) { return post('world/update', data); },
+            delete: function (id) { return get('world/delete?id=' + encodeURIComponent(id)); },
+            deleteBackground: function (id) {
+                return get('world/delete-background?id=' + encodeURIComponent(id));
+            },
+            uploadBackground: function (id, file) {
+                return upload('world/upload-background?id=' + encodeURIComponent(id), file);
+            },
+            /** 绑定群聊会话到世界观 */
+            bindSession: function (data) { return post('world/bind-session', data); },
+            /** 解绑群聊会话 */
+            unbindSession: function (sessionId) {
+                return get('world/unbind-session?sessionId=' + encodeURIComponent(sessionId));
+            },
+            /** 通过会话 ID 获取绑定的世界观 */
+            getBySession: function (sessionId) {
+                return get('world/get-by-session?sessionId=' + encodeURIComponent(sessionId));
+            },
+            /** 获取绑定到某世界观的全部群聊会话 */
+            getSessions: function (worldId) {
+                return get('world/sessions?worldId=' + encodeURIComponent(worldId));
+            },
+
+            /* 世界观下的群组角色（id 主键） */
+            character: {
+                list: function (worldId) {
+                    return get('world/character/list?worldId=' + encodeURIComponent(worldId));
+                },
+                get: function (id) {
+                    return get('world/character/get?id=' + encodeURIComponent(id));
+                },
+                create: function (data) { return post('world/character/create', data); },
+                update: function (data) { return post('world/character/update', data); },
+                delete: function (id) {
+                    return get('world/character/delete?id=' + encodeURIComponent(id));
+                }
+            },
+
+            /* 世界观下的知识（标题 + 内容 + 知晓角色） */
+            knowledge: {
+                list: function (worldId) {
+                    return get('world/knowledge/list?worldId=' + encodeURIComponent(worldId));
+                },
+                get: function (id) {
+                    return get('world/knowledge/get?id=' + encodeURIComponent(id));
+                },
+                create: function (data) { return post('world/knowledge/create', data); },
+                update: function (data) { return post('world/knowledge/update', data); },
+                delete: function (id) {
+                    return get('world/knowledge/delete?id=' + encodeURIComponent(id));
                 }
             }
         },

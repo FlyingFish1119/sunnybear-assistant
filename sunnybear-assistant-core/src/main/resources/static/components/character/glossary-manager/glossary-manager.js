@@ -31,6 +31,13 @@ const GlossaryManager = {
             <!-- 工具栏 -->
             <div class="glossary-toolbar">
                 <span class="glossary-count">共 {{ glossaries.length }} 条词条</span>
+                <search-box
+                    v-model="searchText"
+                    :loading="searching"
+                    placeholder="搜索关键词 / 描述"
+                    class="glossary-search-box"
+                    @search="doSearch"
+                ></search-box>
                 <div class="glossary-toolbar-actions">
                     <button v-if="!showForm" class="glossary-btn" @click="chooseImportFile"
                         :disabled="importing" title="从 JSON 文件导入词条（重复关键词将被覆盖）">
@@ -81,7 +88,7 @@ const GlossaryManager = {
             <!-- 空状态 -->
             <div v-if="!loading && glossaries.length === 0 && !showForm" class="glossary-empty">
                 <i data-lucide="file-text"></i>
-                <p>暂无词条，点击上方按钮添加</p>
+                <p>{{ searchText ? '未找到匹配的词条' : '暂无词条，点击上方按钮添加' }}</p>
             </div>
 
             <!-- 卡片列表 -->
@@ -125,6 +132,8 @@ const GlossaryManager = {
             loading: false,
             saving: false,
             importing: false,
+            searching: false,
+            searchText: '',
             characterId: '',
             characterName: '',
             glossaries: [],
@@ -141,7 +150,8 @@ const GlossaryManager = {
                 : '词条管理';
         },
         dialogWidth() {
-            return window.innerWidth <= 768 ? '100%' : '768px';
+            // PC 端加宽以展示更多词条文本，移动端保持全屏
+            return window.innerWidth <= 768 ? '100%' : 'min(1000px, 92vw)';
         }
     },
 
@@ -151,27 +161,47 @@ const GlossaryManager = {
         show(characterId, characterName) {
             this.characterId = characterId;
             this.characterName = characterName || '';
+            this.searchText = '';
             this.visible = true;
             this.loadGlossaries();
         },
 
-        /* ========== 加载词条列表 ========== */
+        /* ========== 加载词条列表（打开 / CRUD 刷新） ========== */
         async loadGlossaries() {
             if (!this.characterId) return;
             this.loading = true;
             try {
-                const r = await API.character.glossary.list(this.characterId);
-                if (r.status === 200) {
-                    this.glossaries = r.data || [];
-                } else {
-                    this.glossaries = [];
-                }
+                this.glossaries = await this._fetchList();
             } catch (e) {
                 console.error('加载词条列表失败:', e);
                 ElementPlus.ElMessage.error('加载词条列表失败');
                 this.glossaries = [];
             } finally {
                 this.loading = false;
+                this.$nextTick(() => lucide.createIcons());
+            }
+        },
+
+        /* ========== 搜索词条 ========== */
+        /** 有搜索词走后端 search 接口（关键词/描述模糊匹配），否则返回全部 */
+        async _fetchList() {
+            const q = (this.searchText || '').trim();
+            const r = q
+                ? await API.character.glossary.search(this.characterId, q)
+                : await API.character.glossary.list(this.characterId);
+            return r.status === 200 ? (r.data || []) : [];
+        },
+
+        /** 搜索框组件防抖后触发（携带关键字），或清空时触发（空串 → 恢复全量） */
+        async doSearch() {
+            if (!this.characterId) return;
+            this.searching = true;
+            try {
+                this.glossaries = await this._fetchList();
+            } catch (e) {
+                console.error('搜索词条失败:', e);
+            } finally {
+                this.searching = false;
                 this.$nextTick(() => lucide.createIcons());
             }
         },
@@ -397,6 +427,8 @@ const GlossaryManager = {
             this.editingId = null;
             this.form = { keyword: '', desc: '', content: '' };
             this.importing = false;
+            this.searching = false;
+            this.searchText = '';
         }
     },
 

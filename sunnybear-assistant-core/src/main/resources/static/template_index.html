@@ -1,9 +1,15 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+<!-- ========================================================
+     template_index.html — 可复用页面基座模板
+     以 index.html 为基底裁剪：保留 WebSocket 聊天闭环，
+     去掉 agent-log 侧边框、知识库命中闪现等专属逻辑。
+     后续新 plug 页面直接复制本文件改造即可。
+     ======================================================== -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover">
-    <title>SunnyBear 助手</title>
+    <title>模板 — SunnyBear 助手</title>
     <link rel="icon" type="image/png" href="icon/ComfyUI_23337_.png">
     <!-- Element Plus 样式 -->
     <link rel="stylesheet" href="lib/element-plus.css">
@@ -35,7 +41,6 @@
     <script src="components/connection-indicator/connection-indicator.js"></script>
     <script src="components/auto-resize-textarea/auto-resize-textarea.js"></script>
     <script src="components/command-suggest/command-suggest.js"></script>
-    <script src="components/agent-log-sidebar/agent-log-sidebar.js"></script>
     <!-- 样式 -->
     <link rel="stylesheet" href="css/scrollbar.css"/>
     <link rel="stylesheet" href="css/layout.css"/>
@@ -51,7 +56,6 @@
     <link rel="stylesheet" href="components/connection-indicator/connection-indicator.css"/>
     <link rel="stylesheet" href="components/auto-resize-textarea/auto-resize-textarea.css"/>
     <link rel="stylesheet" href="components/command-suggest/command-suggest.css"/>
-    <link rel="stylesheet" href="components/agent-log-sidebar/agent-log-sidebar.css"/>
     <!-- highlight.js 代码高亮样式 -->
     <link rel="stylesheet" href="lib/highlight-github-dark.min.css">
 </head>
@@ -91,19 +95,11 @@
                 </session-name>
             </div>
             <div style="display: flex; align-items: center; gap: 16px;">
-                <span v-if="knowledgeFlashVisible" class="knowledge-hit-flash" title="已自动检索知识库内容">
-                    <i data-lucide="database"></i>
-                </span>
                 <connection-indicator
                     :ws-url="wsUrl"
                     @connected="ws = $event; ws.onmessage = (e) => handleStreamChunk(e)"
                     @disconnected="sending = false; ws = null">
                 </connection-indicator>
-                <button class="sidebar-toggle-btn" @click="toggleAgentLog"
-                        :title="agentLogVisible ? '折叠 Agent Log' : '展开 Agent Log'"
-                        :style="agentLogVisible ? {color: mainColor} : {}">
-                    <i data-lucide="terminal" style="width: 18px; height: 18px;"></i>
-                </button>
             </div>
         </div>
         <div class="message-area-panel" :class="{ 'is-new-chat': !currentSessionId && currentMessages.length === 0 }">
@@ -289,13 +285,6 @@
                 </div>
             </div>
         </div>
-        <agent-log-sidebar
-            ref="agentLogSidebar"
-            :logs="agentLogs"
-            :visible="agentLogVisible"
-            :main-color="mainColor"
-            @toggle="agentLogVisible = !agentLogVisible">
-        </agent-log-sidebar>
         <div class="send-area-container" :style="{'--main-color': mainColor}" style="position: relative;">
             <command-suggest
                 :commands="filteredCommands"
@@ -430,8 +419,6 @@
                 editTargetRole: null,
                 // 问候语
                 greetingText: '',
-                // 知识库命中闪现提示
-                knowledgeFlashVisible: false,
                 // 桌面端侧边栏折叠
                 sidebarCollapsed: false,
                 // 折叠状态：key = msgId_section, value = true(折叠)/false(展开)
@@ -443,9 +430,6 @@
                 // 文件上传
                 uploadedFiles: [],   // [{name, data}] — 对应后端 FileData
                 dragOver: false,
-                // Agent Log 侧边框
-                agentLogs: [],
-                agentLogVisible: false,
             }
         },
 
@@ -712,22 +696,9 @@
                 }
             },
 
-            /**
-             * 知识库命中：顶部栏闪现图标，约 5 秒后自动消失（与 CSS 动画时长一致）
-             */
-            showKnowledgeFlash() {
-                this.knowledgeFlashVisible = true;
-                clearTimeout(this._knowledgeFlashTimer);
-                this._knowledgeFlashTimer = setTimeout(() => {
-                    this.knowledgeFlashVisible = false;
-                }, 5000);
-            },
-
             selectSession(session) {
                 this.closeSidebar();
                 this.$md.clearCache();
-                // 切换会话时清空 Agent Log
-                this.agentLogs = [];
                 this.sessionSelectLoading = true;
                 this.currentSession = session;
                 API.message.getHistory(session.id).then(result => {
@@ -922,14 +893,6 @@
                     this.$refs.toolConfirm.show(commandConfirm);
                     return;
                 }
-                if (event.data.startsWith('###AGENT_LOG###')) {
-                    let entry = JSON.parse(event.data.split('###AGENT_LOG###')[1]);
-                    // 只记录当前会话的日志
-                    if (entry.sessionId === this.currentSessionId) {
-                        this.agentLogs.push(entry);
-                    }
-                    return;
-                }
                 if (event.data.startsWith('###END###')) {
                     // 结束流式传输，从 streamingMessages 中移除当前会话的流式消息
                     let sessionId = event.data.split('###END###')[1];
@@ -951,11 +914,6 @@
                     if (session.id === this.currentSessionId) {
                         this.currentSession = ref;
                     }
-                    return;
-                }
-                if (event.data.startsWith('###KNOWLEDGE_HIT###')) {
-                    // 知识库内容被自动注入到提示词，顶部栏闪现图标提示
-                    this.showKnowledgeFlash();
                     return;
                 }
                 if (event.data.startsWith('###TOOL_CALL_FINISH###')) {
@@ -1174,19 +1132,11 @@
             },
 
             /**
-             * 切换 Agent Log 浮窗
-             */
-            toggleAgentLog() {
-                this.agentLogVisible = !this.agentLogVisible;
-            },
-
-            /**
              * 创建会话
              */
             createSession() {
                 this.closeSidebar();
                 this.$md.clearCache();
-                this.agentLogs = [];
                 this.currentSession = {};
                 this.currentMessages = [];
             },
@@ -1622,7 +1572,6 @@
     app.component('connection-indicator', ConnectionIndicator);
     app.component('auto-resize-textarea', AutoResizeTextarea);
     app.component('command-suggest', CommandSuggest);
-    app.component('agent-log-sidebar', AgentLogSidebar);
 
     app.use(ElementPlus);
     app.mount('#app');

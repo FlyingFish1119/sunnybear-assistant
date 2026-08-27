@@ -21,6 +21,7 @@ spring:
       schema-locations:
         - classpath:sql/schema.sql
         - classpath:sql/character_schema.sql
+        - classpath:sql/world_schema.sql
 
 # 助手业务配置
 assistant:

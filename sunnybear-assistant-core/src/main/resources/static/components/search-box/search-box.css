@@ -1,0 +1,42 @@
+/* ==================== Search Box ==================== */
+
+.search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.search-box .search-box-input {
+    width: 100%;
+    padding: 7px 30px 7px 30px;
+    border: 1px solid #dcdfe6;
+    border-radius: var(--radius-sm, 6px);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+.search-box .search-box-input:focus {
+    border-color: var(--main-color, lightsalmon);
+}
+
+/* 右侧 spinner / 清除按钮：普通 span 不被 lucide 替换，可安全绑事件 */
+.search-box .search-box-side {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-muted, #909399);
+    cursor: default;
+}
+.search-box .search-box-side.is-clear {
+    cursor: pointer;
+}
+
+@keyframes search-box-spin {
+    to { transform: rotate(360deg); }
+}

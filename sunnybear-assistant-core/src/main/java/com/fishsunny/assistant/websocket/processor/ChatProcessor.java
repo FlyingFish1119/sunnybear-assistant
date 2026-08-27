@@ -109,8 +109,24 @@ public class ChatProcessor {
             throw new UserException("无效的 ChatProvider");
         }
 
+        AISettings activeAISettings;
+        AISettings activeChatProAISettings;
+        String activeAssistantName = assistantSettings.getAssistantName();
+        if (chatProvider.getSettingsSupplier() != null) {
+            ChatProvider.Settings settings = chatProvider.getSettingsSupplier().get();
+            activeAISettings = settings.chat();
+            activeChatProAISettings = settings.chatPro();
+            // 群聊/角色场景：settingsSupplier 可覆盖 assistant 归属名，用于落盘 assistant 消息的 name
+            if (settings.assistant() != null && StringUtils.hasText(settings.assistant().getAssistantName())) {
+                activeAssistantName = settings.assistant().getAssistantName();
+            }
+        } else {
+            activeAISettings = this.aiSettings;
+            activeChatProAISettings = this.chatProAISettings;
+        }
+
         // 根据 session 的 enable_pro 标记选择使用 chat 还是 chat_pro 模型
-        AISettings effectiveAISettings = Boolean.TRUE.equals(chatSession.getEnablePro()) ? chatProAISettings : aiSettings;
+        AISettings effectiveAISettings = Boolean.TRUE.equals(chatSession.getEnablePro()) ? activeChatProAISettings : activeAISettings;
 
         // 获取系统提示
         ChatProvider.SystemProviderContext context = new ChatProvider.SystemProviderContext(chatSession, originMessages);
@@ -118,10 +134,13 @@ public class ChatProcessor {
         if (chatProvider.getSystemProvider() != null) {
             systemPrompt = chatProvider.getSystemProvider().apply(context);
         } else {
-            systemPrompt = defaultSystemPrompt(context, effectiveAISettings.getModel(), session);
+            systemPrompt = defaultSystemPrompt(context, activeAISettings, effectiveAISettings.getModel(), session);
         }
 
         List<ChatMessage> messages = new ArrayList<>();
+        if (chatProvider.getSessionMessageProvider() != null) {
+            originMessages = chatProvider.getSessionMessageProvider().apply(originMessages);
+        }
         messages.add(new ChatMessage().system(systemPrompt));
         messages.addAll(ChatMessage.fillAllFile(originMessages));
 
@@ -145,17 +164,17 @@ public class ChatProcessor {
         }
 
         List<ChatMessage> collector = new ArrayList<>();
-        toolCallCycle(collector, effectiveAISettings, request, chatSession, session, chatProvider);
+        toolCallCycle(collector, effectiveAISettings, request, chatSession, session, chatProvider, activeAssistantName);
         return collector;
     }
 
-    private String defaultSystemPrompt(ChatProvider.SystemProviderContext context, String effectiveModelName,
+    private String defaultSystemPrompt(ChatProvider.SystemProviderContext context, AISettings activeAISettings, String effectiveModelName,
                                        WebSocketSession session) throws Exception {
         ChatSession chatSession = context.chatSession();
         List<ChatMessage> originMessages = context.originMessages();
 
         // 替换变量（系统提示词始终使用 chat 的 prompt，模型名使用实际生效的模型）
-        StringBuilder systemPrompt = new StringBuilder(aiSettings.getPrompt()
+        StringBuilder systemPrompt = new StringBuilder(activeAISettings.getPrompt()
                 .replace(PromptReplaceVariable.CURRENT_TIME, LocalDate.now().toString())
                 .replace(PromptReplaceVariable.MODEL_NAME, effectiveModelName)
                 .replace(PromptReplaceVariable.IP_ADDRESS, InetAddress.getLocalHost().toString()));
@@ -212,7 +231,8 @@ public class ChatProcessor {
                                ChatRequest request,
                                ChatSession chatSession,
                                WebSocketSession session,
-                               ChatProvider chatProvider
+                               ChatProvider chatProvider,
+                               String activeAssistantName
     ) throws Exception {
 
         // 注入工具（排除被 agent_tool 路由的子 Agent 工具及其原子工具）
@@ -232,7 +252,7 @@ public class ChatProcessor {
                 for (ChatMessage message : chatResponse.getMessages()) {
                     ChatMessage last = ObjectUtils.getLast(request.getMessages());
                     String parentId = last == null ? null : last.getId();
-                    message.makeInsertable(chatSession.getId(), parentId, assistantSettings.getAssistantName());
+                    message.makeInsertable(chatSession.getId(), parentId, activeAssistantName);
                 }
                 session.sendMessage(new TextMessage(objectMapper.writeValueAsString(chatResponse)));
             } catch (Exception e) {
@@ -255,7 +275,7 @@ public class ChatProcessor {
                     List<ChatToolRequest> convert = ChatToolRequest.convert(toolCalls);
                     toolCallRequests.addAll(convert);
                 }
-                ChatMessage assistantMessage = appendAssistantMessage(chatSession.getId(), parentId, result.reasoning(), result.content(), toolCallRequests);
+                ChatMessage assistantMessage = appendAssistantMessage(chatSession.getId(), parentId, result.reasoning(), result.content(), toolCallRequests, activeAssistantName);
                 // A\专用的
                 String reasoningSignature = result.reasoningSignature();
                 if (reasoningSignature != null && !reasoningSignature.isEmpty()) {
@@ -317,7 +337,7 @@ public class ChatProcessor {
                 }
                 // 递归调用
                 try {
-                    toolCallCycle(collector, effectiveAISettings, request, chatSession, session, chatProvider);
+                    toolCallCycle(collector, effectiveAISettings, request, chatSession, session, chatProvider, activeAssistantName);
                 } catch (Exception e) {
                     log.error("工具调用失败: {}", e.getMessage());
                     throw new RuntimeException(e);
@@ -328,11 +348,11 @@ public class ChatProcessor {
         chatHttpHandler.translate(chatSession.getId(), effectiveAISettings.getAdapterName(), request, request.getSettings().getStream(), translate, complete);
     }
 
-    private ChatMessage appendAssistantMessage(String sessionId, String parentId, String reasoning, String content, List<ChatToolRequest> toolCalls) throws Exception {
+    private ChatMessage appendAssistantMessage(String sessionId, String parentId, String reasoning, String content, List<ChatToolRequest> toolCalls, String assistantName) throws Exception {
 
         ChatMessage chatMessage = new ChatMessage()
                 .assistant(content, reasoning, toolCalls)
-                .makeInsertable(sessionId, parentId, assistantSettings.getAssistantName());
+                .makeInsertable(sessionId, parentId, assistantName);
 
         try {
             return chatMessageService.save(chatMessage);
@@ -356,13 +376,5 @@ public class ChatProcessor {
         } catch (Exception e) {
             throw new Exception("保存工具结果消息失败，系统发生了未知错误: " + e.getMessage());
         }
-    }
-
-    private void sendAssistantResponse(WebSocketSession session, String sessionId, ChatMessage msg) throws Exception {
-        ChatResponse resp = new ChatResponse()
-                .setStatus(ChatResponse.STATUS_INIT_ASSISTANT)
-                .setMessages(List.of(msg))
-                .setSessionId(sessionId);
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(resp)));
     }
 }

@@ -8,7 +8,7 @@ package com.fishsunny.assistant.plug.character.service;
  * @Date 2026/7/13
  */
 
-import com.fishsunny.assistant.dto.GlossaryImportResult;
+import com.fishsunny.assistant.plug.character.dto.GlossaryImportResult;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
 import com.fishsunny.assistant.plug.character.repository.CharacterGlossaryRepository;
 import org.slf4j.Logger;
@@ -41,6 +41,17 @@ public class CharacterGlossaryServiceImplement implements CharacterGlossaryServi
             throw new RuntimeException("角色 ID 不能为空");
         }
         return glossaryRepository.selectByCharacterId(characterId);
+    }
+
+    @Override
+    public List<CharacterGlossary> searchByCharacterId(String characterId, String searchText) {
+        if (!StringUtils.hasText(characterId)) {
+            throw new RuntimeException("角色 ID 不能为空");
+        }
+        if (!StringUtils.hasText(searchText)) {
+            return glossaryRepository.selectByCharacterId(characterId);
+        }
+        return glossaryRepository.searchByCharacterId(characterId, searchText.trim());
     }
 
     @Override

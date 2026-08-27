@@ -14,6 +14,8 @@
     <link rel="stylesheet" href="components/confirm-dialog/confirm-dialog.css"/>
     <script src="components/character/glossary-manager/glossary-manager.js"></script>
     <link rel="stylesheet" href="components/character/glossary-manager/glossary-manager.css"/>
+    <script src="components/search-box/search-box.js"></script>
+    <link rel="stylesheet" href="components/search-box/search-box.css"/>
     <link rel="stylesheet" href="css/scrollbar.css"/>
     <style>
         :root {
@@ -1554,6 +1556,7 @@ const app = Vue.createApp({
 
 app.component('ConfirmDialog', ConfirmDialog);
 app.component('GlossaryManager', GlossaryManager);
+app.component('SearchBox', SearchBox);
 app.use(ElementPlus);
 app.mount('#app');
 </script>

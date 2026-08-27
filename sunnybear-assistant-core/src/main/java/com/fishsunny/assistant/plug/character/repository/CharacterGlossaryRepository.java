@@ -26,6 +26,9 @@ public interface CharacterGlossaryRepository {
 
     CharacterGlossary selectByCharacterIdAndKeyword(String characterId, String keyword);
 
+    /** 按关键词/描述模糊搜索某个角色的词条 */
+    List<CharacterGlossary> searchByCharacterId(String characterId, String searchText);
+
     /** 删除某个角色的全部词条（级联删除角色时使用） */
     void deleteByCharacterId(String characterId);
 }

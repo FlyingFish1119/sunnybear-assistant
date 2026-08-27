@@ -3,6 +3,7 @@ package com.fishsunny.assistant.config;
 import com.fishsunny.assistant.plug.android.service.AndroidBridgeService;
 import com.fishsunny.assistant.plug.character.websocket.CharacterChatSocketHandler;
 import com.fishsunny.assistant.plug.comfyui.service.ComfyUIBridgeService;
+import com.fishsunny.assistant.plug.world.websocket.WorldGroupChatSocketHandler;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,15 +18,18 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private final ChatWebSocketHandler chatWebSocketHandler;
     private final CharacterChatSocketHandler characterChatSocketHandler;
+    private final WorldGroupChatSocketHandler worldGroupChatSocketHandler;
     private final AndroidBridgeService androidBridgeService;
     private final ComfyUIBridgeService comfyUIBridgeService;
 
     public WebSocketConfig(ChatWebSocketHandler chatWebSocketHandler,
                            CharacterChatSocketHandler characterChatSocketHandler,
+                           WorldGroupChatSocketHandler worldGroupChatSocketHandler,
                            AndroidBridgeService androidBridgeService,
                            ComfyUIBridgeService comfyUIBridgeService) {
         this.chatWebSocketHandler = chatWebSocketHandler;
         this.characterChatSocketHandler = characterChatSocketHandler;
+        this.worldGroupChatSocketHandler = worldGroupChatSocketHandler;
         this.androidBridgeService = androidBridgeService;
         this.comfyUIBridgeService = comfyUIBridgeService;
     }
@@ -35,6 +39,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
         registry.addHandler(chatWebSocketHandler, "/ws/chat")
                 .setAllowedOrigins("*");
         registry.addHandler(characterChatSocketHandler, "/ws/character-chat")
+                .setAllowedOrigins("*");
+        registry.addHandler(worldGroupChatSocketHandler, "/ws/world-chat")
                 .setAllowedOrigins("*");
         registry.addHandler(androidBridgeService, "/android-bridge")
                 .setAllowedOrigins("*");

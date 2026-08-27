@@ -8,7 +8,7 @@ package com.fishsunny.assistant.plug.character.service;
  * @Date 2026/7/13
  */
 
-import com.fishsunny.assistant.dto.GlossaryImportResult;
+import com.fishsunny.assistant.plug.character.dto.GlossaryImportResult;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
 
 import java.util.List;
@@ -16,6 +16,9 @@ import java.util.List;
 public interface CharacterGlossaryService {
 
     List<CharacterGlossary> listByCharacterId(String characterId);
+
+    /** 按关键词/描述模糊搜索词条，searchText 为空时返回全部 */
+    List<CharacterGlossary> searchByCharacterId(String characterId, String searchText);
 
     CharacterGlossary getById(Long id);
 

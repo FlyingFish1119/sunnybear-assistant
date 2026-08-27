@@ -47,6 +47,22 @@ public class CharacterGlossaryController {
         }
     }
 
+    /** 按关键词/描述模糊搜索词条 */
+    @RequestMapping("/search")
+    public RestResponse search(@RequestParam("characterId") String characterId,
+                               @RequestParam(value = "q", required = false) String q) {
+        if (!StringUtils.hasText(characterId)) {
+            return new RestResponse().error("角色 ID 不能为空");
+        }
+        try {
+            List<CharacterGlossary> list = glossaryService.searchByCharacterId(characterId, q);
+            return new RestResponse().success(list);
+        } catch (Exception e) {
+            log.error("搜索词条失败", e);
+            return new RestResponse().error("搜索词条失败: " + e.getMessage());
+        }
+    }
+
     /** 按角色 + 关键词获取单条词条 */
     @RequestMapping("/get")
     public RestResponse get(@RequestParam("characterId") String characterId,
