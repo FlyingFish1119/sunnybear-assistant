@@ -33,6 +33,7 @@ public class ChatProvider {
     private Function<ToolProviderContext, List<StandardToolRegister>> toolProvider;
     private Function<Map<String, Object>, Map<String, Object>> contextProvider;
     private Function<List<ChatMessage>, List<ChatMessage>> sessionMessageProvider;
+    private Function<ChatMessage, ChatMessage> beforeSaveAssistantProvider;
     private Supplier<Settings> settingsSupplier;
     private Supplier<Boolean> enableSlashCommand;
     private Supplier<Boolean> enableSwitchPro;

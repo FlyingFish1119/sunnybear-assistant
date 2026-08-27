@@ -82,6 +82,83 @@
             cursor: auto;
             user-select: text;
         }
+
+        /* 私聊浮条：悬浮在发送栏上方、与发送栏等宽（复用 command-suggest 浮层风格） */
+        .private-chat-panel {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 92%;
+            max-width: 600px;
+            margin-bottom: 8px;
+            background: #fff;
+            border: 1px solid #e8e8e8;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.06);
+            padding: 10px 12px;
+            z-index: 500;
+            box-sizing: border-box;
+        }
+        .private-chat-panel-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .private-chat-panel-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #606266;
+            white-space: nowrap;
+        }
+        .private-chat-panel-input {
+            flex: 1;
+            min-width: 0;
+            padding: 6px 10px;
+            border: 1px solid #dcdfe6;
+            border-radius: 10px;
+            font-size: 14px;
+            outline: none;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+        .private-chat-panel-input:focus { border-color: var(--main-color); }
+        .private-chat-panel-btn {
+            padding: 7px 16px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .private-chat-panel-btn { background: #f5f5f5; color: #666; }
+        .private-chat-panel-btn:hover { background: #e8e8e8; color: #303133; }
+        .private-chat-panel-btn-primary { background: var(--main-color); color: #fff; }
+        .private-chat-panel-btn-primary:hover { filter: brightness(1.06); }
+        .private-chat-panel-close {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: none;
+        }
+        /* 私聊按钮展开态：面板显示时按钮压暗 */
+        .send-area-attach-button.panel-open {
+            filter: brightness(0.85);
+        }
+        @media (max-width: 768px) {
+            .private-chat-panel-row {
+                flex-wrap: wrap;
+            }
+            .private-chat-panel-input {
+                flex-basis: 100%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -344,9 +421,30 @@
                 @update-files="files => uploadedFiles = files"
                 @drag-over-change="isChange => dragOver = isChange">
             </file-upload>
+
+            <!-- 私聊浮条：悬浮在发送栏上方居中；点「添加」拼进发送栏（可混合发送） -->
+            <div v-show="privateChatPanelVisible" class="private-chat-panel">
+                <div class="private-chat-panel-row">
+                    <span class="private-chat-panel-label">私聊给</span>
+                    <el-select v-model="privateChatForm.targets" multiple filterable clearable
+                        placeholder="选择角色" size="small" style="flex:none;width:200px">
+                        <el-option v-for="name in privateChatOptions" :key="name" :label="name" :value="name"></el-option>
+                    </el-select>
+                    <input class="private-chat-panel-input" v-model="privateChatForm.content"
+                        placeholder="输入私聊内容，回车添加" @keyup.enter="addPrivateMessage" @keyup.esc="closePrivateChatPanel" />
+                    <button class="private-chat-panel-btn private-chat-panel-btn-primary" @click="addPrivateMessage">添加</button>
+                    <button class="private-chat-panel-btn private-chat-panel-close" @click="closePrivateChatPanel" title="关闭">
+                        <i data-lucide="x" style="width:14px;height:14px"></i>
+                    </button>
+                </div>
+            </div>
+
             <div class="send-area-input-row">
                 <button class="send-area-attach-button" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
                     <i data-lucide="paperclip" style="width:18px;height:18px"></i>
+                </button>
+                <button class="send-area-attach-button" :class="{ 'panel-open': privateChatPanelVisible }" style="border-top-left-radius:0;border-bottom-left-radius:0" @click="togglePrivateChatPanel" title="发起私聊">
+                    <i data-lucide="message-square" style="width:18px;height:18px"></i>
                 </button>
                 <auto-resize-textarea
                     class="send-area-textarea"
@@ -472,6 +570,10 @@
                 dragOver: false,
                 // 私聊内容展开状态：key = msgId_segIdx
                 expandedPrivate: {},
+                // 私聊浮条
+                privateChatPanelVisible: false,
+                privateChatForm: { targets: [], content: '' },
+                worldCharacterList: [],
             }
         },
 
@@ -522,6 +624,13 @@
             // 用户消息气泡背景色：跟随主色自动变浅
             userBubbleBg() {
                 return ColorUtils.lighten(this.mainColor, 0.25);
+            },
+            // 私聊可选对象：世界内角色名（排除玩家夺舍的自身）
+            privateChatOptions() {
+                const possess = this.worldInfo && this.worldInfo.possessName;
+                return (this.worldCharacterList || [])
+                    .map(c => c.name)
+                    .filter(n => n && n !== possess);
             },
             backgroundStyle() {
                 const bg = this.userSettings.background;
@@ -739,17 +848,19 @@
                 }
             },
 
-            /** 获取世界内角色，构建 name -> avatar 映射用于气泡头像 */
+            /** 获取世界内角色，构建 name -> avatar 映射用于气泡头像，同时保留列表供私聊选择 */
             async fetchWorldCharacters() {
                 if (!this.worldId) return;
                 try {
                     const result = await API.world.character.list(this.worldId);
                     if (result.status === 200) {
+                        const list = result.data || [];
                         const map = {};
-                        for (let c of (result.data || [])) {
+                        for (let c of list) {
                             map[c.name] = c.avatar || '';
                         }
                         this.worldCharacters = map;
+                        this.worldCharacterList = list;
                     }
                 } catch (error) {
                     console.error('获取世界观角色失败:', error);
@@ -979,6 +1090,56 @@
                 // 避免移动端 WebSocket 假连接导致消息丢失
             },
 
+            /** 切换私聊浮条的展开/收起 */
+            togglePrivateChatPanel() {
+                if (this.privateChatPanelVisible) {
+                    this.closePrivateChatPanel();
+                } else {
+                    this.openPrivateChatPanel();
+                }
+            },
+
+            /** 展开私聊浮条（展开前刷新一次角色列表，保证选项新鲜） */
+            async openPrivateChatPanel() {
+                this.privateChatForm = { targets: [], content: '' };
+                if (this.worldId) await this.fetchWorldCharacters();
+                this.privateChatPanelVisible = true;
+                this.$nextTick(() => {
+                    const input = document.querySelector('.private-chat-panel-input');
+                    if (input) input.focus();
+                });
+            },
+
+            /** 收起私聊浮条 */
+            closePrivateChatPanel() {
+                this.privateChatPanelVisible = false;
+                this.privateChatForm = { targets: [], content: '' };
+            },
+
+            /** 玩家身份：夺舍角色名，否则用户名（作为私聊标签的 from） */
+            playerName() {
+                if (this.worldInfo && this.worldInfo.possessName) return this.worldInfo.possessName;
+                if (this.userSettings && this.userSettings.username) return this.userSettings.username;
+                return '玩家';
+            },
+
+            /** 添加私聊：内容自动包装成 <private from to> 标签，拼进发送栏（可混合发送） */
+            addPrivateMessage() {
+                const targets = (this.privateChatForm.targets || []).filter(Boolean);
+                const content = (this.privateChatForm.content || '').trim();
+                if (targets.length === 0) { ElementPlus.ElMessage.warning('请选择私聊对象'); return; }
+                if (!content) { ElementPlus.ElMessage.warning('请输入私聊内容'); return; }
+                const tagged = `<private from="${this.playerName()}" to="${targets.join(',')}">${content}</private>`;
+                this.inputText = this.inputText.trim()
+                    ? this.inputText.trimEnd() + '\n\n' + tagged
+                    : tagged;
+                this.closePrivateChatPanel();
+                this.$nextTick(() => {
+                    const ta = document.querySelector('.send-area-textarea');
+                    if (ta) ta.focus();
+                });
+            },
+
             /** 将会话绑定到当前世界观 */
             async bindSessionToWorld(sessionId) {
                 try {
@@ -1061,6 +1222,21 @@
                         this.currentMessages.push(assistantMessage);
                         this.currentToolCallId = null;
                         this.scrollToBottom();
+                    }
+                    return;
+                }
+                if (event.data.startsWith('###WORLD_POSSESS###')) {
+                    // 调度器选中夺舍角色，回合交还玩家：提示"轮到你了"
+                    let parts = event.data.split('###WORLD_POSSESS###')[1];
+                    let sepIdx = parts.indexOf('|');
+                    let sessionId = sepIdx > 0 ? parts.substring(0, sepIdx) : parts;
+                    let name = sepIdx > 0 ? parts.substring(sepIdx + 1) : null;
+                    if (sessionId === this.currentSessionId) {
+                        ElementPlus.ElMessage({
+                            message: '🔒 ' + (name || '你的角色') + ' 由你扮演，轮到你发言了',
+                            type: 'info',
+                            duration: 3000
+                        });
                     }
                     return;
                 }
@@ -1644,6 +1820,13 @@
         },
 
         watch: {
+            // 让 Element Plus 组件（el-select 等）的强调色跟随主色，与 world_settings 一致
+            mainColor: {
+                handler(val) {
+                    document.documentElement.style.setProperty('--el-color-primary', val);
+                },
+                immediate: true
+            },
             filteredCommands() {
                 this.commandActiveIndex = 0;
             },

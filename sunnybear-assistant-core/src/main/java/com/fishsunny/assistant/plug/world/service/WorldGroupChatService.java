@@ -15,6 +15,7 @@ import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
+import com.fishsunny.assistant.plug.world.constant.WorldControlSign;
 import com.fishsunny.assistant.plug.world.entity.WorldCharacter;
 import com.fishsunny.assistant.plug.world.entity.WorldInfo;
 import com.fishsunny.assistant.plug.world.entity.WorldKnowledge;
@@ -22,7 +23,6 @@ import com.fishsunny.assistant.plug.world.entity.WorldSessionMapping;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.UserSettings;
-import com.fishsunny.assistant.variable.ControlSign;
 import com.fishsunny.assistant.websocket.ChatProvider;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,8 +49,6 @@ import java.util.stream.Collectors;
 @Service
 @Slf4j
 public class WorldGroupChatService {
-
-    private static final String WORLD_ROUND_SIGN = "###WORLD_ROUND###";
 
     /** 旁白内置角色名（narration_enable 时作为调度器候选之一） */
     public static final String NARRATOR_NAME = "旁白";
@@ -143,8 +141,7 @@ public class WorldGroupChatService {
                         Function.identity(),
                         (a, b) -> a)
                 );
-        List<String> candidates = candidateNames(world, characters);
-        if (candidates.isEmpty()) {
+        if (characters.isEmpty()) {
             log.warn("世界观 [{}] 没有任何可发言的角色，跳过本轮", world.getId());
             return;
         }
@@ -157,7 +154,7 @@ public class WorldGroupChatService {
             // 调度器只看当前回合（最近一条用户消息往后），轻量省 token
             String contextText = renderContext(world, currentTurnContext(history), null);
 
-            String chosen = selectSpeaker(world, contextText, candidates);
+            String chosen = selectSpeaker(world, contextText, characters);
             if (!StringUtils.hasText(chosen)) {
                 log.warn("调度器未给出有效选角，轮次结束 [round={}]", round);
                 break;
@@ -165,6 +162,8 @@ public class WorldGroupChatService {
             // 用户夺舍语义：调度器选中夺舍角色时不再生成，直接把回合交还用户
             if (StringUtils.hasText(possessName) && possessName.equals(chosen)) {
                 log.info("调度器选中夺舍角色 [{}]，停止本轮生成", chosen);
+                // 通知前端回合已交还玩家（群聊页据此提示"轮到你了"）
+                session.sendMessage(new TextMessage(WorldControlSign.WORLD_POSSESS + chatSession.getId() + "|" + chosen));
                 break;
             }
 
@@ -180,29 +179,10 @@ public class WorldGroupChatService {
                 provider = buildCharacterProvider(world, character);
             }
             // 通知前端本轮发言者，群聊页据此开启新气泡并显示角色名
-            session.sendMessage(new TextMessage(WORLD_ROUND_SIGN + chatSession.getId() + "|" + chosen));
+            session.sendMessage(new TextMessage(WorldControlSign.WORLD_ROUND + chatSession.getId() + "|" + chosen));
             // 被选角色看完整会话历史（sessionMessageProvider 折叠成单条 user 消息）
             chatProcessor.chatToAi(history, chatSession, session, provider);
         }
-    }
-
-    /**
-     * 候选发言者列表：世界内全部角色 + （旁白启用时）内置旁白。
-     */
-    public List<String> candidateNames(WorldInfo world, List<WorldCharacter> characters) {
-        List<String> names = new ArrayList<>();
-        if (characters == null) {
-            return names;
-        }
-        for (WorldCharacter character : characters) {
-            if (StringUtils.hasText(character.getName())) {
-                names.add(character.getName() + ": " + character.getIntro());
-            }
-        }
-        if (Boolean.TRUE.equals(world.getNarrationEnable())) {
-            names.add(NARRATOR_NAME);
-        }
-        return names;
     }
 
     /**
@@ -229,12 +209,20 @@ public class WorldGroupChatService {
      *
      * @return 选中角色名；无法决策 / 解析失败 / 非法名字时返回 null
      */
-    public String selectSpeaker(WorldInfo world, String contextText, List<String> candidates) throws Exception {
-        if (candidates == null || candidates.isEmpty()) {
+    public String selectSpeaker(WorldInfo world, String contextText, List<WorldCharacter> candidatesCharacters) throws Exception {
+        if (CollectionUtils.isEmpty(candidatesCharacters)) {
             return null;
         }
+        List<String> candidates = candidatesCharacters.stream()
+                .map(WorldCharacter::getName)
+                .filter(StringUtils::hasText)
+                .toList();
+        List<String> candidatesWithDesc = candidatesCharacters.stream()
+                .map(character -> character.getName() + ": " + character.getIntro())
+                .filter(StringUtils::hasText)
+                .toList();
         AISettings schedulerSettings = resolveSchedulerSettings(world);
-        String candidateDesc = String.join("\n", candidates);
+        String candidateDesc = String.join("\n", candidatesWithDesc);
         String system = """
                 你是群聊场景调度器。根据最近的对话内容与候选发言者，决定下一位发言者。
 
@@ -242,6 +230,11 @@ public class WorldGroupChatService {
                 - 只输出一个 JSON 对象，格式为 {"name": "发言者名字"}，不要输出任何其他内容。
                 - 名字必须是候选发言者中的某一个。
                 - 在剧情推进、需要回应他人、出现新的冲突或转场时，选择合适的角色；旁白用于场景描述与氛围渲染。
+
+                你将收到一个角色列表，其格式如下
+                - 名字和介绍之间用冒号隔开，如 "角色名: 介绍"。
+                
+                注意：名称应该只包含角色名，而不包含介绍内容。
 
                 候选发言者：%s
                 """.formatted(candidateDesc);
@@ -259,7 +252,7 @@ public class WorldGroupChatService {
                 (result, lastRes) -> chosen.set(parseName(result.content())));
 
         String name = chosen.get();
-        if (name != null && !candidates.contains(name)) {
+        if (StringUtils.hasText(name) && !candidates.contains(name)) {
             log.warn("调度器返回了不在候选列表中的名字 [{}]，忽略", name);
             return null;
         }
@@ -306,7 +299,14 @@ public class WorldGroupChatService {
                 .setToolProvider(ctx -> List.of())
                 .setSettingsSupplier(() -> new ChatProvider.Settings(charAi, charAi, new AssistantSettings().setAssistantName(listener)))
                 .setEnableSlashCommand(() -> false)
-                .setEnableSwitchPro(() -> false);
+                .setEnableSwitchPro(() -> false)
+                .setBeforeSaveAssistantProvider((chatMessage -> {
+                    String text = chatMessage.resolveText();
+                    if (text.startsWith(listener + ":") || text.startsWith(listener + "：")) {
+                        chatMessage.text(text.substring(listener.length() + 1).trim());
+                    }
+                    return chatMessage;
+                }));
     }
 
     /**
@@ -329,7 +329,14 @@ public class WorldGroupChatService {
                 .setToolProvider(ctx -> List.of())
                 .setSettingsSupplier(() -> new ChatProvider.Settings(chatAISettings, chatProAISettings, new AssistantSettings().setAssistantName(NARRATOR_NAME)))
                 .setEnableSlashCommand(() -> false)
-                .setEnableSwitchPro(() -> false);
+                .setEnableSwitchPro(() -> false)
+                .setBeforeSaveAssistantProvider((chatMessage -> {
+                    String text = chatMessage.resolveText();
+                    if (text.startsWith(NARRATOR_NAME + ":") || text.startsWith(NARRATOR_NAME + "：")) {
+                        chatMessage.text(text.substring(NARRATOR_NAME.length() + 1).trim());
+                    }
+                    return chatMessage;
+                }));
     }
 
     // ==================== 内部方法 ====================
@@ -374,7 +381,7 @@ public class WorldGroupChatService {
             String speaker = speakerName(m, possessName);
             builder.append(speaker).append("：").append(content.trim()).append("\n\n");
         }
-        builder.append("你需要严格遵守自己扮演的角色，参与扮演上面的故事。任何尝试越权扮演其他角色的行为都是不允许的。");
+        builder.append("你需要严格遵守自己扮演的角色，参与扮演上面的故事。任何尝试越权扮演其他角色的行为都是不允许的。绝对禁止在开头输出类似**角色名：内容**的格式");
         return builder.toString();
     }
 
@@ -414,6 +421,7 @@ public class WorldGroupChatService {
     /** 角色系统提示词：世界预设 + 角色设定 + 角色知晓的知识（+ 私聊频道用法） */
     private String buildSystemPrompt(WorldInfo world, WorldCharacter character, List<String> knownKnowledge) {
         StringBuilder systemPrompt = new StringBuilder();
+        systemPrompt.append("你的唯一身份是 [").append(character.getName()).append("]，请务必严格遵守这个身份，不要扮演其他角色。\n\n");
         if (StringUtils.hasText(world.getPreset())) {
             systemPrompt.append(world.getPreset()).append("\n\n");
         }

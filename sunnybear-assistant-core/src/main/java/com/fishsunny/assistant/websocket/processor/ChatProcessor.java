@@ -276,7 +276,18 @@ public class ChatProcessor {
                     List<ChatToolRequest> convert = ChatToolRequest.convert(toolCalls);
                     toolCallRequests.addAll(convert);
                 }
-                ChatMessage assistantMessage = appendAssistantMessage(chatSession.getId(), parentId, result.reasoning(), result.content(), toolCallRequests, activeAssistantName);
+                if (chatProvider.getBeforeSaveAssistantProvider() != null) {
+
+                }
+                ChatMessage readyToSaveChatMessage = new ChatMessage()
+                        .assistant(result.content(), result.reasoning(), toolCallRequests)
+                        .makeInsertable(chatSession.getId(), parentId, activeAssistantName);
+
+                if (chatProvider.getBeforeSaveAssistantProvider() != null) {
+                    readyToSaveChatMessage = chatProvider.getBeforeSaveAssistantProvider().apply(readyToSaveChatMessage);
+                }
+
+                ChatMessage assistantMessage = appendAssistantMessage(readyToSaveChatMessage);
                 // A\专用的
                 String reasoningSignature = result.reasoningSignature();
                 if (reasoningSignature != null && !reasoningSignature.isEmpty()) {
@@ -349,12 +360,7 @@ public class ChatProcessor {
         chatHttpHandler.translate(chatSession.getId(), effectiveAISettings.getAdapterName(), request, request.getSettings().getStream(), translate, complete);
     }
 
-    private ChatMessage appendAssistantMessage(String sessionId, String parentId, String reasoning, String content, List<ChatToolRequest> toolCalls, String assistantName) throws Exception {
-
-        ChatMessage chatMessage = new ChatMessage()
-                .assistant(content, reasoning, toolCalls)
-                .makeInsertable(sessionId, parentId, assistantName);
-
+    private ChatMessage appendAssistantMessage(ChatMessage chatMessage) throws Exception {
         try {
             return chatMessageService.save(chatMessage);
         } catch (UserException e) {
