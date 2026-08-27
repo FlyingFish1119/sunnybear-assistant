@@ -282,6 +282,14 @@ const API = (function () {
             getSessions: function (worldId) {
                 return get('world/sessions?worldId=' + encodeURIComponent(worldId));
             },
+            /** 导出世界观为 JSON 文件数据（不含头像/背景图，知识按角色名关联） */
+            exportWorld: function (id) {
+                return get('world/export?id=' + encodeURIComponent(id));
+            },
+            /** 导入世界观 JSON：targetWorldId 为空 = 新建世界观，否则覆盖该世界观 */
+            importWorld: function (data, targetWorldId) {
+                return post('world/import' + (targetWorldId ? '?targetWorldId=' + encodeURIComponent(targetWorldId) : ''), data);
+            },
 
             /* 世界观下的群组角色（id 主键） */
             character: {

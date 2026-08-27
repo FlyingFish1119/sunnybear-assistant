@@ -11,8 +11,10 @@ package com.fishsunny.assistant.plug.world.controller;
 import com.fishsunny.assistant.dto.RestResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
+import com.fishsunny.assistant.plug.world.dto.WorldFileData;
 import com.fishsunny.assistant.plug.world.entity.WorldInfo;
 import com.fishsunny.assistant.plug.world.entity.WorldSessionMapping;
+import com.fishsunny.assistant.plug.world.service.WorldImportExportService;
 import com.fishsunny.assistant.plug.world.service.WorldInfoService;
 import com.fishsunny.assistant.plug.world.service.WorldSessionMappingService;
 import org.slf4j.Logger;
@@ -38,14 +40,51 @@ public class WorldController {
     private final WorldInfoService worldInfoService;
     private final WorldSessionMappingService mappingService;
     private final ChatSessionService chatSessionService;
+    private final WorldImportExportService importExportService;
 
     @Autowired
     public WorldController(WorldInfoService worldInfoService,
                            WorldSessionMappingService mappingService,
-                           ChatSessionService chatSessionService) {
+                           ChatSessionService chatSessionService,
+                           WorldImportExportService importExportService) {
         this.worldInfoService = worldInfoService;
         this.mappingService = mappingService;
         this.chatSessionService = chatSessionService;
+        this.importExportService = importExportService;
+    }
+
+    // ==================== 导入导出 ====================
+
+    /**
+     * 导出世界观为 JSON 文件数据（不含头像/背景图/ID，知识知晓角色按名称引用）。
+     */
+    @RequestMapping("/export")
+    public RestResponse export(@RequestParam("id") String id) {
+        if (!StringUtils.hasText(id)) {
+            return new RestResponse().error("世界观 ID 不能为空");
+        }
+        try {
+            WorldFileData data = importExportService.exportWorld(id);
+            return new RestResponse().success(data);
+        } catch (Exception e) {
+            log.error("导出世界观失败", e);
+            return new RestResponse().error("导出世界观失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 导入世界观 JSON：targetWorldId 为空 = 新建世界观；否则覆盖该世界观（替换其角色与知识，保留背景图和会话绑定）。
+     */
+    @PostMapping("/import")
+    public RestResponse importWorld(@RequestParam(value = "targetWorldId", required = false) String targetWorldId,
+                                    @RequestBody(required = false) WorldFileData data) {
+        try {
+            WorldInfo imported = importExportService.importWorld(data, targetWorldId);
+            return new RestResponse().success(imported);
+        } catch (Exception e) {
+            log.error("导入世界观失败", e);
+            return new RestResponse().error("导入世界观失败: " + e.getMessage());
+        }
     }
 
     // ==================== 世界观 CRUD ====================

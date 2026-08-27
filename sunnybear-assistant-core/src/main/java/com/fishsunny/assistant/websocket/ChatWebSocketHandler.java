@@ -121,7 +121,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 }
 
                 // 处理会话
-                boolean enableSwitchPro = Boolean.TRUE.equals(chatToAiProvider().getEnableSwitchPro().get());
+                boolean enableSwitchPro = true;
+                if (chatToAiProvider().getEnableSwitchPro() != null) {
+                    enableSwitchPro = Boolean.TRUE.equals(chatToAiProvider().getEnableSwitchPro().get());
+                }
                 ServiceProcessor.ChatSessionModeParseResult parseResult = serviceProcessor.handleChatSession(request, safeSession, enableSwitchPro);
 
                 // 处理请求

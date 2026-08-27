@@ -449,14 +449,34 @@ public class WorldGroupChatService {
 
     /**
      * 构建内置旁白的 ChatProvider（全知第三人称，模型用全局 chat 配置）。
+     * 注入：世界预设 + 世界描述 + 全部角色设定 + 全部世界知识（旁白全知，不受知晓角色限制）。
      */
     public ChatProvider buildNarratorProvider(WorldInfo world) {
         StringBuilder sb = new StringBuilder();
-        if (StringUtils.hasText(world.getPreset())) {
-            sb.append(world.getPreset()).append("\n\n");
+        sb.append("""
+                你是本群聊的旁白，以全知第三人称视角叙述场景、环境、角色的动作、神态与氛围。
+                你不扮演任何角色，不代替角色说话，只做客观、克制的场景叙述。
+                """);
+        if (StringUtils.hasText(world.getDescription())) {
+            sb.append("## 世界背景\n").append(world.getDescription()).append("\n\n");
         }
-        sb.append("你是本群聊的旁白，以全知第三人称视角叙述场景、环境、角色的动作、神态与氛围。")
-                .append("你不扮演任何角色，不代替角色说话，只做客观、克制的场景叙述。\n");
+        // 注入全部角色设定，保证旁白叙述不违背角色人设
+        List<WorldCharacter> characters = worldCharacterService.findByWorldId(world.getId());
+        if (!characters.isEmpty()) {
+            sb.append("\n## 角色设定（你全知）\n");
+            for (WorldCharacter character : characters) {
+                sb.append("【").append(character.getName()).append("】");
+                if (StringUtils.hasText(character.getIntro())) {
+                    sb.append(" ").append(character.getIntro());
+                }
+                sb.append("\n");
+                if (StringUtils.hasText(character.getSetting())) {
+                    sb.append(character.getSetting().trim()).append("\n");
+                }
+                sb.append("\n");
+            }
+        }
+        // 不注入世界知识，过于复杂，没有必要
         sb.append("\n").append(PRIVATE_USAGE);
         sb.append("\n").append(SWITCH_USAGE);
         String systemPrompt = sb.toString();
@@ -625,12 +645,15 @@ public class WorldGroupChatService {
                 .anyMatch(listener::equals);
     }
 
-    /** 角色系统提示词：世界预设 + 角色设定 + 角色知晓的知识（+ 私聊频道用法） */
+    /** 角色系统提示词：世界描述 + 世界预设 + 角色设定 + 角色知晓的知识（+ 私聊频道用法） */
     private String buildSystemPrompt(WorldInfo world, WorldCharacter character, List<String> knownKnowledge) {
         StringBuilder systemPrompt = new StringBuilder();
         systemPrompt.append("你的唯一身份是 [").append(character.getName()).append("]，同时十分擅长使用特殊的 HTML 标签，请务必严格遵守这个身份，不要扮演其他角色。\n\n");
         if (StringUtils.hasText(world.getPreset())) {
             systemPrompt.append(world.getPreset()).append("\n\n");
+        }
+        if (StringUtils.hasText(world.getDescription())) {
+            systemPrompt.append("## 世界背景\n").append(world.getDescription()).append("\n\n");
         }
         if (StringUtils.hasText(character.getSetting())) {
             systemPrompt.append(character.getSetting()).append("\n\n");

@@ -876,6 +876,10 @@
                     <i data-lucide="plus" style="width:18px;height:18px"></i>
                     创建我的第一个世界
                 </button>
+                <button class="char-empty-btn" @click="triggerImport">
+                    <i data-lucide="upload" style="width:18px;height:18px"></i>
+                    导入世界观文件
+                </button>
             </div>
 
             <!-- 三块长条 -->
@@ -1007,6 +1011,14 @@
                                 <button class="char-btn char-btn-primary" @click="saveWorld" :disabled="saving">
                                     <i data-lucide="check" style="width:16px;height:16px"></i>
                                     {{ saving ? '保存中...' : '保存设置' }}
+                                </button>
+                                <button class="char-btn char-btn-outline" @click="exportWorld" title="导出为 JSON 文件，可用 AI 编辑后导入">
+                                    <i data-lucide="download" style="width:16px;height:16px"></i>
+                                    导出 JSON
+                                </button>
+                                <button class="char-btn char-btn-ghost" @click="triggerImport" title="导入 AI 编辑后的世界观 JSON 文件">
+                                    <i data-lucide="upload" style="width:16px;height:16px"></i>
+                                    导入 JSON
                                 </button>
                                 <div style="flex:1"></div>
                                 <button class="char-btn char-btn-danger" @click="confirmDeleteWorld" :disabled="deletingWorld">
@@ -1244,8 +1256,37 @@
         </template>
     </el-dialog>
 
+    <!-- ========== 导入世界观弹框 ========== -->
+    <el-dialog v-model="importDialogVisible" width="480px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="upload" style="width:20px;height:20px"></i>
+                <span>导入世界观</span>
+            </div>
+        </template>
+        <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:14px;color:#606266">文件：<span style="color:#303133;font-weight:600">{{ importPreview.fileName }}</span></div>
+            <div style="font-size:14px;color:#606266">将导入：<span style="color:#303133;font-weight:600">{{ importPreview.worldName }}</span>
+                （{{ importPreview.characterCount }} 个角色 · {{ importPreview.knowledgeCount }} 条知识）</div>
+            <div style="font-size:12px;color:#c0c4cc;line-height:1.6">
+                知识按角色名关联；导入后所有 ID 重新生成。头像与背景图不包含在文件中，导入的角色无头像。
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+                <button class="dialog-btn dialog-btn-save" @click="doImport('new')">
+                    <i data-lucide="plus" style="width:14px;height:14px"></i>
+                    导入为新的世界观
+                </button>
+                <button v-if="selectedWorldId" class="dialog-btn dialog-btn-cancel" @click="doImport('overwrite')">
+                    <i data-lucide="refresh-cw" style="width:14px;height:14px"></i>
+                    覆盖当前世界观「{{ worldForm.name }}」
+                </button>
+            </div>
+        </div>
+    </el-dialog>
+
     <!-- ========== 确认弹框 ========== -->
     <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+    <input ref="importInput" type="file" accept=".json,application/json" style="display:none" @change="onImportFileChange">
 </div>
 
 <script>
@@ -1288,7 +1329,11 @@ const app = Vue.createApp({
             deletingCharacter: false,
             knowledgeDialogVisible: false,
             knowledgeForm: { id: null, title: '', content: '', characterIds: [] },
-            savingKnowledge: false
+            savingKnowledge: false,
+            /* 导入导出 */
+            importDialogVisible: false,
+            importData: null,
+            importPreview: { fileName: '', worldName: '', characterCount: 0, knowledgeCount: 0 }
         };
     },
 
@@ -1690,6 +1735,96 @@ const app = Vue.createApp({
         characterNameById(id) {
             const c = this.characters.find(c => c.id === id);
             return c ? c.name : id;
+        },
+
+        /* ---- 导入导出 ---- */
+
+        /** 导出当前世界观为 JSON 文件（浏览器下载） */
+        async exportWorld() {
+            if (!this.selectedWorldId) return;
+            try {
+                const r = await API.world.exportWorld(this.selectedWorldId);
+                if (r.status === 200 && r.data) {
+                    const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = this.sanitizeFileName(this.worldForm.name || 'world') + '.world.json';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    ElementPlus.ElMessage.success('已导出');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '导出失败');
+                }
+            } catch (e) { ElementPlus.ElMessage.error('网络请求失败'); console.error(e); }
+        },
+
+        triggerImport() { this.$refs.importInput.click(); },
+
+        /** 选择文件 → 前端解析校验 → 弹出导入方式选择 */
+        onImportFileChange(e) {
+            const file = e.target.files[0];
+            e.target.value = '';
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                let data;
+                try { data = JSON.parse(ev.target.result); }
+                catch (err) {
+                    ElementPlus.ElMessage.error('文件不是有效的 JSON 格式');
+                    return;
+                }
+                if (!data || typeof data !== 'object' || !data.world) {
+                    ElementPlus.ElMessage.error('文件内容无效：缺少 world 信息');
+                    return;
+                }
+                this.importData = data;
+                this.importPreview = {
+                    fileName: file.name,
+                    worldName: (data.world && data.world.name) || '未命名世界',
+                    characterCount: (data.characters || []).length,
+                    knowledgeCount: (data.knowledge || []).length
+                };
+                this.importDialogVisible = true;
+                this.$nextTick(() => lucide.createIcons());
+            };
+            reader.readAsText(file);
+        },
+
+        /** 执行导入：new = 新建世界观；overwrite = 覆盖当前（先二次确认） */
+        doImport(mode) {
+            const submit = async () => {
+                try {
+                    const r = mode === 'overwrite'
+                        ? await API.world.importWorld(this.importData, this.selectedWorldId)
+                        : await API.world.importWorld(this.importData);
+                    if (r.status === 200 && r.data) {
+                        ElementPlus.ElMessage.success(mode === 'overwrite' ? '世界观已覆盖导入' : '世界观已导入');
+                        this.importDialogVisible = false;
+                        this.importData = null;
+                        await this.fetchWorlds();
+                        await this.selectWorld(r.data);
+                    } else {
+                        ElementPlus.ElMessage.error(r.message || '导入失败');
+                    }
+                } catch (e) { ElementPlus.ElMessage.error('网络请求失败'); console.error(e); }
+            };
+            if (mode === 'overwrite') {
+                this.$refs.confirmDialog.show({
+                    title: '确认覆盖导入',
+                    message: '将覆盖当前世界观「' + this.worldForm.name + '」，其现有角色与知识会被全部替换，此操作不可恢复。',
+                    confirmText: '确认覆盖',
+                    cancelText: '取消',
+                    type: 'danger'
+                }).then(() => submit()).catch(() => {});
+                return;
+            }
+            submit();
+        },
+
+        /** 文件名非法字符替换（下载文件名用） */
+        sanitizeFileName(name) {
+            return (name || 'world').replace(/[\\/:*?"<>|]/g, '_');
         }
     },
 
