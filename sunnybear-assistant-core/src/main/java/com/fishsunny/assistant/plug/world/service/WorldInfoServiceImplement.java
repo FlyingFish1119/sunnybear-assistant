@@ -113,9 +113,6 @@ public class WorldInfoServiceImplement implements WorldInfoService {
         if (!StringUtils.hasText(worldInfo.getPossessName())) {
             worldInfo.setPossessName("");
         }
-        if (worldInfo.getPrivateChatEnable() == null) {
-            worldInfo.setPrivateChatEnable(false);
-        }
         if (worldInfo.getNarrationEnable() == null) {
             worldInfo.setNarrationEnable(true);
         }

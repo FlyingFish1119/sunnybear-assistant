@@ -35,9 +35,6 @@ public class WorldInfo {
     /** 世界观主题色 */
     private String mainColor;
 
-    /** 私聊频道启用 */
-    private Boolean privateChatEnable;
-
     /** 旁白启用 */
     private Boolean narrationEnable;
 

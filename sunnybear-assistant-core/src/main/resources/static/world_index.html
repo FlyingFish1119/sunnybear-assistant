@@ -82,6 +82,14 @@
             cursor: auto;
             user-select: text;
         }
+        /* 发言权移交提示：<switch to:"X"> 渲染成靠左的轻提示 */
+        .switch-chat-hint {
+            text-align: left;
+            font-size: 12px;
+            color: #aaa;
+            padding: 2px 0;
+            user-select: none;
+        }
 
         /* 私聊浮条：悬浮在发送栏上方、与发送栏等宽（复用 command-suggest 浮层风格） */
         .private-chat-panel {
@@ -269,6 +277,7 @@
                                     <!-- 私聊标签段：默认折叠为通用文本，点击展开具体内容 -->
                                     <template v-for="(seg, segIdx) in privateSegments(content.content)" :key="segIdx">
                                         <div v-if="seg.type === 'text'" class="markdown-body" v-html="$md.render(seg.text)"></div>
+                                        <div v-else-if="seg.type === 'switch'" class="switch-chat-hint">↪ 将话头交给 {{ seg.to }}</div>
                                         <div v-else class="private-chat-block" @click.stop="togglePrivate(msg.id, segIdx)">
                                             <div class="private-chat-block-header">
                                                 <span class="private-chat-lock">🔒</span>
@@ -742,18 +751,22 @@
              * 私聊标签格式 <private from="发送者" to="接收者">内容</private>；未闭合/无标签时整体按普通文本处理
              */
             privateSegments(content) {
-                if (!content || !content.includes('<private')) {
+                if (!content || (!content.includes('<private') && !content.includes('<switch'))) {
                     return [{ type: 'text', text: content || '' }];
                 }
                 const segs = [];
-                const re = /<private\s+from="([^"]*)"\s+to="([^"]*)">([\s\S]*?)<\/private>/g;
+                const re = /<private\s+from="([^"]*)"\s+to="([^"]*)">([\s\S]*?)<\/private>|<switch\s+to\s*[:=]\s*["']([^"']*)["']\s*\/?>/g;
                 let last = 0;
                 let m;
                 while ((m = re.exec(content)) !== null) {
                     if (m.index > last) {
                         segs.push({ type: 'text', text: content.slice(last, m.index) });
                     }
-                    segs.push({ type: 'private', from: m[1].trim(), to: m[2].trim(), text: m[3] });
+                    if (m[1] !== undefined) {
+                        segs.push({ type: 'private', from: m[1].trim(), to: m[2].trim(), text: m[3] });
+                    } else {
+                        segs.push({ type: 'switch', to: (m[4] || '').trim() });
+                    }
                     last = m.index + m[0].length;
                 }
                 if (last < content.length) {

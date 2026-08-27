@@ -39,7 +39,6 @@ public class WorldInfoRepositoryImplement implements WorldInfoRepository {
         worldInfo.setPreset(resultSet.getString("preset"));
         worldInfo.setBackground(resultSet.getString("background"));
         worldInfo.setMainColor(resultSet.getString("main_color"));
-        worldInfo.setPrivateChatEnable(resultSet.getInt("private_chat_enable") != 0);
         worldInfo.setNarrationEnable(resultSet.getInt("narration_enable") != 0);
         worldInfo.setPossessName(resultSet.getString("possess_name"));
         worldInfo.setMaxRounds(resultSet.getInt("max_rounds"));
@@ -54,8 +53,8 @@ public class WorldInfoRepositoryImplement implements WorldInfoRepository {
         String sql =
                 """
                 INSERT INTO world_info
-                (id, name, description, preset, background, main_color, private_chat_enable, narration_enable, possess_name, max_rounds, scheduler_ai_settings, create_time, update_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, name, description, preset, background, main_color, narration_enable, possess_name, max_rounds, scheduler_ai_settings, create_time, update_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         jdbcTemplate.update(sql,
                 worldInfo.getId(),
@@ -64,7 +63,6 @@ public class WorldInfoRepositoryImplement implements WorldInfoRepository {
                 worldInfo.getPreset() != null ? worldInfo.getPreset() : "",
                 worldInfo.getBackground() != null ? worldInfo.getBackground() : "",
                 worldInfo.getMainColor() != null ? worldInfo.getMainColor() : "",
-                Boolean.TRUE.equals(worldInfo.getPrivateChatEnable()) ? 1 : 0,
                 Boolean.TRUE.equals(worldInfo.getNarrationEnable()) ? 1 : 0,
                 worldInfo.getPossessName() != null ? worldInfo.getPossessName() : "",
                 worldInfo.getMaxRounds() != null ? worldInfo.getMaxRounds() : 5,
@@ -81,7 +79,7 @@ public class WorldInfoRepositoryImplement implements WorldInfoRepository {
         String sql =
                 """
                 UPDATE world_info
-                SET name = ?, description = ?, preset = ?, background = ?, main_color = ?, private_chat_enable = ?, narration_enable = ?, possess_name = ?, max_rounds = ?, scheduler_ai_settings = ?, update_time = ?
+                SET name = ?, description = ?, preset = ?, background = ?, main_color = ?, narration_enable = ?, possess_name = ?, max_rounds = ?, scheduler_ai_settings = ?, update_time = ?
                 WHERE id = ?
                 """;
         jdbcTemplate.update(sql,
@@ -90,7 +88,6 @@ public class WorldInfoRepositoryImplement implements WorldInfoRepository {
                 worldInfo.getPreset() != null ? worldInfo.getPreset() : "",
                 worldInfo.getBackground() != null ? worldInfo.getBackground() : "",
                 worldInfo.getMainColor() != null ? worldInfo.getMainColor() : "",
-                Boolean.TRUE.equals(worldInfo.getPrivateChatEnable()) ? 1 : 0,
                 Boolean.TRUE.equals(worldInfo.getNarrationEnable()) ? 1 : 0,
                 worldInfo.getPossessName() != null ? worldInfo.getPossessName() : "",
                 worldInfo.getMaxRounds() != null ? worldInfo.getMaxRounds() : 5,

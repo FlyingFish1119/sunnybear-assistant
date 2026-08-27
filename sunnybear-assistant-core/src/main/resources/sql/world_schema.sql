@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS world_info (
     preset              TEXT NOT NULL DEFAULT '',
     background          TEXT NOT NULL DEFAULT '',
     main_color          TEXT NOT NULL DEFAULT '',   -- 世界观主题色
-    private_chat_enable INTEGER NOT NULL DEFAULT 0,   -- 私聊频道启用
     narration_enable    INTEGER NOT NULL DEFAULT 1,   -- 旁白启用
     possess_name        TEXT NOT NULL DEFAULT '',     -- 玩家夺舍的角色 name，空串 = 不夺舍
     max_rounds          INTEGER NOT NULL DEFAULT 5,   -- 每轮最大轮数

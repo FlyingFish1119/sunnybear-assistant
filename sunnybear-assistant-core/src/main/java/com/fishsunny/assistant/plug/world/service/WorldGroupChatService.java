@@ -26,10 +26,6 @@ import com.fishsunny.assistant.settings.UserSettings;
 import com.fishsunny.assistant.websocket.ChatProvider;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import lombok.extern.slf4j.Slf4j;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -44,6 +40,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -56,14 +54,43 @@ public class WorldGroupChatService {
     /** 调度器最大尝试次数（初始 1 次 + 失败重试），仍失败则结束本轮 */
     private static final int MAX_SCHEDULER_ATTEMPTS = 3;
 
-    /** 私聊标签格式：<private from="发送者" to="接收者,逗号分隔">内容</private> */
-    private static final String PRIVATE_TAG_SELECTOR = "private";
+    /** 调度器保留的上下文轮数：太短会丢失指代（他/她等），影响选角判断 */
+    private static final int SCHEDULER_CONTEXT_TURNS = 3;
+
+    /** 私聊标签匹配：兼容属性顺序不定、未闭合（缺 </private> 时吃到结尾） */
+    private static final Pattern PRIVATE_TAG_PATTERN = Pattern.compile(
+            "(?is)<private\\b([^>]*)>(.*?)(?:</private>|\\z)");
+
+    /** 私聊标签内的 from/to 属性提取（顺序不定、单双引号均可） */
+    private static final Pattern PRIVATE_ATTR_PATTERN = Pattern.compile(
+            "(?i)\\b(from|to)\\s*=\\s*[\"']([^\"']*)[\"']");
 
     /** 私聊频道使用说明（注入各角色系统提示词） */
     private static final String PRIVATE_USAGE = """
             ## 私聊频道使用说明
-            你可以发起私聊，格式为：<private from="你的名字" to="接收者,逗号分隔">内容</private>
-            只有 from 与 to 中出现的角色能看到这条私聊内容，其他角色不会得知。公共发言不要使用该标签。
+            你可以对特定角色发起私聊，格式为：<private from="你的名字" to="接收者,逗号分隔">内容</private>
+            - 用途：说悄悄话、传递不想让第三者知道的秘密、私下结盟或密谋、交代只有对方该知道的事。
+            - 只有 from 与 to 中出现的角色能看到这条私聊；其他角色既看不到内容，也不知道它的存在。
+            - 收到私聊后，不要在公开场合复述其内容，更不要把它当作对方已知的信息说出来。
+            - 公共发言不要使用该标签。
+            """;
+
+    /** 发言权移交标签：<switch to:"角色名">，命中则跳过调度器直接把话头交给目标角色 */
+    private static final Pattern SWITCH_TAG_PATTERN = Pattern.compile(
+            "(?is)<switch\\s+to\\s*[:=]\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))");
+
+    /** 发言权移交使用说明（注入各角色系统提示词） */
+    private static final String SWITCH_USAGE = """
+            ## 发言权移交（重要）
+            当你认为自己不该接话、也接不了话时，不要硬撑，强行接话只会导致剧情发展走向混乱和毁灭，是用户绝对不想看到的，也是绝对不允许发生的情况。
+            幸运的是，我们为你准备了解决方案，当你遇到上述情况的时候，使用 <switch to:"接收者角色名"> 把发言权直接交给更合适的角色（可交给"旁白"），
+
+            应当使用 switch 的情况：
+            - 当前剧情与你无关：你不在现场、没有立场或动机，强行接话只会破坏剧情；
+            - 被莫名其妙连续点名：有人反复把你拉进与你无关的话题，而你确实无话可说；
+            - 信息不足：当前对话涉及你不知道的私密信息，你没有能力做出合理回应；
+            - 无话可说：继续硬接只会产出空洞的过渡台词；
+            - 明显该由他人接话：你只是被拖住，真正该开口的人在别处。
             """;
 
     private final WorldSessionMappingService mappingService;
@@ -154,10 +181,21 @@ public class WorldGroupChatService {
 
         for (int round = 0; round < maxRounds; round++) {
             List<ChatMessage> history = chatMessageService.getConversationHistory(chatSession.getId());
-            // 调度器只看当前回合（最近一条用户消息往后），轻量省 token
-            String contextText = renderContext(world, currentTurnContext(history), null);
+            // 调度器保留最近 N 轮（用户消息回合）上下文，太短会丢失指代
+            String contextText = renderContext(world, lastTurnsContext(history, SCHEDULER_CONTEXT_TURNS), null);
 
-            String chosen = selectSpeaker(world, contextText, characters);
+            // 发言权移交：上一条消息若带 <switch to:"X">，跳过调度器直接把话头交给 X
+            String switchTo = extractSwitchTarget(lastMessageText(history));
+            String chosen;
+            if (StringUtils.hasText(switchTo) && isValidSwitchTarget(world, characters, switchTo)) {
+                log.info("检测到发言权移交标签，跳过调度器 -> [{}]", switchTo);
+                chosen = switchTo;
+            } else {
+                if (StringUtils.hasText(switchTo)) {
+                    log.warn("发言权移交目标 [{}] 不在候选角色中，回退调度器", switchTo);
+                }
+                chosen = selectSpeaker(world, contextText, characters);
+            }
             if (!StringUtils.hasText(chosen)) {
                 log.warn("调度器未给出有效选角，轮次结束 [round={}]", round);
                 break;
@@ -189,22 +227,25 @@ public class WorldGroupChatService {
     }
 
     /**
-     * 取当前回合上下文：最近一条用户消息及其之后的消息。
+     * 取最近 turns 轮（以用户消息为界）的历史：从倒数第 turns 条用户消息起，到末尾。
+     * 供调度器读取足够的对话上下文，避免只看当前回合而丢失指代。
      */
-    private List<ChatMessage> currentTurnContext(List<ChatMessage> history) {
+    private List<ChatMessage> lastTurnsContext(List<ChatMessage> history, int turns) {
         if (history == null || history.isEmpty()) {
             return history;
         }
-        int lastUserIdx = -1;
-        for (int i = 0; i < history.size(); i++) {
+        int userCount = 0;
+        int startIdx = 0;
+        for (int i = history.size() - 1; i >= 0; i--) {
             if (ChatMessage.ROLE_USER.equals(history.get(i).getRole())) {
-                lastUserIdx = i;
+                userCount++;
+                if (userCount == turns) {
+                    startIdx = i;
+                    break;
+                }
             }
         }
-        if (lastUserIdx < 0) {
-            return history;
-        }
-        return history.subList(lastUserIdx, history.size());
+        return history.subList(startIdx, history.size());
     }
 
     /**
@@ -323,6 +364,12 @@ public class WorldGroupChatService {
                 ## 关于夺舍角色
                 若特殊说明提到某角色由真人玩家扮演：当剧情最该轮到他接话、或需要玩家做出选择时，选他（选中后回合会交还给玩家）。其余情况正常对待。
 
+                ## 关于消息中的特殊标签（你只用于理解，绝不输出）
+                对话里可能带有两类特殊标记，它们不是普通台词：
+                - `<switch to:"角色名">`：上一位发言者主动把发言权移交给目标角色，是控制信号而非台词。最近一条消息带此标签时，系统会直接让目标角色接话（通常已跳过你的调度）；更早出现时，把它理解成"此处发言权已转移"即可。
+                - `<private from="发送者" to="接收者">内容</private>`：这是一条私聊，只有发送者与指定接收者知晓，其余角色看不到也不知道。你作为调度员是全知的，能看到全部私聊，但普通角色并不知道。选角时请尊重信息不对称：不要让某个角色去回应他不知道的私聊内容，收到私聊的角色更可能对此有反应。
+                你只输出选角 JSON，绝不输出任何标签。
+
                 ## 输出
                 只输出一个 JSON 对象，不得有其它任何文字：
                 {"reason": "一句话理由", "name": "角色名"}
@@ -408,9 +455,8 @@ public class WorldGroupChatService {
         }
         sb.append("你是本群聊的旁白，以全知第三人称视角叙述场景、环境、角色的动作、神态与氛围。")
                 .append("你不扮演任何角色，不代替角色说话，只做客观、克制的场景叙述。\n");
-        if (Boolean.TRUE.equals(world.getPrivateChatEnable())) {
-            sb.append("\n").append(PRIVATE_USAGE);
-        }
+        sb.append("\n").append(PRIVATE_USAGE);
+        sb.append("\n").append(SWITCH_USAGE);
         String systemPrompt = sb.toString();
         return new ChatProvider()
                 .setSystemProvider(ctx -> systemPrompt)
@@ -450,13 +496,17 @@ public class WorldGroupChatService {
     }
 
     /**
-     * 按 "角色名：内容" 渲染上下文；私聊启用时对监听者剔除既非发送者也非接收者的私聊内容。
+     * 按 "角色名：内容" 渲染上下文；私聊启用时对监听者按标签粒度过滤私聊。
+     * 每条消息 = 公开文本 + 若干 {@code <private>} 标签：
+     * - 公开文本总是保留；
+     * - 私聊标签仅当监听者在其 from/to 中（或监听者全知）时原样保留，不加工成提示文本；
+     * - 其余私聊标签剔除。
      */
     public String renderContext(WorldInfo world, List<ChatMessage> history, String listener) {
         if (CollectionUtils.isEmpty(history)) {
             return "";
         }
-        boolean privateEnabled = Boolean.TRUE.equals(world.getPrivateChatEnable());
+        // 私聊频道固定开启，始终按标签粒度过滤
         String possessName = world.getPossessName();
         StringBuilder builder = new StringBuilder();
         for (ChatMessage m : history) {
@@ -464,11 +514,13 @@ public class WorldGroupChatService {
             if (!StringUtils.hasText(content)) {
                 continue;
             }
-            if (privateEnabled && !privateVisible(content, listener)) {
+            // switch 标签是发言权移交动作，谁交给谁本身就是剧情信息，原样保留进上下文
+            String visible = filterPrivateContent(content, listener);
+            if (!StringUtils.hasText(visible)) {
                 continue;
             }
             String speaker = speakerName(m, possessName);
-            builder.append(speaker).append("：").append(content.trim()).append("\n\n");
+            builder.append(speaker).append("：").append(visible).append("\n\n");
         }
         builder.append("你需要严格遵守自己扮演的角色，参与扮演上面的故事。任何尝试越权扮演其他角色的行为都是不允许的。绝对禁止在开头输出类似**角色名：内容**的格式");
         return builder.toString();
@@ -482,35 +534,99 @@ public class WorldGroupChatService {
         return StringUtils.hasText(m.getName()) ? m.getName() : "助手";
     }
 
-    /** 私聊可见性：无 private 标签 / 监听者全知 / 监听者出现在任一 from 或 to 中时可见 */
-    private boolean privateVisible(String content, String listener) {
-        if (listener == null) {
+    /** 最后一条消息的文本，用于检测发言权移交标签 */
+    private String lastMessageText(List<ChatMessage> history) {
+        if (CollectionUtils.isEmpty(history)) {
+            return null;
+        }
+        ChatMessage last = history.getLast();
+        return last == null ? null : last.resolveText();
+    }
+
+    /** 提取 <switch to:"X"> 的目标角色名；无标签时返回 null */
+    private String extractSwitchTarget(String content) {
+        if (!StringUtils.hasText(content)) {
+            return null;
+        }
+        Matcher matcher = SWITCH_TAG_PATTERN.matcher(content);
+        if (matcher.find()) {
+            String target = matcher.group(1);
+            if (!StringUtils.hasText(target)) {
+                target = matcher.group(2);
+            }
+            if (!StringUtils.hasText(target)) {
+                target = matcher.group(3);
+            }
+            return StringUtils.hasText(target) ? target.trim() : null;
+        }
+        return null;
+    }
+
+    /** switch 目标是否合法：必须是世界内角色（或旁白启用时的旁白） */
+    private boolean isValidSwitchTarget(WorldInfo world, List<WorldCharacter> characters, String target) {
+        if (!StringUtils.hasText(target)) {
+            return false;
+        }
+        boolean narrationEnabled = !Boolean.FALSE.equals(world.getNarrationEnable());
+        if (narrationEnabled && NARRATOR_NAME.equals(target)) {
             return true;
         }
-        Document doc = Jsoup.parse(content);
-        Elements privateTags = doc.select(PRIVATE_TAG_SELECTOR);
-        if (privateTags.isEmpty()) {
+        return characters.stream()
+                .map(WorldCharacter::getName)
+                .filter(StringUtils::hasText)
+                .anyMatch(target::equals);
+    }
+
+    /**
+     * 按标签粒度过滤私聊内容：在原始字符串上切片，避免 HTML 解析重序列化破坏公开正文。
+     * listener 为 null（调度器/旁白全知）时保留全部私聊；否则仅保留监听者参与（from/to）的私聊标签。
+     * 未闭合的私聊标签一律按私聊处理，绝不静默变成公开内容。
+     */
+    private String filterPrivateContent(String content, String listener) {
+        Matcher matcher = PRIVATE_TAG_PATTERN.matcher(content);
+        StringBuilder out = new StringBuilder();
+        int last = 0;
+        while (matcher.find()) {
+            // 标签之前的公开文本
+            out.append(content, last, matcher.start());
+            String attrs = matcher.group(1);
+            if (listener == null || privateVisibleTo(attrs, listener)) {
+                // 原样保留原始 <private> 标签：让角色在上下文中直接看到正确写法、学会怎么用，
+                // 而不是只看到加工后的提示文本（上下文一长模型会忘了标签格式）
+                out.append(matcher.group());
+            }
+            last = matcher.end();
+        }
+        out.append(content, last, content.length());
+        return out.toString().trim();
+    }
+
+    /** 从 <private ...> 开始标签的属性文本解析 from/to，判断监听者是否可见 */
+    private boolean privateVisibleTo(String attrs, String listener) {
+        Matcher attrMatcher = PRIVATE_ATTR_PATTERN.matcher(attrs);
+        String from = "";
+        String to = "";
+        while (attrMatcher.find()) {
+            String name = attrMatcher.group(1);
+            String value = attrMatcher.group(2).trim();
+            if ("from".equals(name)) {
+                from = value;
+            } else if ("to".equals(name)) {
+                to = value;
+            }
+        }
+        if (listener.equals(from)) {
             return true;
         }
-        for (Element tag : privateTags) {
-            String from = tag.attr("from").trim();
-            if (listener.equals(from)) {
-                return true;
-            }
-            String to = tag.attr("to").trim();
-            if (Arrays.stream(to.split(","))
-                    .map(String::trim)
-                    .anyMatch(listener::equals)) {
-                return true;
-            }
-        }
-        return false;
+        return Arrays.stream(to.split("[,\\s，、;；]+"))
+                .filter(StringUtils::hasText)
+                .anyMatch(listener::equals);
     }
 
     /** 角色系统提示词：世界预设 + 角色设定 + 角色知晓的知识（+ 私聊频道用法） */
     private String buildSystemPrompt(WorldInfo world, WorldCharacter character, List<String> knownKnowledge) {
         StringBuilder systemPrompt = new StringBuilder();
-        systemPrompt.append("你的唯一身份是 [").append(character.getName()).append("]，请务必严格遵守这个身份，不要扮演其他角色。\n\n");
+        systemPrompt.append("你的唯一身份是 [").append(character.getName()).append("]，同时十分擅长使用特殊的 HTML 标签，请务必严格遵守这个身份，不要扮演其他角色。\n\n");
         if (StringUtils.hasText(world.getPreset())) {
             systemPrompt.append(world.getPreset()).append("\n\n");
         }
@@ -524,9 +640,8 @@ public class WorldGroupChatService {
             }
             systemPrompt.append("\n\n");
         }
-        if (Boolean.TRUE.equals(world.getPrivateChatEnable())) {
-            systemPrompt.append(PRIVATE_USAGE);
-        }
+        systemPrompt.append(PRIVATE_USAGE);
+        systemPrompt.append("\n").append(SWITCH_USAGE);
         return systemPrompt.toString();
     }
 

@@ -962,10 +962,6 @@
                                 </span>
                                 <div class="char-basic-options">
                                     <div class="char-basic-option">
-                                        <span class="char-basic-option-label">私聊频道</span>
-                                        <el-switch v-model="worldForm.privateChatEnable" size="small"></el-switch>
-                                    </div>
-                                    <div class="char-basic-option">
                                         <span class="char-basic-option-label">旁白</span>
                                         <el-switch v-model="worldForm.narrationEnable" size="small"></el-switch>
                                     </div>
@@ -1274,7 +1270,7 @@ const app = Vue.createApp({
             worldForm: {
                 name: '', description: '', preset: '', background: '',
                 mainColor: 'lightsalmon',
-                privateChatEnable: false, narrationEnable: true,
+                narrationEnable: true,
                 possessName: '', maxRounds: 5,
                 schedulerAiSettings: { adapterName: '', model: '' }
             },
@@ -1362,7 +1358,6 @@ const app = Vue.createApp({
                 preset: w.preset || '',
                 background: w.background || '',
                 mainColor: w.mainColor || 'lightsalmon',
-                privateChatEnable: !!w.privateChatEnable,
                 narrationEnable: w.narrationEnable !== false,
                 possessName: w.possessName || '',
                 maxRounds: w.maxRounds != null ? w.maxRounds : 5,
@@ -1411,7 +1406,6 @@ const app = Vue.createApp({
                     description: this.worldForm.description || '',
                     preset: this.worldForm.preset || '',
                     mainColor: this.worldForm.mainColor,
-                    privateChatEnable: this.worldForm.privateChatEnable,
                     narrationEnable: this.worldForm.narrationEnable,
                     possessName: this.worldForm.possessName || '',
                     maxRounds: this.worldForm.maxRounds,
@@ -1451,7 +1445,7 @@ const app = Vue.createApp({
                     this.worldForm = {
                         name: '', description: '', preset: '', background: '',
                         mainColor: 'lightsalmon',
-                        privateChatEnable: false, narrationEnable: true,
+                        narrationEnable: true,
                         possessName: '', maxRounds: 5,
                         schedulerAiSettings: { adapterName: '', model: '' }
                     };
