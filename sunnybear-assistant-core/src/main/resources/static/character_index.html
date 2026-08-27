@@ -69,7 +69,6 @@
         @select-session="selectSession"
         @create-session="createSession"
         @on-delete-session="onDeleteSession"
-        @go-settings="goSettings"
         @toggle-collapsed="sidebarCollapsed = !sidebarCollapsed"
     ></character-sidebar>
     <div class="message-area-wrapper" :class="{ 'expanded': sidebarCollapsed }">
@@ -86,9 +85,12 @@
                 <button class="sidebar-toggle-btn" @click="toggleSidebar" title="展开/收起侧边栏">
                     <i data-lucide="menu" style="width: 18px; height: 18px;"></i>
                 </button>
-                <span v-if="characterInfo" :style="{'--main-color': mainColor}" style="font-weight:600;color:var(--main-color);white-space:nowrap">{{ characterInfo.name }}</span>
-                <span v-if="characterInfo" style="color:#999">·</span>
-                {{ chatModel }} ·
+                <!-- 角色名 + 模型名：移动端隐藏（见 .model-name-tag 的媒体查询） -->
+                <span class="model-name-tag">
+                    <span v-if="characterInfo" :style="{'--main-color': mainColor}" style="font-weight:600;color:var(--main-color);white-space:nowrap">{{ characterInfo.name }}</span>
+                    <span v-if="characterInfo" style="color:#999">·</span>
+                    {{ chatModel }} ·
+                </span>
                 <session-name
                     :current-session="currentSession"
                     :main-color="mainColor"
@@ -1165,13 +1167,6 @@
                         }
                     });
                 });
-            },
-
-            /**
-             * 跳转到设置页面
-             */
-            goSettings() {
-                window.location.href = this.$api('character_settings.html');
             },
 
             /**

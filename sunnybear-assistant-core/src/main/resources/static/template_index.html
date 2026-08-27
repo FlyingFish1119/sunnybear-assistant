@@ -70,7 +70,6 @@
         @select-session="selectSession"
         @create-session="createSession"
         @on-delete-session="onDeleteSession"
-        @go-settings="goSettings"
         @toggle-collapsed="sidebarCollapsed = !sidebarCollapsed"
     ></chat-sidebar>
     <div class="message-area-wrapper" :class="{ 'expanded': sidebarCollapsed }">
@@ -1108,13 +1107,6 @@
                         }
                     });
                 });
-            },
-
-            /**
-             * 跳转到设置页面
-             */
-            goSettings() {
-                window.location.href = this.$api('settings.html');
             },
 
             /**

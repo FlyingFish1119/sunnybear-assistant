@@ -14,7 +14,6 @@
  *   select-session(session)     — 点击会话
  *   create-session()            — 点击"新对话"
  *   on-delete-session(session)  — 会话已被删除（组件已从内部数组移除）
- *   go-settings()               — 点击设置按钮
  *   toggle-collapsed()          — 桌面端折叠 / 移动端滑出
  *
  * 公开方法（通过 ref 调用）：
@@ -61,11 +60,18 @@ const CharacterSidebar = {
         </div>
         <div class="sidebar-footer">
             <el-button class="sidebar-settings"
-                       @click="$emit('go-settings')"
+                       @click="goSettings"
                        style="color: #333"
                        type="text"
                        title="设置">
                 <i ref="settings" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="settings"></i>
+            </el-button>
+            <el-button class="sidebar-settings"
+                       @click="goWorldChat"
+                       style="color: #333"
+                       type="text"
+                       title="世界群聊">
+                <i ref="worldchat" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="users"></i>
             </el-button>
         </div>
     </div>
@@ -83,7 +89,7 @@ const CharacterSidebar = {
         characterId: { type: String, default: null }
     },
 
-    emits: ['select-session', 'create-session', 'on-delete-session', 'go-settings', 'toggle-collapsed'],
+    emits: ['select-session', 'create-session', 'on-delete-session', 'toggle-collapsed'],
 
     data: function () {
         return {
@@ -122,6 +128,20 @@ const CharacterSidebar = {
          */
         close: function () {
             this.sidebarOpen = false;
+        },
+
+        /**
+         * 跳转到设置页面（不依赖父页面，组件内直接跳转）
+         */
+        goSettings: function () {
+            window.location.href = API.BASE_PATH + 'character_settings.html';
+        },
+
+        /**
+         * 跳转到世界群聊页面（不依赖父页面，组件内直接跳转）
+         */
+        goWorldChat: function () {
+            window.location.href = API.BASE_PATH + 'world_index.html';
         },
 
         /**

@@ -12,7 +12,6 @@
  *   select-session(session)     — 点击会话
  *   create-session()            — 点击"新对话"
  *   session-deleted(sessionId)  — 会话已被删除（组件已从内部数组移除）
- *   go-settings()               — 点击设置按钮
  *   toggle-collapsed()          — 桌面端折叠 / 移动端滑出
  *
  * 公开方法（通过 ref 调用）：
@@ -72,7 +71,7 @@ const ChatSidebar = {
         </div>
         <div class="sidebar-footer">
             <el-button class="sidebar-settings"
-                       @click="$emit('go-settings')"
+                       @click="goSettings"
                        style="color: #333"
                        type="text"
                        title="设置">
@@ -138,7 +137,7 @@ const ChatSidebar = {
         collapsed: { type: Boolean, default: false }
     },
 
-    emits: ['select-session', 'create-session', 'on-delete-session', 'change-session-loading', 'go-settings', 'toggle-collapsed'],
+    emits: ['select-session', 'create-session', 'on-delete-session', 'change-session-loading', 'toggle-collapsed'],
 
     data: function () {
         return {
@@ -184,6 +183,13 @@ const ChatSidebar = {
          */
         close: function () {
             this.sidebarOpen = false;
+        },
+
+        /**
+         * 跳转到设置页面（不依赖父页面，组件内直接跳转）
+         */
+        goSettings: function () {
+            window.location.href = API.BASE_PATH + 'settings.html';
         },
 
         /**

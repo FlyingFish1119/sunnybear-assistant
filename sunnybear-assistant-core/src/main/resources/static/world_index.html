@@ -96,7 +96,6 @@
         @select-session="selectSession"
         @create-session="createSession"
         @on-delete-session="onDeleteSession"
-        @go-settings="goSettings"
         @toggle-collapsed="sidebarCollapsed = !sidebarCollapsed"
     ></world-sidebar>
     <div class="message-area-wrapper" :class="{ 'expanded': sidebarCollapsed }">
@@ -259,11 +258,6 @@
                                       @click.stop="switchBranch(msg, 'right')"
                                       title="切换到下一个分支">
                                     <i style="width: 14px; height: 14px" data-lucide="chevron-right"></i>
-                                </span>
-                                <span v-if="msg.role === 'assistant'" class="branch-switch-arrow"
-                                      @click.stop="replaceBranch(msg)"
-                                      title="重新生成回复">
-                                    <i style="width: 14px; height: 14px" data-lucide="rotate-ccw"></i>
                                 </span>
                                 <span v-if="msg.role === 'assistant'" class="branch-switch-arrow"
                                       @click.stop="copyMessage(msg)"
@@ -1269,13 +1263,6 @@
             },
 
             /**
-             * 跳转到设置页面
-             */
-            goSettings() {
-                window.location.href = this.$api('world_settings.html');
-            },
-
-            /**
              * 切换侧边栏：桌面端折叠/展开，移动端滑出抽屉
              */
             toggleSidebar() {
@@ -1331,49 +1318,7 @@
                     console.error('切换分支失败:', error);
                 }
             },
-
-            /**
-             * 重新生成助手回复（replace 模式）
-             * 找到当前助手消息对应的父用户消息，重新发起对话
-             * @param {object} msg - 助手消息对象
-             */
-            replaceBranch(msg) {
-                // 找到父用户消息
-                const parentMsg = this.currentMessages.find(m => m.id === msg.parentId);
-                if (!parentMsg) {
-                    ElementPlus.ElMessage.error('未找到对应的用户消息');
-                    return;
-                }
-                // 提取用户消息的文本内容
-                let userText = '';
-                if (parentMsg.contents && parentMsg.contents.length > 0) {
-                    userText = parentMsg.contents
-                        .filter(c => c.type === 'text')
-                        .map(c => c.content)
-                        .join('\n');
-                }
-                if (!userText) {
-                    ElementPlus.ElMessage.error('用户消息内容为空');
-                    return;
-                }
-                // 通过 WebSocket 发送 replace 请求
-                const request = {
-                    mode: 'replace',
-                    sessionId: this.currentSessionId,
-                    replaceMessageId: msg.id,
-                    content: userText
-                };
-                this.ws.send(JSON.stringify(request));
-                let assistantMsg = Utils.getDefaultAssistantMessage(msg.sessionId, msg.parentId)
-                this.streamingMessages.push(assistantMsg)
-                if (msg.sessionId === this.currentSessionId) {
-                    let index = this.currentMessages.findIndex(m => m.id === msg.id);
-                    // splice(index) 原地删除从 index 开始的所有消息（旧分支）
-                    this.currentMessages.splice(index)
-                    this.currentMessages.push(assistantMsg)
-                }
-            },
-
+            
             /**
              * 进入编辑模式：设置 currentEditId 并初始化草稿
              * @param {object} msg - 用户消息对象
