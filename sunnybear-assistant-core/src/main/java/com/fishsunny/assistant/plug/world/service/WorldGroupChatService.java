@@ -91,6 +91,8 @@ public class WorldGroupChatService {
             - 信息不足：当前对话涉及你不知道的私密信息，你没有能力做出合理回应；
             - 无话可说：继续硬接只会产出空洞的过渡台词；
             - 明显该由他人接话：你只是被拖住，真正该开口的人在别处。
+            
+            你不需要，也不应该解释你为什么会使用 switch，因为你的解释会被其他角色看见，这会导致他们产生困惑。
             """;
 
     private final WorldSessionMappingService mappingService;
