@@ -34,6 +34,8 @@ public class ChatProvider {
     private Function<Map<String, Object>, Map<String, Object>> contextProvider;
     private Function<List<ChatMessage>, List<ChatMessage>> sessionMessageProvider;
     private Supplier<Settings> settingsSupplier;
+    private Supplier<Boolean> enableSlashCommand;
+    private Supplier<Boolean> enableSwitchPro;
 
     public ChatProvider() {
     }

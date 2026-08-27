@@ -19,6 +19,7 @@ import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
 import lombok.NonNull;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Primary;
@@ -35,22 +36,21 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 
+@Slf4j
 @Primary
 @Component
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(ChatWebSocketHandler.class);
-
-    private final ServiceProcessor serviceProcessor;
-    private final TempChatProcessor tempChatProcessor;
-    private final ChatProcessor chatProcessor;
-    private final TaskExecutor chatAsyncExecutor;
-    private final ObjectMapper objectMapper;
+    protected final ServiceProcessor serviceProcessor;
+    protected final TempChatProcessor tempChatProcessor;
+    protected final ChatProcessor chatProcessor;
+    protected final TaskExecutor chatAsyncExecutor;
+    protected final ObjectMapper objectMapper;
 
     /**
      * 记录每个连接的活跃异步任务数
      */
-    private final Map<String, Integer> activeTaskCount = new ConcurrentHashMap<>();
+    protected final Map<String, Integer> activeTaskCount = new ConcurrentHashMap<>();
 
     public ChatWebSocketHandler(ServiceProcessor serviceProcessor,
                                 TempChatProcessor tempChatProcessor,
@@ -82,13 +82,6 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      */
     public ChatProvider chatToAiProvider() {
         return ChatProvider.DEFAULT;
-    }
-
-    /**
-     * 是否启用 Pro 模型自动切换。子类可重写以关闭此功能。
-     */
-    protected boolean isProModelEnabled() {
-        return true;
     }
 
     /**
@@ -128,7 +121,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 }
 
                 // 处理会话
-                ServiceProcessor.ChatSessionModeParseResult parseResult = serviceProcessor.handleChatSession(request, safeSession, isProModelEnabled());
+                boolean enableSwitchPro = Boolean.TRUE.equals(chatToAiProvider().getEnableSwitchPro().get());
+                ServiceProcessor.ChatSessionModeParseResult parseResult = serviceProcessor.handleChatSession(request, safeSession, enableSwitchPro);
 
                 // 处理请求
                 ChatSession chatSession = parseResult.chatSession();
@@ -172,7 +166,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
 
     /** 将错误信息通过 ChatResponse 推送到前端 */
-    private void sendErrorToFrontend(WebSocketSession safeSession, String sessionId, String errorMessage) {
+    protected void sendErrorToFrontend(WebSocketSession safeSession, String sessionId, String errorMessage) {
         try {
             ChatResponse errorResp = new ChatResponse().afterError(sessionId != null ? sessionId : "", errorMessage);
             safeSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(errorResp)));

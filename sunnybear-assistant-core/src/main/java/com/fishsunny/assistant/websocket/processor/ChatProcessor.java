@@ -159,7 +159,8 @@ public class ChatProcessor {
         SlashCommandHandler.SlashCommandContext slashCommandContext = new SlashCommandHandler.SlashCommandContext(
                 userMessage.resolveText(), session, chatSession, messages, new ArrayList<>()
         );
-        if (slashCommandExecutor.runSlashFactory(slashCommandContext)) {
+        boolean enableSlashCommand = Boolean.TRUE.equals(chatProvider.getEnableSlashCommand().get());
+        if (enableSlashCommand && slashCommandExecutor.runSlashFactory(slashCommandContext)) {
             return slashCommandContext.resultMessage();
         }
 

@@ -83,10 +83,10 @@ public class WorldSessionMappingRepositoryImplement implements WorldSessionMappi
     public WorldSessionMapping selectBySessionId(String sessionId) {
         String sql = "SELECT * FROM world_session_mapping WHERE session_id = ?";
         List<WorldSessionMapping> list = jdbcTemplate.query(sql, rowMapper, sessionId);
-        if (list == null || list.isEmpty()) {
+        if (list.isEmpty()) {
             return null;
         }
-        return list.get(0);
+        return list.getFirst();
     }
 
     @Override
@@ -104,9 +104,9 @@ public class WorldSessionMappingRepositoryImplement implements WorldSessionMappi
     private WorldSessionMapping selectById(String id) {
         String sql = "SELECT * FROM world_session_mapping WHERE id = ?";
         List<WorldSessionMapping> list = jdbcTemplate.query(sql, rowMapper, id);
-        if (list == null || list.isEmpty()) {
+        if (list.isEmpty()) {
             return null;
         }
-        return list.get(0);
+        return list.getFirst();
     }
 }

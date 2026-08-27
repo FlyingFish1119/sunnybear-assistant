@@ -27,6 +27,7 @@ import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,15 +42,13 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-@Component()
+@Slf4j
+@Component("characterChatSocketHandler")
 public class CharacterChatSocketHandler extends ChatWebSocketHandler {
-
-    private static final Logger log = LoggerFactory.getLogger(CharacterChatSocketHandler.class);
 
     private final CharacterInfoRepository characterInfoRepository;
     private final CharacterSessionMappingService mappingService;
     private final CharacterGlossaryService glossaryService;
-    private final ObjectMapper objectMapper;
     private final BattleDbManager battleDbManager;
 
     @Autowired
@@ -66,13 +65,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
         this.characterInfoRepository = characterInfoRepository;
         this.mappingService = mappingService;
         this.glossaryService = glossaryService;
-        this.objectMapper = objectMapper;
         this.battleDbManager = battleDbManager;
-    }
-
-    @Override
-    protected boolean isProModelEnabled() {
-        return false;
     }
 
     @Override
@@ -94,7 +87,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
             String aiSettingsJson = character.getAiSettings();
             if (StringUtils.hasText(aiSettingsJson)) {
                 try {
-                    AISettings charAi = objectMapper.readValue(aiSettingsJson, AISettings.class);
+                    AISettings charAi = super.objectMapper.readValue(aiSettingsJson, AISettings.class);
                     if (StringUtils.hasText(charAi.getPrompt())) {
                         combined.append(charAi.getPrompt());
                     }
@@ -106,7 +99,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
             Map<String, Boolean> tools = new HashMap<>();
             if (StringUtils.hasText(character.getTools())) {
                 try {
-                    tools = objectMapper.readValue(character.getTools(), new TypeReference<Map<String, Boolean>>() {});
+                    tools = super.objectMapper.readValue(character.getTools(), new TypeReference<Map<String, Boolean>>() {});
                 } catch (Exception e) {
                     throw new RuntimeException("角色工具 JSON 解析失败");
                 }
@@ -179,7 +172,9 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
         return new ChatProvider()
                 .setSystemProvider(systemProvider)
                 .setToolProvider(toolProvider)
-                .setContextProvider(contextProvider);
+                .setContextProvider(contextProvider)
+                .setEnableSlashCommand(() -> false)
+                .setEnableSwitchPro(() -> false);
     }
 
     private CharacterInfo getCharacterInfo(ChatSession ctxSession) {

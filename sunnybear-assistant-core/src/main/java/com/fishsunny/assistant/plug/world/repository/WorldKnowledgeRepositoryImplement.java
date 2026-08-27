@@ -109,10 +109,10 @@ public class WorldKnowledgeRepositoryImplement implements WorldKnowledgeReposito
     public WorldKnowledge selectById(String id) {
         String sql = "SELECT * FROM world_knowledge WHERE id = ?";
         List<WorldKnowledge> list = jdbcTemplate.query(sql, rowMapper, id);
-        if (list == null || list.isEmpty()) {
+        if (list.isEmpty()) {
             return null;
         }
-        return list.get(0);
+        return list.getFirst();
     }
 
     @Override

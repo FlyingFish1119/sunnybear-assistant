@@ -32,6 +32,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -42,11 +43,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 @Slf4j
 public class WorldGroupChatService {
+
+    private static final String WORLD_ROUND_SIGN = "###WORLD_ROUND###";
 
     /** 旁白内置角色名（narration_enable 时作为调度器候选之一） */
     public static final String NARRATOR_NAME = "旁白";
@@ -134,7 +138,11 @@ public class WorldGroupChatService {
 
         List<WorldCharacter> characters = worldCharacterService.findByWorldId(world.getId());
         Map<String, WorldCharacter> byName = characters.stream()
-                .collect(Collectors.toMap(WorldCharacter::getName, c -> c, (a, b) -> a));
+                .collect(Collectors.toMap(
+                        WorldCharacter::getName,
+                        Function.identity(),
+                        (a, b) -> a)
+                );
         List<String> candidates = candidateNames(world, characters);
         if (candidates.isEmpty()) {
             log.warn("世界观 [{}] 没有任何可发言的角色，跳过本轮", world.getId());
@@ -150,8 +158,8 @@ public class WorldGroupChatService {
             String contextText = renderContext(world, currentTurnContext(history), null);
 
             String chosen = selectSpeaker(world, contextText, candidates);
-            if (chosen == null) {
-                log.info("调度器未给出有效选角，轮次结束 [round={}]", round);
+            if (!StringUtils.hasText(chosen)) {
+                log.warn("调度器未给出有效选角，轮次结束 [round={}]", round);
                 break;
             }
             // 用户夺舍语义：调度器选中夺舍角色时不再生成，直接把回合交还用户
@@ -172,7 +180,7 @@ public class WorldGroupChatService {
                 provider = buildCharacterProvider(world, character);
             }
             // 通知前端本轮发言者，群聊页据此开启新气泡并显示角色名
-            session.sendMessage(new TextMessage(ControlSign.SIGN_WORLD_ROUND + chatSession.getId() + "|" + chosen));
+            session.sendMessage(new TextMessage(WORLD_ROUND_SIGN + chatSession.getId() + "|" + chosen));
             // 被选角色看完整会话历史（sessionMessageProvider 折叠成单条 user 消息）
             chatProcessor.chatToAi(history, chatSession, session, provider);
         }
@@ -183,11 +191,12 @@ public class WorldGroupChatService {
      */
     public List<String> candidateNames(WorldInfo world, List<WorldCharacter> characters) {
         List<String> names = new ArrayList<>();
-        if (characters != null) {
-            for (WorldCharacter c : characters) {
-                if (StringUtils.hasText(c.getName())) {
-                    names.add(c.getName());
-                }
+        if (characters == null) {
+            return names;
+        }
+        for (WorldCharacter character : characters) {
+            if (StringUtils.hasText(character.getName())) {
+                names.add(character.getName() + ": " + character.getIntro());
             }
         }
         if (Boolean.TRUE.equals(world.getNarrationEnable())) {
@@ -225,7 +234,7 @@ public class WorldGroupChatService {
             return null;
         }
         AISettings schedulerSettings = resolveSchedulerSettings(world);
-        String candidateDesc = String.join("、", candidates);
+        String candidateDesc = String.join("\n", candidates);
         String system = """
                 你是群聊场景调度器。根据最近的对话内容与候选发言者，决定下一位发言者。
 
@@ -293,10 +302,11 @@ public class WorldGroupChatService {
         String listener = character.getName();
         return new ChatProvider()
                 .setSystemProvider(ctx -> systemPrompt)
-                .setSessionMessageProvider(msgs -> collapseContext(world, msgs, listener))
+                .setSessionMessageProvider(messages -> collapseContext(world, messages, listener))
                 .setToolProvider(ctx -> List.of())
-                .setSettingsSupplier(() -> new ChatProvider.Settings(
-                        charAi, charAi, new AssistantSettings().setAssistantName(listener)));
+                .setSettingsSupplier(() -> new ChatProvider.Settings(charAi, charAi, new AssistantSettings().setAssistantName(listener)))
+                .setEnableSlashCommand(() -> false)
+                .setEnableSwitchPro(() -> false);
     }
 
     /**
@@ -315,10 +325,11 @@ public class WorldGroupChatService {
         String systemPrompt = sb.toString();
         return new ChatProvider()
                 .setSystemProvider(ctx -> systemPrompt)
-                .setSessionMessageProvider(msgs -> collapseContext(world, msgs, null))
+                .setSessionMessageProvider(messages -> collapseContext(world, messages, null))
                 .setToolProvider(ctx -> List.of())
-                .setSettingsSupplier(() -> new ChatProvider.Settings(
-                        chatAISettings, chatProAISettings, new AssistantSettings().setAssistantName(NARRATOR_NAME)));
+                .setSettingsSupplier(() -> new ChatProvider.Settings(chatAISettings, chatProAISettings, new AssistantSettings().setAssistantName(NARRATOR_NAME)))
+                .setEnableSlashCommand(() -> false)
+                .setEnableSwitchPro(() -> false);
     }
 
     // ==================== 内部方法 ====================
@@ -331,9 +342,9 @@ public class WorldGroupChatService {
      */
     private List<ChatMessage> collapseContext(WorldInfo world, List<ChatMessage> history, String listener) {
         String lastUserId = null;
-        for (ChatMessage m : history) {
-            if (ChatMessage.ROLE_USER.equals(m.getRole())) {
-                lastUserId = m.getId();
+        for (ChatMessage message : history) {
+            if (ChatMessage.ROLE_USER.equals(message.getRole())) {
+                lastUserId = message.getId();
             }
         }
         String rendered = renderContext(world, history, listener);
@@ -346,12 +357,12 @@ public class WorldGroupChatService {
      * 按 "角色名：内容" 渲染上下文；私聊启用时对监听者剔除既非发送者也非接收者的私聊内容。
      */
     public String renderContext(WorldInfo world, List<ChatMessage> history, String listener) {
-        if (history == null || history.isEmpty()) {
+        if (CollectionUtils.isEmpty(history)) {
             return "";
         }
         boolean privateEnabled = Boolean.TRUE.equals(world.getPrivateChatEnable());
         String possessName = world.getPossessName();
-        StringBuilder sb = new StringBuilder();
+        StringBuilder builder = new StringBuilder();
         for (ChatMessage m : history) {
             String content = m.resolveText();
             if (!StringUtils.hasText(content)) {
@@ -360,9 +371,11 @@ public class WorldGroupChatService {
             if (privateEnabled && !privateVisible(content, listener)) {
                 continue;
             }
-            sb.append(speakerName(m, possessName)).append("：").append(content.trim()).append("\n");
+            String speaker = speakerName(m, possessName);
+            builder.append(speaker).append("：").append(content.trim()).append("\n\n");
         }
-        return sb.toString();
+        builder.append("你需要严格遵守自己扮演的角色，参与扮演上面的故事。任何尝试越权扮演其他角色的行为都是不允许的。");
+        return builder.toString();
     }
 
     /** 消息的发言者名：用户消息 = 夺舍角色名（否则用户名）；assistant = 其 name */
@@ -400,49 +413,49 @@ public class WorldGroupChatService {
 
     /** 角色系统提示词：世界预设 + 角色设定 + 角色知晓的知识（+ 私聊频道用法） */
     private String buildSystemPrompt(WorldInfo world, WorldCharacter character, List<String> knownKnowledge) {
-        StringBuilder sb = new StringBuilder();
+        StringBuilder systemPrompt = new StringBuilder();
         if (StringUtils.hasText(world.getPreset())) {
-            sb.append(world.getPreset()).append("\n\n");
+            systemPrompt.append(world.getPreset()).append("\n\n");
         }
         if (StringUtils.hasText(character.getSetting())) {
-            sb.append(character.getSetting()).append("\n\n");
+            systemPrompt.append(character.getSetting()).append("\n\n");
         }
         if (!knownKnowledge.isEmpty()) {
-            sb.append("## 你知晓的世界知识\n");
-            for (String k : knownKnowledge) {
-                sb.append("- ").append(k).append("\n");
+            systemPrompt.append("## 你知晓的世界知识\n\n");
+            for (String knowledge : knownKnowledge) {
+                systemPrompt.append("- ").append(knowledge).append("\n");
             }
-            sb.append("\n");
+            systemPrompt.append("\n\n");
         }
         if (Boolean.TRUE.equals(world.getPrivateChatEnable())) {
-            sb.append(PRIVATE_USAGE);
+            systemPrompt.append(PRIVATE_USAGE);
         }
-        return sb.toString();
+        return systemPrompt.toString();
     }
 
     /** 角色知晓的知识（title：content），来自 world_knowledge + world_knowledge_character */
     private List<String> knownKnowledge(WorldInfo world, WorldCharacter character) {
-        List<WorldKnowledge> knowledges = worldKnowledgeService.findByWorldId(world.getId());
+        List<WorldKnowledge> knowledgeList = worldKnowledgeService.findByWorldId(world.getId());
         List<String> result = new ArrayList<>();
-        if (knowledges == null) {
+        if (knowledgeList == null) {
             return result;
         }
-        for (WorldKnowledge k : knowledges) {
-            if (k.getCharacterIds() == null || !k.getCharacterIds().contains(character.getId())) {
+        for (WorldKnowledge knowledge : knowledgeList) {
+            if (CollectionUtils.isEmpty(knowledge.getCharacterIds()) || !knowledge.getCharacterIds().contains(character.getId())) {
                 continue;
             }
-            StringBuilder sb = new StringBuilder();
-            if (StringUtils.hasText(k.getTitle())) {
-                sb.append(k.getTitle());
+            StringBuilder knowledgeSection = new StringBuilder();
+            if (StringUtils.hasText(knowledge.getTitle())) {
+                knowledgeSection.append(knowledge.getTitle());
             }
-            if (StringUtils.hasText(k.getContent())) {
-                if (!sb.isEmpty()) {
-                    sb.append("：");
+            if (StringUtils.hasText(knowledge.getContent())) {
+                if (!knowledgeSection.isEmpty()) {
+                    knowledgeSection.append("：");
                 }
-                sb.append(k.getContent());
+                knowledgeSection.append(knowledge.getContent());
             }
-            if (!sb.isEmpty()) {
-                result.add(sb.toString());
+            if (!knowledgeSection.isEmpty()) {
+                result.add(knowledgeSection.toString());
             }
         }
         return result;

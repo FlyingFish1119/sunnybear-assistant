@@ -115,20 +115,20 @@ public class WorldCharacterRepositoryImplement implements WorldCharacterReposito
     public WorldCharacter selectById(String id) {
         String sql = "SELECT * FROM world_character WHERE id = ?";
         List<WorldCharacter> list = jdbcTemplate.query(sql, rowMapper, id);
-        if (list == null || list.isEmpty()) {
+        if (list.isEmpty()) {
             return null;
         }
-        return list.get(0);
+        return list.getFirst();
     }
 
     @Override
     public WorldCharacter selectByWorldAndName(String worldId, String name) {
         String sql = "SELECT * FROM world_character WHERE world_id = ? AND name = ?";
         List<WorldCharacter> list = jdbcTemplate.query(sql, rowMapper, worldId, name);
-        if (list == null || list.isEmpty()) {
+        if (list.isEmpty()) {
             return null;
         }
-        return list.get(0);
+        return list.getFirst();
     }
 
     @Override

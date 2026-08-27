@@ -20,7 +20,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Repository
-public class WorldInfoRepositoryImplement implements WorldInfoRepository, InitializingBean {
+public class WorldInfoRepositoryImplement implements WorldInfoRepository {
 
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -113,21 +113,6 @@ public class WorldInfoRepositoryImplement implements WorldInfoRepository, Initia
         return worldInfo;
     }
 
-    @Override
-    public void afterPropertiesSet() {
-        // 安全迁移：为存量数据库添加 main_color 列（如果不存在）
-        try {
-            jdbcTemplate.execute("ALTER TABLE world_info ADD COLUMN main_color TEXT NOT NULL DEFAULT ''");
-        } catch (Exception ignored) {
-            // 列已存在，后续启动时忽略错误
-        }
-        // 调度器 AI 配置列（存量库兜底迁移）
-        try {
-            jdbcTemplate.execute("ALTER TABLE world_info ADD COLUMN scheduler_ai_settings TEXT NOT NULL DEFAULT '{}'");
-        } catch (Exception ignored) {
-            // 列已存在，后续启动时忽略错误
-        }
-    }
 
     @Override
     public void updateBackground(String id, String background) {
@@ -148,9 +133,9 @@ public class WorldInfoRepositoryImplement implements WorldInfoRepository, Initia
     public WorldInfo selectById(String id) {
         String sql = "SELECT * FROM world_info WHERE id = ?";
         List<WorldInfo> list = jdbcTemplate.query(sql, rowMapper, id);
-        if (list == null || list.isEmpty()) {
+        if (list.isEmpty()) {
             return null;
         }
-        return list.get(0);
+        return list.getFirst();
     }
 }
