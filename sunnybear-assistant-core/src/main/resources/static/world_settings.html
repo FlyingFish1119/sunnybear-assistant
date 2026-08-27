@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover">
+    <title>世界设置 — SunnyBear 助手</title>
+    <link rel="icon" type="image/png" href="icon/ComfyUI_23337_.png">
+    <link rel="stylesheet" href="lib/element-plus.css">
+    <script src="lib/vue.global.prod.js"></script>
+    <script src="lib/element-plus.full.min.js"></script>
+    <script src="lib/lucide.min.js"></script>
+    <script src="api.js"></script>
+    <script src="components/confirm-dialog/confirm-dialog.js"></script>
+    <link rel="stylesheet" href="components/confirm-dialog/confirm-dialog.css"/>
+    <link rel="stylesheet" href="css/scrollbar.css"/>
+    <style>
+        :root {
+            --main-color: lightsalmon;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100dvh;
+            width: 100dvw;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f6fa;
+            color: #303133;
+        }
+
+        #app {
+            display: flex;
+            height: 100dvh;
+            width: 100dvw;
+        }
+
+        /* ====== 侧边栏 ====== */
+        .char-sidebar {
+            flex: 0 0 260px;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 10;
+        }
+
+        @media (min-width: 769px) {
+            .char-sidebar {
+                transition: flex-basis 0.3s ease;
+            }
+            .char-sidebar.collapsed {
+                flex-basis: 0;
+                min-width: 0;
+            }
+            .char-sidebar.collapsed > * {
+                opacity: 0;
+                pointer-events: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .char-sidebar {
+                position: fixed;
+                left: -270px;
+                top: 0;
+                width: 260px;
+                transition: left 0.3s ease;
+                box-shadow: none;
+            }
+            .char-sidebar.mobile-open {
+                left: 0;
+                box-shadow: 4px 0 20px rgba(0,0,0,0.18);
+            }
+            .char-sidebar-overlay {
+                display: none;
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.35);
+                z-index: 9;
+            }
+            .char-sidebar-overlay.visible { display: block; }
+        }
+
+        .char-sidebar-new-btn {
+            margin: 16px 12px 0;
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.6);
+            background: transparent;
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: background 0.15s;
+        }
+        .char-sidebar-new-btn:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .char-sidebar-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 0;
+        }
+
+        .char-sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            margin: 2px 8px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.15s;
+            font-size: 14px;
+            color: rgba(255,255,255,0.9);
+        }
+        .char-sidebar-item:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .char-sidebar-item.active {
+            background: rgba(255,255,255,0.95);
+            color: #333;
+            font-weight: 600;
+        }
+        .char-sidebar-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: rgba(255,255,255,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .char-sidebar-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .char-sidebar-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .char-sidebar-empty {
+            color: rgba(255,255,255,0.5);
+            text-align: center;
+            padding: 24px 16px;
+            font-size: 13px;
+        }
+
+        .char-sidebar-footer {
+            padding: 12px 16px;
+            display: flex;
+            justify-content: flex-start;
+        }
+        .char-sidebar-back-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s;
+        }
+        .char-sidebar-back-btn:hover {
+            background: rgba(255,255,255,0.35);
+        }
+
+        /* ====== 主区域 ====== */
+        .char-main {
+            flex: 1;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            background: #f5f6fa;
+            min-width: 0;
+        }
+
+        .char-main-topbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            background: #fff;
+            border-bottom: 1px solid #eee;
+            min-height: 48px;
+            flex-shrink: 0;
+        }
+        .char-main-toggle-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #606266;
+            flex-shrink: 0;
+        }
+        .char-main-toggle-btn:hover { background: #f0f0f0; }
+        .char-main-title {
+            font-size: 15px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .char-main-subtitle {
+            font-size: 14px;
+            color: #909399;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .char-main-body {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ====== 空状态 ====== */
+        .char-empty {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            color: #c0c4cc;
+            padding: 40px;
+        }
+        .char-empty-icon {
+            width: 64px;
+            height: 64px;
+        }
+        .char-empty-title {
+            font-size: 18px;
+            color: #909399;
+            font-weight: 500;
+        }
+        .char-empty-desc {
+            font-size: 14px;
+        }
+        .char-empty-btn {
+            margin-top: 8px;
+            padding: 10px 28px;
+            border-radius: 10px;
+            font-size: 14px;
+            border: 2px dashed #dcdfe6;
+            background: transparent;
+            cursor: pointer;
+            color: #909399;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .char-empty-btn:hover {
+            border-color: var(--main-color);
+            color: var(--main-color);
+        }
+
+        /* ====== 表单通用 ====== */
+        .char-form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .char-form-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #606266;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .char-form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #e4e7ed;
+            border-radius: 10px;
+            font-size: 14px;
+            color: #303133;
+            background: #fff;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            font-family: inherit;
+        }
+        .char-form-input:focus {
+            border-color: var(--main-color);
+            box-shadow: 0 0 0 2px rgba(255,160,122,0.15);
+        }
+        .char-form-textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #e4e7ed;
+            border-radius: 10px;
+            font-size: 14px;
+            color: #303133;
+            background: #fff;
+            outline: none;
+            resize: vertical;
+            min-height: 120px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            font-family: inherit;
+            line-height: 1.6;
+        }
+        .char-form-textarea:focus {
+            border-color: var(--main-color);
+            box-shadow: 0 0 0 2px rgba(255,160,122,0.15);
+        }
+        .char-form-select {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #e4e7ed;
+            border-radius: 10px;
+            font-size: 14px;
+            color: #303133;
+            background: #fff;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            appearance: auto;
+        }
+        .char-form-select:focus {
+            border-color: var(--main-color);
+            box-shadow: 0 0 0 2px rgba(255,160,122,0.15);
+        }
+        .char-form-hint {
+            font-size: 12px;
+            color: #c0c4cc;
+        }
+
+        /* 头像上传 */
+        .char-avatar-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .char-avatar-preview {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: #f5f7fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed #dcdfe6;
+            cursor: pointer;
+            flex-shrink: 0;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .char-avatar-preview:hover {
+            border-color: var(--main-color);
+        }
+        .char-avatar-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .char-avatar-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .char-avatar-btn {
+            padding: 5px 14px;
+            font-size: 13px;
+            border: 1px solid #e4e7ed;
+            border-radius: 8px;
+            background: #fff;
+            cursor: pointer;
+            color: #606266;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .char-avatar-btn:hover {
+            border-color: var(--main-color);
+            color: var(--main-color);
+        }
+        .char-avatar-btn.danger:hover {
+            border-color: #f56c6c;
+            color: #f56c6c;
+        }
+
+        /* 背景图预览（横幅样式） */
+        .char-bg-preview {
+            width: 200px;
+            height: 80px;
+            border-radius: 10px;
+            background: #f5f7fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px dashed #dcdfe6;
+            cursor: pointer;
+            flex-shrink: 0;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .char-bg-preview:hover {
+            border-color: var(--main-color);
+        }
+        .char-bg-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* 操作按钮 */
+        .char-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #f0f0f0;
+        }
+        @media (max-width: 768px) {
+            .char-actions {
+                flex-direction: column;
+            }
+            .char-actions .char-btn {
+                justify-content: center;
+                width: 100%;
+            }
+        }
+        .char-btn {
+            padding: 10px 24px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .char-btn-primary {
+            background: var(--main-color);
+            color: #fff;
+        }
+        .char-btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        .char-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .char-btn-outline {
+            background: #fff;
+            color: var(--main-color);
+            border: 1px solid var(--main-color);
+        }
+        .char-btn-outline:hover { background: rgba(255,160,122,0.06); }
+        .char-btn-ghost {
+            background: #f5f7fa;
+            color: #606266;
+        }
+        .char-btn-ghost:hover { background: #e9ecf1; }
+        .char-btn-danger {
+            background: #fff;
+            color: #f56c6c;
+            border: 1px solid #fef0f0;
+        }
+        .char-btn-danger:hover { background: #fef0f0; }
+
+        /* ====== 基础选项 ====== */
+        .char-basic-options {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            padding: 4px 0;
+        }
+        .char-basic-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .char-basic-option-label {
+            font-size: 13px;
+            color: #606266;
+        }
+        .char-param-label {
+            font-size: 13px;
+            color: #606266;
+            width: 80px;
+            flex-shrink: 0;
+        }
+        @media (max-width: 768px) {
+            .char-basic-options {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+        }
+
+        /* ====== 三块「长条」折叠区块 ====== */
+        .world-main-body {
+            padding: 20px 24px;
+            gap: 16px;
+        }
+        .world-section {
+            background: #fff;
+            border: 1px solid #ebeef5;
+            border-radius: 12px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .world-section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 18px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 14px;
+            font-weight: 600;
+            color: #303133;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .world-section-header > i:first-child { color: var(--main-color); }
+        .world-section-count {
+            font-size: 12px;
+            color: #909399;
+            background: #f0f2f5;
+            padding: 1px 8px;
+            border-radius: 10px;
+        }
+        .world-section-add-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: auto;
+            padding: 5px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--main-color);
+            background: transparent;
+            color: var(--main-color);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .world-section-add-btn:hover { background: rgba(255,160,122,0.08); }
+        .world-section-chevron {
+            width: 14px;
+            height: 14px;
+            margin-left: 4px;
+            transition: transform 0.25s;
+            flex-shrink: 0;
+        }
+        .world-section-body {
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            transition: max-height 0.3s ease, opacity 0.25s ease;
+        }
+        .world-section-body.expanded {
+            max-height: none;
+            opacity: 1;
+        }
+        .world-section-body-inner {
+            padding: 18px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+        .world-empty-hint {
+            text-align: center;
+            color: #c0c4cc;
+            font-size: 13px;
+            padding: 12px 0;
+        }
+
+        /* 角色行 */
+        .character-rows {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .character-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border: 1px solid #ebeef5;
+            border-radius: 10px;
+            cursor: pointer;
+            background: #fafbfc;
+            transition: all 0.15s;
+        }
+        .character-row:hover {
+            border-color: var(--main-color);
+            background: #fff;
+        }
+        .character-row-avatar {
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            overflow: hidden;
+            flex-shrink: 0;
+            background: #f5f7fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .character-row-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .character-row-name {
+            flex: 1;
+            font-size: 14px;
+            color: #303133;
+        }
+
+        /* 知识卡片 */
+        .knowledge-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .knowledge-card {
+            border: 1px solid #ebeef5;
+            border-radius: 10px;
+            padding: 12px 14px;
+            background: #fafbfc;
+        }
+        .knowledge-card-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .knowledge-card-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: #303133;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .knowledge-card-content {
+            font-size: 13px;
+            color: #909399;
+            margin-top: 6px;
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            white-space: pre-wrap;
+        }
+        .knowledge-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .knowledge-tag {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(255,160,122,0.14);
+            color: #b05a2b;
+        }
+        .knowledge-tag.none {
+            background: #f0f2f5;
+            color: #909399;
+        }
+
+        /* ====== 对话框样式 ====== */
+        .settings-dialog {
+            --el-dialog-border-radius: 16px;
+        }
+        .settings-dialog .el-dialog__header {
+            padding: 20px 24px 16px;
+            border-bottom: 1px solid #ebeef5;
+        }
+        .settings-dialog .el-dialog__body {
+            padding: 20px 24px;
+            max-height: 60dvh;
+            overflow-y: auto;
+        }
+        .settings-dialog .el-dialog__footer {
+            padding: 14px 24px 20px;
+            border-top: 1px solid #f5f5f5;
+        }
+        .settings-dialog .el-form-item {
+            margin-bottom: 16px;
+        }
+        .settings-dialog .el-form-item__label {
+            color: #606266;
+            font-weight: 500;
+        }
+
+        .dialog-header-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .dialog-header-wrap i { color: var(--main-color); }
+        .dialog-header-wrap span {
+            font-size: 17px;
+            font-weight: 600;
+            color: #303133;
+        }
+
+        .settings-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.5;
+            outline: none;
+            transition: all 0.2s;
+            box-sizing: border-box;
+            font-family: inherit;
+            background: #fff;
+            color: #303133;
+        }
+        .settings-input:hover, .settings-input:focus {
+            border-radius: 0;
+            border-left: 4px solid var(--main-color);
+        }
+        .settings-input::placeholder { color: #c0c4cc; }
+
+        .dialog-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .dialog-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 24px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-family: inherit;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .dialog-btn-cancel {
+            background: #f5f5f5;
+            color: #666;
+        }
+        .dialog-btn-cancel:hover {
+            background: #e8e8e8;
+            color: #303133;
+        }
+        .dialog-btn-save {
+            background: var(--main-color);
+            color: #fff;
+            position: relative;
+        }
+        .dialog-btn-save:hover {
+            filter: brightness(1.06);
+            box-shadow: 0 3px 14px rgba(255, 160, 122, 0.35);
+        }
+        .dialog-btn-save:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            filter: none;
+            box-shadow: none;
+        }
+        .dialog-btn-danger {
+            background: #fff;
+            color: #f56c6c;
+            border: 1px solid #fde2e2;
+        }
+        .dialog-btn-danger:hover { background: #fef0f0; }
+
+        .btn-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 640px) {
+            .settings-dialog {
+                width: 100% !important;
+                max-width: 100% !important;
+                --el-dialog-border-radius: 0;
+            }
+            .settings-dialog .el-dialog__header { padding: 14px 14px 10px; }
+            .settings-dialog .el-dialog__body { padding: 12px 14px; max-height: 55dvh; }
+            .settings-dialog .el-dialog__footer { padding: 10px 14px 14px; }
+            .settings-dialog .el-form-item {
+                flex-direction: column;
+                align-items: flex-start;
+                margin-bottom: 14px;
+            }
+            .settings-dialog .el-form-item__label {
+                width: 100% !important;
+                text-align: left !important;
+                padding-bottom: 2px;
+                font-size: 13px;
+            }
+            .settings-dialog .el-form-item__content {
+                margin-left: 0 !important;
+                width: 100%;
+            }
+            .dialog-footer { flex-direction: column; gap: 8px; }
+            .dialog-btn { width: 100%; justify-content: center; padding: 12px 20px; }
+            .dialog-header-wrap span { font-size: 15px; }
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <!-- ========== 侧边栏：世界观列表 ========== -->
+    <div class="char-sidebar" :class="{ 'mobile-open': sidebarOpen, 'collapsed': sidebarCollapsed }"
+         :style="{ backgroundColor: mainColor }">
+        <button class="char-sidebar-new-btn" @click="openCreateWorld">
+            <i data-lucide="plus" style="width:16px;height:16px"></i>
+            <span>新建世界观</span>
+        </button>
+        <div class="char-sidebar-list">
+            <div v-for="w in worlds" :key="w.id"
+                 class="char-sidebar-item"
+                 :class="{ active: selectedWorldId === w.id }"
+                 @click="selectWorld(w)">
+                <div class="char-sidebar-avatar">
+                    <img v-show="w.background" :src="worldBgUrl(w.background)" />
+                    <div v-show="!w.background">
+                        <i data-lucide="globe" style="width:20px;height:20px"></i>
+                    </div>
+                </div>
+                <span class="char-sidebar-name">{{ w.name }}</span>
+            </div>
+            <div v-if="worlds.length === 0 && !loading" class="char-sidebar-empty">
+                暂无世界观，点击上方按钮创建
+            </div>
+        </div>
+        <div class="char-sidebar-footer">
+            <button class="char-sidebar-back-btn" @click="goBack" title="返回主页">
+                <i data-lucide="arrow-left" style="width:20px;height:20px"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- 移动端遮罩 -->
+    <div class="char-sidebar-overlay" :class="{ visible: sidebarOpen }" @click="closeSidebar"></div>
+
+    <!-- ========== 主区域 ========== -->
+    <div class="char-main">
+        <!-- 顶部栏 -->
+        <div class="char-main-topbar">
+            <button class="char-main-toggle-btn" @click="toggleSidebar" title="展开/收起侧边栏">
+                <i data-lucide="menu" style="width:18px;height:18px"></i>
+            </button>
+            <span class="char-main-title" :style="{ color: mainColor }">世界设置</span>
+            <span v-if="selectedWorldId" class="char-main-subtitle">· {{ worldForm.name }}</span>
+            <button v-if="selectedWorldId" class="char-go-chat-btn" @click="goGroupChat"
+                    style="margin-left:auto;display:flex;align-items:center;gap:5px;background:var(--main-color,#e0a080);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-size:13px;cursor:pointer;">
+                <i data-lucide="messages-square" style="width:16px;height:16px"></i>
+                <span>进入群聊</span>
+            </button>
+        </div>
+
+        <!-- 内容区 -->
+        <div class="char-main-body world-main-body" :style="{'--main-color': mainColor}">
+            <!-- 空状态 -->
+            <div v-if="!selectedWorldId" class="char-empty">
+                <i data-lucide="globe" class="char-empty-icon"></i>
+                <span class="char-empty-title">选择一个世界观或新建一个</span>
+                <span class="char-empty-desc">从左侧列表选择世界观，编辑其设置、角色与世界知识</span>
+                <button class="char-empty-btn" @click="openCreateWorld">
+                    <i data-lucide="plus" style="width:18px;height:18px"></i>
+                    创建我的第一个世界
+                </button>
+            </div>
+
+            <!-- 三块长条 -->
+            <template v-else>
+                <!-- ===== 1. 世界观设置 ===== -->
+                <div class="world-section">
+                    <div class="world-section-header" @click="toggleSection('settings')">
+                        <i data-lucide="globe" style="width:16px;height:16px"></i>
+                        <span>世界观设置</span>
+                        <i data-lucide="chevron-down" class="world-section-chevron"
+                           :style="{ transform: openSections.settings ? 'rotate(180deg)' : '' }"></i>
+                    </div>
+                    <div class="world-section-body" :class="{ expanded: openSections.settings }">
+                        <div class="world-section-body-inner">
+                            <!-- 背景图 -->
+                            <div class="char-form-group">
+                                <span class="char-form-label">
+                                    <i data-lucide="image" style="width:14px;height:14px"></i> 背景图
+                                </span>
+                                <div class="char-avatar-row">
+                                    <div class="char-bg-preview" :style="{'--main-color': mainColor}"
+                                         @click="triggerBgUpload" title="点击上传背景图">
+                                        <img v-show="worldForm.background" :src="worldBgUrl(worldForm.background)" />
+                                        <div v-show="!worldForm.background" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">
+                                            <i data-lucide="image" style="width:28px;height:28px;color:#c0c4cc"></i>
+                                        </div>
+                                    </div>
+                                    <div class="char-avatar-actions">
+                                        <button class="char-avatar-btn" :style="{'--main-color': mainColor}"
+                                            @click="triggerBgUpload">
+                                            {{ worldForm.background ? '更换图片' : '上传图片' }}
+                                        </button>
+                                        <button v-if="worldForm.background" class="char-avatar-btn danger"
+                                            @click="clearWorldBackground">清除</button>
+                                    </div>
+                                </div>
+                                <span class="char-form-hint">JPG / PNG，自动缩放至 1920px · 建议选择深色或简洁的图片</span>
+                                <input ref="bgInput" type="file" accept="image/*" style="display:none"
+                                    @change="addWorldBackground">
+                            </div>
+
+                            <!-- 名称 -->
+                            <div class="char-form-group">
+                                <span class="char-form-label">
+                                    <i data-lucide="tag" style="width:14px;height:14px"></i> 名称
+                                </span>
+                                <input class="char-form-input" :style="{'--main-color': mainColor}"
+                                    v-model="worldForm.name" maxlength="50">
+                            </div>
+
+                            <!-- 描述 -->
+                            <div class="char-form-group">
+                                <span class="char-form-label">
+                                    <i data-lucide="align-left" style="width:14px;height:14px"></i> 描述
+                                </span>
+                                <textarea class="char-form-textarea" :style="{'--main-color': mainColor}"
+                                    v-model="worldForm.description" placeholder="这个世界的整体描述..."></textarea>
+                            </div>
+
+                            <!-- 预设 -->
+                            <div class="char-form-group">
+                                <span class="char-form-label">
+                                    <i data-lucide="bookmark" style="width:14px;height:14px"></i> 预设
+                                </span>
+                                <textarea class="char-form-textarea" :style="{'--main-color': mainColor}"
+                                    v-model="worldForm.preset" placeholder="对话预设内容，每次对话自动拼接在开场之前发送..."></textarea>
+                            </div>
+
+                            <!-- 主题色 -->
+                            <div class="char-form-group">
+                                <span class="char-form-label">
+                                    <i data-lucide="palette" style="width:14px;height:14px"></i> 主题色
+                                </span>
+                                <div style="display:flex;align-items:center;gap:12px">
+                                    <el-color-picker v-model="worldForm.mainColor" show-alpha :predefine="predefineColors"></el-color-picker>
+                                    <span style="font-size:13px;color:#909399">进入该世界时应用的主题颜色</span>
+                                </div>
+                            </div>
+
+                            <!-- 世界配置 -->
+                            <div class="char-form-group">
+                                <span class="char-form-label">
+                                    <i data-lucide="settings-2" style="width:14px;height:14px"></i> 世界配置
+                                </span>
+                                <div class="char-basic-options">
+                                    <div class="char-basic-option">
+                                        <span class="char-basic-option-label">私聊频道</span>
+                                        <el-switch v-model="worldForm.privateChatEnable" size="small"></el-switch>
+                                    </div>
+                                    <div class="char-basic-option">
+                                        <span class="char-basic-option-label">旁白</span>
+                                        <el-switch v-model="worldForm.narrationEnable" size="small"></el-switch>
+                                    </div>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:12px">
+                                    <span class="char-param-label">夺舍角色</span>
+                                    <el-select v-model="worldForm.possessName" clearable filterable
+                                        placeholder="选择玩家夺舍的角色（不选 = 不夺舍）" style="flex:1">
+                                        <el-option v-for="c in characters" :key="c.id"
+                                            :label="c.name" :value="c.name"></el-option>
+                                    </el-select>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:12px">
+                                    <span class="char-param-label">最大轮数</span>
+                                    <el-input-number v-model="worldForm.maxRounds" :min="1" :max="50" size="small"></el-input-number>
+                                    <span class="char-form-hint">每轮最多连续发言的轮次</span>
+                                </div>
+                            </div>
+
+                            <!-- 调度器 AI -->
+                            <div class="char-form-group">
+                                <span class="char-form-label">
+                                    <i data-lucide="cpu" style="width:14px;height:14px"></i> 调度器 AI
+                                </span>
+                                <div style="display:flex;align-items:center;gap:10px">
+                                    <span class="char-param-label">适配器</span>
+                                    <select class="char-form-select" :style="{'--main-color': mainColor}"
+                                        v-model="worldForm.schedulerAiSettings.adapterName">
+                                        <option value="" disabled>请选择 AI 适配器</option>
+                                        <option v-for="name in adapterList" :key="name" :value="name">{{ name }}</option>
+                                    </select>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:10px">
+                                    <span class="char-param-label">模型</span>
+                                    <input class="char-form-input" :style="{'--main-color': mainColor}"
+                                        v-model="worldForm.schedulerAiSettings.model"
+                                        placeholder="例如: deepseek-v4-pro（留空使用当前设置）">
+                                </div>
+                                <span class="char-form-hint">用于调度群聊流程（轮次编排等）的 AI 模型，仅适配器 + 模型</span>
+                            </div>
+
+                            <!-- 操作按钮 -->
+                            <div class="char-actions">
+                                <button class="char-btn char-btn-primary" @click="saveWorld" :disabled="saving">
+                                    <i data-lucide="check" style="width:16px;height:16px"></i>
+                                    {{ saving ? '保存中...' : '保存设置' }}
+                                </button>
+                                <div style="flex:1"></div>
+                                <button class="char-btn char-btn-danger" @click="confirmDeleteWorld" :disabled="deletingWorld">
+                                    <i data-lucide="trash-2" style="width:16px;height:16px"></i>
+                                    {{ deletingWorld ? '删除中...' : '删除世界观' }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== 2. 角色 ===== -->
+                <div class="world-section">
+                    <div class="world-section-header" @click="toggleSection('characters')">
+                        <i data-lucide="users" style="width:16px;height:16px"></i>
+                        <span>角色</span>
+                        <span class="world-section-count">{{ characters.length }}</span>
+                        <button class="world-section-add-btn" @click.stop="openCharacterDialog(null)">
+                            <i data-lucide="plus" style="width:14px;height:14px"></i>新增角色
+                        </button>
+                        <i data-lucide="chevron-down" class="world-section-chevron"
+                           :style="{ transform: openSections.characters ? 'rotate(180deg)' : '' }"></i>
+                    </div>
+                    <div class="world-section-body" :class="{ expanded: openSections.characters }">
+                        <div class="world-section-body-inner">
+                            <div v-if="characters.length === 0" class="world-empty-hint">
+                                暂无角色，点击右上角「新增角色」创建
+                            </div>
+                            <div v-else class="character-rows">
+                                <div v-for="c in characters" :key="c.id" class="character-row"
+                                     @click="openCharacterDialog(c)">
+                                    <div class="character-row-avatar">
+                                        <img v-show="c.avatar" :src="c.avatar" />
+                                        <i v-show="!c.avatar" data-lucide="bot" style="width:18px;height:18px;color:#c0c4cc"></i>
+                                    </div>
+                                    <span class="character-row-name">{{ c.name }}</span>
+                                    <button class="char-avatar-btn danger" title="删除"
+                                        @click.stop="confirmDeleteCharacterFromList(c)">
+                                        <i data-lucide="trash-2" style="width:14px;height:14px"></i>
+                                    </button>
+                                    <i data-lucide="chevron-right" style="width:16px;height:16px;color:#c0c4cc"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== 3. 世界知识 ===== -->
+                <div class="world-section">
+                    <div class="world-section-header" @click="toggleSection('knowledge')">
+                        <i data-lucide="book-open" style="width:16px;height:16px"></i>
+                        <span>世界知识</span>
+                        <span class="world-section-count">{{ knowledgeList.length }}</span>
+                        <button class="world-section-add-btn" @click.stop="openKnowledgeDialog(null)">
+                            <i data-lucide="plus" style="width:14px;height:14px"></i>新增知识
+                        </button>
+                        <i data-lucide="chevron-down" class="world-section-chevron"
+                           :style="{ transform: openSections.knowledge ? 'rotate(180deg)' : '' }"></i>
+                    </div>
+                    <div class="world-section-body" :class="{ expanded: openSections.knowledge }">
+                        <div class="world-section-body-inner">
+                            <div v-if="knowledgeList.length === 0" class="world-empty-hint">
+                                暂无知识，点击右上角「新增知识」添加
+                            </div>
+                            <div v-else class="knowledge-cards">
+                                <div v-for="k in knowledgeList" :key="k.id" class="knowledge-card">
+                                    <div class="knowledge-card-header">
+                                        <span class="knowledge-card-title">{{ k.title }}</span>
+                                        <button class="char-avatar-btn" @click="openKnowledgeDialog(k)" title="编辑">
+                                            <i data-lucide="pencil" style="width:14px;height:14px"></i>
+                                        </button>
+                                        <button class="char-avatar-btn danger" @click="confirmDeleteKnowledge(k)" title="删除">
+                                            <i data-lucide="trash-2" style="width:14px;height:14px"></i>
+                                        </button>
+                                    </div>
+                                    <div class="knowledge-card-content">{{ k.content }}</div>
+                                    <div class="knowledge-tags">
+                                        <span v-if="!k.characterIds || k.characterIds.length === 0"
+                                            class="knowledge-tag none">未指定知晓角色</span>
+                                        <span v-for="cid in (k.characterIds || [])" :key="cid"
+                                            class="knowledge-tag">{{ characterNameById(cid) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- ========== 新建世界观弹框 ========== -->
+    <el-dialog v-model="createWorldDialogVisible" width="480px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="globe" style="width:20px;height:20px"></i>
+                <span>新建世界观</span>
+            </div>
+        </template>
+        <el-form :model="createWorldForm" label-width="80px" label-position="left">
+            <el-form-item label="名称">
+                <input class="settings-input" v-model="createWorldForm.name" placeholder="世界观名称" maxlength="50">
+            </el-form-item>
+            <el-form-item label="描述">
+                <textarea class="settings-input" v-model="createWorldForm.description" rows="3" style="resize:vertical"
+                    placeholder="简要描述这个世界..."></textarea>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button class="dialog-btn dialog-btn-cancel" @click="createWorldDialogVisible = false">取消</button>
+                <button class="dialog-btn dialog-btn-save" @click="createWorldSubmit" :disabled="creatingWorld">
+                    <span v-if="creatingWorld" class="btn-spinner"></span>
+                    <span>{{ creatingWorld ? '创建中...' : '创建' }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ========== 角色编辑弹框 ========== -->
+    <el-dialog v-model="characterDialogVisible" width="640px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="bot" style="width:20px;height:20px"></i>
+                <span>{{ characterForm.id ? '编辑角色' : '新增角色' }}</span>
+            </div>
+        </template>
+        <el-form :model="characterForm" label-width="80px" label-position="left">
+            <el-form-item label="名称">
+                <input class="settings-input" v-model="characterForm.name" placeholder="角色名称（世界内唯一）" maxlength="50">
+            </el-form-item>
+            <el-form-item label="头像">
+                <div class="char-avatar-row">
+                    <div class="char-avatar-preview" :style="{'--main-color': mainColor}"
+                         @click="triggerAvatarUpload" title="点击上传头像">
+                        <img v-show="characterForm.avatar" :src="characterForm.avatar" />
+                        <div v-show="!characterForm.avatar" style="display:flex;align-items:center;justify-content:center;width:100%;height:100%">
+                            <i data-lucide="camera" style="width:24px;height:24px;color:#c0c4cc"></i>
+                        </div>
+                    </div>
+                    <div class="char-avatar-actions">
+                        <button class="char-avatar-btn" :style="{'--main-color': mainColor}"
+                            @click="triggerAvatarUpload">
+                            {{ characterForm.avatar ? '更换图片' : '上传图片' }}
+                        </button>
+                        <button v-if="characterForm.avatar" class="char-avatar-btn danger"
+                            @click="characterForm.avatar = ''">清除</button>
+                    </div>
+                </div>
+                <span class="char-form-hint">JPG / PNG，自动压缩至 256px</span>
+                <input ref="charAvatarInput" type="file" accept="image/*" style="display:none"
+                    @change="onAvatarFileChange">
+            </el-form-item>
+            <el-form-item label="简介">
+                <textarea class="settings-input" v-model="characterForm.intro" rows="2" style="resize:vertical"
+                    placeholder="角色的一句话简介"></textarea>
+            </el-form-item>
+            <el-form-item label="设定">
+                <textarea class="settings-input" v-model="characterForm.setting" rows="4" style="resize:vertical"
+                    placeholder="角色设定：性格、说话方式、背景等"></textarea>
+            </el-form-item>
+            <el-form-item label="AI 配置">
+                <div style="width:100%;display:flex;flex-direction:column;gap:14px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span class="char-param-label">适配器</span>
+                        <select class="char-form-select" :style="{'--main-color': mainColor}"
+                            v-model="characterForm.aiSettings.adapterName">
+                            <option value="" disabled>请选择 AI 适配器</option>
+                            <option v-for="name in adapterList" :key="name" :value="name">{{ name }}</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span class="char-param-label">模型</span>
+                        <input class="char-form-input" :style="{'--main-color': mainColor}"
+                            v-model="characterForm.aiSettings.model" placeholder="例如: deepseek-v4-pro（留空使用当前设置）">
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span class="char-param-label">流式</span>
+                        <el-switch v-model="characterForm.aiSettings.stream" size="small"></el-switch>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span class="char-param-label">思考</span>
+                        <el-switch v-model="characterForm.aiSettings.thinking" size="small"></el-switch>
+                    </div>
+                </div>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button v-if="characterForm.id" class="dialog-btn dialog-btn-danger"
+                    @click="confirmDeleteCharacter" :disabled="deletingCharacter">
+                    {{ deletingCharacter ? '删除中...' : '删除' }}
+                </button>
+                <div style="flex:1"></div>
+                <button class="dialog-btn dialog-btn-cancel" @click="characterDialogVisible = false">取消</button>
+                <button class="dialog-btn dialog-btn-save" @click="saveCharacter" :disabled="savingCharacter">
+                    <span v-if="savingCharacter" class="btn-spinner"></span>
+                    <span>{{ savingCharacter ? '保存中...' : (characterForm.id ? '保存修改' : '创建') }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ========== 知识编辑弹框 ========== -->
+    <el-dialog v-model="knowledgeDialogVisible" width="600px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <template #header>
+            <div class="dialog-header-wrap">
+                <i data-lucide="book-open" style="width:20px;height:20px"></i>
+                <span>{{ knowledgeForm.id ? '编辑知识' : '新增知识' }}</span>
+            </div>
+        </template>
+        <el-form :model="knowledgeForm" label-width="80px" label-position="left">
+            <el-form-item label="标题">
+                <input class="settings-input" v-model="knowledgeForm.title" placeholder="知识标题" maxlength="200">
+            </el-form-item>
+            <el-form-item label="内容">
+                <textarea class="settings-input" v-model="knowledgeForm.content" rows="5" style="resize:vertical"
+                    placeholder="知识的具体内容，仅知晓角色能读到..."></textarea>
+            </el-form-item>
+            <el-form-item label="知晓角色">
+                <el-select v-model="knowledgeForm.characterIds" multiple filterable clearable
+                    placeholder="选择知晓该知识的角色（可多选 / 留空）" style="width:100%">
+                    <el-option v-for="c in characters" :key="c.id" :label="c.name" :value="c.id"></el-option>
+                </el-select>
+                <span class="char-form-hint">仅列表中的角色知晓此知识；留空表示所有角色均不知晓</span>
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div class="dialog-footer">
+                <button class="dialog-btn dialog-btn-cancel" @click="knowledgeDialogVisible = false">取消</button>
+                <button class="dialog-btn dialog-btn-save" @click="saveKnowledge" :disabled="savingKnowledge">
+                    <span v-if="savingKnowledge" class="btn-spinner"></span>
+                    <span>{{ savingKnowledge ? '保存中...' : (knowledgeForm.id ? '保存修改' : '创建') }}</span>
+                </button>
+            </div>
+        </template>
+    </el-dialog>
+
+    <!-- ========== 确认弹框 ========== -->
+    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+</div>
+
+<script>
+const app = Vue.createApp({
+    data() {
+        return {
+            mainColor: 'lightsalmon',
+            worlds: [],
+            characters: [],
+            knowledgeList: [],
+            adapterList: [],
+            loading: true,
+            selectedWorldId: null,
+            sidebarCollapsed: false,
+            sidebarOpen: false,
+            openSections: { settings: true, characters: false, knowledge: false },
+            predefineColors: [
+                'lightsalmon', '#409eff', '#67c23a', '#e6a23c', '#f56c6c',
+                '#e83e8c', '#6f42c1', '#20c997', '#17a2b8', '#6610f2',
+                '#fd7e14', '#28a745', '#dc3545', '#ffc107', '#007bff'
+            ],
+            worldForm: {
+                name: '', description: '', preset: '', background: '',
+                mainColor: 'lightsalmon',
+                privateChatEnable: false, narrationEnable: true,
+                possessName: '', maxRounds: 5,
+                schedulerAiSettings: { adapterName: '', model: '' }
+            },
+            saving: false,
+            deletingWorld: false,
+            createWorldDialogVisible: false,
+            creatingWorld: false,
+            createWorldForm: { name: '', description: '' },
+            characterDialogVisible: false,
+            characterForm: {
+                id: null, name: '', avatar: '', intro: '', setting: '',
+                aiSettings: { adapterName: '', model: '', stream: true, thinking: false }
+            },
+            savingCharacter: false,
+            deletingCharacter: false,
+            knowledgeDialogVisible: false,
+            knowledgeForm: { id: null, title: '', content: '', characterIds: [] },
+            savingKnowledge: false
+        };
+    },
+
+    watch: {
+        mainColor: {
+            handler(val) {
+                document.documentElement.style.setProperty('--main-color', val);
+                document.documentElement.style.setProperty('--el-color-primary', val);
+            },
+            immediate: true
+        }
+    },
+
+    methods: {
+        $api(path) { return API.BASE_PATH + path; },
+
+        goBack() {
+            const suffix = this.selectedWorldId ? '?worldId=' + encodeURIComponent(this.selectedWorldId) : '';
+            window.location.href = this.$api('world_index.html' + suffix);
+        },
+        goGroupChat() {
+            if (!this.selectedWorldId) return;
+            window.location.href = this.$api('world_index.html?worldId=' + encodeURIComponent(this.selectedWorldId));
+        },
+
+        toggleSidebar() {
+            if (window.innerWidth >= 769) {
+                this.sidebarCollapsed = !this.sidebarCollapsed;
+            } else {
+                this.sidebarOpen = !this.sidebarOpen;
+            }
+        },
+        closeSidebar() { this.sidebarOpen = false; },
+
+        /** 世界观背景图预览 URL：新上传的是 data URL，已有的走 file proxy */
+        worldBgUrl(p) {
+            if (!p) return '';
+            if (p.startsWith('data:') || /^https?:\/\//i.test(p)) return p;
+            return API.fileProxyUrl(p);
+        },
+
+        /* ---- 长条折叠 ---- */
+        toggleSection(key) {
+            this.openSections[key] = !this.openSections[key];
+        },
+
+        /* ---- 世界观 ---- */
+        async fetchWorlds() {
+            try {
+                const r = await API.world.list();
+                if (r.status === 200) this.worlds = r.data || [];
+            } catch (e) { console.error(e); }
+            finally { this.loading = false; }
+        },
+
+        async selectWorld(w) {
+            this.closeSidebar();
+            this.selectedWorldId = w.id;
+            if (w.mainColor) this.mainColor = w.mainColor;
+            let schedulerAiSettings = { adapterName: '', model: '' };
+            if (w.schedulerAiSettings) {
+                try { schedulerAiSettings = Object.assign(schedulerAiSettings, JSON.parse(w.schedulerAiSettings)); } catch (e) {}
+            }
+            this.worldForm = {
+                name: w.name || '',
+                description: w.description || '',
+                preset: w.preset || '',
+                background: w.background || '',
+                mainColor: w.mainColor || 'lightsalmon',
+                privateChatEnable: !!w.privateChatEnable,
+                narrationEnable: w.narrationEnable !== false,
+                possessName: w.possessName || '',
+                maxRounds: w.maxRounds != null ? w.maxRounds : 5,
+                schedulerAiSettings: schedulerAiSettings
+            };
+            await Promise.all([this.fetchCharacters(), this.fetchKnowledge()]);
+        },
+
+        openCreateWorld() {
+            this.createWorldForm = { name: '', description: '' };
+            this.createWorldDialogVisible = true;
+            this.$nextTick(() => lucide.createIcons());
+        },
+        async createWorldSubmit() {
+            if (!this.createWorldForm.name.trim()) {
+                ElementPlus.ElMessage.warning('世界观名称不能为空');
+                return;
+            }
+            this.creatingWorld = true;
+            try {
+                const r = await API.world.create({
+                    name: this.createWorldForm.name.trim(),
+                    description: this.createWorldForm.description || ''
+                });
+                if (r.status === 200 && r.data) {
+                    ElementPlus.ElMessage.success('世界观已创建');
+                    this.createWorldDialogVisible = false;
+                    this.createWorldForm = { name: '', description: '' };
+                    await this.fetchWorlds();
+                    await this.selectWorld(r.data);
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '创建失败');
+                }
+            } catch (e) { ElementPlus.ElMessage.error('网络请求失败'); console.error(e); }
+            finally { this.creatingWorld = false; }
+        },
+
+        async saveWorld() {
+            if (!this.selectedWorldId) { ElementPlus.ElMessage.warning('请先选择世界观'); return; }
+            if (!this.worldForm.name.trim()) { ElementPlus.ElMessage.warning('世界观名称不能为空'); return; }
+            this.saving = true;
+            try {
+                const body = {
+                    id: this.selectedWorldId,
+                    name: this.worldForm.name.trim(),
+                    description: this.worldForm.description || '',
+                    preset: this.worldForm.preset || '',
+                    mainColor: this.worldForm.mainColor,
+                    privateChatEnable: this.worldForm.privateChatEnable,
+                    narrationEnable: this.worldForm.narrationEnable,
+                    possessName: this.worldForm.possessName || '',
+                    maxRounds: this.worldForm.maxRounds,
+                    schedulerAiSettings: JSON.stringify(this.worldForm.schedulerAiSettings)
+                };
+                const r = await API.world.update(body);
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('世界观已保存');
+                    if (body.mainColor) this.mainColor = body.mainColor;
+                    await this.fetchWorlds();
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '保存失败');
+                }
+            } catch (e) { ElementPlus.ElMessage.error('网络请求失败'); console.error(e); }
+            finally { this.saving = false; }
+        },
+
+        confirmDeleteWorld() {
+            if (!this.selectedWorldId) return;
+            this.$refs.confirmDialog.show({
+                title: '确认删除世界观',
+                message: '确定要删除世界观「' + this.worldForm.name + '」吗？该世界下的所有角色、世界知识将一并删除，此操作不可恢复。',
+                confirmText: '确认删除',
+                cancelText: '取消',
+                type: 'danger'
+            }).then(() => this.doDeleteWorld()).catch(() => {});
+        },
+        async doDeleteWorld() {
+            this.deletingWorld = true;
+            try {
+                const r = await API.world.delete(this.selectedWorldId);
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('世界观已删除');
+                    this.selectedWorldId = null;
+                    this.characters = [];
+                    this.knowledgeList = [];
+                    this.worldForm = {
+                        name: '', description: '', preset: '', background: '',
+                        mainColor: 'lightsalmon',
+                        privateChatEnable: false, narrationEnable: true,
+                        possessName: '', maxRounds: 5,
+                        schedulerAiSettings: { adapterName: '', model: '' }
+                    };
+                    await this.fetchWorlds();
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '删除失败');
+                }
+            } catch (e) { ElementPlus.ElMessage.error('网络请求失败'); console.error(e); }
+            finally { this.deletingWorld = false; }
+        },
+
+        /* ---- 背景图 ---- */
+        triggerBgUpload() { this.$refs.bgInput.click(); },
+        async addWorldBackground(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            e.target.value = '';
+            if (!this.selectedWorldId) return;
+            try {
+                const r = await API.world.uploadBackground(this.selectedWorldId, file);
+                if (r.status === 200 && r.data) {
+                    this.worldForm.background = r.data;
+                    ElementPlus.ElMessage.success('背景图已上传');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '上传失败');
+                }
+            } catch (err) { ElementPlus.ElMessage.error('网络请求失败'); console.error(err); }
+        },
+        async clearWorldBackground() {
+            if (!this.selectedWorldId) return;
+            try {
+                const r = await API.world.deleteBackground(this.selectedWorldId);
+                if (r.status === 200) {
+                    this.worldForm.background = '';
+                    ElementPlus.ElMessage.success('背景图已清除');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '清除失败');
+                }
+            } catch (e) { ElementPlus.ElMessage.error('网络请求失败'); console.error(e); }
+        },
+
+        /* ---- 角色 ---- */
+        async fetchCharacters() {
+            if (!this.selectedWorldId) { this.characters = []; return; }
+            try {
+                const r = await API.world.character.list(this.selectedWorldId);
+                if (r.status === 200) this.characters = r.data || [];
+            } catch (e) { console.error(e); }
+        },
+        async fetchAdapterList() {
+            try {
+                const r = await API.settings.adapters.list();
+                if (r.status === 200) this.adapterList = r.data || [];
+            } catch (e) { console.error(e); }
+        },
+
+        openCharacterDialog(c) {
+            if (c) {
+                let aiSettings = { adapterName: '', model: '', stream: true, thinking: false };
+                if (c.aiSettings) {
+                    try { aiSettings = Object.assign(aiSettings, JSON.parse(c.aiSettings)); } catch (e) {}
+                }
+                this.characterForm = {
+                    id: c.id, name: c.name || '', avatar: c.avatar || '',
+                    intro: c.intro || '', setting: c.setting || '', aiSettings: aiSettings
+                };
+            } else {
+                this.characterForm = {
+                    id: null, name: '', avatar: '', intro: '', setting: '',
+                    aiSettings: { adapterName: '', model: '', stream: true, thinking: false }
+                };
+            }
+            this.characterDialogVisible = true;
+            this.$nextTick(() => lucide.createIcons());
+        },
+
+        async saveCharacter() {
+            if (!this.selectedWorldId) { ElementPlus.ElMessage.warning('请先选择世界观'); return; }
+            if (!this.characterForm.name.trim()) { ElementPlus.ElMessage.warning('角色名称不能为空'); return; }
+            this.savingCharacter = true;
+            try {
+                const isUpdate = !!this.characterForm.id;
+                const body = {
+                    worldId: this.selectedWorldId,
+                    name: this.characterForm.name.trim(),
+                    avatar: this.characterForm.avatar,
+                    intro: this.characterForm.intro || '',
+                    setting: this.characterForm.setting || '',
+                    aiSettings: JSON.stringify(this.characterForm.aiSettings)
+                };
+                if (isUpdate) body.id = this.characterForm.id;
+                const r = isUpdate
+                    ? await API.world.character.update(body)
+                    : await API.world.character.create(body);
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success(isUpdate ? '角色已更新' : '角色已创建');
+                    this.characterDialogVisible = false;
+                    await this.fetchCharacters();
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '保存失败');
+                }
+            } catch (e) { ElementPlus.ElMessage.error('网络请求失败'); console.error(e); }
+            finally { this.savingCharacter = false; }
+        },
+
+        confirmDeleteCharacter() {
+            if (!this.characterForm.id) return;
+            this.$refs.confirmDialog.show({
+                title: '确认删除角色',
+                message: '确定要删除角色「' + this.characterForm.name + '」吗？该角色在所有世界知识中的关联也会一并移除。',
+                confirmText: '确认删除',
+                cancelText: '取消',
+                type: 'danger'
+            }).then(() => this.doDeleteCharacterById(this.characterForm.id)).catch(() => {});
+        },
+        /** 角色列表行上的直接删除 */
+        confirmDeleteCharacterFromList(c) {
+            this.$refs.confirmDialog.show({
+                title: '确认删除角色',
+                message: '确定要删除角色「' + c.name + '」吗？该角色在所有世界知识中的关联也会一并移除。',
+                confirmText: '确认删除',
+                cancelText: '取消',
+                type: 'danger'
+            }).then(() => this.doDeleteCharacterById(c.id)).catch(() => {});
+        },
+        async doDeleteCharacterById(id) {
+            this.deletingCharacter = true;
+            try {
+                const r = await API.world.character.delete(id);
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('角色已删除');
+                    this.characterDialogVisible = false;
+                    await this.fetchCharacters();
+                    await this.fetchKnowledge();
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '删除失败');
+                }
+            } catch (e) { ElementPlus.ElMessage.error('网络请求失败'); console.error(e); }
+            finally { this.deletingCharacter = false; }
+        },
+
+        /* ---- 头像 ---- */
+        triggerAvatarUpload() { this.$refs.charAvatarInput.click(); },
+        onAvatarFileChange(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 2 * 1024 * 1024) {
+                ElementPlus.ElMessage.warning('头像图片不能超过 2MB');
+                e.target.value = '';
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                this.compressAvatar(ev.target.result, (compressed) => { this.characterForm.avatar = compressed; });
+            };
+            reader.readAsDataURL(file);
+            e.target.value = '';
+        },
+        compressAvatar(dataUrl, callback) {
+            const img = new Image();
+            img.onload = () => {
+                const max = 256;
+                let w = img.width, h = img.height;
+                if (w > max || h > max) {
+                    const r = Math.min(max / w, max / h);
+                    w = Math.round(w * r); h = Math.round(h * r);
+                }
+                const c = document.createElement('canvas');
+                c.width = w; c.height = h;
+                c.getContext('2d').drawImage(img, 0, 0, w, h);
+                callback(c.toDataURL('image/jpeg', 0.8));
+            };
+            img.src = dataUrl;
+        },
+
+        /* ---- 知识 ---- */
+        async fetchKnowledge() {
+            if (!this.selectedWorldId) { this.knowledgeList = []; return; }
+            try {
+                const r = await API.world.knowledge.list(this.selectedWorldId);
+                if (r.status === 200) this.knowledgeList = r.data || [];
+            } catch (e) { console.error(e); }
+        },
+
+        openKnowledgeDialog(k) {
+            this.knowledgeForm = k
+                ? { id: k.id, title: k.title || '', content: k.content || '', characterIds: (k.characterIds || []).slice() }
+                : { id: null, title: '', content: '', characterIds: [] };
+            this.knowledgeDialogVisible = true;
+            this.$nextTick(() => lucide.createIcons());
+        },
+
+        async saveKnowledge() {
+            if (!this.selectedWorldId) { ElementPlus.ElMessage.warning('请先选择世界观'); return; }
+            if (!this.knowledgeForm.title.trim()) { ElementPlus.ElMessage.warning('知识标题不能为空'); return; }
+            this.savingKnowledge = true;
+            try {
+                const isUpdate = !!this.knowledgeForm.id;
+                const body = {
+                    worldId: this.selectedWorldId,
+                    title: this.knowledgeForm.title.trim(),
+                    content: this.knowledgeForm.content || '',
+                    characterIds: this.knowledgeForm.characterIds || []
+                };
+                if (isUpdate) body.id = this.knowledgeForm.id;
+                const r = isUpdate
+                    ? await API.world.knowledge.update(body)
+                    : await API.world.knowledge.create(body);
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success(isUpdate ? '知识已更新' : '知识已创建');
+                    this.knowledgeDialogVisible = false;
+                    await this.fetchKnowledge();
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '保存失败');
+                }
+            } catch (e) { ElementPlus.ElMessage.error('网络请求失败'); console.error(e); }
+            finally { this.savingKnowledge = false; }
+        },
+
+        confirmDeleteKnowledge(k) {
+            this.$refs.confirmDialog.show({
+                title: '确认删除知识',
+                message: '确定要删除知识「' + k.title + '」吗？此操作不可恢复。',
+                confirmText: '确认删除',
+                cancelText: '取消',
+                type: 'danger'
+            }).then(() => this.doDeleteKnowledge(k.id)).catch(() => {});
+        },
+        async doDeleteKnowledge(id) {
+            try {
+                const r = await API.world.knowledge.delete(id);
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('知识已删除');
+                    await this.fetchKnowledge();
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '删除失败');
+                }
+            } catch (e) { ElementPlus.ElMessage.error('网络请求失败'); console.error(e); }
+        },
+
+        /** 角色 id → 名称（知识标签显示用） */
+        characterNameById(id) {
+            const c = this.characters.find(c => c.id === id);
+            return c ? c.name : id;
+        }
+    },
+
+    async mounted() {
+        lucide.createIcons();
+        await Promise.all([this.fetchWorlds(), this.fetchAdapterList()]);
+        this.$nextTick(() => lucide.createIcons());
+
+        // Ctrl+S / Cmd+S 保存当前活动区域
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                if (this.characterDialogVisible) { if (!this.savingCharacter) this.saveCharacter(); }
+                else if (this.knowledgeDialogVisible) { if (!this.savingKnowledge) this.saveKnowledge(); }
+                else if (this.selectedWorldId) { if (!this.saving) this.saveWorld(); }
+            }
+        });
+    },
+    updated() { this.$nextTick(() => lucide.createIcons()); }
+});
+
+app.component('ConfirmDialog', ConfirmDialog);
+app.use(ElementPlus);
+app.mount('#app');
+</script>
+</body>
+</html>
