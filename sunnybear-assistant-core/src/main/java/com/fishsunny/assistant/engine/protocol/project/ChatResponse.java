@@ -27,6 +27,7 @@ public class ChatResponse implements AIResponse {
     public final static String STATUS_ERROR = "error";
     public final static String STATUS_INIT_USER = "init_user";
     public final static String STATUS_INIT_ASSISTANT = "init_assistant";
+    public final static String STATUS_INIT_TOOL = "init_tool";
     public final static String STATUS_TOOL_EXECUTION = "tool_execution";
     public final static String STATUS_TOOL_RESPONSE = "tool_response";
     public final static String STATUS_TEMP = "temp";
@@ -69,6 +70,19 @@ public class ChatResponse implements AIResponse {
 
     public ChatResponse afterToolCall(List<ChatMessage> message) {
         this.status = STATUS_TOOL_RESPONSE;
+        this.messages = new ArrayList<>(message);
+        if (!message.isEmpty()) {
+            this.sessionId = message.getFirst().getSessionId();
+        }
+        return this;
+    }
+
+    /**
+     * 工具消息已落库：携带真实 DB id，前端据此校准"执行中"占位/结果消息的假 id，
+     * 保证 replace 时能按 parentId 找到父工具消息。
+     */
+    public ChatResponse afterToolSaved(List<ChatMessage> message) {
+        this.status = STATUS_INIT_TOOL;
         this.messages = new ArrayList<>(message);
         if (!message.isEmpty()) {
             this.sessionId = message.getFirst().getSessionId();

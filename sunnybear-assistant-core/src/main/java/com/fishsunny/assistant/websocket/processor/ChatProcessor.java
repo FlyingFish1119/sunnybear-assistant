@@ -343,6 +343,11 @@ public class ChatProcessor {
                     request.getMessages().addAll(toolResponseMessages);
                     collector.addAll(toolResponseMessages);
 
+                    // 工具消息已落库：推送 init_tool 携带真实 DB id，前端校准占位/结果消息的假 id
+                    // （否则 replace 时父工具消息按真实 parentId 在前端列表中找不到）
+                    ChatResponse toolInit = new ChatResponse().afterToolSaved(toolResponseMessages);
+                    session.sendMessage(new TextMessage(objectMapper.writeValueAsString(toolInit)));
+
                     String roundEnd = ControlSign.SIGN_TOOL_CALL_FINISH + chatSession.getId();;
 
                     session.sendMessage(new TextMessage(roundEnd));

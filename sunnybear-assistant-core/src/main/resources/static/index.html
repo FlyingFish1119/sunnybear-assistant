@@ -1035,6 +1035,24 @@
                         }
                         break;
                     }
+                    case 'init_tool': {
+                        // 工具消息已落库，携带真实 DB id：校准占位/结果消息的假 id，
+                        // 保证 replace 时能按 parentId 找到父工具消息（刷新后从 DB 拉取则为真 id，无需校准）
+                        if (response.sessionId === this.currentSessionId && response.messages) {
+                            for (let m of response.messages) {
+                                let idx = this.currentMessages.findIndex(x =>
+                                    x.role === 'tool' && x.toolCallId === m.toolCallId);
+                                if (idx !== -1) {
+                                    // 只同步元数据，保留已显示的工具结果内容
+                                    let localMsg = this.currentMessages[idx];
+                                    if (m.id) localMsg.id = m.id;
+                                    if (m.parentId) localMsg.parentId = m.parentId;
+                                    if (m.createTime) localMsg.createTime = m.createTime;
+                                }
+                            }
+                        }
+                        break;
+                    }
                     case 'done':
                     case 'chunk': {
                         if (!streamingMessage) {
