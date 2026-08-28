@@ -51,7 +51,7 @@ public class App {
 
     private static void initExtensionDirectory(JsonNode root) throws Exception {
         StringBuilder readmeContent = new StringBuilder();
-        try (InputStream readmeInputStream = App.class.getClassLoader().getResourceAsStream("README.md")) {
+        try (InputStream readmeInputStream = App.class.getClassLoader().getResourceAsStream("TOOL_EXTENSION_README.md")) {
             if (readmeInputStream == null) {
                 return;
             }
@@ -74,9 +74,9 @@ public class App {
             } else {
                 log.info("Created extension directory: {}", dir.getAbsolutePath());
             }
-            File readmeFile = new File(dir, "README.md");
+            File readmeFile = new File(dir, "TOOL_EXTENSION_README.md");
             Files.write(readmeFile.toPath(), readmeContent.toString().getBytes());
-            log.info("Created extension README.md: {}", readmeFile.getAbsolutePath());
+            log.info("Created extension TOOL_EXTENSION_README.md: {}", readmeFile.getAbsolutePath());
         }
     }
 

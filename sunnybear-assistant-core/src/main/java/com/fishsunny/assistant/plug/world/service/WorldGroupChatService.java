@@ -26,7 +26,6 @@ import com.fishsunny.assistant.settings.UserSettings;
 import com.fishsunny.assistant.websocket.ChatProvider;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -63,37 +62,11 @@ public class WorldGroupChatService {
 
     /** 私聊标签内的 from/to 属性提取（顺序不定、单双引号均可） */
     private static final Pattern PRIVATE_ATTR_PATTERN = Pattern.compile(
-            "(?i)\\b(from|to)\\s*=\\s*[\"']([^\"']*)[\"']");
-
-    /** 私聊频道使用说明（注入各角色系统提示词） */
-    private static final String PRIVATE_USAGE = """
-            ## 私聊频道使用说明
-            你可以对特定角色发起私聊，格式为：<private from="你的名字" to="接收者,逗号分隔">内容</private>
-            - 用途：说悄悄话、传递不想让第三者知道的秘密、私下结盟或密谋、交代只有对方该知道的事。
-            - 只有 from 与 to 中出现的角色能看到这条私聊；其他角色既看不到内容，也不知道它的存在。
-            - 收到私聊后，不要在公开场合复述其内容，更不要把它当作对方已知的信息说出来。
-            - 公共发言不要使用该标签。
-            """;
+            "(?i)\\b(from|to)\\s*[:=]\\s*[\"']([^\"']*)[\"']");
 
     /** 发言权移交标签：<switch to:"角色名">，命中则跳过调度器直接把话头交给目标角色 */
     private static final Pattern SWITCH_TAG_PATTERN = Pattern.compile(
             "(?is)<switch\\s+to\\s*[:=]\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))");
-
-    /** 发言权移交使用说明（注入各角色系统提示词） */
-    private static final String SWITCH_USAGE = """
-            ## 发言权移交（重要）
-            当你认为自己不该接话、也接不了话时，不要硬撑，强行接话只会导致剧情发展走向混乱和毁灭，是用户绝对不想看到的，也是绝对不允许发生的情况。
-            幸运的是，我们为你准备了解决方案，当你遇到上述情况的时候，使用 <switch to:"接收者角色名"> 把发言权直接交给更合适的角色（可交给"旁白"），
-
-            应当使用 switch 的情况：
-            - 当前剧情与你无关：你不在现场、没有立场或动机，强行接话只会破坏剧情；
-            - 被莫名其妙连续点名：有人反复把你拉进与你无关的话题，而你确实无话可说；
-            - 信息不足：当前对话涉及你不知道的私密信息，你没有能力做出合理回应；
-            - 无话可说：继续硬接只会产出空洞的过渡台词；
-            - 明显该由他人接话：你只是被拖住，真正该开口的人在别处。
-            
-            你不需要，也不应该解释你为什么会使用 switch，因为你的解释会被其他角色看见，这会导致他们产生困惑。
-            """;
 
     private final WorldSessionMappingService mappingService;
     private final WorldInfoService worldInfoService;
@@ -103,9 +76,6 @@ public class WorldGroupChatService {
     private final ChatProcessor chatProcessor;
     private final ChatHttpHandler chatHttpHandler;
     private final UserSettings userSettings;
-    private final AISettings chatAISettings;
-    private final AISettings chatProAISettings;
-    private final AISettings cubAISettings;
     private final ObjectMapper objectMapper;
 
     public WorldGroupChatService(WorldSessionMappingService mappingService,
@@ -116,9 +86,6 @@ public class WorldGroupChatService {
                                  ChatProcessor chatProcessor,
                                  ChatHttpHandler chatHttpHandler,
                                  UserSettings userSettings,
-                                 @Qualifier(AISettings.CHAT) AISettings chatAISettings,
-                                 @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
-                                 @Qualifier(AISettings.CUB) AISettings cubAISettings,
                                  ObjectMapper objectMapper) {
         this.mappingService = mappingService;
         this.worldInfoService = worldInfoService;
@@ -128,9 +95,6 @@ public class WorldGroupChatService {
         this.chatProcessor = chatProcessor;
         this.chatHttpHandler = chatHttpHandler;
         this.userSettings = userSettings;
-        this.chatAISettings = chatAISettings;
-        this.chatProAISettings = chatProAISettings;
-        this.cubAISettings = cubAISettings;
         this.objectMapper = objectMapper;
     }
 
@@ -184,7 +148,7 @@ public class WorldGroupChatService {
         for (int round = 0; round < maxRounds; round++) {
             List<ChatMessage> history = chatMessageService.getConversationHistory(chatSession.getId());
             // 调度器保留最近 N 轮（用户消息回合）上下文，太短会丢失指代
-            String contextText = renderContext(world, lastTurnsContext(history, SCHEDULER_CONTEXT_TURNS), null);
+            String contextText = renderContext(world, lastTurnsContext(history), null);
 
             // 发言权移交：上一条消息若带 <switch to:"X">，跳过调度器直接把话头交给 X
             String switchTo = extractSwitchTarget(lastMessageText(history));
@@ -196,7 +160,7 @@ public class WorldGroupChatService {
                 if (StringUtils.hasText(switchTo)) {
                     log.warn("发言权移交目标 [{}] 不在候选角色中，回退调度器", switchTo);
                 }
-                chosen = selectSpeaker(world, contextText, characters);
+                chosen = selectSpeaker(world, contextText, characters, lastAssistantSpeaker(history));
             }
             if (!StringUtils.hasText(chosen)) {
                 log.warn("调度器未给出有效选角，轮次结束 [round={}]", round);
@@ -232,7 +196,7 @@ public class WorldGroupChatService {
      * 取最近 turns 轮（以用户消息为界）的历史：从倒数第 turns 条用户消息起，到末尾。
      * 供调度器读取足够的对话上下文，避免只看当前回合而丢失指代。
      */
-    private List<ChatMessage> lastTurnsContext(List<ChatMessage> history, int turns) {
+    private List<ChatMessage> lastTurnsContext(List<ChatMessage> history) {
         if (history == null || history.isEmpty()) {
             return history;
         }
@@ -241,7 +205,7 @@ public class WorldGroupChatService {
         for (int i = history.size() - 1; i >= 0; i--) {
             if (ChatMessage.ROLE_USER.equals(history.get(i).getRole())) {
                 userCount++;
-                if (userCount == turns) {
+                if (userCount == WorldGroupChatService.SCHEDULER_CONTEXT_TURNS) {
                     startIdx = i;
                     break;
                 }
@@ -254,10 +218,17 @@ public class WorldGroupChatService {
      * 调度器 AI 调用：输入当前回合上下文 + 候选列表，JSON 输出选中角色名。
      * 最多尝试 {@link #MAX_SCHEDULER_ATTEMPTS} 次，非法输出时携带上次原始结果反馈重试；
      * 仍失败则返回 null（由调用方结束本轮）。
+     * <p>
+     * 防连续重复机制：当首轮选中的角色与上一轮发言者相同时，会再调度一次复核——
+     * 两次一致则尊重调度器仍选他；两次不一致则以第二次为准；复核失败则保留首轮结果。
      *
+     * @param world            世界观
+     * @param contextText      当前对话上下文
+     * @param candidatesCharacters 候选角色列表
+     * @param previousSpeaker  上一轮发言者名（可能为 null，表示无参考）
      * @return 选中角色名（含旁白）；无法决策时返回 null
      */
-    public String selectSpeaker(WorldInfo world, String contextText, List<WorldCharacter> candidatesCharacters) throws Exception {
+    public String selectSpeaker(WorldInfo world, String contextText, List<WorldCharacter> candidatesCharacters, String previousSpeaker) throws Exception {
         if (CollectionUtils.isEmpty(candidatesCharacters)) {
             return null;
         }
@@ -295,6 +266,39 @@ public class WorldGroupChatService {
         AISettings schedulerSettings = resolveSchedulerSettings(world);
         String system = buildSchedulerSystemPrompt(candidateDesc, narrationEnabled, possessName);
 
+        // 首轮调度决策
+        String first = runSchedulerDecision(system, schedulerSettings, candidates, contextText);
+        if (!StringUtils.hasText(first)) {
+            log.warn("调度器未给出有效选角");
+            return null;
+        }
+
+        // 防连续重复：首轮选角与上一轮发言者相同 → 再调度一次复核
+        if (StringUtils.hasText(previousSpeaker) && previousSpeaker.equals(first)) {
+            String second = runSchedulerDecision(system, schedulerSettings, candidates, contextText);
+            if (StringUtils.hasText(second)) {
+                if (second.equals(first)) {
+                    // 两次一致：尊重调度器，仍然选他
+                    log.info("调度器复核：两次选角一致 [{}]，尊重结果", first);
+                } else {
+                    // 两次不一致：以第二次为准
+                    log.info("调度器复核：首轮 [{}] 与上一轮相同，二轮改为 [{}]", first, second);
+                    return second;
+                }
+            } else {
+                // 复核失败：保留首轮结果，避免无故结束本轮
+                log.warn("调度器复核失败，保留首轮选角 [{}]", first);
+            }
+        }
+        return first;
+    }
+
+    /**
+     * 执行一次调度器选角决策（内部含失败重试，与 {@link #MAX_SCHEDULER_ATTEMPTS} 对齐）。
+     *
+     * @return 合法候选名；全部尝试失败时返回 null
+     */
+    private String runSchedulerDecision(String system, AISettings schedulerSettings, List<String> candidates, String contextText) throws Exception {
         String lastRaw = null;
         for (int attempt = 0; attempt < MAX_SCHEDULER_ATTEMPTS; attempt++) {
             String userContent = "对话内容：\n" + contextText;
@@ -325,7 +329,7 @@ public class WorldGroupChatService {
             }
             log.warn("调度器第 {} 次决策无效 [raw={}]", attempt + 1, lastRaw);
         }
-        log.warn("调度器 {} 次尝试均无效，本轮结束", MAX_SCHEDULER_ATTEMPTS);
+        log.warn("调度器 {} 次尝试均无效", MAX_SCHEDULER_ATTEMPTS);
         return null;
     }
 
@@ -411,6 +415,10 @@ public class WorldGroupChatService {
         try {
             Map<String, String> parsed = objectMapper.readValue(json, new TypeReference<>() {
             });
+            String reason = parsed.get("reason");
+            if (StringUtils.hasText(reason)) {
+                log.info("调度器理由: {}", reason);
+            }
             String name = parsed.get("name");
             if (StringUtils.hasText(name)) {
                 return name.trim();
@@ -463,28 +471,32 @@ public class WorldGroupChatService {
         // 注入全部角色设定，保证旁白叙述不违背角色人设
         List<WorldCharacter> characters = worldCharacterService.findByWorldId(world.getId());
         if (!characters.isEmpty()) {
-            sb.append("\n## 角色设定（你全知）\n");
+            sb.append("\n## 角色设定\n");
             for (WorldCharacter character : characters) {
                 sb.append("【").append(character.getName()).append("】");
-                if (StringUtils.hasText(character.getIntro())) {
-                    sb.append(" ").append(character.getIntro());
-                }
-                sb.append("\n");
                 if (StringUtils.hasText(character.getSetting())) {
                     sb.append(character.getSetting().trim()).append("\n");
                 }
                 sb.append("\n");
             }
         }
-        // 不注入世界知识，过于复杂，没有必要
-        sb.append("\n").append(PRIVATE_USAGE);
-        sb.append("\n").append(SWITCH_USAGE);
+        List<WorldKnowledge> knowledges = worldKnowledgeService.findByWorldId(world.getId());
+        if (!knowledges.isEmpty()) {
+            sb.append("\n## 世界知识\n");
+            for (WorldKnowledge knowledge : knowledges) {
+                sb.append("【").append(knowledge.getTitle()).append("】");
+                if (StringUtils.hasText(knowledge.getContent())) {
+                    sb.append(" ").append(knowledge.getContent().trim()).append("\n");
+                }
+                sb.append("\n");
+            }
+        }
         String systemPrompt = sb.toString();
         return new ChatProvider()
                 .setSystemProvider(ctx -> systemPrompt)
                 .setSessionMessageProvider(messages -> collapseContext(world, messages, null))
                 .setToolProvider(ctx -> List.of())
-                .setSettingsSupplier(() -> new ChatProvider.Settings(chatAISettings, chatProAISettings, new AssistantSettings().setAssistantName(NARRATOR_NAME)))
+                .setSettingsSupplier(() -> new ChatProvider.Settings(null, null, new AssistantSettings().setAssistantName(NARRATOR_NAME)))
                 .setEnableSlashCommand(() -> false)
                 .setEnableSwitchPro(() -> false)
                 .setBeforeSaveAssistantProvider((chatMessage -> {
@@ -562,6 +574,20 @@ public class WorldGroupChatService {
         }
         ChatMessage last = history.getLast();
         return last == null ? null : last.resolveText();
+    }
+
+    /** 最近一条 assistant 消息的发言者名（上一轮的发言者）；无则返回 null */
+    private String lastAssistantSpeaker(List<ChatMessage> history) {
+        if (CollectionUtils.isEmpty(history)) {
+            return null;
+        }
+        for (int i = history.size() - 1; i >= 0; i--) {
+            ChatMessage m = history.get(i);
+            if (ChatMessage.ROLE_ASSISTANT.equals(m.getRole()) && StringUtils.hasText(m.getName())) {
+                return m.getName();
+            }
+        }
+        return null;
     }
 
     /** 提取 <switch to:"X"> 的目标角色名；无标签时返回 null */
@@ -657,14 +683,12 @@ public class WorldGroupChatService {
             systemPrompt.append(character.getSetting()).append("\n\n");
         }
         if (!knownKnowledge.isEmpty()) {
-            systemPrompt.append("## 你知晓的世界知识\n\n");
+            systemPrompt.append("## 世界知识\n\n");
             for (String knowledge : knownKnowledge) {
                 systemPrompt.append("- ").append(knowledge).append("\n");
             }
             systemPrompt.append("\n\n");
         }
-        systemPrompt.append(PRIVATE_USAGE);
-        systemPrompt.append("\n").append(SWITCH_USAGE);
         return systemPrompt.toString().replace("${character_name}", character.getName());
     }
 
@@ -698,32 +722,22 @@ public class WorldGroupChatService {
 
     /** 解析角色 ai_settings JSON，缺省回退全局 chat 配置 */
     private AISettings parseCharacterAiSettings(String json) {
-        if (StringUtils.hasText(json)) {
-            try {
-                AISettings settings = objectMapper.readValue(json, AISettings.class);
-                if (StringUtils.hasText(settings.getAdapterName())) {
-                    return settings;
-                }
-            } catch (Exception e) {
-                log.warn("解析角色 ai_settings 失败: {}", e.getMessage());
-            }
+        try {
+            return objectMapper.readValue(json, AISettings.class);
+        } catch (Exception e) {
+            log.warn("解析角色 ai_settings 失败: {}", e.getMessage());
+            throw new RuntimeException("解析角色 ai_settings 失败:" + e.getMessage());
         }
-        return chatAISettings;
     }
 
     /** 解析世界观调度器 AI 配置 JSON（adapterName/model），缺省回退 cub */
     private AISettings resolveSchedulerSettings(WorldInfo world) {
         String json = world.getSchedulerAiSettings();
-        if (StringUtils.hasText(json)) {
-            try {
-                AISettings settings = objectMapper.readValue(json, AISettings.class);
-                if (StringUtils.hasText(settings.getAdapterName())) {
-                    return settings;
-                }
-            } catch (Exception e) {
-                log.warn("解析世界观调度器配置失败: {}", e.getMessage());
-            }
+        try {
+            return objectMapper.readValue(json, AISettings.class);
+        } catch (Exception e) {
+            log.warn("解析世界观调度器配置失败: {}", e.getMessage());
+            throw new RuntimeException("解析世界观调度器配置失败:" + e.getMessage());
         }
-        return cubAISettings;
     }
 }

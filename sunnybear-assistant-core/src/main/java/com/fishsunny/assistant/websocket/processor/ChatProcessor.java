@@ -109,20 +109,23 @@ public class ChatProcessor {
             throw new UserException("无效的 ChatProvider");
         }
 
-        AISettings activeAISettings;
-        AISettings activeChatProAISettings;
-        String activeAssistantName = assistantSettings.getAssistantName();
-        if (chatProvider.getSettingsSupplier() != null) {
+        AISettings activeAISettings = null;
+        AISettings activeChatProAISettings = null;
+        AssistantSettings activeAssistantSettings = null;
+        if (chatProvider.getSettingsSupplier() != null && chatProvider.getSettingsSupplier().get() != null) {
             ChatProvider.Settings settings = chatProvider.getSettingsSupplier().get();
             activeAISettings = settings.chat();
             activeChatProAISettings = settings.chatPro();
-            // 群聊/角色场景：settingsSupplier 可覆盖 assistant 归属名，用于落盘 assistant 消息的 name
-            if (settings.assistant() != null && StringUtils.hasText(settings.assistant().getAssistantName())) {
-                activeAssistantName = settings.assistant().getAssistantName();
-            }
-        } else {
+            activeAssistantSettings = settings.assistant();
+        }
+        if (activeAISettings == null) {
             activeAISettings = this.aiSettings;
+        }
+        if (activeChatProAISettings == null) {
             activeChatProAISettings = this.chatProAISettings;
+        }
+        if (activeAssistantSettings == null) {
+            activeAssistantSettings = this.assistantSettings;
         }
 
         // 根据 session 的 enable_pro 标记选择使用 chat 还是 chat_pro 模型
@@ -168,7 +171,7 @@ public class ChatProcessor {
         }
 
         List<ChatMessage> collector = new ArrayList<>();
-        toolCallCycle(collector, effectiveAISettings, request, chatSession, session, chatProvider, activeAssistantName);
+        toolCallCycle(collector, effectiveAISettings, request, chatSession, session, chatProvider, activeAssistantSettings.getAssistantName());
         return collector;
     }
 
@@ -278,9 +281,6 @@ public class ChatProcessor {
                 if (haveToolCall) {
                     List<ChatToolRequest> convert = ChatToolRequest.convert(toolCalls);
                     toolCallRequests.addAll(convert);
-                }
-                if (chatProvider.getBeforeSaveAssistantProvider() != null) {
-
                 }
                 ChatMessage readyToSaveChatMessage = new ChatMessage()
                         .assistant(result.content(), result.reasoning(), toolCallRequests)

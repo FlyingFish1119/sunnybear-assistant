@@ -667,7 +667,8 @@
                 return options;
             },
             backgroundStyle() {
-                const bg = this.userSettings.background;
+                // 世界观背景优先；未设置时回退到用户设置背景
+                const bg = (this.worldInfo && this.worldInfo.background) || this.userSettings.background;
                 // loaded 为 false 时 #app 仍是 display:none，
                 // 此时设置 background-image 浏览器不会发起请求
                 if (!bg || !this.loaded) return { display: 'none' };
@@ -750,9 +751,11 @@
             getMessageAvatar(msg) {
                 if (msg.role === 'user' && this.userAvatarError) return '';
                 if (msg.role === 'assistant' && this.assistantAvatarError) return '';
+                // 世界观角色用自己的头像；未设置头像时显示默认首字母头像，
+                // 不复用全局 assistant 设置头像（避免串入角色插件配置的头像）
                 const avatar = msg.role === 'user'
                     ? this.userSettings.avatar
-                    : (this.worldCharacters[msg.name] || this.assistantSettings.avatar);
+                    : this.worldCharacters[msg.name];
                 if (!avatar) return '';
                 if (avatar.startsWith('data:')) return avatar;
                 if (!/^https?:\/\//i.test(avatar)) {

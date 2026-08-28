@@ -13,8 +13,8 @@ spring:
       idle-timeout: 300000
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      max-file-size: 50MB
+      max-request-size: 50MB
   sql:
     init:
       mode: always                      # 每次启动执行 schema.sql
@@ -41,6 +41,7 @@ assistant:
 
 # QQ Bot（OneBot）配置
 plug:
+  file-path: plugins/
   qq:
     bot:
       api-url: http://127.0.0.1:3000
