@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fishsunny.assistant.variable.ContentTypeVariable;
+import com.fishsunny.assistant.constants.ContentTypeVariable;
 
 import java.util.*;
 

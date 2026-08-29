@@ -14,14 +14,13 @@ import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.exception.UserException;
-import com.fishsunny.assistant.variable.ControlSign;
+import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.context.annotation.Primary;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Component;
@@ -52,16 +51,23 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      */
     protected final Map<String, Integer> activeTaskCount = new ConcurrentHashMap<>();
 
+    /**
+     * 会话消息总线：消息按 chatSessionId 发布并广播给订阅连接，重连连接可订阅续传
+     */
+    protected final SessionMessageBus sessionMessageBus;
+
     public ChatWebSocketHandler(ServiceProcessor serviceProcessor,
                                 TempChatProcessor tempChatProcessor,
                                 ChatProcessor chatProcessor,
                                 TaskExecutor chatAsyncExecutor,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                SessionMessageBus sessionMessageBus) {
         this.serviceProcessor = serviceProcessor;
         this.tempChatProcessor = tempChatProcessor;
         this.chatProcessor = chatProcessor;
         this.chatAsyncExecutor = chatAsyncExecutor;
         this.objectMapper = objectMapper;
+        this.sessionMessageBus = sessionMessageBus;
     }
 
     @Override
@@ -100,12 +106,31 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     protected void handleTextMessage(@NonNull WebSocketSession session, @NonNull TextMessage message) {
         chatAsyncExecutor.execute(() -> {
             // 用线程安全的包装器保护 session，防止多线程并发 sendMessage 时出现 TEXT_PARTIAL_WRITING
-            final WebSocketSession safeSession = new SynchronizedWebSocketSession(session);
+            final SynchronizedWebSocketSession safeSession = new SynchronizedWebSocketSession(session);
 
             // 提升到 try 外：错误处理时需要回传 sessionId，让前端能按会话清理流式状态
             ChatMessageRequest request = null;
+            ChatSession chatSession = null;
             try {
                 String payload = message.getPayload();
+
+                if (payload.startsWith(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE)) {
+                    String sessionId = payload.substring(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE.length());
+                    // 独占订阅会话总线：返回当前进行中一轮的缓存快照，之后的新消息实时广播到此连接
+                    List<SessionMessageBus.Event> replayEvents = sessionMessageBus.subscribeExclusive(sessionId, session);
+                    if (CollectionUtils.isEmpty(replayEvents)) {
+                        return;
+                    }
+                    log.info("会话 [{}] 订阅总线，回放 {} 条消息: {}", safeSession.getId(), replayEvents.size(), sessionId);
+                    // 回放期间持有连接锁：与总线广播互斥，保证快照完整送达后再接收直播，chunk 不交错乱序
+                    synchronized (session) {
+                        safeSession.sendMessage(new TextMessage(ControlSign.SIGN_REPLAY_MESSAGE + sessionId));
+                        for (SessionMessageBus.Event event : replayEvents) {
+                            safeSession.sendMessage(new TextMessage(event.payload()));
+                        }
+                    }
+                    return;
+                }
 
                 // 让子类有机会拦截并处理特定信号（如战斗回合行动）
                 if (handleAdditionalSignal(safeSession, payload)) {
@@ -128,7 +153,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 ServiceProcessor.ChatSessionModeParseResult parseResult = serviceProcessor.handleChatSession(request, safeSession, enableSwitchPro);
 
                 // 处理请求
-                ChatSession chatSession = parseResult.chatSession();
+                chatSession = parseResult.chatSession();
 
                 if (chatSession == null) {
                     throw new UserException("无效的会话 ID");
@@ -137,16 +162,16 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 try {
                     activeTaskCount.merge(safeSession.getId(), 1, Integer::sum);
 
-                    safeSession.sendMessage(new TextMessage(ControlSign.SIGN_START + chatSession.getId()));
+                    sessionMessageBus.publish(chatSession.getId(), ControlSign.SIGN_START + chatSession.getId());
 
                     List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, safeSession, chatToAiProvider());
 
                     // 如果是新的会话，则生成标题
                     if (parseResult.isNewChat()) {
-                        serviceProcessor.generateTitle(safeSession, chatSession, request.getContent(), chatMessages.get(0).resolveText());
+                        serviceProcessor.generateTitle(chatSession, request.getContent(), chatMessages.getFirst().resolveText());
                     }
 
-                    safeSession.sendMessage(new TextMessage(ControlSign.SIGN_END + chatSession.getId()));
+                    sessionMessageBus.publish(chatSession.getId(), ControlSign.SIGN_END + chatSession.getId());
                 } catch (IOException e) {
                     log.warn("WebSocket 发送失败，连接可能已关闭 [{}]: {}", safeSession.getId(), e.getMessage());
                 } catch (Exception e) {
@@ -163,7 +188,6 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 log.error("error: {}", e.getMessage(), e);
                 sendErrorToFrontend(safeSession, request != null ? request.getSessionId() : null, "系统内部错误，请稍后重试");
             }
-
         });
     }
 
@@ -176,6 +200,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         } catch (Exception ignored) {
             log.warn("发送错误信息到前端失败，连接可能已断开");
         }
+        // 本轮异常中止：清空总线上的当前轮缓存，避免残留半截事件影响后续订阅
+        if (sessionId != null) {
+            sessionMessageBus.reset(sessionId);
+        }
     }
 
     @Override
@@ -183,12 +211,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         log.info("WebSocket 连接已关闭: {}, 状态: {}, 未完成任务数: {}",
                 session.getId(), status, activeTaskCount.getOrDefault(session.getId(), 0));
         activeTaskCount.remove(session.getId());
+        sessionMessageBus.unsubscribeAll(session);
     }
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
         log.error("WebSocket 传输错误 [{}]: {}", session.getId(), exception.getMessage());
         activeTaskCount.remove(session.getId());
+        sessionMessageBus.unsubscribeAll(session);
         super.handleTransportError(session, exception);
     }
 }

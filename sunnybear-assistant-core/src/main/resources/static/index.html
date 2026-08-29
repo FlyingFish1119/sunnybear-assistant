@@ -95,7 +95,7 @@
                 </span>
                 <connection-indicator
                     :ws-url="wsUrl"
-                    @connected="ws = $event; ws.onmessage = (e) => handleStreamChunk(e)"
+                    @connected="onWsConnect"
                     @disconnected="sending = false; ws = null">
                 </connection-indicator>
                 <button class="sidebar-toggle-btn" @click="toggleAgentLog"
@@ -366,11 +366,11 @@
             return arr[arr.length - 1];
         },
 
-        getDefaultAssistantMessage(sessionId, parentId) {
+        getDefaultAssistantMessage(sessionId) {
             return  {
                 id: 'streaming_' + Date.now(),
                 sessionId: sessionId,
-                parentId: parentId,
+                parentId: "",
                 role: 'assistant',
                 reasoningContent: "",
                 contents: [{
@@ -742,6 +742,7 @@
                             this.currentMessages.push(streamingMessage);
                         }
                         this.scrollToBottom(true);
+                        this.ws.send("###REQUIRE_REPLAY_MESSAGE###" + session.id);
                     } else {
                         ElementPlus.ElMessage.error(result.message || '获取会话历史消息失败');
                     }
@@ -880,6 +881,14 @@
                 // 避免移动端 WebSocket 假连接导致消息丢失
             },
 
+            onWsConnect(ws) {
+                this.ws = ws;
+                this.ws.onmessage = (e) => this.handleStreamChunk(e);
+                if (this.currentSessionId) {
+                    this.ws.send("###REQUIRE_REPLAY_MESSAGE###" + this.currentSessionId);
+                }
+            },
+
             /**
              * 中止当前流式传输
              */
@@ -913,7 +922,41 @@
              * 通过 sessionId 匹配到对应 session 的消息列表后进行处理
              */
             async handleStreamChunk(event) {
+                if (event.data.startsWith(':')) {
+                    return;
+                }
+                if (event.data.startsWith("###REPLAY_MESSAGE###")) {
+                    let sessionId = event.data.split('###REPLAY_MESSAGE###')[1];
+                    if (this.currentSessionId !== sessionId) {
+                        return;
+                    }
+                    let streamingIndex = this.streamingMessages.findIndex(m => m.sessionId === sessionId);
+                    if (streamingIndex > -1) {
+                        this.streamingMessages.splice(streamingIndex, 1);
+                    }
+                    const lastUserIndex = this.currentMessages.findLastIndex(m => m.role === 'user');
+                    if (lastUserIndex !== -1) {
+                        this.currentMessages.splice(lastUserIndex);
+                    }
+                    return;
+                }
                 if (event.data.startsWith('###START###')) {
+                    let sessionId = event.data.split('###START###')[1];
+                    // 生成临时 ID，避免 :key 为 undefined
+                    let assistantMessage = Utils.getDefaultAssistantMessage(sessionId);
+                    this.streamingMessages.push(assistantMessage);
+                    if (!this.currentSessionId || sessionId === this.currentSessionId) {
+                        this.currentMessages.push(assistantMessage);
+                    }
+                    return;
+                }
+                if (event.data.startsWith('###REPLACE###')) {
+                    let messageId = event.data.split('###REPLACE###')[1];
+                    let index = this.currentMessages.findIndex(m => m.id === messageId)
+                    console.log('replace:', index)
+                    if (index !== -1) {
+                        this.currentMessages.splice(index);
+                    }
                     return;
                 }
                 if (event.data.startsWith('###TOOL_ASK###')) {
@@ -964,9 +1007,7 @@
                     if (index !== -1) {
                         this.streamingMessages.splice(index, 1);
                     }
-                    let lastMsg = Utils.getLast(this.currentMessages);
-                    let parentId = lastMsg ? lastMsg.id : null;
-                    let assistantMessage = Utils.getDefaultAssistantMessage(sessionId, parentId);
+                    let assistantMessage = Utils.getDefaultAssistantMessage(sessionId);
                     this.streamingMessages.push(assistantMessage);
                     if (sessionId === this.currentSessionId) {
                         this.currentMessages.push(assistantMessage);
@@ -981,31 +1022,37 @@
 
                 let response = JSON.parse(event.data);
 
-                let last = Utils.getLast(response.messages);
                 let streamingMessage = this.streamingMessages.find(m => m.sessionId === response.sessionId);
 
                 switch (response.status) {
                     case 'init_user': {
                         console.log('init_user', response)
                         this.sending = false; // 服务端已确认收到消息，恢复可发送
+
+                        const lastUserIndex = this.currentMessages.findLastIndex(m => m.role === 'user');
+                        const userMessage = lastUserIndex >= 0 ? this.currentMessages[lastUserIndex] : null;
+
+                        let cut = false;
+                        for (const message of response.messages) {
+                            if (userMessage && userMessage.parentId === message.parentId) {
+                                cut = true;
+                            }
+                        }
+                        if (cut && this.currentSessionId === userMessage.sessionId) {
+                            this.currentMessages.splice(lastUserIndex);
+                            this.currentMessages.push(...response.messages);
+                        }
+
                         await this.$refs.sidebar.refresh();
-                        if (!this.currentSession.id) {
+                        if (!this.currentSessionId) {
                             let session = {id: response.sessionId}
                             this.currentSession = this.$refs.sidebar.get(session);
                         }
-
-                        this.currentMessages.push(...response.messages);
 
                         // 服务端已确认收到消息，此时清空输入框和已上传文件
                         this.inputText = '';
                         this.uploadedFiles = [];
 
-                        // 生成临时 ID，避免 :key 为 undefined
-                        let assistantMessage = Utils.getDefaultAssistantMessage(response.sessionId, last.id);
-                        this.streamingMessages.push(assistantMessage);
-                        if (response.sessionId === this.currentSessionId) {
-                            this.currentMessages.push(assistantMessage);
-                        }
                         this.scrollToBottom(true);
                         // 用户消息中可能包含 mermaid 图表，收到确认后立即渲染（无需等流结束）
                         this.$nextTick(() => {
@@ -1266,14 +1313,6 @@
                     content: userText
                 };
                 this.ws.send(JSON.stringify(request));
-                let assistantMsg = Utils.getDefaultAssistantMessage(msg.sessionId, msg.parentId)
-                this.streamingMessages.push(assistantMsg)
-                if (msg.sessionId === this.currentSessionId) {
-                    let index = this.currentMessages.findIndex(m => m.id === msg.id);
-                    // splice(index) 原地删除从 index 开始的所有消息（旧分支）
-                    this.currentMessages.splice(index)
-                    this.currentMessages.push(assistantMsg)
-                }
             },
 
             /**
@@ -1313,11 +1352,6 @@
                 if (!this.editDraft.trim()) {
                     ElementPlus.ElMessage.error('消息内容不能为空');
                     return;
-                }
-                // 找到该用户消息在当前消息列表中的位置，移除旧分支
-                const index = this.currentMessages.findIndex(m => m.id === msg.id);
-                if (index !== -1) {
-                    this.currentMessages.splice(index);
                 }
                 // 通过 WebSocket 发送 edit 请求
                 const request = {

@@ -9,7 +9,7 @@ package com.fishsunny.assistant.engine.protocol.project.entity.message.content.a
  */
 
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
-import com.fishsunny.assistant.variable.ContentTypeVariable;
+import com.fishsunny.assistant.constants.ContentTypeVariable;
 import lombok.Data;
 import lombok.experimental.Accessors;
 

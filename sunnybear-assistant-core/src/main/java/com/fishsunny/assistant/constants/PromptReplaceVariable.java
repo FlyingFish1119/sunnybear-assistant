@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.variable;
+package com.fishsunny.assistant.constants;
 
 /*
  * @Usage

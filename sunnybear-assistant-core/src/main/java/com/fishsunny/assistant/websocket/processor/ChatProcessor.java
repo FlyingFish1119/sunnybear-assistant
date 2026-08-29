@@ -28,9 +28,10 @@ import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.ToolContextBuilder;
-import com.fishsunny.assistant.variable.ControlSign;
-import com.fishsunny.assistant.variable.PromptReplaceVariable;
+import com.fishsunny.assistant.constants.ControlSign;
+import com.fishsunny.assistant.constants.PromptReplaceVariable;
 import com.fishsunny.assistant.websocket.ChatProvider;
+import com.fishsunny.assistant.websocket.SessionMessageBus;
 import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandExecutor;
 import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandHandler;
 import lombok.Getter;
@@ -63,6 +64,7 @@ public class ChatProcessor {
     private final KnowledgeService knowledgeService;
     private final MemoryService memoryService;
     private final SlashCommandExecutor slashCommandExecutor;
+    private final SessionMessageBus sessionMessageBus;
 
     /**
      * 主 Agent 不直接调用的工具集合：由 agent_tool 路由的子 Agent 工具（如 net_explore_tool），
@@ -81,7 +83,8 @@ public class ChatProcessor {
                             @Qualifier(AISettings.CHAT) AISettings aiSettings,
                             @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
                             SlashCommandExecutor slashCommandExecutor,
-                            ChatHttpHandler chatHttpHandler) {
+                            ChatHttpHandler chatHttpHandler,
+                            SessionMessageBus sessionMessageBus) {
         this.chatMessageService = chatMessageService;
         this.objectMapper = objectMapper;
         this.assistantSettings = assistantSettings;
@@ -95,6 +98,7 @@ public class ChatProcessor {
         this.chatProAISettings = chatProAISettings;
         this.slashCommandExecutor = slashCommandExecutor;
         this.chatHttpHandler = chatHttpHandler;
+        this.sessionMessageBus = sessionMessageBus;
     }
 
     /**
@@ -137,7 +141,7 @@ public class ChatProcessor {
         if (chatProvider.getSystemProvider() != null) {
             systemPrompt = chatProvider.getSystemProvider().apply(context);
         } else {
-            systemPrompt = defaultSystemPrompt(context, activeAISettings, effectiveAISettings.getModel(), session);
+            systemPrompt = defaultSystemPrompt(context, activeAISettings, effectiveAISettings.getModel());
         }
 
         List<ChatMessage> messages = new ArrayList<>();
@@ -175,8 +179,7 @@ public class ChatProcessor {
         return collector;
     }
 
-    private String defaultSystemPrompt(ChatProvider.SystemProviderContext context, AISettings activeAISettings, String effectiveModelName,
-                                       WebSocketSession session) throws Exception {
+    private String defaultSystemPrompt(ChatProvider.SystemProviderContext context, AISettings activeAISettings, String effectiveModelName) throws Exception {
         ChatSession chatSession = context.chatSession();
         List<ChatMessage> originMessages = context.originMessages();
 
@@ -186,13 +189,13 @@ public class ChatProcessor {
                 .replace(PromptReplaceVariable.MODEL_NAME, effectiveModelName)
                 .replace(PromptReplaceVariable.IP_ADDRESS, InetAddress.getLocalHost().toString()));
 
-        injectKnowledgePrompt(session, originMessages, chatSession, systemPrompt);
+        injectKnowledgePrompt(originMessages, chatSession, systemPrompt);
         injectMemoryPrompt(systemPrompt);
 
         return systemPrompt.toString();
     }
 
-    private void injectKnowledgePrompt(WebSocketSession session, List<ChatMessage> originMessages, ChatSession chatSession, StringBuilder systemPrompt) {
+    private void injectKnowledgePrompt(List<ChatMessage> originMessages, ChatSession chatSession, StringBuilder systemPrompt) {
         // 知识库匹配：用用户最新消息做 embedding 匹配知识条目
         try {
             ChatMessage lastUserMsg = ObjectUtils.getLast(originMessages);
@@ -209,11 +212,7 @@ public class ChatProcessor {
                 return;
             }
             // 控制信号通知前端：仅当本轮去重后注入了新知识条目时才推送命中信号
-            try {
-                session.sendMessage(new TextMessage(ControlSign.SIGN_KNOWLEDGE_HIT + chatSession.getId()));
-            } catch (Exception e) {
-                log.warn("发送知识库命中信号失败: {}", e.getMessage());
-            }
+            sessionMessageBus.publish(chatSession.getId(), ControlSign.SIGN_KNOWLEDGE_HIT + chatSession.getId());
         } catch (Exception e) {
             log.warn("知识库匹配失败: {}", e.getMessage());
         }
@@ -261,7 +260,7 @@ public class ChatProcessor {
                     String parentId = last == null ? null : last.getId();
                     message.makeInsertable(chatSession.getId(), parentId, activeAssistantName);
                 }
-                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(chatResponse)));
+                sessionMessageBus.publish(chatSession.getId(), objectMapper.writeValueAsString(chatResponse));
             } catch (Exception e) {
                 log.error("发送消息失败: {}", e.getMessage());
             }
@@ -298,7 +297,7 @@ public class ChatProcessor {
                 }
                 // 添加助手消息
                 ChatResponse response = new ChatResponse().afterAIResponse(assistantMessage);
-                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
+                sessionMessageBus.publish(chatSession.getId(), objectMapper.writeValueAsString(response));
                 request.getMessages().add(assistantMessage);
                 collector.add(assistantMessage);
             } catch (Exception e) {
@@ -316,13 +315,14 @@ public class ChatProcessor {
                 List<ToolExecutor.ToolRequest> toolRequests = ToolExecutor.ToolRequest.convert(toolCalls);
 
                 // 并行执行
-                // 构建上下文
-                Map<String, Object> context = ToolContextBuilder.minimumBuild(session, chatSession);
+                // 构建上下文：session 用总线包装器，工具发送的消息（确认/执行状态等）走总线广播，重连客户端也能收到
+                WebSocketSession busSession = sessionMessageBus.wrap(session, chatSession.getId());
+                Map<String, Object> context = ToolContextBuilder.minimumBuild(busSession, chatSession);
                 if (chatProvider.getContextProvider() != null) {
                     context = chatProvider.getContextProvider().apply(context);
                 }
                 List<ToolExecutor.ToolExecuteResponse> toolResults = toolExecutor.execute(toolRequests, context,
-                        ToolExecuteNotifier.buildProvider(session, chatSession.getId(), objectMapper));
+                        ToolExecuteNotifier.buildProvider(busSession, chatSession.getId(), objectMapper));
                 // 构建工具消息
                 List<ChatMessage> toolMessages = new ArrayList<>();
                 for (int i = 0; i < toolCalls.size(); i++) {
@@ -346,11 +346,11 @@ public class ChatProcessor {
                     // 工具消息已落库：推送 init_tool 携带真实 DB id，前端校准占位/结果消息的假 id
                     // （否则 replace 时父工具消息按真实 parentId 在前端列表中找不到）
                     ChatResponse toolInit = new ChatResponse().afterToolSaved(toolResponseMessages);
-                    session.sendMessage(new TextMessage(objectMapper.writeValueAsString(toolInit)));
+                    sessionMessageBus.publish(chatSession.getId(), objectMapper.writeValueAsString(toolInit));
 
                     String roundEnd = ControlSign.SIGN_TOOL_CALL_FINISH + chatSession.getId();;
 
-                    session.sendMessage(new TextMessage(roundEnd));
+                    sessionMessageBus.publish(chatSession.getId(), roundEnd);
                 } catch (Exception e) {
                     log.error("保存工具消息失败: {}", e.getMessage());
                     throw new RuntimeException(e);

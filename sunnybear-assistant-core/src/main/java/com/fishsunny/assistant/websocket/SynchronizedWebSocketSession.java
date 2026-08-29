@@ -3,6 +3,9 @@ package com.fishsunny.assistant.websocket;
 /*
  * @Usage WebSocketSession 同步包装器 —— 对 sendMessage 加锁，防止多线程并发写入同一个连接时抛出 TEXT_PARTIAL_WRITING
  *
+ * 注意：本包装器只负责"直接发送"（回放帧、错误信息等）时的串行化；
+ * 会话级流式消息已改走 SessionMessageBus 广播（广播同样锁 raw session，两者互斥）。
+ *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
  * @Date 2026/6/30
@@ -31,6 +34,11 @@ public class SynchronizedWebSocketSession implements WebSocketSession {
 
     public SynchronizedWebSocketSession(WebSocketSession delegate) {
         this.delegate = delegate;
+    }
+
+    /** 获取被包装的真实连接（SessionMessageBus 订阅/退订使用） */
+    public WebSocketSession delegate() {
+        return delegate;
     }
 
     @Override

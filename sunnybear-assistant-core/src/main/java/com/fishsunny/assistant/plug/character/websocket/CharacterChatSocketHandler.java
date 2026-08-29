@@ -24,6 +24,7 @@ import com.fishsunny.assistant.plug.character.tool.glossary.QueryGlossaryTool;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.websocket.ChatProvider;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
+import com.fishsunny.assistant.websocket.SessionMessageBus;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
@@ -56,12 +57,13 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                                        TempChatProcessor tempChatProcessor,
                                        ChatProcessor chatProcessor,
                                        TaskExecutor chatAsyncExecutor,
+                                       SessionMessageBus sessionMessageBus,
                                        CharacterInfoRepository characterInfoRepository,
                                        CharacterSessionMappingService mappingService,
                                        CharacterGlossaryService glossaryService,
                                        ObjectMapper objectMapper,
                                        BattleDbManager battleDbManager) {
-        super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper);
+        super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper, sessionMessageBus);
         this.characterInfoRepository = characterInfoRepository;
         this.mappingService = mappingService;
         this.glossaryService = glossaryService;

@@ -29,7 +29,9 @@ import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.UserSettings;
 import com.fishsunny.assistant.utils.Base64Utils;
 import com.fishsunny.assistant.utils.ObjectUtils;
-import com.fishsunny.assistant.variable.ControlSign;
+import com.fishsunny.assistant.constants.ControlSign;
+import com.fishsunny.assistant.websocket.SessionMessageBus;
+import com.fishsunny.assistant.websocket.SynchronizedWebSocketSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
@@ -84,6 +86,7 @@ public class ServiceProcessor {
     private final AssistantSettings assistantSettings;
     private final ChatHttpHandler chatHttpHandler;
     private final AISettings cubAISettings;
+    private final SessionMessageBus sessionMessageBus;
     public ServiceProcessor(ChatMessageService chatMessageService,
                             ChatSessionService chatSessionService,
                             CronJobService cronJobService,
@@ -91,7 +94,8 @@ public class ServiceProcessor {
                             UserSettings userSettings,
                             AssistantSettings assistantSettings,
                             ChatHttpHandler chatHttpHandler,
-                            @Qualifier(AISettings.CUB) AISettings cubAISettings
+                            @Qualifier(AISettings.CUB) AISettings cubAISettings,
+                            SessionMessageBus sessionMessageBus
                             ) {
         this.chatMessageService = chatMessageService;
         this.chatSessionService = chatSessionService;
@@ -101,9 +105,10 @@ public class ServiceProcessor {
         this.assistantSettings = assistantSettings;
         this.chatHttpHandler = chatHttpHandler;
         this.cubAISettings = cubAISettings;
+        this.sessionMessageBus = sessionMessageBus;
     }
 
-    public ChatSessionModeParseResult handleChatSession(ChatMessageRequest request, WebSocketSession safeSession, boolean isEnablePro) throws Exception {
+    public ChatSessionModeParseResult handleChatSession(ChatMessageRequest request, SynchronizedWebSocketSession safeSession, boolean isEnablePro) throws Exception {
         ChatSession chatSession;
         boolean isNewChat;
         List<ChatMessage> messages = new ArrayList<>();
@@ -118,31 +123,36 @@ public class ServiceProcessor {
                     boolean enablePro = isEnablePro && judgeProModel(request.getContent());
                     chatSession = createChatSession(enablePro);
                 }
+                sessionMessageBus.subscribeExclusive(chatSession.getId(), safeSession.delegate());
                 request.setSessionId(chatSession.getId());
                 // 先写文件，再创建带文件引用的用户消息
                 List<String> createFileUrls = writeSessionFile(request.getFiles(), chatSession);
                 messages.add(appendUserMessage(
-                        chatSession.getId(), null, request.getContent(), createFileUrls, safeSession));
+                        chatSession.getId(), null, request.getContent(), createFileUrls));
                 break;
             case ChatMessageRequest.MODE_APPEND:
                 isNewChat = false;
                 chatSession = findChatSession(request.getSessionId());
+                sessionMessageBus.subscribeExclusive(chatSession.getId(), safeSession.delegate());
                 messages = findHistoryMessages(request.getSessionId());
                 ChatMessage last = ObjectUtils.getLast(messages);
                 String parentId = last == null ? null : last.getId();
                 List<String> appendFileUrls = writeSessionFile(request.getFiles(), chatSession);
                 messages.add(appendUserMessage(
-                        request.getSessionId(), parentId, request.getContent(), appendFileUrls, safeSession));
+                        request.getSessionId(), parentId, request.getContent(), appendFileUrls));
                 break;
             case ChatMessageRequest.MODE_REPLACE:
                 isNewChat = false;
                 chatSession = findChatSession(request.getSessionId());
+                sessionMessageBus.subscribeExclusive(chatSession.getId(), safeSession.delegate());
                 messages = handleReplace(request, safeSession);
+                sessionMessageBus.publish(chatSession.getId(), ControlSign.SIGN_REPLACE + request.getReplaceMessageId());
                 break;
             case ChatMessageRequest.MODE_EDIT:
                 isNewChat = false;
                 chatSession = findChatSession(request.getSessionId());
-                messages = handleEdit(request, safeSession);
+                sessionMessageBus.subscribeExclusive(chatSession.getId(), safeSession.delegate());
+                messages = handleEdit(request);
                 break;
             default:
                 throw new UserException("无效的请求模式");
@@ -248,7 +258,7 @@ public class ServiceProcessor {
         }
     }
 
-    public void generateTitle(WebSocketSession session, ChatSession chatSession, String userPrompt, String responsePrompt) throws Exception {
+    public void generateTitle(ChatSession chatSession, String userPrompt, String responsePrompt) throws Exception {
         String prompt = """
                 请参考下面的内容生成一个会话标题：
                 目标 AI 系统提示词：${systemPrompt}。
@@ -272,7 +282,7 @@ public class ServiceProcessor {
             chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request, cubAISettings.getStream(),
                     null, onComplete);
             chatSessionService.update(chatSession);
-            session.sendMessage(new TextMessage(ControlSign.UPDATE_SESSION + objectMapper.writeValueAsString(chatSession)));
+            sessionMessageBus.publish(chatSession.getId(), ControlSign.UPDATE_SESSION + objectMapper.writeValueAsString(chatSession));
         } catch (Exception e) {
             log.error("Error title generate: {}", e.getMessage());
         }
@@ -358,7 +368,7 @@ public class ServiceProcessor {
      * 处理 edit 模式：停用旧用户消息分支，创建新的用户消息，返回历史消息
      * <p>仅替换文本内容，保留旧消息中的文件附件（image / video / audio / file）
      */
-    private List<ChatMessage> handleEdit(ChatMessageRequest request, WebSocketSession session) throws Exception {
+    private List<ChatMessage> handleEdit(ChatMessageRequest request) throws Exception {
         String editMessageId = request.getEditMessageId();
         if (!StringUtils.hasText(editMessageId)) {
             throw new UserException("edit 模式下 editMessageId 不能为空");
@@ -399,7 +409,7 @@ public class ServiceProcessor {
                     .setMessages(List.of(message))
                     .setStatus(ChatResponse.STATUS_INIT_USER)
                     .setSessionId(request.getSessionId());
-            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
+            sessionMessageBus.publish(request.getSessionId(), objectMapper.writeValueAsString(response));
         } catch (UserException e) {
             throw new UserException("保存用户消息失败: " + e.getMessage());
         } catch (Exception e) {
@@ -417,10 +427,9 @@ public class ServiceProcessor {
      * @param parentId  父消息 ID
      * @param prompt    用户输入的文本
      * @param fileUrls  文件引用路径列表（绝对路径），用于前端通过 /file/proxy 获取
-     * @param session   WebSocket 会话
      */
     private ChatMessage appendUserMessage(String sessionId, String parentId, String prompt,
-                                          List<String> fileUrls, WebSocketSession session) throws Exception {
+                                          List<String> fileUrls) throws Exception {
 
         if (StringUtils.hasText(parentId)) {
             ChatMessage lastMessage = chatMessageService.findById(parentId);
@@ -446,7 +455,7 @@ public class ServiceProcessor {
         try {
             ChatMessage message = chatMessageService.save(chatMessage);
             ChatResponse response = new ChatResponse().afterUserInput(message);
-            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
+            sessionMessageBus.publish(sessionId, objectMapper.writeValueAsString(response));
             return message;
         } catch (UserException e) {
             throw new UserException("保存用户消息失败: " + e.getMessage());

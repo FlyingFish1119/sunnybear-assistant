@@ -16,7 +16,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.im
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.video.VideoContent;
 import com.fishsunny.assistant.utils.ObjectUtils;
-import com.fishsunny.assistant.variable.ContentTypeVariable;
+import com.fishsunny.assistant.constants.ContentTypeVariable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
