@@ -67,7 +67,10 @@ public class WorldGroupChatSocketHandler extends ChatWebSocketHandler {
                 super.sessionMessageBus.publish(chatSession.getId(), ControlSign.SIGN_START + chatSession.getId());
 
                 // 群聊轮次循环：调度器选角 → 被选角色生成，一条用户消息产出多条 role=assistant 消息
-                groupChatService.runGroupRounds(chatSession, safeSession);
+                // session 用总线包装：runGroupRounds 内的 WORLD_ROUND/WORLD_POSSESS 直发改为走总线，
+                // 既广播给该会话所有订阅连接，又写入轮次缓冲供断线重连续传重建角色气泡
+                WebSocketSession busSession = super.sessionMessageBus.wrap(safeSession, chatSession.getId());
+                groupChatService.runGroupRounds(chatSession, busSession);
 
                 if (parseResult.isNewChat()) {
                     super.serviceProcessor.generateTitle(chatSession, request.getContent(), "");

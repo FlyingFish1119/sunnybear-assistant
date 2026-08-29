@@ -100,7 +100,7 @@
             <div style="display: flex; align-items: center; gap: 16px;">
                 <connection-indicator
                     :ws-url="wsUrl"
-                    @connected="ws = $event; ws.onmessage = (e) => handleStreamChunk(e)"
+                    @connected="onWsConnect($event)"
                     @disconnected="sending = false; ws = null">
                 </connection-indicator>
                 <button class="sidebar-toggle-btn" @click="toggleDbPanel"
@@ -436,8 +436,8 @@
                 currentSession: {},
                 // 当前正在展示的 messages
                 currentMessages: [],
-                // 正在处理的message，存储 sessionId，isStreaming, message
-                streamingMessages: [],
+                // 当前是否有一轮回复正在流式（在途占位消息以 streaming_ 前缀标识，直接驻留在 currentMessages）
+                isStreaming: false,
                 // 当前正在处理的 tool call id
                 currentToolCallId: null,
 
@@ -466,10 +466,6 @@
         computed : {
             wsUrl: function () {
                 return API.ws.characterUrl;
-            },
-            isStreaming: function () {
-                let streamingMessage = this.streamingMessages.find(m => this.currentSessionId === m.sessionId)
-                return streamingMessage !== undefined && streamingMessage !== null;
             },
             isNewSession() {
                 return this.currentSessionId === undefined;
@@ -742,19 +738,15 @@
                 this.$md.clearCache();
                 this.sessionSelectLoading = true;
                 this.currentSession = session;
+                this.isStreaming = false;
                 API.message.getHistory(session.id).then(result => {
                     if (result.status === 200) {
                         this.currentMessages = result.data;
-                        let streamingMessage = this.streamingMessages.find(m => m.sessionId === session.id);
-                        if (streamingMessage) {
-                            // 如果流式消息已被 init_assistant 赋予 id（已入库），
-                            // 则用流式消息替换 DB 中的同名消息，避免重复显示
-                            if (streamingMessage.id) {
-                                this.currentMessages = this.currentMessages.filter(m => m.id !== streamingMessage.id);
-                            }
-                            this.currentMessages.push(streamingMessage);
-                        }
                         this.scrollToBottom(true);
+                        // 请求该会话的总线续传：若当前有一轮在进行中，服务端回放缓冲事件重建在途消息
+                        if (this.ws && this.ws.readyState === 1) {
+                            this.ws.send("###REQUIRE_REPLAY_MESSAGE###" + session.id);
+                        }
                     } else {
                         ElementPlus.ElMessage.error(result.message || '获取会话历史消息失败');
                     }
@@ -933,11 +925,44 @@
             },
 
             /**
+             * 连接建立/重连后挂 onmessage，并按需请求当前会话的总线续传。
+             * 服务端收到后回 ###REPLAY_MESSAGE### 标记并逐帧重放当前进行中一轮的事件日志。
+             */
+            onWsConnect(ws) {
+                this.ws = ws;
+                this.ws.onmessage = (e) => this.handleStreamChunk(e);
+                if (this.currentSessionId) {
+                    // 断线重连：复位流式状态并清掉残留占位（轮次可能已结束、缓冲已清空）。
+                    // 若轮次仍在进行，###REPLAY_MESSAGE### 重放会重建并重新置 true
+                    this.isStreaming = false;
+                    this.currentMessages = this.currentMessages.filter(m => !(m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
+                    this.ws.send("###REQUIRE_REPLAY_MESSAGE###" + this.currentSessionId);
+                }
+            },
+
+            /**
              * 处理服务端流式推送的每一个 chunk
              * 通过 sessionId 匹配到对应 session 的消息列表后进行处理
              */
             handleStreamChunk(event) {
+                if (event.data.startsWith('###REPLAY_MESSAGE###')) {
+                    // 续传标记：先截断到最后一条 user 消息（连同残留的流式占位），之后的重放帧按正常路径重建本轮状态
+                    let sessionId = event.data.split('###REPLAY_MESSAGE###')[1];
+                    if (this.currentSessionId !== sessionId) {
+                        return;
+                    }
+                    this.isStreaming = false;
+                    const lastUserIndex = this.currentMessages.findLastIndex(m => m.role === 'user');
+                    if (lastUserIndex !== -1) {
+                        this.currentMessages.splice(lastUserIndex);
+                    }
+                    return;
+                }
                 if (event.data.startsWith('###START###')) {
+                    let sessionId = event.data.split('###START###')[1];
+                    this.isStreaming = true;
+                    // 新一轮开始：清掉该会话残留的流式占位（异常中断后重开的情况）
+                    this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     this.$refs.sidebar.refresh();
                     return;
                 }
@@ -957,13 +982,10 @@
                     return;
                 }
                 if (event.data.startsWith('###END###')) {
-                    // 结束流式传输，从 streamingMessages 中移除当前会话的流式消息
+                    // 结束流式传输：清掉该会话残留的流式占位（正常情况已由 init_assistant 赋予真实 id，无需处理）
                     let sessionId = event.data.split('###END###')[1];
-                    let index = this.streamingMessages.findIndex(m => m.sessionId === sessionId);
-                    if (index !== -1) {
-                        this.streamingMessages.splice(index, 1);
-                    }
-                    // 如果 init_assistant 已经清理过，这里 findIndex 返回 -1，无副作用
+                    this.isStreaming = false;
+                    this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     this.$nextTick(() => {
                         MermaidUtils.renderAll();
                     });
@@ -982,14 +1004,11 @@
                 if (event.data.startsWith('###TOOL_CALL_FINISH###')) {
                     let sessionId = event.data.split('###TOOL_CALL_FINISH###')[1];
                     // 本轮全部工具执行完毕（空 messages 的轮次边界）→ 推进流式占位到下一轮 AI 回复
-                    let index = this.streamingMessages.findIndex(m => m.sessionId === sessionId);
-                    if (index !== -1) {
-                        this.streamingMessages.splice(index, 1);
-                    }
+                    // 先清掉残留的流式占位（正常情况上一轮已由 init_assistant 赋予真实 id）
+                    this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     let lastMsg = Utils.getLast(this.currentMessages);
                     let parentId = lastMsg ? lastMsg.id : null;
                     let assistantMessage = Utils.getDefaultAssistantMessage(sessionId, parentId);
-                    this.streamingMessages.push(assistantMessage);
                     if (sessionId === this.currentSessionId) {
                         this.currentMessages.push(assistantMessage);
                         this.currentToolCallId = null;
@@ -1004,7 +1023,7 @@
                 let response = JSON.parse(event.data);
 
                 let last = Utils.getLast(response.messages);
-                let streamingMessage = this.streamingMessages.find(m => m.sessionId === response.sessionId);
+                let streamingMessage = this.currentMessages.findLast(m => m.sessionId === response.sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_'));
 
                 switch (response.status) {
                     case 'init_user': {
@@ -1018,6 +1037,19 @@
                             }
                         }
 
+                        // 编辑/重发场景：后端用同一 parentId 重新确认用户消息（旧 B 与新 B' 的 parentId 相同），
+                        // 按 parentId 定位旧消息并掐掉它及之后的所有内容；正常发送时消息不在列表中，无需处理
+                        let cutIndex = -1;
+                        for (const message of response.messages) {
+                            let idx = this.currentMessages.findLastIndex(m => m.role === 'user' && m.parentId === message.parentId);
+                            if (idx !== -1) {
+                                cutIndex = idx;
+                                break;
+                            }
+                        }
+                        if (cutIndex !== -1) {
+                            this.currentMessages.splice(cutIndex);
+                        }
                         this.currentMessages.push(...response.messages);
 
                         // 服务端已确认收到消息，此时清空输入框和已上传文件
@@ -1026,7 +1058,7 @@
 
                         // 生成临时 ID，避免 :key 为 undefined
                         let assistantMessage = Utils.getDefaultAssistantMessage(response.sessionId, last.id);
-                        this.streamingMessages.push(assistantMessage);
+                        this.isStreaming = true;
                         if (response.sessionId === this.currentSessionId) {
                             this.currentMessages.push(assistantMessage);
                         }
@@ -1154,11 +1186,9 @@
                         this.sending = false; // 服务端处理失败，恢复可发送（允许重试）
                         // 清理该会话的流式消息，避免界面卡在"等待回复"状态
                         if (response.sessionId) {
-                            let idx = this.streamingMessages.findIndex(m => m.sessionId === response.sessionId);
-                            if (idx !== -1) {
-                                this.streamingMessages.splice(idx, 1);
-                            }
+                            this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === response.sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                         }
+                        this.isStreaming = false;
                         // 提取错误文本并提示用户
                         let errText = (response.messages && response.messages.length > 0)
                             ? response.messages[0].contents?.map(c => c.content).join('')
@@ -1284,7 +1314,7 @@
                 };
                 this.ws.send(JSON.stringify(request));
                 let assistantMsg = Utils.getDefaultAssistantMessage(msg.sessionId, msg.parentId)
-                this.streamingMessages.push(assistantMsg)
+                this.isStreaming = true;
                 if (msg.sessionId === this.currentSessionId) {
                     let index = this.currentMessages.findIndex(m => m.id === msg.id);
                     // splice(index) 原地删除从 index 开始的所有消息（旧分支）
@@ -1530,7 +1560,7 @@
              * @returns {boolean} 是否折叠
              */
             isThinkingMsg(msg) {
-                if (!this.isStreaming || !this.streamingMessages.includes(msg)) return false;
+                if (!this.isStreaming || !(msg.role === 'assistant' && msg.id && msg.id.startsWith('streaming_'))) return false;
                 const hasReasoning = msg.reasoningContent != null && msg.reasoningContent.length > 0;
                 const lastContent = Utils.getLast(msg.contents);
                 const bodyStarted = lastContent && lastContent.content && lastContent.content.length > 0;
