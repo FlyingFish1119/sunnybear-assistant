@@ -16,7 +16,6 @@ import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.constants.ControlSign;
@@ -227,11 +226,10 @@ public class ToolCallLoop {
                         }
                     }
 
+                    // 不传 ToolExecuteNotifier provider：agent 循环内的工具只通过 ###AGENT_LOG### 进侧边栏，
+                    // 不推送 tool_execution / tool_response 占位，避免 agent 工具执行状态泄漏到主对话页
                     List<ToolExecutor.ToolExecuteResponse> toolResults;
-                    toolResults = toolExecutor.execute(reqs, context, ToolExecuteNotifier.buildProvider(
-                            context.get("session") instanceof WebSocketSession wsSession ? wsSession : null,
-                            context.get("chatSession") instanceof ChatSession cs ? cs.getId() : null,
-                            objectMapper));
+                    toolResults = toolExecutor.execute(reqs, context, null);
 
                     // --- Hook 回调：收集本轮工具结果 ---
                     if (hook != null && hook.getResultHook() != null) {
