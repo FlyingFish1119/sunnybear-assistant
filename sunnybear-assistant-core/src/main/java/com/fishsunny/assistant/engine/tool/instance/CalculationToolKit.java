@@ -20,8 +20,6 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.calc.enable", havingValue = "true", matchIfMissing = true)
 public class CalculationToolKit extends ToolKit {
 
-    private final boolean isInit = true;
-
     public CalculationToolKit(List<ToolHandler> tools, @Value("${engine.tool.calc.enable:true}") boolean enable) {
         super(tools, enable);
     }

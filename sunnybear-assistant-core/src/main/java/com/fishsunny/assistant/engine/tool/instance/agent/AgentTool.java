@@ -10,7 +10,7 @@ package com.fishsunny.assistant.engine.tool.instance.agent;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.engine.tool.AgentToolKit;
+import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.SubAgentToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;

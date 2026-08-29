@@ -23,5 +23,4 @@ public class FileToolKit extends ToolKit {
     public FileToolKit(List<ToolHandler> tools, @Value("${engine.tool.file.enable:true}") boolean enable) {
         super(tools, enable);
     }
-
 }
