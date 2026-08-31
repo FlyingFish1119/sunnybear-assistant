@@ -64,7 +64,7 @@ public class WorldGroupChatService {
     private static final Pattern PRIVATE_ATTR_PATTERN = Pattern.compile(
             "(?i)\\b(from|to)\\s*[:=]\\s*[\"']([^\"']*)[\"']");
 
-    /** 发言权移交标签：<switch to:"角色名">，命中则跳过调度器直接把话头交给目标角色 */
+    /** 发言权移交标签：<switch to="角色名"/>，命中则跳过调度器直接把话头交给目标角色 */
     private static final Pattern SWITCH_TAG_PATTERN = Pattern.compile(
             "(?is)<switch\\s+to\\s*[:=]\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))");
 
@@ -183,7 +183,7 @@ public class WorldGroupChatService {
                     log.warn("调度器选中了不存在的角色 [{}]，轮次结束", chosen);
                     break;
                 }
-                provider = buildCharacterProvider(world, character);
+                provider = buildCharacterProvider(world, character, characters);
             }
             // 通知前端本轮发言者，群聊页据此开启新气泡并显示角色名
             session.sendMessage(new TextMessage(WorldControlSign.WORLD_ROUND + chatSession.getId() + "|" + chosen));
@@ -434,9 +434,9 @@ public class WorldGroupChatService {
      * 系统提示 = 世界预设 + 角色设定 + 角色知晓的知识（+ 私聊频道用法）；
      * 上下文折叠成单条 "角色名：内容" 的 user 消息；禁用全部工具；模型用角色自己的 ai_settings。
      */
-    public ChatProvider buildCharacterProvider(WorldInfo world, WorldCharacter character) {
+    public ChatProvider buildCharacterProvider(WorldInfo world, WorldCharacter character, List<WorldCharacter> characters) {
         List<String> knownKnowledge = knownKnowledge(world, character);
-        String systemPrompt = buildSystemPrompt(world, character, knownKnowledge);
+        String systemPrompt = buildSystemPrompt(world, character, knownKnowledge, characters);
         AISettings charAi = parseCharacterAiSettings(character.getAiSettings());
         String listener = character.getName();
         return new ChatProvider()
@@ -671,7 +671,7 @@ public class WorldGroupChatService {
     }
 
     /** 角色系统提示词：世界描述 + 世界预设 + 角色设定 + 角色知晓的知识（+ 私聊频道用法） */
-    private String buildSystemPrompt(WorldInfo world, WorldCharacter character, List<String> knownKnowledge) {
+    private String buildSystemPrompt(WorldInfo world, WorldCharacter character, List<String> knownKnowledge, List<WorldCharacter> characters) {
         StringBuilder systemPrompt = new StringBuilder();
         if (StringUtils.hasText(world.getPreset())) {
             systemPrompt.append(world.getPreset()).append("\n\n");
@@ -680,16 +680,29 @@ public class WorldGroupChatService {
             systemPrompt.append("## 世界背景\n").append(world.getDescription()).append("\n\n");
         }
         if (StringUtils.hasText(character.getSetting())) {
-            systemPrompt.append(character.getSetting()).append("\n\n");
+            systemPrompt.append("## 角色设定\n").append(character.getSetting()).append("\n\n");
         }
         if (!knownKnowledge.isEmpty()) {
-            systemPrompt.append("## 世界知识\n\n");
+            systemPrompt.append("## 世界知识\n");
             for (String knowledge : knownKnowledge) {
                 systemPrompt.append("- ").append(knowledge).append("\n");
             }
             systemPrompt.append("\n\n");
         }
-        return systemPrompt.toString().replace("${character_name}", character.getName());
+        if (!CollectionUtils.isEmpty(characters)) {
+            systemPrompt.append("## 角色列表\n");
+            for (WorldCharacter c : characters) {
+                if (c.getName().equals(character.getName())) {
+                    continue;
+                }
+                systemPrompt.append("- ").append(c.getName()).append("：").append(c.getIntro()).append("\n");
+            }
+            systemPrompt.append("\n\n");
+        }
+        return systemPrompt.toString()
+                .replace("${character_name}", character.getName())
+                .replace("${character_intro}", character.getIntro())
+                .replace("${character_setting}", character.getSetting());
     }
 
     /** 角色知晓的知识（title：content），来自 world_knowledge + world_knowledge_character */

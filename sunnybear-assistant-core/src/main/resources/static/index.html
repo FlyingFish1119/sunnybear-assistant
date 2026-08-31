@@ -417,8 +417,9 @@
                 currentSession: {},
                 // 当前正在展示的 messages
                 currentMessages: [],
-                // 当前是否有一轮回复正在流式（在途占位消息以 streaming_ 前缀标识，直接驻留在 currentMessages）
-                isStreaming: false,
+                // 流式标记表：key = sessionId，各会话只看自己的标记，互不影响
+                // （在途占位消息以 streaming_ 前缀标识，直接驻留在 currentMessages）
+                streamingMap: {},
                 // 当前正在处理的 tool call id
                 currentToolCallId: null,
 
@@ -457,6 +458,10 @@
             },
             currentSessionId () {
                 return this.currentSession.id;
+            },
+            // 当前会话是否正在流式：只查当前会话自己的标记，其他会话的 START/END 不会互相影响
+            isStreaming() {
+                return !!this.streamingMap[this.currentSessionId];
             },
             greetingIcon() {
                 const hour = new Date().getHours();
@@ -725,7 +730,7 @@
                 this.agentLogs = [];
                 this.sessionSelectLoading = true;
                 this.currentSession = session;
-                this.isStreaming = false;
+                // isStreaming 为计算属性，切会话后自动读新会话自己的标记，无需复位
                 API.message.getHistory(session.id).then(result => {
                     if (result.status === 200) {
                         this.currentMessages = result.data;
@@ -876,9 +881,9 @@
                 this.ws = ws;
                 this.ws.onmessage = (e) => this.handleStreamChunk(e);
                 if (this.currentSessionId) {
-                    // 断线重连：复位流式状态并清掉残留占位（轮次可能已结束、缓冲已清空）。
+                    // 断线重连：清空全部流式标记并清掉残留占位（轮次可能已结束、缓冲已清空）。
                     // 若轮次仍在进行，###REPLAY_MESSAGE### 重放会重建并重新置 true
-                    this.isStreaming = false;
+                    this.streamingMap = {};
                     this.currentMessages = this.currentMessages.filter(m => !(m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     this.ws.send("###REQUIRE_REPLAY_MESSAGE###" + this.currentSessionId);
                 }
@@ -926,7 +931,7 @@
                         return;
                     }
                     // 截断到最后一条 user 消息（连同残留的流式占位），之后的重放帧按正常路径重建本轮
-                    this.isStreaming = false;
+                    this.streamingMap[sessionId] = false;
                     const lastUserIndex = this.currentMessages.findLastIndex(m => m.role === 'user');
                     if (lastUserIndex !== -1) {
                         this.currentMessages.splice(lastUserIndex);
@@ -935,7 +940,7 @@
                 }
                 if (event.data.startsWith('###START###')) {
                     let sessionId = event.data.split('###START###')[1];
-                    this.isStreaming = true;
+                    this.streamingMap[sessionId] = true;
                     // 新一轮开始：清掉该会话残留的流式占位（异常中断后重开的情况）
                     this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     // 生成临时 ID，避免 :key 为 undefined
@@ -970,7 +975,7 @@
                 if (event.data.startsWith('###END###')) {
                     // 结束流式传输：清掉该会话残留的流式占位（正常情况已由 init_assistant 赋予真实 id，无需处理）
                     let sessionId = event.data.split('###END###')[1];
-                    this.isStreaming = false;
+                    this.streamingMap[sessionId] = false;
                     this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     this.$nextTick(() => {
                         MermaidUtils.renderAll();
@@ -1175,7 +1180,7 @@
                         if (errSessionId) {
                             this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === errSessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                         }
-                        this.isStreaming = false;
+                        this.streamingMap[errSessionId] = false;
                         // 提取错误文本并提示用户
                         let errText = (response.messages && response.messages.length > 0)
                             ? response.messages[0].contents?.map(c => c.content).join('')
