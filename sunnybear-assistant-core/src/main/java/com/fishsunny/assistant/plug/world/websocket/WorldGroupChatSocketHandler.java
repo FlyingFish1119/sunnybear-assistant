@@ -21,12 +21,15 @@ import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
+
+import java.util.List;
 
 @Slf4j
 @Component("worldGroupChatSocketHandler")
@@ -54,6 +57,9 @@ public class WorldGroupChatSocketHandler extends ChatWebSocketHandler {
             ChatMessageRequest request = null;
             try {
                 String payload = message.getPayload();
+
+                super.replayMessage(payload, safeSession);
+
                 request = new ChatMessageRequest().parseAndValidate(payload, super.objectMapper);
 
                 // 创建/追加会话，落盘用户消息并推送 init_user

@@ -102,6 +102,26 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         return false;
     }
 
+    protected void replayMessage(String payload, SynchronizedWebSocketSession safeSession) throws Exception {
+
+        if (payload.startsWith(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE)) {
+            String sessionId = payload.substring(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE.length());
+            // 独占订阅会话总线：返回当前进行中一轮的缓存快照，之后的新消息实时广播到此连接
+            List<SessionMessageBus.Event> replayEvents = sessionMessageBus.subscribeExclusive(sessionId, safeSession);
+            if (CollectionUtils.isEmpty(replayEvents)) {
+                return;
+            }
+            log.info("会话 [{}] 订阅总线，回放 {} 条消息: {}", safeSession.getId(), replayEvents.size(), sessionId);
+            // 回放期间持有连接锁：与总线广播互斥，保证快照完整送达后再接收直播，chunk 不交错乱序
+            synchronized (safeSession.delegate()) {
+                safeSession.sendMessage(new TextMessage(ControlSign.SIGN_REPLAY_MESSAGE + sessionId));
+                for (SessionMessageBus.Event event : replayEvents) {
+                    safeSession.sendMessage(new TextMessage(event.payload()));
+                }
+            }
+        }
+    }
+
     @Override
     protected void handleTextMessage(@NonNull WebSocketSession session, @NonNull TextMessage message) {
         chatAsyncExecutor.execute(() -> {
@@ -114,23 +134,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             try {
                 String payload = message.getPayload();
 
-                if (payload.startsWith(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE)) {
-                    String sessionId = payload.substring(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE.length());
-                    // 独占订阅会话总线：返回当前进行中一轮的缓存快照，之后的新消息实时广播到此连接
-                    List<SessionMessageBus.Event> replayEvents = sessionMessageBus.subscribeExclusive(sessionId, session);
-                    if (CollectionUtils.isEmpty(replayEvents)) {
-                        return;
-                    }
-                    log.info("会话 [{}] 订阅总线，回放 {} 条消息: {}", safeSession.getId(), replayEvents.size(), sessionId);
-                    // 回放期间持有连接锁：与总线广播互斥，保证快照完整送达后再接收直播，chunk 不交错乱序
-                    synchronized (session) {
-                        safeSession.sendMessage(new TextMessage(ControlSign.SIGN_REPLAY_MESSAGE + sessionId));
-                        for (SessionMessageBus.Event event : replayEvents) {
-                            safeSession.sendMessage(new TextMessage(event.payload()));
-                        }
-                    }
-                    return;
-                }
+                replayMessage(payload, safeSession);
 
                 // 让子类有机会拦截并处理特定信号（如战斗回合行动）
                 if (handleAdditionalSignal(safeSession, payload)) {
