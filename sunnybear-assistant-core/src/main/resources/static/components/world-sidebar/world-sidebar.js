@@ -57,6 +57,10 @@ const WorldSidebar = {
                 <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
                 <span>删除会话</span>
             </div>
+            <div class="session-context-menu-item" @click="exportSession(contextMenu.session)">
+                <i data-lucide="download" style="width: 16px; height: 16px;"></i>
+                <span>导出对话</span>
+            </div>
         </div>
         <div class="sidebar-footer">
             <el-button class="sidebar-settings"
@@ -244,6 +248,60 @@ const WorldSidebar = {
                     console.error('删除会话失败:', error);
                 }
             }).catch(function () { /* 用户取消 */ });
+        },
+
+        /* ---- 导出对话（后端生成文件，前端触发下载） ---- */
+
+        /**
+         * 导出会话对话记录：调用后端 /message/export 拉取生成文件，前端触发浏览器下载
+         * @param {object} session - 要导出的会话对象
+         */
+        exportSession: async function (session) {
+            var self = this;
+            self.closeContextMenu();
+            if (!session || !session.id) {
+                ElementPlus.ElMessage.warning('请先选择一个会话');
+                return;
+            }
+            var url = API.BASE_PATH + 'message/export?sessionId=' + encodeURIComponent(session.id) + '&format=markdown';
+            try {
+                var response = await fetch(url);
+                if (!response.ok) {
+                    var err = null;
+                    try { err = await response.json(); } catch (e) { /* 非 JSON 错误体 */ }
+                    ElementPlus.ElMessage.error((err && err.message) || '导出失败');
+                    return;
+                }
+                var blob = await response.blob();
+                var downloadUrl = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = self.sanitizeExportName(session.name || '对话') + '_' + self.formatExportStamp(new Date()) + '.md';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(downloadUrl);
+                ElementPlus.ElMessage.success('已导出');
+            } catch (error) {
+                ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
+                console.error('导出会话失败:', error);
+            }
+        },
+
+        /**
+         * 清洗导出文件名中的非法字符
+         */
+        sanitizeExportName: function (name) {
+            return String(name).replace(/[\\/:*?"<>|\r\n]+/g, '_').trim();
+        },
+
+        /**
+         * 生成导出文件名时间戳：yyyyMMdd_HHmmss
+         */
+        formatExportStamp: function (date) {
+            var p = function (n) { return String(n).padStart(2, '0'); };
+            return date.getFullYear() + p(date.getMonth() + 1) + p(date.getDate())
+                + '_' + p(date.getHours()) + p(date.getMinutes()) + p(date.getSeconds());
         },
 
         /**

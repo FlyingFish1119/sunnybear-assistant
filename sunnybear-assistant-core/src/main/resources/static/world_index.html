@@ -82,6 +82,11 @@
             cursor: auto;
             user-select: text;
         }
+        /* 独白块（<private> 无 to）：暖色提示，与私聊区分 */
+        .private-chat-block.monologue {
+            border-color: rgba(250, 140, 22, 0.45);
+            background: rgba(250, 140, 22, 0.06);
+        }
         /* 发言权移交提示：<switch to:"X"> 渲染成靠左的轻提示 */
         .switch-chat-hint {
             text-align: left;
@@ -112,6 +117,9 @@
             display: flex;
             align-items: center;
             gap: 8px;
+        }
+        .private-chat-panel-body {
+            margin-top: 8px;
         }
         .private-chat-panel-label {
             font-size: 13px;
@@ -145,6 +153,27 @@
         .private-chat-panel-btn:hover { background: #e8e8e8; color: #303133; }
         .private-chat-panel-btn-primary { background: var(--main-color); color: #fff; }
         .private-chat-panel-btn-primary:hover { filter: brightness(1.06); }
+        /* 私聊/独白 类型切换按钮 */
+        .private-chat-mode-btn {
+            padding: 4px 12px;
+            border: 1px solid #dcdfe6;
+            border-radius: 8px;
+            background: #fff;
+            color: #606266;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        .private-chat-mode-btn.active {
+            background: var(--main-color);
+            border-color: var(--main-color);
+            color: #fff;
+        }
+        .private-chat-mode-btn:not(.active):hover {
+            border-color: var(--main-color);
+            color: var(--main-color);
+        }
         .private-chat-panel-close {
             width: 28px;
             height: 28px;
@@ -278,10 +307,10 @@
                                     <template v-for="(seg, segIdx) in privateSegments(content.content)" :key="segIdx">
                                         <div v-if="seg.type === 'text'" class="markdown-body" v-html="$md.render(seg.text)"></div>
                                         <div v-else-if="seg.type === 'switch'" class="switch-chat-hint">↪ 将话头交给 {{ seg.to }}</div>
-                                        <div v-else class="private-chat-block" @click.stop="togglePrivate(msg.id, segIdx, seg)">
+                                        <div v-else class="private-chat-block" :class="{ monologue: seg.monologue }" @click.stop="togglePrivate(msg.id, segIdx, seg)">
                                             <div class="private-chat-block-header">
                                                 <span class="private-chat-lock">🔒</span>
-                                                <span class="private-chat-meta">私聊 · {{ seg.from }} → {{ seg.to }}</span>
+                                                <span class="private-chat-meta">{{ seg.monologue ? ('独白 · ' + seg.from) : ('私聊 · ' + seg.from + ' → ' + seg.to) }}</span>
                                                 <span class="private-chat-chevron" :class="{ expanded: isPrivateExpanded(msg.id, segIdx, seg) }">▾</span>
                                             </div>
                                             <div v-if="isPrivateExpanded(msg.id, segIdx, seg)" class="private-chat-block-content markdown-body" v-html="$md.render(seg.text)"></div>
@@ -446,20 +475,29 @@
                 </div>
             </div>
 
-            <!-- 私聊浮条：悬浮在发送栏上方居中；点「添加」拼进发送栏（可混合发送） -->
+            <!-- 私聊浮条：悬浮在发送栏上方居中；点「添加」拼进发送栏（可混合发送），支持传纸条/独白 -->
             <div v-show="privateChatPanelVisible" class="private-chat-panel">
                 <div class="private-chat-panel-row">
-                    <span class="private-chat-panel-label">私聊给</span>
-                    <el-select v-model="privateChatForm.targets" multiple filterable clearable
-                        placeholder="选择角色" size="small" style="flex:none;width:200px">
-                        <el-option v-for="name in privateChatOptions" :key="name" :label="name" :value="name"></el-option>
-                    </el-select>
-                    <input class="private-chat-panel-input" v-model="privateChatForm.content"
-                        placeholder="输入私聊内容，回车添加" @keyup.enter="addPrivateMessage" @keyup.esc="closePrivateChatPanel" />
-                    <button class="private-chat-panel-btn private-chat-panel-btn-primary" @click="addPrivateMessage">添加</button>
-                    <button class="private-chat-panel-btn private-chat-panel-close" @click="closePrivateChatPanel" title="关闭">
+                    <span class="private-chat-panel-label">类型</span>
+                    <button class="private-chat-mode-btn" :class="{ active: privateChatMode === 'whisper' }" @click="privateChatMode = 'whisper'">传纸条</button>
+                    <button class="private-chat-mode-btn" :class="{ active: privateChatMode === 'monologue' }" @click="privateChatMode = 'monologue'">独白</button>
+                    <button class="private-chat-panel-btn private-chat-panel-close" style="margin-left:auto" @click="closePrivateChatPanel" title="关闭">
                         <i data-lucide="x" style="width:14px;height:14px"></i>
                     </button>
+                </div>
+                <div class="private-chat-panel-row private-chat-panel-body">
+                    <template v-if="privateChatMode === 'whisper'">
+                        <span class="private-chat-panel-label">私聊给</span>
+                        <el-select v-model="privateChatForm.targets" multiple filterable clearable
+                            placeholder="选择角色" size="small" style="flex:none;width:200px">
+                            <el-option v-for="name in privateChatOptions" :key="name" :label="name" :value="name"></el-option>
+                        </el-select>
+                    </template>
+                    <span v-else class="private-chat-panel-label">独白</span>
+                    <input class="private-chat-panel-input" v-model="privateChatForm.content"
+                        :placeholder="privateChatMode === 'whisper' ? '输入私聊内容，回车添加' : '输入内心独白，回车添加'"
+                        @keyup.enter="addPrivateMessage" @keyup.esc="closePrivateChatPanel" />
+                    <button class="private-chat-panel-btn private-chat-panel-btn-primary" @click="addPrivateMessage">添加</button>
                 </div>
             </div>
 
@@ -573,8 +611,9 @@
                 currentSession: {},
                 // 当前正在展示的 messages
                 currentMessages: [],
-                // 当前是否有一轮回复正在流式（在途占位消息以 streaming_ 前缀标识，直接驻留在 currentMessages）
-                isStreaming: false,
+                // 流式标记表：key = sessionId，各会话只看自己的标记，互不影响
+                // （在途占位消息以 streaming_ 前缀标识，直接驻留在 currentMessages）
+                streamingMap: {},
                 // 当前正在处理的 tool call id
                 currentToolCallId: null,
 
@@ -599,6 +638,7 @@
                 expandedPrivate: {},
                 // 私聊浮条
                 privateChatPanelVisible: false,
+                privateChatMode: 'whisper', // 'whisper' 传纸条 | 'monologue' 独白
                 privateChatForm: { targets: [], content: '' },
                 // 发言权移交浮条
                 switchChatPanelVisible: false,
@@ -616,6 +656,10 @@
             },
             currentSessionId () {
                 return this.currentSession.id;
+            },
+            // 当前会话是否正在流式：只查当前会话自己的标记，其他会话的 START/END 不会互相影响
+            isStreaming() {
+                return !!this.streamingMap[this.currentSessionId];
             },
              greetingIcon() {
                 const hour = new Date().getHours();
@@ -771,15 +815,16 @@
             },
 
             /**
-             * 拆分消息文本中的私聊标签段，返回 [{type:'text'|'private', text, from?, to?}]
-             * 私聊标签格式 <private from="发送者" to="接收者">内容</private>；未闭合/无标签时整体按普通文本处理
+             * 拆分消息文本中的私聊标签段，返回 [{type:'text'|'private'|'switch', text, from?, to?, monologue?}]
+             * 私聊标签 <private from="发送者" to="接收者">内容</private>：属性顺序任意、to 可省略（省略=内心独白）。
+             * 未闭合/无标签时整体按普通文本处理。
              */
             privateSegments(content) {
                 if (!content || (!content.includes('<private') && !content.includes('<switch'))) {
                     return [{ type: 'text', text: content || '' }];
                 }
                 const segs = [];
-                const re = /<private\s+from="([^"]*)"\s+to="([^"]*)">([\s\S]*?)<\/private>|<switch\s+to\s*[:=]\s*["']([^"']*)["']\s*\/?>/g;
+                const re = /<private\b([^>]*)>([\s\S]*?)<\/private>|<switch\s+to\s*[:=]\s*["']([^"']*)["']\s*\/?>/g;
                 let last = 0;
                 let m;
                 while ((m = re.exec(content)) !== null) {
@@ -787,9 +832,13 @@
                         segs.push({ type: 'text', text: content.slice(last, m.index) });
                     }
                     if (m[1] !== undefined) {
-                        segs.push({ type: 'private', from: m[1].trim(), to: m[2].trim(), text: m[3] });
+                        // 私聊段：from/to 属性顺序任意，to 可省略（省略=独白）
+                        const attrs = m[1];
+                        const from = ((attrs.match(/\bfrom\s*[:=]\s*["']([^"']*)["']/i)) || [])[1] || '';
+                        const to = ((attrs.match(/\bto\s*[:=]\s*["']([^"']*)["']/i)) || [])[1] || '';
+                        segs.push({ type: 'private', from: from.trim(), to: to.trim(), text: m[2], monologue: !to.trim() });
                     } else {
-                        segs.push({ type: 'switch', to: (m[4] || '').trim() });
+                        segs.push({ type: 'switch', to: (m[3] || '').trim() });
                     }
                     last = m.index + m[0].length;
                 }
@@ -995,7 +1044,7 @@
                 this.$md.clearCache();
                 this.sessionSelectLoading = true;
                 this.currentSession = session;
-                this.isStreaming = false;
+                // isStreaming 为计算属性，切会话后自动读新会话自己的标记，无需复位
                 API.message.getHistory(session.id).then(result => {
                     if (result.status === 200) {
                         this.currentMessages = result.data;
@@ -1155,6 +1204,7 @@
 
             /** 展开私聊浮条（展开前刷新一次角色列表，保证选项新鲜） */
             async openPrivateChatPanel() {
+                this.privateChatMode = 'whisper';
                 this.privateChatForm = { targets: [], content: '' };
                 if (this.worldId) await this.fetchWorldCharacters();
                 this.privateChatPanelVisible = true;
@@ -1215,13 +1265,18 @@
                 return '玩家';
             },
 
-            /** 添加私聊：内容自动包装成 <private from to> 标签，拼进发送栏（可混合发送） */
+            /** 添加私聊/独白：内容自动包装成 <private> 标签（有 to=传纸条，无 to=独白），拼进发送栏（可混合发送） */
             addPrivateMessage() {
-                const targets = (this.privateChatForm.targets || []).filter(Boolean);
                 const content = (this.privateChatForm.content || '').trim();
-                if (targets.length === 0) { ElementPlus.ElMessage.warning('请选择私聊对象'); return; }
-                if (!content) { ElementPlus.ElMessage.warning('请输入私聊内容'); return; }
-                const tagged = `<private from="${this.playerName()}" to="${targets.join(',')}">${content}</private>`;
+                if (!content) { ElementPlus.ElMessage.warning('请输入内容'); return; }
+                let tagged;
+                if (this.privateChatMode === 'monologue') {
+                    tagged = `<private from="${this.playerName()}">${content}</private>`;
+                } else {
+                    const targets = (this.privateChatForm.targets || []).filter(Boolean);
+                    if (targets.length === 0) { ElementPlus.ElMessage.warning('请选择私聊对象'); return; }
+                    tagged = `<private from="${this.playerName()}" to="${targets.join(',')}">${content}</private>`;
+                }
                 this.inputText = this.inputText.trim()
                     ? this.inputText.trimEnd() + '\n\n' + tagged
                     : tagged;
@@ -1277,9 +1332,9 @@
                 this.ws = ws;
                 this.ws.onmessage = (e) => this.handleStreamChunk(e);
                 if (this.currentSessionId) {
-                    // 断线重连：复位流式状态并清掉残留占位（轮次可能已结束、缓冲已清空）。
+                    // 断线重连：清空全部流式标记并清掉残留占位（轮次可能已结束、缓冲已清空）。
                     // 若轮次仍在进行，###REPLAY_MESSAGE### 重放会重建并重新置 true
-                    this.isStreaming = false;
+                    this.streamingMap = {};
                     this.currentMessages = this.currentMessages.filter(m => !(m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     this.ws.send("###REQUIRE_REPLAY_MESSAGE###" + this.currentSessionId);
                 }
@@ -1299,7 +1354,7 @@
                         return;
                     }
                     // 截断到最后一条 user 消息（连同残留的流式占位），之后的重放帧按正常路径重建本轮
-                    this.isStreaming = false;
+                    this.streamingMap[sessionId] = false;
                     const lastUserIndex = this.currentMessages.findLastIndex(m => m.role === 'user');
                     if (lastUserIndex !== -1) {
                         this.currentMessages.splice(lastUserIndex);
@@ -1308,7 +1363,7 @@
                 }
                 if (event.data.startsWith('###START###')) {
                     let sessionId = event.data.split('###START###')[1];
-                    this.isStreaming = true;
+                    this.streamingMap[sessionId] = true;
                     // 新一轮开始：清掉该会话残留的流式占位（异常中断后重开的情况）
                     this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     // 生成临时 ID，避免 :key 为 undefined
@@ -1335,7 +1390,7 @@
                 if (event.data.startsWith('###END###')) {
                     // 结束流式传输：清掉该会话残留的流式占位（正常情况已由 init_assistant 赋予真实 id，无需处理）
                     let sessionId = event.data.split('###END###')[1];
-                    this.isStreaming = false;
+                    this.streamingMap[sessionId] = false;
                     this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     this.$nextTick(() => {
                         MermaidUtils.renderAll();
@@ -1575,7 +1630,7 @@
                         if (errSessionId) {
                             this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === errSessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                         }
-                        this.isStreaming = false;
+                        this.streamingMap[errSessionId] = false;
                         // 提取错误文本并提示用户
                         let errText = (response.messages && response.messages.length > 0)
                             ? response.messages[0].contents?.map(c => c.content).join('')

@@ -47,7 +47,7 @@ const KnowledgeManageSettings = {
             <div v-else class="entry-list">
                 <div v-for="item in knowledgeList" :key="item.id" class="entry-item">
                     <div class="entry-item-body">
-                        <div class="entry-item-title">{{ item.title }}</div>
+                        <div class="entry-item-title">{{ item.intro }}</div>
                         <div class="entry-item-content">{{ item.content }}</div>
                         <div class="entry-item-time">{{ formatTime(item.createTime) }}</div>
                     </div>
@@ -76,8 +76,8 @@ const KnowledgeManageSettings = {
                 </div>
             </template>
             <el-form :model="knowledgeEditForm" label-width="80px" label-position="left">
-                <el-form-item label="标题">
-                    <input class="settings-input" v-model="knowledgeEditForm.title" placeholder="输入知识标题（用于匹配检索）" maxlength="200">
+                <el-form-item label="简介">
+                    <textarea class="settings-textarea" v-model="knowledgeEditForm.intro" rows="2" placeholder="输入知识简介（约 50 字，比标题内容更丰富，用于匹配检索）" maxlength="200"></textarea>
                 </el-form-item>
                 <el-form-item label="内容">
                     <textarea class="settings-textarea" v-model="knowledgeEditForm.content" rows="6" placeholder="输入知识内容"></textarea>
@@ -102,7 +102,7 @@ const KnowledgeManageSettings = {
             dialogs: { knowledgemanage: false, knowledgeedit: false },
             knowledgeList: [],
             knowledgeLoading: false,
-            knowledgeEditForm: { id: null, title: '', content: '' }
+            knowledgeEditForm: { id: null, intro: '', content: '' }
         };
     },
 
@@ -132,17 +132,17 @@ const KnowledgeManageSettings = {
 
         openKnowledgeEdit(item) {
             if (item) {
-                this.knowledgeEditForm = { id: item.id, title: item.title, content: item.content };
+                this.knowledgeEditForm = { id: item.id, intro: item.intro, content: item.content };
             } else {
-                this.knowledgeEditForm = { id: null, title: '', content: '' };
+                this.knowledgeEditForm = { id: null, intro: '', content: '' };
             }
             this.dialogs.knowledgeedit = true;
             this.$nextTick(() => lucide.createIcons());
         },
 
         async saveKnowledgeEntry() {
-            if (!this.knowledgeEditForm.title.trim()) {
-                ElementPlus.ElMessage.warning('标题不能为空');
+            if (!this.knowledgeEditForm.intro.trim()) {
+                ElementPlus.ElMessage.warning('简介不能为空');
                 return;
             }
             if (!this.knowledgeEditForm.content.trim()) {
@@ -152,7 +152,7 @@ const KnowledgeManageSettings = {
             this.saving.knowledgeentry = true;
             try {
                 const body = {
-                    title: this.knowledgeEditForm.title.trim(),
+                    intro: this.knowledgeEditForm.intro.trim(),
                     content: this.knowledgeEditForm.content.trim(),
                     mode: this.knowledgeEditForm.id ? 'update' : 'add'
                 };
@@ -179,7 +179,7 @@ const KnowledgeManageSettings = {
             try {
                 await this.$refs.confirmDialog.show({
                     title: '确认删除',
-                    message: '确定要删除知识条目「' + item.title + '」吗？此操作不可恢复。',
+                    message: '确定要删除知识条目「' + item.intro + '」吗？此操作不可恢复。',
                     confirmText: '确认删除',
                     cancelText: '取消',
                     type: 'warning'

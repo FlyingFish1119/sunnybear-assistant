@@ -69,8 +69,8 @@ public class DeleteKnowledgeTool implements ToolHandler {
                         "未找到 ID 为 " + arguments.getId() + " 的知识条目，可能已经被删除");
             }
             return new ToolExecutor.ToolExecuteResponse(name(),
-                    String.format("知识条目删除成功:\n  ID: %s\n  原标题: %s\n  原内容: %s",
-                            deleted.getId(), deleted.getTitle(), deleted.getContent()));
+                    String.format("知识条目删除成功:\n  ID: %s\n  原简介: %s\n  原内容: %s",
+                            deleted.getId(), deleted.getIntro(), deleted.getContent()));
         } catch (IllegalArgumentException e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         } catch (Exception e) {

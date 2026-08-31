@@ -25,7 +25,9 @@ import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.UserSettings;
 import com.fishsunny.assistant.websocket.ChatProvider;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -48,13 +50,19 @@ import java.util.stream.Collectors;
 public class WorldGroupChatService {
 
     /** 旁白内置角色名（narration_enable 时作为调度器候选之一） */
-    public static final String NARRATOR_NAME = "旁白";
+    @Value("${plug.world.processor.narrator-name:旁白}")
+    @Setter
+    public String narratorName = "旁白";
 
     /** 调度器最大尝试次数（初始 1 次 + 失败重试），仍失败则结束本轮 */
-    private static final int MAX_SCHEDULER_ATTEMPTS = 3;
+    @Value("${plug.world.processor.max-scheduler-attempts:2}")
+    @Setter
+    private int maxSchedulerAttempts;
 
     /** 调度器保留的上下文轮数：太短会丢失指代（他/她等），影响选角判断 */
-    private static final int SCHEDULER_CONTEXT_TURNS = 3;
+    @Value("${plug.world.processor.scheduler-context-turns:2}")
+    @Setter
+    private int schedulerContextTurns;
 
     /** 私聊标签匹配：兼容属性顺序不定、未闭合（缺 </private> 时吃到结尾） */
     private static final Pattern PRIVATE_TAG_PATTERN = Pattern.compile(
@@ -64,7 +72,7 @@ public class WorldGroupChatService {
     private static final Pattern PRIVATE_ATTR_PATTERN = Pattern.compile(
             "(?i)\\b(from|to)\\s*[:=]\\s*[\"']([^\"']*)[\"']");
 
-    /** 发言权移交标签：<switch to:"角色名">，命中则跳过调度器直接把话头交给目标角色 */
+    /** 发言权移交标签：<switch to="角色名"/>，命中则跳过调度器直接把话头交给目标角色 */
     private static final Pattern SWITCH_TAG_PATTERN = Pattern.compile(
             "(?is)<switch\\s+to\\s*[:=]\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))");
 
@@ -160,7 +168,7 @@ public class WorldGroupChatService {
                 if (StringUtils.hasText(switchTo)) {
                     log.warn("发言权移交目标 [{}] 不在候选角色中，回退调度器", switchTo);
                 }
-                chosen = selectSpeaker(world, contextText, characters, lastAssistantSpeaker(history));
+                chosen = selectSpeaker(world, contextText, characters, lastSpeaker(history));
             }
             if (!StringUtils.hasText(chosen)) {
                 log.warn("调度器未给出有效选角，轮次结束 [round={}]", round);
@@ -175,7 +183,7 @@ public class WorldGroupChatService {
             }
 
             ChatProvider provider;
-            if (NARRATOR_NAME.equals(chosen)) {
+            if (narratorName.equals(chosen)) {
                 provider = buildNarratorProvider(world);
             } else {
                 WorldCharacter character = byName.get(chosen);
@@ -183,7 +191,7 @@ public class WorldGroupChatService {
                     log.warn("调度器选中了不存在的角色 [{}]，轮次结束", chosen);
                     break;
                 }
-                provider = buildCharacterProvider(world, character);
+                provider = buildCharacterProvider(world, character, characters);
             }
             // 通知前端本轮发言者，群聊页据此开启新气泡并显示角色名
             session.sendMessage(new TextMessage(WorldControlSign.WORLD_ROUND + chatSession.getId() + "|" + chosen));
@@ -205,7 +213,7 @@ public class WorldGroupChatService {
         for (int i = history.size() - 1; i >= 0; i--) {
             if (ChatMessage.ROLE_USER.equals(history.get(i).getRole())) {
                 userCount++;
-                if (userCount == WorldGroupChatService.SCHEDULER_CONTEXT_TURNS) {
+                if (userCount == schedulerContextTurns) {
                     startIdx = i;
                     break;
                 }
@@ -216,7 +224,7 @@ public class WorldGroupChatService {
 
     /**
      * 调度器 AI 调用：输入当前回合上下文 + 候选列表，JSON 输出选中角色名。
-     * 最多尝试 {@link #MAX_SCHEDULER_ATTEMPTS} 次，非法输出时携带上次原始结果反馈重试；
+     * 最多尝试 {@link #maxSchedulerAttempts} 次，非法输出时携带上次原始结果反馈重试；
      * 仍失败则返回 null（由调用方结束本轮）。
      * <p>
      * 防连续重复机制：当首轮选中的角色与上一轮发言者相同时，会再调度一次复核——
@@ -243,7 +251,7 @@ public class WorldGroupChatService {
             }
         }
         if (narrationEnabled) {
-            candidates.add(NARRATOR_NAME);
+            candidates.add(narratorName);
         }
 
         // 展示用候选描述：角色名：简介，夺舍角色标注真人玩家
@@ -259,7 +267,7 @@ public class WorldGroupChatService {
             candidatesWithDesc.add(line);
         }
         if (narrationEnabled) {
-            candidatesWithDesc.add(NARRATOR_NAME + "：负责场景描述、氛围渲染与转场");
+            candidatesWithDesc.add(narratorName + "：负责场景描述、氛围渲染与转场");
         }
 
         String candidateDesc = String.join("\n", candidatesWithDesc);
@@ -294,13 +302,13 @@ public class WorldGroupChatService {
     }
 
     /**
-     * 执行一次调度器选角决策（内部含失败重试，与 {@link #MAX_SCHEDULER_ATTEMPTS} 对齐）。
+     * 执行一次调度器选角决策（内部含失败重试，与 {@link #maxSchedulerAttempts} 对齐）。
      *
      * @return 合法候选名；全部尝试失败时返回 null
      */
     private String runSchedulerDecision(String system, AISettings schedulerSettings, List<String> candidates, String contextText) throws Exception {
         String lastRaw = null;
-        for (int attempt = 0; attempt < MAX_SCHEDULER_ATTEMPTS; attempt++) {
+        for (int attempt = 0; attempt < maxSchedulerAttempts; attempt++) {
             String userContent = "对话内容：\n" + contextText;
             if (attempt > 0) {
                 userContent += "\n\n【上一次决策无效】你返回了「" + (lastRaw == null ? "空内容" : lastRaw) + "」，"
@@ -329,7 +337,7 @@ public class WorldGroupChatService {
             }
             log.warn("调度器第 {} 次决策无效 [raw={}]", attempt + 1, lastRaw);
         }
-        log.warn("调度器 {} 次尝试均无效", MAX_SCHEDULER_ATTEMPTS);
+        log.warn("调度器 {} 次尝试均无效", maxSchedulerAttempts);
         return null;
     }
 
@@ -344,7 +352,7 @@ public class WorldGroupChatService {
                 sb.append("「").append(possessName).append("」由真人玩家扮演。\n");
             }
             if (narrationEnabled) {
-                sb.append("「").append(NARRATOR_NAME).append("」是本群聊的合法候选，负责场景描述、氛围渲染与转场。\n");
+                sb.append("「").append(narratorName).append("」是本群聊的合法候选，负责场景描述、氛围渲染与转场。\n");
             }
             special = sb.toString().trim();
         }
@@ -434,9 +442,9 @@ public class WorldGroupChatService {
      * 系统提示 = 世界预设 + 角色设定 + 角色知晓的知识（+ 私聊频道用法）；
      * 上下文折叠成单条 "角色名：内容" 的 user 消息；禁用全部工具；模型用角色自己的 ai_settings。
      */
-    public ChatProvider buildCharacterProvider(WorldInfo world, WorldCharacter character) {
+    public ChatProvider buildCharacterProvider(WorldInfo world, WorldCharacter character, List<WorldCharacter> characters) {
         List<String> knownKnowledge = knownKnowledge(world, character);
-        String systemPrompt = buildSystemPrompt(world, character, knownKnowledge);
+        String systemPrompt = buildSystemPrompt(world, character, knownKnowledge, characters);
         AISettings charAi = parseCharacterAiSettings(character.getAiSettings());
         String listener = character.getName();
         return new ChatProvider()
@@ -496,13 +504,13 @@ public class WorldGroupChatService {
                 .setSystemProvider(ctx -> systemPrompt)
                 .setSessionMessageProvider(messages -> collapseContext(world, messages, null))
                 .setToolProvider(ctx -> List.of())
-                .setSettingsSupplier(() -> new ChatProvider.Settings(null, null, new AssistantSettings().setAssistantName(NARRATOR_NAME)))
+                .setSettingsSupplier(() -> new ChatProvider.Settings(null, null, new AssistantSettings().setAssistantName(narratorName)))
                 .setEnableSlashCommand(() -> false)
                 .setEnableSwitchPro(() -> false)
                 .setBeforeSaveAssistantProvider((chatMessage -> {
                     String text = chatMessage.resolveText();
-                    if (text.startsWith(NARRATOR_NAME + ":") || text.startsWith(NARRATOR_NAME + "：")) {
-                        chatMessage.text(text.substring(NARRATOR_NAME.length() + 1).trim());
+                    if (text.startsWith(narratorName + ":") || text.startsWith(narratorName + "：")) {
+                        chatMessage.text(text.substring(narratorName.length() + 1).trim());
                     }
                     return chatMessage;
                 }));
@@ -576,18 +584,12 @@ public class WorldGroupChatService {
         return last == null ? null : last.resolveText();
     }
 
-    /** 最近一条 assistant 消息的发言者名（上一轮的发言者）；无则返回 null */
-    private String lastAssistantSpeaker(List<ChatMessage> history) {
+    /** 最近一条消息的发言者名（上一轮的发言者）；无则返回 null */
+    private String lastSpeaker(List<ChatMessage> history) {
         if (CollectionUtils.isEmpty(history)) {
             return null;
         }
-        for (int i = history.size() - 1; i >= 0; i--) {
-            ChatMessage m = history.get(i);
-            if (ChatMessage.ROLE_ASSISTANT.equals(m.getRole()) && StringUtils.hasText(m.getName())) {
-                return m.getName();
-            }
-        }
-        return null;
+        return history.getLast().getName();
     }
 
     /** 提取 <switch to:"X"> 的目标角色名；无标签时返回 null */
@@ -615,7 +617,7 @@ public class WorldGroupChatService {
             return false;
         }
         boolean narrationEnabled = !Boolean.FALSE.equals(world.getNarrationEnable());
-        if (narrationEnabled && NARRATOR_NAME.equals(target)) {
+        if (narrationEnabled && narratorName.equals(target)) {
             return true;
         }
         return characters.stream()
@@ -671,7 +673,7 @@ public class WorldGroupChatService {
     }
 
     /** 角色系统提示词：世界描述 + 世界预设 + 角色设定 + 角色知晓的知识（+ 私聊频道用法） */
-    private String buildSystemPrompt(WorldInfo world, WorldCharacter character, List<String> knownKnowledge) {
+    private String buildSystemPrompt(WorldInfo world, WorldCharacter character, List<String> knownKnowledge, List<WorldCharacter> characters) {
         StringBuilder systemPrompt = new StringBuilder();
         if (StringUtils.hasText(world.getPreset())) {
             systemPrompt.append(world.getPreset()).append("\n\n");
@@ -680,16 +682,29 @@ public class WorldGroupChatService {
             systemPrompt.append("## 世界背景\n").append(world.getDescription()).append("\n\n");
         }
         if (StringUtils.hasText(character.getSetting())) {
-            systemPrompt.append(character.getSetting()).append("\n\n");
+            systemPrompt.append("## 角色设定\n").append(character.getSetting()).append("\n\n");
         }
         if (!knownKnowledge.isEmpty()) {
-            systemPrompt.append("## 世界知识\n\n");
+            systemPrompt.append("## 世界知识\n");
             for (String knowledge : knownKnowledge) {
                 systemPrompt.append("- ").append(knowledge).append("\n");
             }
             systemPrompt.append("\n\n");
         }
-        return systemPrompt.toString().replace("${character_name}", character.getName());
+        if (!CollectionUtils.isEmpty(characters)) {
+            systemPrompt.append("## 角色列表\n");
+            for (WorldCharacter c : characters) {
+                if (c.getName().equals(character.getName())) {
+                    continue;
+                }
+                systemPrompt.append("- ").append(c.getName()).append("：").append(c.getIntro()).append("\n");
+            }
+            systemPrompt.append("\n\n");
+        }
+        return systemPrompt.toString()
+                .replace("${character_name}", character.getName())
+                .replace("${character_intro}", character.getIntro())
+                .replace("${character_setting}", character.getSetting());
     }
 
     /** 角色知晓的知识（title：content），来自 world_knowledge + world_knowledge_character */

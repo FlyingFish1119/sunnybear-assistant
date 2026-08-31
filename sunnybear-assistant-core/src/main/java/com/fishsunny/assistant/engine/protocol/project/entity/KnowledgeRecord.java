@@ -19,8 +19,8 @@ import java.util.List;
 public class KnowledgeRecord {
 
     private Integer id;
-    /** 词条标题，也是 embedding 编码的目标 */
-    private String title;
+    /** 词条简介（约 50 字，比标题内容更丰富，少于完整内容），也是 embedding 编码的目标 */
+    private String intro;
     /** 词条内容 */
     private String content;
     /** title 的 embedding 向量（JSON 序列化为 TEXT 存储） */

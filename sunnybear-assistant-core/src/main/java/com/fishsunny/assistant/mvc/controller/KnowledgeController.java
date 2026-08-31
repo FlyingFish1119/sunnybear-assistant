@@ -63,7 +63,7 @@ public class KnowledgeController {
         }
     }
 
-    /** 新增或更新知识条目。请求体: { id, title, content, mode: "add"|"update" } */
+    /** 新增或更新知识条目。请求体: { id, intro, content, mode: "add"|"update" } */
     @PostMapping("/save")
     public RestResponse save(@RequestBody(required = false) Map<String, Object> body) {
         if (body == null) {
@@ -71,12 +71,12 @@ public class KnowledgeController {
         }
         try {
             String mode = (String) body.getOrDefault("mode", "add");
-            String title = (String) body.get("title");
+            String intro = (String) body.get("intro");
             String content = (String) body.get("content");
             Integer id = body.get("id") != null ? ((Number) body.get("id")).intValue() : null;
 
-            if (!StringUtils.hasText(title)) {
-                return new RestResponse().error("标题不能为空");
+            if (!StringUtils.hasText(intro)) {
+                return new RestResponse().error("简介不能为空");
             }
             if (!StringUtils.hasText(content)) {
                 return new RestResponse().error("内容不能为空");
@@ -85,7 +85,7 @@ public class KnowledgeController {
                 return new RestResponse().error("模式仅支持 add 或 update");
             }
 
-            KnowledgeRecord saved = knowledgeService.addOrUpdateKnowledge(id, title, content, mode);
+            KnowledgeRecord saved = knowledgeService.addOrUpdateKnowledge(id, intro, content, mode);
             return new RestResponse().success(saved);
         } catch (Exception e) {
             log.error("保存知识条目失败", e);

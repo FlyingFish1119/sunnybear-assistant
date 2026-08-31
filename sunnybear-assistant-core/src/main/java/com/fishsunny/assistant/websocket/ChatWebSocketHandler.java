@@ -102,6 +102,29 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         return false;
     }
 
+    protected final boolean replayMessage(String payload, SynchronizedWebSocketSession safeSession) throws Exception {
+        if (payload.startsWith(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE)) {
+            String sessionId = payload.substring(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE.length());
+            // 独占订阅会话总线：返回当前进行中一轮的缓存快照，之后的新消息实时广播到此连接
+            // 订阅身份统一用 delegate()（原始连接），与 handleChatSession 的订阅一致，
+            // 避免包装器与原始连接同时出现在订阅集合导致同一条消息被推送两次
+            List<SessionMessageBus.Event> replayEvents = sessionMessageBus.subscribeExclusive(sessionId, safeSession.delegate());
+            if (CollectionUtils.isEmpty(replayEvents)) {
+                return true;
+            }
+            log.info("会话 [{}] 订阅总线，回放 {} 条消息: {}", safeSession.getId(), replayEvents.size(), sessionId);
+            // 回放期间持有连接锁：与总线广播互斥，保证快照完整送达后再接收直播，chunk 不交错乱序
+            synchronized (safeSession.delegate()) {
+                safeSession.sendMessage(new TextMessage(ControlSign.SIGN_REPLAY_MESSAGE + sessionId));
+                for (SessionMessageBus.Event event : replayEvents) {
+                    safeSession.sendMessage(new TextMessage(event.payload()));
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
     @Override
     protected void handleTextMessage(@NonNull WebSocketSession session, @NonNull TextMessage message) {
         chatAsyncExecutor.execute(() -> {
@@ -114,21 +137,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             try {
                 String payload = message.getPayload();
 
-                if (payload.startsWith(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE)) {
-                    String sessionId = payload.substring(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE.length());
-                    // 独占订阅会话总线：返回当前进行中一轮的缓存快照，之后的新消息实时广播到此连接
-                    List<SessionMessageBus.Event> replayEvents = sessionMessageBus.subscribeExclusive(sessionId, session);
-                    if (CollectionUtils.isEmpty(replayEvents)) {
-                        return;
-                    }
-                    log.info("会话 [{}] 订阅总线，回放 {} 条消息: {}", safeSession.getId(), replayEvents.size(), sessionId);
-                    // 回放期间持有连接锁：与总线广播互斥，保证快照完整送达后再接收直播，chunk 不交错乱序
-                    synchronized (session) {
-                        safeSession.sendMessage(new TextMessage(ControlSign.SIGN_REPLAY_MESSAGE + sessionId));
-                        for (SessionMessageBus.Event event : replayEvents) {
-                            safeSession.sendMessage(new TextMessage(event.payload()));
-                        }
-                    }
+                if (replayMessage(payload, safeSession)) {
                     return;
                 }
 
@@ -164,7 +173,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
                     sessionMessageBus.publish(chatSession.getId(), ControlSign.SIGN_START + chatSession.getId());
 
-                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, safeSession, chatToAiProvider());
+                    WebSocketSession busSession = sessionMessageBus.wrap(safeSession, chatSession.getId());
+
+                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, busSession, chatToAiProvider());
 
                     // 如果是新的会话，则生成标题
                     if (parseResult.isNewChat()) {

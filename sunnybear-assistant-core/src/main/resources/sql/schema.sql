@@ -50,16 +50,16 @@ CREATE TABLE IF NOT EXISTS chat_models (
 CREATE INDEX IF NOT EXISTS idx_chat_models_model_name ON chat_models(model_name);
 
 -- KnowledgeEntry 知识库条目表
--- 每个条目为一条 wiki 式的词条（title + content），embedding 仅对 title 编码
+-- 每个条目为一条 wiki 式的词条（intro 简介 + content），embedding 仅对 intro 编码
+-- 索引由 DatabaseMigrationRunner 统一创建（兼容旧库 title 列的迁移），此处不声明
 CREATE TABLE IF NOT EXISTS knowledge_entry (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    title       TEXT NOT NULL,
+    intro       TEXT NOT NULL,
     content     TEXT NOT NULL,
     embedding   TEXT NOT NULL,
     create_time TEXT NOT NULL,
     update_time TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_knowledge_entry_title ON knowledge_entry(title);
 
 -- SessionKnowledge session-知识库映射表
 -- 记录某个会话已注入的知识条目 ID 列表（JSON 数组），确保知识注入的连续性

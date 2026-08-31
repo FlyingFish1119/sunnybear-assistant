@@ -26,10 +26,10 @@ public interface KnowledgeService {
 
     /**
      * 添加或更新知识条目。
-     * add 模式自动生成 ID 并对 title 做 embedding 编码；
-     * update 模式更新已有条目，title 变化时重新编码。
+     * add 模式自动生成 ID 并对 intro 做 embedding 编码；
+     * update 模式更新已有条目，intro 变化时重新编码。
      */
-    KnowledgeRecord addOrUpdateKnowledge(Integer id, String title, String content, String mode);
+    KnowledgeRecord addOrUpdateKnowledge(Integer id, String intro, String content, String mode);
 
     /**
      * 删除知识条目，返回被删除的记录。
