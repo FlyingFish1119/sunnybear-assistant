@@ -52,11 +52,11 @@ public class KnowledgeListTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("分页查询知识库条目列表。传入 name 时按语义相似度排序，不传 name 时按创建时间倒序。每页固定返回 10 条，使用 offset 翻页。返回条目摘要（ID、标题、创建时间），查看完整内容请用 knowledge_read_tool。")
+                .setDescription("分页查询知识库条目列表。传入 name 时按语义相似度排序，不传 name 时按创建时间倒序。每页固定返回 10 条，使用 offset 翻页。返回条目摘要（ID、简介、创建时间），查看完整内容请用 knowledge_read_tool。")
                 .setRequired(List.of())
                 .setParameters(List.of(
                         new ToolRegister.Parameters("name", "string",
-                                "搜索关键词，用于语义匹配知识条目标题。不传时返回全部条目（按创建时间倒序）"),
+                                "搜索关键词，用于语义匹配知识条目简介。不传时返回全部条目（按创建时间倒序）"),
                         new ToolRegister.Parameters("offset", "integer",
                                 "跳过的条目数，默认 0（从第一条开始）。例如 offset=10 表示跳过前 10 条，配合每页 10 条实现翻页")
                 ));
@@ -100,7 +100,7 @@ public class KnowledgeListTool implements ToolHandler {
                 for (int i = 0; i < items.size(); i++) {
                     KnowledgeRecord record = items.get(i);
                     sb.append("\n---\n\n");
-                    sb.append("**").append(from + i).append("**. **").append(record.getTitle()).append("**\n");
+                    sb.append("**").append(from + i).append("**. **").append(record.getIntro()).append("**\n");
                     sb.append("- ID: `").append(record.getId()).append("`\n");
                     sb.append("- 创建时间: ").append(record.getCreateTime() != null
                             ? record.getCreateTime().format(FORMATTER) : "未知").append("\n");

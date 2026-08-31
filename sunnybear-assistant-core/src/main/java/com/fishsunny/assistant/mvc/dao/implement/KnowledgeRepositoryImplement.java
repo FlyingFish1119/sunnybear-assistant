@@ -46,7 +46,7 @@ public class KnowledgeRepositoryImplement implements KnowledgeRepository {
         public KnowledgeRecord mapRow(ResultSet rs, int rowNum) throws SQLException {
             KnowledgeRecord record = new KnowledgeRecord();
             record.setId(rs.getInt("id"));
-            record.setTitle(rs.getString("title"));
+            record.setIntro(rs.getString("intro"));
             record.setContent(rs.getString("content"));
             try {
                 String embeddingJson = rs.getString("embedding");
@@ -66,7 +66,7 @@ public class KnowledgeRepositoryImplement implements KnowledgeRepository {
     @Override
     public KnowledgeRecord insert(KnowledgeRecord record) {
         String sql = """
-                INSERT INTO knowledge_entry (title, content, embedding, create_time, update_time)
+                INSERT INTO knowledge_entry (intro, content, embedding, create_time, update_time)
                 VALUES (?, ?, ?, ?, ?)
                 """;
 
@@ -81,7 +81,7 @@ public class KnowledgeRepositoryImplement implements KnowledgeRepository {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update((Connection con) -> {
             PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
-            ps.setString(1, record.getTitle());
+            ps.setString(1, record.getIntro());
             ps.setString(2, record.getContent());
             ps.setString(3, embeddingJson);
             ps.setString(4, now);
@@ -97,7 +97,7 @@ public class KnowledgeRepositoryImplement implements KnowledgeRepository {
     public KnowledgeRecord update(KnowledgeRecord record) {
         String sql = """
                 UPDATE knowledge_entry
-                SET title = ?,
+                SET intro = ?,
                     content = ?,
                     embedding = ?,
                     update_time = ?
@@ -112,7 +112,7 @@ public class KnowledgeRepositoryImplement implements KnowledgeRepository {
             throw new RuntimeException("序列化 embedding 失败: " + e.getMessage());
         }
 
-        jdbcTemplate.update(sql, record.getTitle(), record.getContent(), embeddingJson, now, record.getId());
+        jdbcTemplate.update(sql, record.getIntro(), record.getContent(), embeddingJson, now, record.getId());
 
         return selectById(record.getId());
     }

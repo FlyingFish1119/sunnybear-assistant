@@ -117,7 +117,7 @@ const ChatSidebar = {
         <div v-else class="entry-list">
             <div v-for="item in sessionKnowledgeList" :key="item.id" class="entry-item">
                 <div class="entry-item-body">
-                    <div class="entry-item-title">{{ item.title }}</div>
+                    <div class="entry-item-title">{{ item.intro }}</div>
                     <div class="entry-item-content">{{ item.content }}</div>
                     <div class="entry-item-time">{{ (item.createTime || '').replace('T', ' ') }}</div>
                 </div>
@@ -478,7 +478,7 @@ const ChatSidebar = {
             if (!session) return;
             this.$refs.confirmDialog.show({
                 title: '移除确认',
-                message: '确定从该会话移除知识条目「' + item.title + '」吗？',
+                message: '确定从该会话移除知识条目「' + item.intro + '」吗？',
                 confirmText: '移除',
                 cancelText: '取消',
                 type: 'warning'

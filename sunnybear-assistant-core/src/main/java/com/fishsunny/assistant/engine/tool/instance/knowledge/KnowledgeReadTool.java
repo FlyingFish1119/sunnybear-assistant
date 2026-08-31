@@ -26,7 +26,7 @@ import java.util.Map;
 
 /**
  * 知识库查看工具
- * 根据 ID 返回指定知识条目的完整详情（标题、完整内容、创建时间、更新时间）。
+ * 根据 ID 返回指定知识条目的完整详情（简介、完整内容、创建时间、更新时间）。
  */
 @ToolKitComponent(KnowledgeToolKit.class)
 @ConditionalOnExpression("${engine.tool.knowledge.enable:true} && ${engine.tool.knowledge.knowledge-read.enable:true}")
@@ -47,7 +47,7 @@ public class KnowledgeReadTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("根据 ID 查看知识条目的完整详情，包括标题、完整内容、创建时间和更新时间。ID 可从 knowledge_list_tool 的返回结果中获取。")
+                .setDescription("根据 ID 查看知识条目的完整详情，包括简介、完整内容、创建时间和更新时间。ID 可从 knowledge_list_tool 的返回结果中获取。")
                 .setRequired(List.of("id"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("id", "integer", "要查看的知识条目 ID。可从 knowledge_list_tool 的返回结果中获取")
@@ -76,7 +76,7 @@ public class KnowledgeReadTool implements ToolHandler {
             StringBuilder sb = new StringBuilder();
             sb.append("知识条目详情\n\n");
             sb.append("- ID: ").append(record.getId()).append("\n");
-            sb.append("- 标题: **").append(record.getTitle()).append("**\n");
+            sb.append("- 简介: **").append(record.getIntro()).append("**\n");
             sb.append("- 内容: ").append(record.getContent() != null ? record.getContent() : "（无内容）").append("\n");
             sb.append("- 创建时间: ").append(record.getCreateTime() != null
                     ? record.getCreateTime().format(FORMATTER) : "未知").append("\n");

@@ -102,14 +102,15 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         return false;
     }
 
-    protected void replayMessage(String payload, SynchronizedWebSocketSession safeSession) throws Exception {
-
+    protected final boolean replayMessage(String payload, SynchronizedWebSocketSession safeSession) throws Exception {
         if (payload.startsWith(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE)) {
             String sessionId = payload.substring(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE.length());
             // 独占订阅会话总线：返回当前进行中一轮的缓存快照，之后的新消息实时广播到此连接
-            List<SessionMessageBus.Event> replayEvents = sessionMessageBus.subscribeExclusive(sessionId, safeSession);
+            // 订阅身份统一用 delegate()（原始连接），与 handleChatSession 的订阅一致，
+            // 避免包装器与原始连接同时出现在订阅集合导致同一条消息被推送两次
+            List<SessionMessageBus.Event> replayEvents = sessionMessageBus.subscribeExclusive(sessionId, safeSession.delegate());
             if (CollectionUtils.isEmpty(replayEvents)) {
-                return;
+                return true;
             }
             log.info("会话 [{}] 订阅总线，回放 {} 条消息: {}", safeSession.getId(), replayEvents.size(), sessionId);
             // 回放期间持有连接锁：与总线广播互斥，保证快照完整送达后再接收直播，chunk 不交错乱序
@@ -119,7 +120,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     safeSession.sendMessage(new TextMessage(event.payload()));
                 }
             }
+            return true;
         }
+        return false;
     }
 
     @Override
@@ -134,7 +137,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             try {
                 String payload = message.getPayload();
 
-                replayMessage(payload, safeSession);
+                if (replayMessage(payload, safeSession)) {
+                    return;
+                }
 
                 // 让子类有机会拦截并处理特定信号（如战斗回合行动）
                 if (handleAdditionalSignal(safeSession, payload)) {
@@ -168,7 +173,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
                     sessionMessageBus.publish(chatSession.getId(), ControlSign.SIGN_START + chatSession.getId());
 
-                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, safeSession, chatToAiProvider());
+                    WebSocketSession busSession = sessionMessageBus.wrap(safeSession, chatSession.getId());
+
+                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, busSession, chatToAiProvider());
 
                     // 如果是新的会话，则生成标题
                     if (parseResult.isNewChat()) {

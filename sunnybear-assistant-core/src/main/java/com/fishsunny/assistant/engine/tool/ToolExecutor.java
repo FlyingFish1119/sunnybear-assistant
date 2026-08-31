@@ -57,6 +57,16 @@ public class ToolExecutor {
 
     public record ToolProvider(Consumer<ToolRequest> beforeExec, Consumer<ToolExecuteResponse> afterExec) {}
 
+    public List<ToolExecuteResponse> executeAdapter(List<AIAdapter.ToolCall> toolCalls, Map<String, Object> context) {
+        List<ToolRequest> requests = ToolRequest.convert(toolCalls);
+        return execute(requests, context);
+    }
+
+    public List<ToolExecuteResponse> executeAdapter(List<AIAdapter.ToolCall> toolCalls, Map<String, Object> context, ToolProvider provider) {
+        List<ToolRequest> requests = ToolRequest.convert(toolCalls);
+        return execute(requests, context, provider);
+    }
+
     public List<ToolExecuteResponse> execute(List<ToolRequest> requests, Map<String, Object> context) {
         return execute(requests, context, new ToolProvider(null, null));
     }
@@ -335,7 +345,8 @@ public class ToolExecutor {
         public ToolRequest() {
         }
 
-        public ToolRequest(String toolName, String arguments) {
+        public ToolRequest(String toolCallId, String toolName, String arguments) {
+            this.toolCallId = toolCallId;
             this.toolName = toolName;
             this.arguments = arguments;
         }

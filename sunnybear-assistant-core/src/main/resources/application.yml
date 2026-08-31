@@ -55,6 +55,10 @@ plug:
       command-timeout-s: 1800
     tool:
       enable: true
+  world:
+    processor:
+      max-scheduler-attempts: 2
+      scheduler-context-turns: 2
 
 engine:
   tool:

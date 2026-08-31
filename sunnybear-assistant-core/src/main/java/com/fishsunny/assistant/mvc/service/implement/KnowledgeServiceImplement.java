@@ -88,15 +88,15 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     }
 
     @Override
-    public KnowledgeRecord addOrUpdateKnowledge(Integer id, String title, String content, String mode) {
+    public KnowledgeRecord addOrUpdateKnowledge(Integer id, String intro, String content, String mode) {
         if (MODE_ADD.equalsIgnoreCase(mode)) {
-            List<Float> embedding = encodeTitle(title);
+            List<Float> embedding = encodeIntro(intro);
             KnowledgeRecord record = new KnowledgeRecord()
-                    .setTitle(title)
+                    .setIntro(intro)
                     .setContent(content)
                     .setEmbedding(embedding);
             KnowledgeRecord saved = knowledgeRepository.insert(record);
-            log.info("新增知识条目: id={}, title={}", saved.getId(), saved.getTitle());
+            log.info("新增知识条目: id={}, intro={}", saved.getId(), saved.getIntro());
             return saved;
         } else if (MODE_UPDATE.equalsIgnoreCase(mode)) {
             if (id == null) {
@@ -106,15 +106,15 @@ public class KnowledgeServiceImplement implements KnowledgeService {
             if (existing == null) {
                 throw new IllegalArgumentException("知识条目不存在: id=" + id);
             }
-            // title 变化时重新编码，否则沿用旧向量
-            boolean titleChanged = !title.equals(existing.getTitle());
-            existing.setTitle(title);
+            // intro 变化时重新编码，否则沿用旧向量
+            boolean introChanged = !intro.equals(existing.getIntro());
+            existing.setIntro(intro);
             existing.setContent(content);
-            if (titleChanged) {
-                existing.setEmbedding(encodeTitle(title));
+            if (introChanged) {
+                existing.setEmbedding(encodeIntro(intro));
             }
             KnowledgeRecord saved = knowledgeRepository.update(existing);
-            log.info("更新知识条目: id={}, title={}", saved.getId(), saved.getTitle());
+            log.info("更新知识条目: id={}, intro={}", saved.getId(), saved.getIntro());
             return saved;
         } else {
             throw new IllegalArgumentException("不支持的模式: " + mode + "，仅支持 add 和 update");
@@ -128,7 +128,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
         }
         KnowledgeRecord deleted = knowledgeRepository.deleteById(id);
         if (deleted != null) {
-            log.info("删除知识条目: id={}, title={}", deleted.getId(), deleted.getTitle());
+            log.info("删除知识条目: id={}, intro={}", deleted.getId(), deleted.getIntro());
         } else {
             log.warn("删除知识条目失败，记录不存在: id={}", id);
         }
@@ -157,7 +157,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
         }
 
         // 有搜索词：embedding + 余弦相似度匹配
-        List<Float> queryEmbedding = encodeTitle(queryText);
+        List<Float> queryEmbedding = encodeIntro(queryText);
         if (queryEmbedding == null || queryEmbedding.isEmpty()) {
             log.warn("查询 embedding 失败，返回空列表");
             return new ListKnowledgeResult(new ArrayList<>(), 0, offset, limit);
@@ -175,7 +175,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
                 float similarity = CosineSimilarityUtil.cosine(queryEmbedding, entry.getEmbedding());
                 scored.add(new AbstractMap.SimpleEntry<>(entry, similarity));
             } catch (Exception e) {
-                log.warn("计算相似度失败: title={}, error={}", entry.getTitle(), e.getMessage());
+                log.warn("计算相似度失败: intro={}, error={}", entry.getIntro(), e.getMessage());
             }
         }
 
@@ -317,7 +317,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
         try {
             StringBuilder entriesText = new StringBuilder();
             for (KnowledgeRecord entry : allEntries) {
-                entriesText.append(entry.getId()).append(". ").append(entry.getTitle()).append("\n");
+                entriesText.append(entry.getId()).append(". ").append(entry.getIntro()).append("\n");
             }
             String prompt = """
             你是一个知识库条目选择器。用户正在进行一段对话，你需要从知识库条目中选出与用户当前问题相关、对回答有帮助的条目。
@@ -338,7 +338,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
                 "ids": [1, 3, 5]
             }
             2. 只选择与用户当前问题明显相关的条目；如果都不相关，输出：{"ids": []}。
-            3. 只根据条目标题判断相关性。
+            3. 只根据条目简介判断相关性。
             """.replace("${entries}", entriesText.toString().trim())
             .replace("${query}", queryText);
 
@@ -388,7 +388,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     /**
      * 对文本做 embedding 编码，返回向量。
      */
-    private List<Float> encodeTitle(String text) {
+    private List<Float> encodeIntro(String text) {
         try {
             StandardEmbeddingRequest request = new StandardEmbeddingRequest()
                     .setModel(embeddingAPI.getModel())
@@ -449,7 +449,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
         sb.append("以下是从知识库中检索到的相关知识，可能对当前对话有帮助：\n");
         for (int i = 0; i < entries.size(); i++) {
             KnowledgeRecord entry = entries.get(i);
-            sb.append(i + 1).append(". 【").append(entry.getTitle()).append("】")
+            sb.append(i + 1).append(". 【").append(entry.getIntro()).append("】")
                     .append(entry.getContent()).append("\n");
         }
         return sb.toString();
