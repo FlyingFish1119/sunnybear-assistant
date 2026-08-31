@@ -52,7 +52,7 @@ public class WorldGroupChatService {
     /** 旁白内置角色名（narration_enable 时作为调度器候选之一） */
     @Value("${plug.world.processor.narrator-name:旁白}")
     @Setter
-    public String narratorName = "旁白";
+    public String narratorName;
 
     /** 调度器最大尝试次数（初始 1 次 + 失败重试），仍失败则结束本轮 */
     @Value("${plug.world.processor.max-scheduler-attempts:2}")
@@ -370,7 +370,7 @@ public class WorldGroupChatService {
                 2. 【直接回应】若最新一句明确点名或直指某角色（提问、对峙、打招呼、喊名字），让被针对的角色接话；除非刻意的沉默更能制造张力。
                 3. 【推动剧情】否则，选与当前冲突/情绪绑得最深、最可能让事态升级或揭示新信息的角色。
                 4. 【节奏】非必要不让同一人连续开口；当几个角色都合理在场时，优先给较久没说话的那个镜头。
-                5. 【旁白】仅在场景切换、时间流逝、需要交代环境/氛围、或对话僵住需要破局时，才选旁白。不要频繁用旁白打断对话节奏。
+                5. 【${narrator_name}】仅在场景切换、时间流逝、需要交代环境/氛围、或对话僵住需要破局时，才选${narrator_name}。不要频繁用${narrator_name}打断对话节奏。
                 
                 ## 特殊说明
                 %s
@@ -388,24 +388,24 @@ public class WorldGroupChatService {
                 只输出一个 JSON 对象，不得有其它任何文字：
                 {"reason": "一句话理由", "name": "角色名"}
                 - reason 必须写在 name 之前（先论证理由，再定名字，最后才下结论）。
-                - name 必须严格等于候选名单中的某一个（旁白若启用也是合法选项）。
+                - name 必须严格等于候选名单中的某一个（${narrator_name}若启用也是合法选项）。
                 - reason 是内部决策依据，一句话即可，绝不能出现在任何角色发言里。
 
                 ## 示例
                 示例1：
                 对话：…「林月：你们到底是谁派来的？老实交代。」
-                候选：林月 / 陈默 / 阿澈 / 旁白
+                候选：林月 / 陈默 / 阿澈 / ${narrator_name}
                 输出：{"reason": "林月的质问直指陈默，由他正面回应最合理", "name": "陈默"}
 
                 示例2：
                 对话：…「陈默：林月，那包裹里的东西到底和你有没有关系？」「林月：……和我没关系。」（两人已来回多轮）
-                候选：林月 / 陈默 / 阿澈 / 旁白
+                候选：林月 / 陈默 / 阿澈 / ${narrator_name}
                 输出：{"reason": "两人对峙陷入僵局，让第三方阿澈打破平衡、推动冲突", "name": "阿澈"}
 
                 示例3：
                 对话：…「陈默：那就这么定了，明天午夜，码头见。」
-                候选：林月 / 陈默 / 阿澈 / 旁白
-                输出：{"reason": "约定达成、场景即将切换，交给旁白转场并渲染夜色氛围", "name": "旁白"}
+                候选：林月 / 陈默 / 阿澈 / ${narrator_name}
+                输出：{"reason": "约定达成、场景即将切换，交给${narrator_name}转场并渲染夜色氛围", "name": "${narrator_name}"}
                 """.formatted(candidateDesc, special);
     }
 
@@ -470,7 +470,7 @@ public class WorldGroupChatService {
     public ChatProvider buildNarratorProvider(WorldInfo world) {
         StringBuilder sb = new StringBuilder();
         sb.append("""
-                你是本群聊的旁白，以全知第三人称视角叙述场景、环境、角色的动作、神态与氛围。
+                你是${narrator_name}，本群聊的旁白，以全知第三人称视角叙述场景、环境、角色的动作、神态与氛围。
                 你不扮演任何角色，不代替角色说话，只做客观、克制的场景叙述。
                 """);
         if (StringUtils.hasText(world.getDescription())) {
@@ -704,7 +704,8 @@ public class WorldGroupChatService {
         return systemPrompt.toString()
                 .replace("${character_name}", character.getName())
                 .replace("${character_intro}", character.getIntro())
-                .replace("${character_setting}", character.getSetting());
+                .replace("${character_setting}", character.getSetting())
+                .replace("${narrator_name}", narratorName);
     }
 
     /** 角色知晓的知识（title：content），来自 world_knowledge + world_knowledge_character */
