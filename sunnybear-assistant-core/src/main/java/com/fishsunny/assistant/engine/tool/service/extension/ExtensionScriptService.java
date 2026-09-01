@@ -37,6 +37,8 @@ public class ExtensionScriptService {
 
     private static final Logger log = LoggerFactory.getLogger(ExtensionScriptService.class);
 
+    private static final ExecutorService EXECUTOR_SERVICE = Executors.newVirtualThreadPerTaskExecutor();
+
     /** 临时脚本存放子目录 */
     private static final String TEMP_DIR = "temp";
 
@@ -57,9 +59,8 @@ public class ExtensionScriptService {
             if (timeout < 0) {
                 result = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             } else {
-                ExecutorService executor = Executors.newSingleThreadExecutor();
                 final Process finalProcess = process;
-                Future<String> future = executor.submit(() -> {
+                Future<String> future = EXECUTOR_SERVICE.submit(() -> {
                     byte[] bytes = finalProcess.getInputStream().readAllBytes();
                     return new String(bytes, StandardCharsets.UTF_8);
                 });
@@ -70,7 +71,7 @@ public class ExtensionScriptService {
                     throw new ToolExecutor.ToolExecuteException(
                             "脚本执行超时（" + timeout + "秒）: " + prepared.script().getName());
                 } finally {
-                    executor.shutdownNow();
+                    EXECUTOR_SERVICE.shutdownNow();
                 }
             }
 
