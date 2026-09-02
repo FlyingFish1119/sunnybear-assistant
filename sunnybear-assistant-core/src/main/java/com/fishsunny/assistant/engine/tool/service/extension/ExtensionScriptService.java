@@ -73,8 +73,6 @@ public class ExtensionScriptService {
                     process.destroyForcibly();
                     throw new ToolExecutor.ToolExecuteException(
                             "脚本执行超时（" + timeout + "秒）: " + prepared.script().getName());
-                } finally {
-                    EXECUTOR_SERVICE.shutdownNow();
                 }
             }
 

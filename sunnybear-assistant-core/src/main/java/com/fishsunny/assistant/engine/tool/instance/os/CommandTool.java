@@ -54,7 +54,7 @@ import java.util.concurrent.*;
 @ConditionalOnExpression("${engine.tool.os.enable:true} && ${engine.tool.os.command.enable:true}")
 public class CommandTool implements ToolHandler {
 
-    private static final ExecutorService executorService = Executors.newCachedThreadPool();
+    private static final ExecutorService EXECUTOR_SERVICE = Executors.newVirtualThreadPerTaskExecutor();
 
     public static final String AUTO = "auto";
     public static final String ALWAYS_ASKED = "alwaysAsked";
@@ -222,7 +222,7 @@ public class CommandTool implements ToolHandler {
             processBuilder.redirectErrorStream(true);
             Process process = processBuilder.start();
 
-            Future<String> future = executorService.submit(() -> {
+            Future<String> future = EXECUTOR_SERVICE.submit(() -> {
                 byte[] bytes = process.getInputStream().readAllBytes();
                 return new String(bytes, StandardCharsets.UTF_8);
             });
@@ -233,8 +233,6 @@ public class CommandTool implements ToolHandler {
             } catch (TimeoutException e) {
                 process.destroyForcibly();
                 throw new ToolExecutor.ToolExecuteException("命令执行超时（" + settings.getTimeout() + "秒），如果该命令打开了一个进程用于运行GUI等，那么这个报错是正常。");
-            } finally {
-                executorService.shutdownNow();
             }
 
             int exitCode = process.waitFor();
