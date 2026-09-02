@@ -232,12 +232,7 @@ public class ServiceProcessor {
                 %s
                 """.formatted(userQuestion);
 
-        ChatRequest request = new ChatRequest()
-                .loadSettings(cubAISettings)
-                .setMessages(List.of(
-                        new ChatMessage().system(judgmentPrompt),
-                        new ChatMessage().user(userQuestion)
-                ));
+        ChatRequest request = new ChatRequest().quickBuild(judgmentPrompt, userQuestion, cubAISettings);
 
         try {
             AtomicBoolean result = new AtomicBoolean(false);
@@ -268,12 +263,7 @@ public class ServiceProcessor {
         prompt = prompt.replace("${userPrompt}", userPrompt);
         prompt = prompt.replace("${assistantPrompt}", responsePrompt);
 
-        ChatRequest request = new ChatRequest()
-                .loadSettings(new AISettings().copy(cubAISettings).json())
-                .setMessages(List.of(
-                        new ChatMessage().system(TITLE_PROMPT),
-                        new ChatMessage().user(prompt)
-                ));
+        ChatRequest request = new ChatRequest().quickJsonBuild(TITLE_PROMPT, prompt, cubAISettings);
         try {
             ChatHttpHandler.CompleteCallback onComplete = (result, lastRes) -> {
                 chatSession.setName(parseTitle(result.content()));
@@ -431,6 +421,7 @@ public class ServiceProcessor {
                                           List<String> fileUrls) throws Exception {
 
         if (StringUtils.hasText(parentId)) {
+            // 父消息是工具消息，则插入一个空的助手消息作为占位符
             ChatMessage lastMessage = chatMessageService.findById(parentId);
             if (ChatMessage.ROLE_TOOL.equals(lastMessage.getRole())) {
                 ChatMessage paddingAssistant = new ChatMessage()
@@ -439,6 +430,7 @@ public class ServiceProcessor {
                 ChatMessage saved = chatMessageService.save(paddingAssistant);
                 parentId = saved.getId();
             }
+            // 父消息是助手消息且包含工具调用，则移除工具调用
             if (ChatMessage.ROLE_ASSISTANT.equals(lastMessage.getRole()) && !CollectionUtils.isEmpty(lastMessage.getToolCalls())) {
                 ChatMessage fixAssistant = new ChatMessage();
                 BeanUtils.copyProperties(lastMessage, fixAssistant);

@@ -62,7 +62,7 @@ public class PreviewSlashCommandHandler extends SlashCommandHandler {
             return;
         }
 
-        String content = "## 🧩 当前生效的系统提示词\n\n````text\n" + systemPrompt.strip() + "\n````";
+        String content = "## 🧩 当前生效的系统提示词\n\n````markdown\n" + systemPrompt.strip() + "\n````";
         handleMessage(content);
     }
 

@@ -186,12 +186,7 @@ public class FastSearchSlashCommandHandler extends SlashCommandHandler {
                 保留关键事实与来源链接，按系统提示词要求的格式输出。"""
                 .formatted(assistantPersona, keyword, searchResultJson);
 
-        ChatRequest request = new ChatRequest()
-                .loadSettings(cubSettings)
-                .setMessages(List.of(
-                        new ChatMessage().system(systemPrompt),
-                        new ChatMessage().user(userPrompt)
-                ));
+        ChatRequest request = new ChatRequest().quickBuild(systemPrompt, userPrompt, chatAiSettings);
 
         String header = "## 🌐 快速搜索：`" + keyword + "`\n\n";
         AtomicBoolean isFirst = new AtomicBoolean(true);

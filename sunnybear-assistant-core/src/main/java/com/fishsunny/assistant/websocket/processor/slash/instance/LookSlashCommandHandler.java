@@ -175,16 +175,15 @@ public class LookSlashCommandHandler extends SlashCommandHandler {
                         historyText.toString()
                 );
 
-        ChatRequest request = new ChatRequest()
-                .loadSettings(aiSettings)
-                .setMessages(List.of(
-                        new ChatMessage().system(systemPrompt),
-                        new ChatMessage().user(userPrompt)
-                ));
-
         String header = "## 📜 会话摘要：`" + sessionId.trim() + "`\n\n";
         AtomicBoolean isFirst = new AtomicBoolean(true);
-        chatHttpHandler.translate(chatSession.getId(), aiSettings.getAdapterName(), request, chatAiSettings.getStream(),
+
+        // 构建请求
+        ChatRequest request = new ChatRequest().quickBuild(userPrompt, systemPrompt, chatAiSettings);
+        // 构建数据
+        ChatHttpHandler.TranslateData data = new ChatHttpHandler.TranslateData(chatSession.getId(), aiSettings.getAdapterName(), chatAiSettings.getStream(), request);
+        // 构建处理器
+        ChatHttpHandler.TranslateHandler handler = new ChatHttpHandler.TranslateHandler(
                 tr -> {
                     ChatResponse masterResp = (ChatResponse) tr;
                     if (isFirst.get() && StringUtils.hasText(masterResp.getText())) {
@@ -206,6 +205,9 @@ public class LookSlashCommandHandler extends SlashCommandHandler {
                     }
                 }
         );
+
+
+        chatHttpHandler.translate(data, handler);
     }
 
     private void handleMessage(String content, String reasoning) {

@@ -3,14 +3,12 @@ package com.fishsunny.assistant.engine.tool.service;
 
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.settings.AISettings;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,12 +31,7 @@ public class DangerChecker {
     }
 
     public boolean checkDanger(String systemPrompt, String userPrompt) throws Exception {
-        ChatRequest request = new ChatRequest()
-                .loadSettings(aiSettings)
-                .setMessages(List.of(
-                        new ChatMessage().system(systemPrompt),
-                        new ChatMessage().user(userPrompt)
-                ));
+        ChatRequest request = new ChatRequest().quickBuild(systemPrompt, userPrompt, aiSettings);
         AtomicBoolean isDanger = new AtomicBoolean(false);
         AtomicReference<String> exceptionMessage = new AtomicReference<>("");
 

@@ -46,4 +46,17 @@ public class ChatRequest implements AIRequest {
         this.settings = new ChatSettings(settings);
         return this;
     }
+
+    public ChatRequest quickBuild(String system, String user, AISettings settings) {
+        messages.add(new ChatMessage().system(system));
+        messages.add(new ChatMessage().user(user));
+        return this.loadSettings(settings);
+    }
+
+    public ChatRequest quickJsonBuild(String system, String user, AISettings settings) {
+        messages.add(new ChatMessage().system(system));
+        messages.add(new ChatMessage().user(user));
+        this.loadSettings(new AISettings().copy(settings).json());
+        return this;
+    }
 }

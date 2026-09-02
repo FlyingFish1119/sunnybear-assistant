@@ -177,8 +177,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
                     List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, busSession, chatToAiProvider());
 
-                    // 如果是新的会话，则生成标题
-                    if (parseResult.isNewChat()) {
+                    // 如果是新的会话并且不是定时任务，则生成标题
+                    if (parseResult.isNewChat() && request.getCronId() == null) {
                         serviceProcessor.generateTitle(chatSession, request.getContent(), chatMessages.getFirst().resolveText());
                     }
 
