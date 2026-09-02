@@ -16,6 +16,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.util.List;
 
+//TODO 这部分还需要好好打磨，暂时先这样用着:P
 @ToolKitComponent(ToolKit.class)
 @ConditionalOnProperty(name = "engine.tool.mcp.enable", havingValue = "true", matchIfMissing = true)
 public class McpToolKit extends ToolKit {

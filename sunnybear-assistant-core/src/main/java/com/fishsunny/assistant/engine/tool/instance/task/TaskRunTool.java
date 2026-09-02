@@ -387,11 +387,10 @@ public class TaskRunTool implements ToolHandler {
         ToolAsk confirmation = new ToolAsk()
                 .setId(uuid)
                 .setToolName(NAME)
-                .setMessage(message)
-                .setTimeout(30);
+                .setMessage(message);
 
         session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
-        Boolean result = ChatController.awaitConfirm(uuid, 30);
+        Boolean result = ChatController.awaitConfirm(uuid, null);
         if (result == null) {
             throw new ToolExecutor.ToolExecuteException("用户未确认任务执行，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整任务。");
         }

@@ -88,7 +88,7 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("识别和理解图片内容，或（capture_type=raw）直接把原图以多模态 content 数组返回给上层模型查看。支持网络链接和本地文件路径。analyze 模式返回中文描述，适用于描述图片、识别图中文字、分析图表等。")
+                .setDescription("识别和理解图片内容，或（captureType=raw）直接把原图以多模态 content 数组返回给上层模型查看。支持网络链接和本地文件路径。analyze 模式返回中文描述，适用于描述图片、识别图中文字、分析图表等。")
                 .setRequired(List.of("url"));
 
         ToolRegister.Parameters urlParam = new ToolRegister.Parameters()
@@ -99,7 +99,7 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
                 .setParameterName("target")
                 .setType("string")
-                .setDescription("识别目标，告诉AI你希望从图片中重点了解什么。例如：'描述图片整体内容'、'识别图中的文字'、'判断图片中是否包含错误弹窗'、'分析图表中的数据趋势'。不填则默认对图片进行全面描述。capture_type=raw 时忽略。");
+                .setDescription("识别目标，告诉AI你希望从图片中重点了解什么。例如：'描述图片整体内容'、'识别图中的文字'、'判断图片中是否包含错误弹窗'、'分析图表中的数据趋势'。不填则默认对图片进行全面描述。captureType=raw 时忽略。");
 
         ToolRegister.Parameters captureTypeParam = new ToolRegister.Parameters()
                 .setParameterName("captureType")

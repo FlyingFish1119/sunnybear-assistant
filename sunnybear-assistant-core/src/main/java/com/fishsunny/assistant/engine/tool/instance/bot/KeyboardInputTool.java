@@ -205,14 +205,6 @@ public class KeyboardInputTool implements ToolHandler {
     public KeyboardInputTool(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
 
-        // 构建支持的按键列表（用于描述）
-        StringBuilder keyListBuilder = new StringBuilder();
-        KEY_MAP.keySet().stream()
-                .filter(k -> !k.contains("_") || k.startsWith("numpad"))
-                .distinct()
-                .limit(30)
-                .forEach(k -> keyListBuilder.append(k).append(", "));
-
         String description = "模拟键盘输入。支持三种方式：1) 单个按键（enter、escape）；2) 组合键（ctrl+c）；3) 文本字符串输入。注意：中文输入法可能导致输入异常。";
 
         register = new ToolRegister()

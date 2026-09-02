@@ -44,7 +44,7 @@ public class MouseMoveTool implements ToolHandler {
         this.objectMapper = objectMapper;
 
         Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-        String description = "将鼠标移动到指定目标坐标位置。"
+        String description = "将鼠标移动到指定目标坐标位置，尽可能不要在用户不知情的情况下进行移动，用户可能正在操作鼠标，会产生冲突，还可能惊吓到用户。"
                 + " 当前屏幕尺寸：" + screenSize.width + "x" + screenSize.height + "（宽x高，单位像素）。";
 
         register = new ToolRegister()
@@ -72,7 +72,7 @@ public class MouseMoveTool implements ToolHandler {
                 .setType("boolean")
                 .setDescription("（可选）是否为拖拽操作，默认为 false。设置为 true 时，鼠标将保持按下状态，并在移动结束后松开");
 
-        register.setParameters(List.of(xParam, yParam, durationParam));
+        register.setParameters(List.of(xParam, yParam, durationParam, dragParam));
     }
 
     @Override
@@ -106,7 +106,7 @@ public class MouseMoveTool implements ToolHandler {
             int startY = currentPos.y;
 
             // 如果拖动， 按下鼠标
-            if (arguments.getDrag()) {
+            if (Boolean.TRUE.equals(arguments.getDrag())) {
                 robot.mousePress(InputEvent.BUTTON1_DOWN_MASK);
             }
 
@@ -139,7 +139,7 @@ public class MouseMoveTool implements ToolHandler {
             robot.mouseMove(targetX, targetY);
 
             // 如果拖动，释放鼠标
-            if (arguments.getDrag()) {
+            if (Boolean.TRUE.equals(arguments.getDrag())) {
                 robot.mouseRelease(InputEvent.BUTTON1_DOWN_MASK);
             }
 

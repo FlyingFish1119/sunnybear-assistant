@@ -77,19 +77,19 @@ public class ScreenCaptureTool implements ToolHandler, MultimodalResultAble {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        截取屏幕。capture_type=analyze（默认）时截屏后由内部 AI 分析返回文本：location 模式返回 UI 元素归一化坐标（用于自动化点击），caption 模式返回屏幕内容的中文描述；
-                        capture_type=raw 时不调用内部 AI，直接把截屏图片通过多模态 tool content 数组返回，供你直接查看截屏图片进行分析。""")
+                        截取屏幕。captureType=analyze（默认）时截屏后由内部 AI 分析返回文本：location 模式返回 UI 元素归一化坐标（用于自动化点击），caption 模式返回屏幕内容的中文描述；
+                        captureType=raw 时不调用内部 AI，直接把截屏图片通过多模态 tool content 数组返回，供你直接查看截屏图片进行分析。""")
                 .setRequired(List.of());
 
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
                 .setParameterName("target")
                 .setType("string")
-                .setDescription("要定位或描述的目标UI元素描述。在 capture_type=analyze 且 mode=location 模式下必填，需要尽可能具体地描述元素的外观特征，以便AI在屏幕截图中精确定位。例如：'蓝色的提交按钮'、'左上角的文件菜单'、'用户名输入框'、'弹出窗口的关闭按钮'、'桌面上的Chrome图标'。在 caption 模式下可选，用于聚焦描述指定区域，不填则对屏幕进行全面描述。capture_type=raw 模式下忽略。");
+                .setDescription("要定位或描述的目标UI元素描述。在 captureType=analyze 且 mode=location 模式下必填，需要尽可能具体地描述元素的外观特征，以便AI在屏幕截图中精确定位。例如：'蓝色的提交按钮'、'左上角的文件菜单'、'用户名输入框'、'弹出窗口的关闭按钮'、'桌面上的Chrome图标'。在 caption 模式下可选，用于聚焦描述指定区域，不填则对屏幕进行全面描述。captureType=raw 模式下忽略。");
 
         ToolRegister.Parameters modeParam = new ToolRegister.Parameters()
                 .setParameterName("mode")
                 .setType("string")
-                .setDescription("工具模式，仅 capture_type=analyze 时生效。可选值：'location'（定位模式，截取屏幕后分析UI元素坐标位置，返回归一化坐标0-1）或 'caption'（描述模式，截取屏幕后使用AI用中文描述屏幕内容，支持 target 参数聚焦描述）。默认为 'location'。");
+                .setDescription("工具模式，仅 captureType=analyze 时生效。可选值：'location'（定位模式，截取屏幕后分析UI元素坐标位置，返回归一化坐标0-1）或 'caption'（描述模式，截取屏幕后使用AI用中文描述屏幕内容，支持 target 参数聚焦描述）。默认为 'location'。");
 
         ToolRegister.Parameters captureTypeParam = new ToolRegister.Parameters()
                 .setParameterName("captureType")

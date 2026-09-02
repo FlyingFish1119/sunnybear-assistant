@@ -46,7 +46,7 @@ public class FileSearchTool implements ToolHandler {
     private static final int MAX_RESULTS_LIMIT = 500;
 
     /** 最大递归深度 */
-    private static final int MAX_DEPTH = 10;
+    private static final int MAX_DEPTH = 15;
 
     /** 上下文行数上限 */
     private static final int MAX_CONTEXT_LINES = 5;

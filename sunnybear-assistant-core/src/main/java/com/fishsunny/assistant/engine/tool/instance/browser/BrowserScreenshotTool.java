@@ -69,14 +69,14 @@ public class BrowserScreenshotTool implements ToolHandler, MultimodalResultAble 
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        截取当前浏览器页面。capture_type=analyze（默认）时截屏后由内部 AI 识别返回中文描述（截图仅用于视觉确认：布局、图表、图片；优先用 browser_read_content_tool 获取结构化内容）；
-                        capture_type=raw 时不调用内部 AI，直接把截屏图片通过多模态 tool content 数组返回，供你直接查看截图图片进行分析。""")
+                        截取当前浏览器页面。captureType=analyze（默认）时截屏后由内部 AI 识别返回中文描述（截图仅用于视觉确认：布局、图表、图片；优先用 browser_read_content_tool 获取结构化内容）；
+                        captureType=raw 时不调用内部 AI，直接把截屏图片通过多模态 tool content 数组返回，供你直接查看截图图片进行分析。""")
                 .setRequired(List.of());
 
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
                 .setParameterName("target")
                 .setType("string")
-                .setDescription("（可选）描述你希望重点关注的页面区域或内容。capture_type=analyze 时 AI 会聚焦描述该目标；capture_type=raw 时忽略。例如 '导航栏的结构'、'搜索结果的第几条'、'表单的当前填写状态'。不填则对页面进行全面描述。");
+                .setDescription("（可选）描述你希望重点关注的页面区域或内容。captureType=analyze 时 AI 会聚焦描述该目标；captureType=raw 时忽略。例如 '导航栏的结构'、'搜索结果的第几条'、'表单的当前填写状态'。不填则对页面进行全面描述。");
 
         ToolRegister.Parameters captureTypeParam = new ToolRegister.Parameters()
                 .setParameterName("captureType")

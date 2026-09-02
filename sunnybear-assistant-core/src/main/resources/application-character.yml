@@ -24,6 +24,10 @@ engine:
       enable: false
     session:
       enable: false
+    mcp:
+      enable: false
+    agent:
+      enable: false
 
 plug:
   character:
