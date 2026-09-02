@@ -154,15 +154,6 @@ public class AnthropicStreamAIAdapter extends AnthropicBaseAIAdapter {
         return AnthropicStreamResponse.TYPE_MESSAGE_STOP.equals(event.getType());
     }
 
-    @Override
-    public boolean isMeaningfulEvent(AIResponse response) {
-        // ping 只是对端保活心跳，不代表生成进展，不能重置空闲超时
-        if (response == null || !targetRespCls.isAssignableFrom(response.getClass())) {
-            return true;
-        }
-        return !AnthropicStreamResponse.TYPE_PING.equals(((AnthropicStreamResponse) response).getType());
-    }
-
     // ==================== Accumulation state ====================
 
     private final Map<Integer, ToolUseMeta> contentBlockToolUse = new LinkedHashMap<>();
