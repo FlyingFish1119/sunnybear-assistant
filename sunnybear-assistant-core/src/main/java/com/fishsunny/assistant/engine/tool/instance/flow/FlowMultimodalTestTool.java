@@ -14,8 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.constants.ContentTypeVariable;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
-import com.fishsunny.assistant.engine.tool.framework.MultimodalResultHandler;
+import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
@@ -26,27 +25,19 @@ import lombok.Data;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
-import org.springframework.web.socket.WebSocketSession;
 
 import java.io.File;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 @ToolKitComponent(FlowToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.multimodal-test.enable:true}")
-public class FlowMultimodalTestTool implements ToolHandler, MultimodalResultHandler {
+public class FlowMultimodalTestTool implements ToolHandler, MultimodalResultAble {
 
     @Value("${assistant.file.base-path:data/}")
     private String basePath;
@@ -112,9 +103,9 @@ public class FlowMultimodalTestTool implements ToolHandler, MultimodalResultHand
                     """.replace("${startTime}", startTime.format(DATE_TIME_FORMATTER))
                     .replace("${url}", url)
                     .replace("${size}", String.valueOf(imageBytes.length))
-                    .replace("${imagePath}", imagePath.toAbsolutePath().toString());
+                    .replace("${imagePath}", imagePath.toString());
             return new ToolExecutor.ToolExecuteResponse(name(), result)
-                    .modalContent(imagePath.toAbsolutePath().toString(), ContentTypeVariable.IMAGE, base64);
+                    .modalContent(imagePath.toString(), ContentTypeVariable.IMAGE, base64);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
         } catch (Exception e) {

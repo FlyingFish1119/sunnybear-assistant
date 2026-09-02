@@ -9,19 +9,17 @@ package com.fishsunny.assistant.engine.tool.framework;
  * @Author FlyingFish-SunnyBear
  */
 
-import com.fishsunny.assistant.utils.image.ScaleImageHelper;
 import org.springframework.util.CollectionUtils;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
 
-public interface MultimodalResultHandler {
+public interface MultimodalResultAble {
 
     default void writeFile(List<MultimodalContent> contents) throws IOException {
         if (CollectionUtils.isEmpty(contents)) {

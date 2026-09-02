@@ -12,7 +12,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
-import com.fishsunny.assistant.engine.tool.framework.MultimodalResultHandler;
+import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
@@ -146,7 +146,7 @@ public class ToolExecutor {
             String safeArguments = repairJson(arguments);
             ToolExecuteResponse response = handler.action(safeArguments, context).setSucceed(true);
             // 多模态结果落盘：工具实现了 MultimodalResultHandler 时，由工具把 base64 写入文件。
-            if (handler instanceof MultimodalResultHandler multimodalHandler) {
+            if (handler instanceof MultimodalResultAble multimodalHandler) {
                 try {
                     multimodalHandler.writeFile(response.getMultimodalContents());
                 } catch (Exception e) {
@@ -326,6 +326,7 @@ public class ToolExecutor {
         private String name;
         private boolean succeed;
         private String result;
+        @JsonIgnore
         private List<MultimodalContent> multimodalContents = new ArrayList<>();
         public void setMultimodalContents(List<MultimodalContent> multimodalContents) {
             this.multimodalContents = multimodalContents == null ? new ArrayList<>() : multimodalContents;
