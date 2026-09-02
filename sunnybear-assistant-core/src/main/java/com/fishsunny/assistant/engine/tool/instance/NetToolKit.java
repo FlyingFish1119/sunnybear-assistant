@@ -8,8 +8,8 @@ package com.fishsunny.assistant.engine.tool.instance;
  * @Date 2026/7/1 17:34
  */
 
-import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
+import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;

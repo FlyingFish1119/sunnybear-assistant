@@ -105,22 +105,22 @@ engine:
         baseUrl: https://api.moonshot.cn/v1/chat/completions
         apiKey: ${MOONSHOT_API_KEY:}
         stream: true
-        adapterCls: com.fishsunny.assistant.engine.adapter.standard.StandardStreamAIAdapter
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.old.StandardStreamAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
-        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.chat.StandardAIRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.old.StandardAIRequest
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
-        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.chat.StandardStreamAIResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.StandardStreamAIResponse
 
       # Kimi（Moonshot）非流式
       - apiName: moonshot
         baseUrl: https://api.moonshot.cn/v1/chat/completions
         apiKey: ${MOONSHOT_API_KEY:}
         stream: false
-        adapterCls: com.fishsunny.assistant.engine.adapter.standard.StandardAIAdapter
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.old.StandardAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
-        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.chat.StandardAIRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.old.StandardAIRequest
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
-        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.chat.StandardAIResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.StandardAIResponse
 
       # DeepSeek 非流式
       - apiName: deepseek
@@ -171,22 +171,22 @@ engine:
         baseUrl: https://opencode.ai/zen/go/v1/chat/completions
         apiKey: ${OPEN_CODE_API_KEY:}
         stream: false
-        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextAIAdapter
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.multimodal.MultimodalAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
-        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.multimodal.MultimodalAIRequest
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
-        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextAIResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.StandardAIResponse
 
       # opencode-go 流式
       - apiName: opencode-go
         baseUrl: https://opencode.ai/zen/go/v1/chat/completions
         apiKey: ${OPEN_CODE_API_KEY:}
         stream: true
-        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextStreamAIAdapter
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.multimodal.MultimodalStreamAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
-        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.multimodal.MultimodalAIRequest
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
-        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextStreamAIResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.StandardStreamAIResponse
 
       # opencode-zen 非流式
       - apiName: opencode-zen

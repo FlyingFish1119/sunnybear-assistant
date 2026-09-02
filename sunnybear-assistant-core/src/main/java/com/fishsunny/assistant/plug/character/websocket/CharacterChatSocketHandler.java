@@ -12,7 +12,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
-import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.plug.character.db.BattleDbManager;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;

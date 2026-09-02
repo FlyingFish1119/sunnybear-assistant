@@ -16,8 +16,8 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
-import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandComponent;
-import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandHandler;
+import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandComponent;
+import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.util.CollectionUtils;

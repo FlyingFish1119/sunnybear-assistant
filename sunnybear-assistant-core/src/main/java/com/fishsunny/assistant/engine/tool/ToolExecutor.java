@@ -8,11 +8,14 @@ package com.fishsunny.assistant.engine.tool;
  * @Date 2026/6/29 01:08
  */
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
-import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
-import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
+import com.fishsunny.assistant.engine.tool.framework.MultimodalResultHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolKit;
+import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import jakarta.annotation.PreDestroy;
 import lombok.Data;
 import lombok.Getter;
@@ -141,7 +144,16 @@ public class ToolExecutor {
     private ToolExecuteResponse executeNow(ToolHandler handler, String toolName, String arguments, Map<String, Object> context) {
         try {
             String safeArguments = repairJson(arguments);
-            return handler.action(safeArguments, context).setSucceed(true);
+            ToolExecuteResponse response = handler.action(safeArguments, context).setSucceed(true);
+            // 多模态结果落盘：工具实现了 MultimodalResultHandler 时，由工具把 base64 写入文件。
+            if (handler instanceof MultimodalResultHandler multimodalHandler) {
+                try {
+                    multimodalHandler.writeFile(response.getMultimodalContents());
+                } catch (Exception e) {
+                    throw new ToolExecuteException("工具[" + toolName + "]执行成功，但文件结果落盘失败，请确认执行状态避免冲突: " + e.getMessage());
+                }
+            }
+            return response;
         } catch (ToolExecuteException e) {
             return new ToolExecuteResponse(toolName, "工具[" + toolName + "]执行失败，原因是：" + e.getMessage()).setSucceed(false);
         } catch (Exception e) {
@@ -314,10 +326,20 @@ public class ToolExecutor {
         private String name;
         private boolean succeed;
         private String result;
+        private List<MultimodalContent> multimodalContents = new ArrayList<>();
+        public void setMultimodalContents(List<MultimodalContent> multimodalContents) {
+            this.multimodalContents = multimodalContents == null ? new ArrayList<>() : multimodalContents;
+        }
 
         public ToolExecuteResponse(String name, String result) {
             this.name = name;
             this.result = result;
+        }
+
+        public ToolExecuteResponse modalContent(String path, String type, String data) {
+            this.multimodalContents = this.multimodalContents == null ? new ArrayList<>() : this.multimodalContents;
+            this.multimodalContents.add(new MultimodalContent(path, type, data));
+            return this;
         }
 
         public void status(String toolCallId, boolean succeed) {

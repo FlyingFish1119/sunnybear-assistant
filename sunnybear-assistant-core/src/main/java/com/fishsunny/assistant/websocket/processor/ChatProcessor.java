@@ -18,9 +18,11 @@ import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
+import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framwork.SubAgentToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
+import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
@@ -31,8 +33,8 @@ import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.ToolContextBuilder;
 import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.websocket.ChatProvider;
-import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandExecutor;
-import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandHandler;
+import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandExecutor;
+import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandHandler;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -146,7 +148,7 @@ public class ChatProcessor {
             originMessages = chatProvider.getSessionMessageProvider().apply(originMessages);
         }
         messages.add(new ChatMessage().system(systemPrompt));
-        messages.addAll(ChatMessage.fillAllFile(originMessages));
+        messages.addAll(originMessages);
 
         ChatRequest request = new ChatRequest()
                 .setMessages(messages)
@@ -237,7 +239,6 @@ public class ChatProcessor {
                                ChatProvider chatProvider,
                                String activeAssistantName
     ) throws Exception {
-
         // 注入工具（排除被子 Agent 及其原子工具）
         List<StandardToolRegister> toolRegisters = StandardToolRegister.buildToolRegisterExcluding(
                 toolExecutor, EXCLUDE_TOOLS);
@@ -324,7 +325,8 @@ public class ChatProcessor {
                     ToolExecutor.ToolExecuteResponse toolResult = toolResults.get(i);
                     try {
                         toolMessages.add(new ChatMessage()
-                                .tool(toolcall.getId(), objectMapper.writeValueAsString(toolResult))
+                                .tool(toolcall.getId(), objectMapper.writeValueAsString(toolResult),
+                                        MessageContent.toMessageContents(toolResult.getMultimodalContents()))
                                 .makeInsertable(chatSession.getId(), last.getId(), toolcall.getFunction().getName())
                         );
                     } catch (Exception e) {
@@ -360,7 +362,14 @@ public class ChatProcessor {
             }
         };
 
-        chatHttpHandler.translate(chatSession.getId(), effectiveAISettings.getAdapterName(), request, request.getSettings().getStream(), translate, complete);
+
+        request.setMessages(ChatMessage.fillAllFile(request.getMessages()));
+
+        ChatHttpHandler.TranslateData data = new ChatHttpHandler.TranslateData(
+                chatSession.getId(), effectiveAISettings.getAdapterName(), request.getSettings().getStream(), request);
+        ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler(translate, complete);
+
+        chatHttpHandler.translate(data, translateHandler);
     }
 
     private ChatMessage appendAssistantMessage(ChatMessage chatMessage) throws Exception {

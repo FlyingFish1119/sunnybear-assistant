@@ -8,13 +8,12 @@ package com.fishsunny.assistant.engine.tool.instance.session;
  * @Date 2026/7/7
  */
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
-import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
-import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolKit;
+import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.SessionToolKit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -23,7 +22,6 @@ import org.springframework.util.StringUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
@@ -54,10 +52,8 @@ public class SessionFileTool implements ToolHandler {
     private String basePath;
 
     private final ToolRegister register;
-    private final ObjectMapper objectMapper;
 
-    public SessionFileTool(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+    public SessionFileTool() {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("列出当前会话文件目录下的所有文件（含文件名、大小、修改时间）。")
@@ -67,26 +63,21 @@ public class SessionFileTool implements ToolHandler {
 
     @Override
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
-        // 从上下文获取会话信息
-        String sessionId = null;
-        if (context.get("chatSession") instanceof ChatSession chatSession) {
-            sessionId = chatSession.getId();
+        if (! (context.get("chatSession") instanceof ChatSession chatSession)) {
+            throw new ToolExecutor.ToolExecuteException("无法获取当前会话信息，请检查上下文配置");
         }
+        // 从上下文获取会话信息
+        String sessionId = chatSession.getId();
 
         if (!StringUtils.hasText(sessionId)) {
             throw new ToolExecutor.ToolExecuteException("无法获取当前会话 ID，请检查上下文配置");
         }
 
         // 构建会话文件目录路径
-        String resolvedBasePath = basePath;
-        if (!StringUtils.hasText(resolvedBasePath)) {
-            resolvedBasePath = System.getProperty("user.dir") + "/session";
-        }
-        Path sessionFileDir = Paths.get(resolvedBasePath, sessionId, "file");
+        Path sessionFileDir = chatSession.buildSessionFilePath(basePath);
 
         if (!Files.exists(sessionFileDir)) {
-            return new ToolExecutor.ToolExecuteResponse(name(),
-                    "会话文件目录不存在: " + sessionFileDir + "\n该会话尚未上传过文件。");
+            throw new ToolExecutor.ToolExecuteException("会话文件目录不存在: " + sessionFileDir + "\n该会话尚未上传过文件。");
         }
         if (!Files.isDirectory(sessionFileDir)) {
             throw new ToolExecutor.ToolExecuteException("会话文件路径不是目录: " + sessionFileDir);
@@ -146,7 +137,7 @@ public class SessionFileTool implements ToolHandler {
             // 表头
             String format = "%-" + maxNameLen + "s  %-" + maxSizeLen + "s  %-6s  %s\n";
             sb.append(String.format(format, "文件名", "大小", "类型", "修改时间"));
-            sb.append("-".repeat(maxNameLen + maxSizeLen + 42)).append("\n");
+            sb.repeat("-", maxNameLen + maxSizeLen + 42).append("\n");
 
             // 文件条目
             for (FileMeta f : files) {

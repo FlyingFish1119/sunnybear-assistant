@@ -17,6 +17,7 @@ import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
@@ -250,9 +251,10 @@ public class ToolCallLoop {
 
                     // 追加 tool 结果消息 + 日志回调：工具结果
                     for (int i = 0; i < toolCalls.size(); i++) {
-                        String toolResult = toolResults.get(i).getResult();
+                        ToolExecutor.ToolExecuteResponse toolResponse = toolResults.get(i);
                         messages.add(new ChatMessage()
-                                .tool(toolCalls.get(i).getId(), toolResult)
+                                .tool(toolCalls.get(i).getId(), toolResponse.getResult(),
+                                        MessageContent.toMessageContents(toolResponse.getMultimodalContents()))
                                 .setName(toolCalls.get(i).getFunction().getName())
                         );
                         if (logCallback != null) {
@@ -262,7 +264,7 @@ public class ToolCallLoop {
                                     .setPhase(AgentLogEntry.PHASE_TOOL_RESULT)
                                     .setAgentName("ToolCallLoop")
                                     .setTitle((succeed ? "✓ " : "✗ ") + toolCalls.get(i).getFunction().getName())
-                                    .setContent(AgentLogEntry.truncate(toolResult))
+                                    .setContent(AgentLogEntry.truncate(toolResponse.getResult()))
                                     .setLevel(succeed ? "info" : "warn")
                                     .setIteration(iteration));
                         }

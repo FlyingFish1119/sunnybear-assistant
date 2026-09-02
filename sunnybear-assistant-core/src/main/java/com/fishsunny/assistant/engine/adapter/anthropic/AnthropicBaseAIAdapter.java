@@ -70,7 +70,7 @@ public abstract class AnthropicBaseAIAdapter extends AIAdapter {
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
                 .build();
 
-        HttpResponse<Stream<String>> response = this.httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
+        HttpResponse<Stream<String>> response = super.httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
         if (response.statusCode() != 200) {
             try (Stream<String> bodyStream = response.body()) {
                 String errorMessage = bodyStream.collect(Collectors.joining("\n"));

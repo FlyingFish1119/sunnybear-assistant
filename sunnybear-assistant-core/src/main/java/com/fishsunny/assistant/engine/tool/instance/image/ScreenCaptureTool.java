@@ -13,9 +13,9 @@ import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
-import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
 import com.fishsunny.assistant.engine.tool.service.SystemPrompts;
 import com.fishsunny.assistant.settings.AISettings;
@@ -31,6 +31,7 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.net.http.HttpClient;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -49,12 +50,16 @@ public class ScreenCaptureTool implements ToolHandler {
     private static final String MODE_LOCATION = "location";
     private static final String MODE_CAPTION = "caption";
 
+    private final ToolRegister register;
+
     private final AISettings aiSettings;
     private final ChatHttpHandler chatHttpHandler;
     private final ObjectMapper objectMapper;
-    private final ToolRegister register;
 
-    public ScreenCaptureTool(@Qualifier(AISettings.OCR) AISettings aiSettings, ChatHttpHandler chatHttpHandler, ObjectMapper objectMapper) {
+    public ScreenCaptureTool(@Qualifier(AISettings.OCR) AISettings aiSettings,
+                             ChatHttpHandler chatHttpHandler,
+                             ObjectMapper objectMapper
+    ) {
         this.aiSettings = aiSettings;
         this.chatHttpHandler = chatHttpHandler;
         this.objectMapper = objectMapper;
@@ -153,7 +158,7 @@ public class ScreenCaptureTool implements ToolHandler {
                         new ChatMessage().userWithImage(prompt, imageBase64)
                 ));
         chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
-                aiSettings.getStream() != null ? aiSettings.getStream() : true,
+                aiSettings.getStream(),
                 null,
                 ((result, lastRes) -> caption.set(result.content()))
         );
@@ -187,7 +192,7 @@ public class ScreenCaptureTool implements ToolHandler {
                         new ChatMessage().userWithImage(prompt, imageBase64)
                 ));
         chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
-                aiSettings.getStream() != null ? aiSettings.getStream() : true,
+                aiSettings.getStream(),
                 null,
                 ((result, lastRes) -> caption.set(result.content()))
         );

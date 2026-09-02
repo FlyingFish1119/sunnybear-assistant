@@ -402,7 +402,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
                 return null;
             }
 
-            return response.getData().get(0).getEmbedding();
+            return response.getData().getFirst().getEmbedding();
         } catch (Exception e) {
             log.error("Embedding 编码失败: text={}, error={}", text, e.getMessage(), e);
             return null;

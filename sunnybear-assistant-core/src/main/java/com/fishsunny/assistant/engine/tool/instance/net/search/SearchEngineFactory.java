@@ -16,12 +16,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.net.http.HttpClient;
+
 @Component
 public class SearchEngineFactory {
 
     private static final Logger log = LoggerFactory.getLogger(SearchEngineFactory.class);
 
-    public SearchEngine create(String engineName, String apiKey, ObjectMapper objectMapper) {
+    private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
+    public SearchEngineFactory(ObjectMapper objectMapper, HttpClient httpClient) {
+        this.objectMapper = objectMapper;
+        this.httpClient = httpClient;
+    }
+
+    public SearchEngine create(String engineName, String apiKey) {
         if (engineName == null || engineName.isBlank()) {
             throw new IllegalArgumentException("搜索引擎名称不能为空");
         }
@@ -32,8 +41,8 @@ public class SearchEngineFactory {
         String normalizedName = engineName.trim().toLowerCase();
 
         SearchEngine engine = switch (normalizedName) {
-            case MetaSOAISearchEngine.ENGINE_NAME -> new MetaSOAISearchEngine(apiKey, objectMapper);
-            case SerperSearchEngine.ENGINE_NAME  -> new SerperSearchEngine(apiKey, objectMapper);
+            case MetaSOAISearchEngine.ENGINE_NAME -> new MetaSOAISearchEngine(apiKey, objectMapper, httpClient);
+            case SerperSearchEngine.ENGINE_NAME  -> new SerperSearchEngine(apiKey, objectMapper, httpClient);
             default -> throw new IllegalArgumentException(
                     "未知的搜索引擎: \"" + engineName + "\"，支持的引擎: metaso, serper");
         };

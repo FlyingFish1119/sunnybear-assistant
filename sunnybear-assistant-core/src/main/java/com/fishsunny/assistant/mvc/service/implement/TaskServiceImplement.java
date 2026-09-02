@@ -24,6 +24,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 
@@ -209,13 +210,16 @@ public class TaskServiceImplement implements TaskService {
 
         // 从列表中移除当前步骤
         TaskStep target = null;
-        for (java.util.Iterator<TaskStep> it = allSteps.iterator(); it.hasNext(); ) {
+        for (Iterator<TaskStep> it = allSteps.iterator(); it.hasNext(); ) {
             TaskStep s = it.next();
             if (s.getId().equals(stepId)) {
                 target = s;
                 it.remove();
                 break;
             }
+        }
+        if (target == null) {
+            throw new UserException("任务步骤不存在: id=" + stepId);
         }
 
         // 更新目标步骤的字段

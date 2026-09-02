@@ -10,8 +10,8 @@ package com.fishsunny.assistant.engine.protocol.text;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
-import com.fishsunny.assistant.engine.protocol.standard.chat.option.StandardAIThinking;
-import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.engine.protocol.standard.option.StandardAIThinking;
+import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.protocol.text.messages.TextMessage;
 import lombok.Data;
 import lombok.experimental.Accessors;

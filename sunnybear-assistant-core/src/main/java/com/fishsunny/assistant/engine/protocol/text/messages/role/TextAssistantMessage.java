@@ -9,7 +9,7 @@ package com.fishsunny.assistant.engine.protocol.text.messages.role;
  */
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fishsunny.assistant.engine.protocol.standard.chat.tools.request.StandardToolRequest;
+import com.fishsunny.assistant.engine.protocol.standard.tools.request.StandardToolRequest;
 import com.fishsunny.assistant.engine.protocol.text.messages.TextMessage;
 import lombok.Data;
 import lombok.experimental.Accessors;

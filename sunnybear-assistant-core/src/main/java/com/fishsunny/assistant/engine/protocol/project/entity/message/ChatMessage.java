@@ -105,6 +105,19 @@ public class ChatMessage {
         text(result);
         return this;
     }
+
+    public ChatMessage tool(String toolCallId, String result, List<MessageContent> multimodalContents) {
+        setToolCallId(toolCallId);
+        setName("");
+        setRole(ROLE_TOOL);
+        List<MessageContent> contents = new ArrayList<>();
+        contents.add(new TextContent(result));
+        if (multimodalContents != null) {
+            contents.addAll(multimodalContents);
+        }
+        setContents(contents);
+        return this;
+    }
     public ChatMessage user(String text) {
         setRole(ROLE_USER);
         text(text);

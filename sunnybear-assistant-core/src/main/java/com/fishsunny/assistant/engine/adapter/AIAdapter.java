@@ -13,6 +13,9 @@ import java.util.stream.Stream;
 @Getter
 public abstract class AIAdapter {
 
+    /** 共享 HttpClient，避免每次请求都 newHttpClient() */
+    protected final HttpClient httpClient;
+
     protected String baseUrl;
 
     protected String apiKey;
@@ -24,9 +27,6 @@ public abstract class AIAdapter {
     protected Class<? extends AIResponse> masterRespCls;
 
     protected Class<? extends AIResponse> targetRespCls;
-
-    /** 共享 HttpClient，避免每次请求都 newHttpClient() */
-    protected final HttpClient httpClient;
 
     public abstract AIRequest convertToTarget(AIRequest request);
 

@@ -27,7 +27,6 @@ public class MetaSOAISearchEngine implements SearchEngine {
     public static final String ENGINE_NAME = "metaso";
 
     private static final String API_URL = "https://metaso.cn/api/v1/search";
-    private static final int CONNECT_TIMEOUT_SECONDS = 5;
     private static final int REQUEST_TIMEOUT_SECONDS = 30;
     private static final int HTTP_OK = 200;
 
@@ -35,12 +34,10 @@ public class MetaSOAISearchEngine implements SearchEngine {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    public MetaSOAISearchEngine(String apiKey, ObjectMapper objectMapper) {
+    public MetaSOAISearchEngine(String apiKey, ObjectMapper objectMapper, HttpClient httpClient) {
         this.apiKey = apiKey;
         this.objectMapper = objectMapper;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
-                .build();
+        this.httpClient = httpClient;
     }
 
     @Override

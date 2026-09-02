@@ -11,7 +11,7 @@ package com.fishsunny.assistant.engine.protocol.project;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.settings.ChatSettings;
-import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.experimental.Accessors;

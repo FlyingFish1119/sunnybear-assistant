@@ -13,9 +13,9 @@ import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
-import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
 import com.fishsunny.assistant.engine.tool.service.SystemPrompts;
 import com.fishsunny.assistant.settings.AISettings;
@@ -56,18 +56,26 @@ public class ImageCaptionTool implements ToolHandler {
     private static final String TYPE_IMAGE = "image";
     private static final String TYPE_VIDEO = "video";
 
+    private final ToolRegister register;
+
     private final AISettings aiSettings;
     private final ChatHttpHandler chatHttpHandler;
     private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
     private final Settings settings;
-    private final ToolRegister register;
 
     @Autowired
-    public ImageCaptionTool(@Qualifier(AISettings.OCR) AISettings aiSettings, ChatHttpHandler chatHttpHandler, ObjectMapper objectMapper, @Qualifier(SETTINGS) Settings settings) {
+    public ImageCaptionTool(@Qualifier(AISettings.OCR) AISettings aiSettings,
+                            ChatHttpHandler chatHttpHandler,
+                            ObjectMapper objectMapper,
+                            @Qualifier(SETTINGS) Settings settings,
+                            HttpClient httpClient
+    ) {
         this.aiSettings = aiSettings;
         this.chatHttpHandler = chatHttpHandler;
         this.objectMapper = objectMapper;
         this.settings = settings;
+        this.httpClient = httpClient;
 
         register = new ToolRegister()
                 .setName(NAME)
@@ -155,12 +163,11 @@ public class ImageCaptionTool implements ToolHandler {
 
     private String findImage(Arguments arguments) throws Exception {
         if (arguments.getUrl().startsWith("http")) {
-            HttpClient httpClient = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(new URI(arguments.getUrl()))
                     .timeout(Duration.ofSeconds(MAX_TIMEOUT))
                     .build();
-            HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            HttpResponse<InputStream> response = this.httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             try (InputStream inputStream = response.body()) {
                 String data = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
                 if (response.statusCode() != 200) {
@@ -187,12 +194,11 @@ public class ImageCaptionTool implements ToolHandler {
      */
     private String findVideo(Arguments arguments) throws Exception {
         if (arguments.getUrl().startsWith("http")) {
-            HttpClient httpClient = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(new URI(arguments.getUrl()))
                     .timeout(Duration.ofSeconds(MAX_TIMEOUT))
                     .build();
-            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            HttpResponse<byte[]> response = this.httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
             byte[] bytes = response.body();
             if (response.statusCode() != 200) {
                 throw new ToolExecutor.ToolExecuteException("下载视频失败：" + new String(bytes, StandardCharsets.UTF_8));

@@ -1,7 +1,7 @@
 package com.fishsunny.assistant.engine.protocol.text;
 
 import com.fishsunny.assistant.engine.protocol.AIResponse;
-import com.fishsunny.assistant.engine.protocol.standard.chat.response.usage.StandardUsage;
+import com.fishsunny.assistant.engine.protocol.standard.response.usage.StandardUsage;
 import com.fishsunny.assistant.engine.protocol.text.response.TextChoice;
 import lombok.Data;
 import lombok.experimental.Accessors;

@@ -12,6 +12,7 @@ import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.adapter.AIAdapterProperties;
 import com.fishsunny.assistant.engine.adapter.AIAdapterRegister;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,10 +22,8 @@ import org.springframework.util.CollectionUtils;
 import java.net.http.HttpClient;
 import java.util.*;
 
-@Component
+@Slf4j
 public class AIAdapterFactory {
-
-    private final static Logger logger = LoggerFactory.getLogger(AIAdapterFactory.class);
 
     /** 非流式适配器配方表；volatile 支持热替换（reload 后新请求即按新配方制造适配器） */
     private volatile Map<String, AIAdapterRegister> adapterMap = new HashMap<>();
@@ -54,7 +53,7 @@ public class AIAdapterFactory {
             throw new IllegalArgumentException("Register list is empty, keep current adapters");
         }
         rebuild(registers);
-        logger.info("Adapter config reloaded, available adapters: {}", getAvailableAdapterNames());
+        log.info("Adapter config reloaded, available adapters: {}", getAvailableAdapterNames());
     }
 
     /** 按新的 register 列表重建配方表；全部失败时抛异常，旧配方不受影响 */
@@ -71,7 +70,7 @@ public class AIAdapterFactory {
                 }
                 successCount++;
             } catch (Exception e) {
-                logger.error("Add adapter failed: {}", e.getMessage());
+                log.error("Add adapter failed: {}", e.getMessage());
             }
         }
         if (successCount == 0) {
@@ -79,7 +78,7 @@ public class AIAdapterFactory {
         }
         this.adapterMap = newAdapterMap;
         this.streamAdapterMap = newStreamAdapterMap;
-        logger.info("expected adapter count: {}, success adapter count: {}", registers.size(), successCount);
+        log.info("expected adapter count: {}, success adapter count: {}", registers.size(), successCount);
     }
 
     public AIAdapterRegister getRegister(String apiName, boolean stream) {
@@ -114,7 +113,7 @@ public class AIAdapterFactory {
         try {
             return register.getAdapterCls().getConstructor(AIAdapterOption.class).newInstance(option);
         } catch (Exception e) {
-            logger.error("Get adapter failed: {}", e.getMessage());
+            log.error("Get adapter failed: {}", e.getMessage());
             throw new RuntimeException(e);
         }
     }

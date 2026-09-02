@@ -12,8 +12,8 @@ package com.fishsunny.assistant.plug.character.tool.dice;
 
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
+import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.plug.character.entity.CharacterSessionMapping;
 import com.fishsunny.assistant.plug.character.service.CharacterSessionMappingService;
 import org.springframework.beans.factory.annotation.Value;

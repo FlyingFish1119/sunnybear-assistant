@@ -14,9 +14,9 @@ package com.fishsunny.assistant.engine.tool.instance.net;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
-import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.NetToolKit;
 import com.fishsunny.assistant.engine.tool.instance.net.search.SearchEngine;
 import com.fishsunny.assistant.engine.tool.instance.net.search.SearchEngineFactory;
@@ -121,7 +121,7 @@ public class WebSearchTool implements ToolHandler {
 
         // 工厂创建引擎并执行搜索
         try {
-            SearchEngine engine = searchEngineFactory.create(engineName, apiKey, objectMapper);
+            SearchEngine engine = searchEngineFactory.create(engineName, apiKey);
             String rawJson = engine.search(arguments.getQ(), arguments.getSize(), arguments.getScope());
 
             Object jsonNode = objectMapper.readTree(rawJson);

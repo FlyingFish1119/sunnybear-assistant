@@ -14,8 +14,8 @@ import com.fishsunny.assistant.engine.tool.service.extension.ExtensionScriptMeta
 import com.fishsunny.assistant.engine.tool.service.extension.ExtensionScriptService;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.settings.AssistantSettings;
-import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandComponent;
-import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandHandler;
+import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandComponent;
+import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;

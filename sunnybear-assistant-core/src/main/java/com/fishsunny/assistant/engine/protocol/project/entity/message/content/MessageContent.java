@@ -16,9 +16,12 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.fi
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.video.VideoContent;
+import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -77,8 +80,13 @@ public abstract class MessageContent {
                 continue;
             }
             if (content instanceof ImageContent imageContent) {
-                String path = imageContent.getUrl();
-                File file = new File(path);
+                String url = imageContent.getUrl();
+                // 已是 data URI（如多模态 tool 结果经同轮复用），直接透传，无需读取本地文件
+                if (url.startsWith("data:")) {
+                    messageContents.add(new ImageContent(url));
+                    continue;
+                }
+                File file = new File(url);
                 if (!file.exists()) {
                     continue;
                 }
@@ -87,12 +95,16 @@ public abstract class MessageContent {
                     String dataUrl = ObjectUtils.encodeToDataUrl(imageContent.getUrl(), bytes);
                     messageContents.add(new ImageContent(dataUrl));
                 } catch (Exception e) {
-                    log.error("Error loading image file: {}", path, e);
+                    log.error("Error loading image file: {}", url, e);
                 }
             }
             if (content instanceof VideoContent videoContent) {
-                String path = videoContent.getUrl();
-                File file = new File(path);
+                String url = videoContent.getUrl();
+                if (url.startsWith("data:")) {
+                    messageContents.add(new VideoContent(url));
+                    continue;
+                }
+                File file = new File(url);
                 if (!file.exists()) {
                     continue;
                 }
@@ -101,12 +113,16 @@ public abstract class MessageContent {
                     String dataUrl = ObjectUtils.encodeToDataUrl(videoContent.getUrl(), bytes);
                     messageContents.add(new VideoContent(dataUrl));
                 } catch (Exception e) {
-                    log.error("Error loading video file: {}", path, e);
+                    log.error("Error loading video file: {}", url, e);
                 }
             }
             if (content instanceof AudioContent audioContent) {
-                String path = audioContent.getUrl();
-                File file = new File(path);
+                String url = audioContent.getUrl();
+                if (url.startsWith("data:")) {
+                    messageContents.add(new AudioContent(url));
+                    continue;
+                }
+                File file = new File(url);
                 if (!file.exists()) {
                     continue;
                 }
@@ -115,13 +131,14 @@ public abstract class MessageContent {
                     String dataUrl = ObjectUtils.encodeToDataUrl(audioContent.getUrl(), bytes);
                     messageContents.add(new AudioContent(dataUrl));
                 } catch (Exception e) {
-                    log.error("Error loading audio file: {}", path, e);
+                    log.error("Error loading audio file: {}", url, e);
                 }
             }
             if (content instanceof FileContent fileContent) {
                 String path = fileContent.getUrl();
                 if (! ObjectUtils.canHumanReadFile(path)) {
                     messageContents.add(new TextContent("用户上传了文件：" + fileContent.getUrl()));
+                    continue;
                 }
                 File file = new File(path);
                 if (!file.exists()) {
@@ -132,6 +149,31 @@ public abstract class MessageContent {
                 } catch (Exception e) {
                     log.error("Error loading file: {}", path, e);
                 }
+            }
+        }
+        return messageContents;
+    }
+
+
+    /**
+     * 把多模态内容列表转换为项目 MessageContent 列表。
+     */
+    public static List<MessageContent> toMessageContents(List<MultimodalContent> contents) {
+        List<MessageContent> messageContents = new ArrayList<>();
+        if (CollectionUtils.isEmpty(contents)) {
+            return messageContents;
+        }
+        for (MultimodalContent content : contents) {
+            String data = content.getPath();
+            if (!StringUtils.hasText(data)) {
+                continue;
+            }
+            switch (content.getType() == null ? "" : content.getType()) {
+                case ContentTypeVariable.IMAGE -> messageContents.add(new ImageContent(data));
+                case ContentTypeVariable.AUDIO -> messageContents.add(new AudioContent(data));
+                case ContentTypeVariable.VIDEO -> messageContents.add(new VideoContent(data));
+                case ContentTypeVariable.TEXT -> messageContents.add(new TextContent(data));
+                default -> messageContents.add(new FileContent(data));
             }
         }
         return messageContents;

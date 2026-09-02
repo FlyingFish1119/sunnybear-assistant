@@ -38,11 +38,9 @@ public class EmbeddingHttpHandler {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    public EmbeddingHttpHandler(ObjectMapper objectMapper) {
+    public EmbeddingHttpHandler(ObjectMapper objectMapper, HttpClient httpClient) {
         this.objectMapper = objectMapper;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(TIMEOUT)
-                .build();
+        this.httpClient = httpClient;
     }
 
     /**

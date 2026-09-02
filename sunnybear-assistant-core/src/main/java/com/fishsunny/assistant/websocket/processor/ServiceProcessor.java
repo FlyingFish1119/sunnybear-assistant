@@ -45,6 +45,7 @@ import org.springframework.web.socket.WebSocketSession;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -468,13 +469,10 @@ public class ServiceProcessor {
         if (files == null || files.isEmpty()) {
             return writtenPaths;
         }
-        if (!StringUtils.hasText(basePath)) {
-            basePath = System.getProperty("user.dir") + "/session";
-        }
-        String dirPath = basePath + "/" + chatSession.getId() + "/file";
-        File dir = new File(dirPath);
+        Path path = chatSession.buildSessionFilePath(basePath);
+        File dir = path.toFile();
         if (!dir.exists() && !dir.mkdirs()) {
-            log.error("创建目录失败: {}", dirPath);
+            log.error("创建目录失败: {}", path.toAbsolutePath());
             return writtenPaths;
         }
         for (int i = 0; i < files.size(); i++) {
@@ -499,7 +497,7 @@ public class ServiceProcessor {
             }
 
             try {
-                java.nio.file.Path filePath = Paths.get(dirPath, fileName);
+                Path filePath = path.resolve(fileName);
                 Files.write(filePath, data);
                 writtenPaths.add(filePath.toAbsolutePath().toString());
             } catch (IOException e) {

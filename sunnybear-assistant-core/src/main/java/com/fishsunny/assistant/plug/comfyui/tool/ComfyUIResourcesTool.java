@@ -1,9 +1,9 @@
 package com.fishsunny.assistant.plug.comfyui.tool;
 
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
-import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.plug.comfyui.service.ComfyUIBridgeService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 
