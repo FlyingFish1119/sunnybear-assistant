@@ -8,7 +8,7 @@ import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
-import com.fishsunny.assistant.engine.tool.instance.SystemPrompts;
+import com.fishsunny.assistant.engine.tool.service.SystemPrompts;
 import com.fishsunny.assistant.plug.android.service.AndroidBridgeService;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;

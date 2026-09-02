@@ -10,21 +10,18 @@ package com.fishsunny.assistant.engine.tool.instance.os;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ToolAsk;
-import com.fishsunny.assistant.engine.ChatHttpHandler;
-import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
+import com.fishsunny.assistant.engine.tool.service.DangerChecker;
 import com.fishsunny.assistant.mvc.controller.ChatController;
-import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.ToolContextBuilder;
-import com.fishsunny.assistant.constants.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -36,8 +33,6 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,8 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 命令行工具
@@ -60,6 +53,8 @@ import java.util.concurrent.atomic.AtomicReference;
 @ToolKitComponent(OSToolKit.class)
 @ConditionalOnExpression("${engine.tool.os.enable:true} && ${engine.tool.os.command.enable:true}")
 public class CommandTool implements ToolHandler {
+
+    private static final ExecutorService executorService = Executors.newCachedThreadPool();
 
     public static final String AUTO = "auto";
     public static final String ALWAYS_ASKED = "alwaysAsked";
@@ -155,20 +150,18 @@ public class CommandTool implements ToolHandler {
 
     private final ObjectMapper objectMapper;
     private final Settings settings;
-    private final ChatHttpHandler chatHttpHandler;
-    private final AISettings aiSettings;
+    private final DangerChecker dangerChecker;
 
     @Value("${assistant.file.base-path:}")
     private String basePath;
 
     public CommandTool(ObjectMapper objectMapper,
                        @Qualifier(SETTINGS) Settings settings,
-                       @Qualifier(AISettings.CUB) AISettings aiSettings,
-                       ChatHttpHandler chatHttpHandler) {
+                       DangerChecker dangerChecker
+                       ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
-        this.chatHttpHandler = chatHttpHandler;
-        this.aiSettings = aiSettings;
+        this.dangerChecker = dangerChecker;
     }
 
     @Override
@@ -229,8 +222,7 @@ public class CommandTool implements ToolHandler {
             processBuilder.redirectErrorStream(true);
             Process process = processBuilder.start();
 
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-            Future<String> future = executor.submit(() -> {
+            Future<String> future = executorService.submit(() -> {
                 byte[] bytes = process.getInputStream().readAllBytes();
                 return new String(bytes, StandardCharsets.UTF_8);
             });
@@ -242,7 +234,7 @@ public class CommandTool implements ToolHandler {
                 process.destroyForcibly();
                 throw new ToolExecutor.ToolExecuteException("命令执行超时（" + settings.getTimeout() + "秒），如果该命令打开了一个进程用于运行GUI等，那么这个报错是正常。");
             } finally {
-                executor.shutdownNow();
+                executorService.shutdownNow();
             }
 
             int exitCode = process.waitFor();
@@ -416,32 +408,7 @@ public class CommandTool implements ToolHandler {
                 需要检测的命令如下：
                 ${command}
                 """.replace("${command}", arguments.getCommand());
-        ChatRequest request = new ChatRequest()
-                .loadSettings(aiSettings)
-                .setMessages(List.of(
-                        new ChatMessage().system(systemPrompt),
-                        new ChatMessage().user(userPrompt)
-                ));
-        AtomicBoolean isDanger = new AtomicBoolean(false);
-        AtomicReference<String> exceptionMessage = new AtomicReference<>("");
-        chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
-                aiSettings.getStream(),
-                null,
-                ((result, lastRes) -> {
-                    String answer = result.content() != null ? result.content().trim().toLowerCase() : "";
-                    if ("true".equals(answer)) {
-                        isDanger.set(true);
-                    } else if ("false".equals(answer)) {
-                        isDanger.set(false);
-                    } else {
-                        exceptionMessage.set("危险解析器输出了无法识别的格式[" + result.content() + "]，工具停止执行。");
-                    }
-                })
-        );
-        if (StringUtils.hasText(exceptionMessage.get())) {
-            throw new ToolExecutor.ToolExecuteException(exceptionMessage.get());
-        }
-        return isDanger.get();
+        return dangerChecker.checkDanger(systemPrompt, userPrompt);
     }
 
     private void ask(String uuid, WebSocketSession session, Arguments arguments) throws Exception {
@@ -538,18 +505,7 @@ public class CommandTool implements ToolHandler {
                 processBuilder.redirectErrorStream(true);
                 Process process = processBuilder.start();
 
-                try (InputStream inputStream = process.getInputStream();
-                     OutputStream outputStream = Files.newOutputStream(logFile,
-                             StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
-
-                    byte[] buffer = new byte[8192];
-                    int bytesRead;
-                    while ((bytesRead = inputStream.read(buffer)) != -1) {
-                        outputStream.write(buffer, 0, bytesRead);
-                        outputStream.flush();
-                    }
-                }
-
+                OSToolKit.writeLog(logFile, process);
                 int exitCode = process.waitFor();
 
                 // 写入结束标记

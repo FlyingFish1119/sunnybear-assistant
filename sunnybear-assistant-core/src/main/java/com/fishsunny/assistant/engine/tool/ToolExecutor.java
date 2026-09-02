@@ -10,7 +10,6 @@ package com.fishsunny.assistant.engine.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
-import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
@@ -21,6 +20,7 @@ import lombok.experimental.Accessors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -252,14 +252,15 @@ public class ToolExecutor {
      */
     public <T> List<T> buildTool(Function<ToolRegister, T> function, List<Class<? extends ToolKit>> includeKits) {
         List<T> tools = new ArrayList<>();
-        if (includeKits == null || includeKits.isEmpty()) {
+        if (CollectionUtils.isEmpty(includeKits)) {
             return tools;
         }
         for (Map.Entry<Class<? extends ToolKit>, ToolKit> entry : toolKitMap.entrySet()) {
-            if (includeKits.contains(entry.getKey())) {
-                for (ToolHandler tool : entry.getValue().getTools()) {
-                    tools.add(function.apply(tool.getRegister()));
-                }
+            if (! includeKits.contains(entry.getKey())) {
+                continue;
+            }
+            for (ToolHandler tool : entry.getValue().getTools()) {
+                tools.add(function.apply(tool.getRegister()));
             }
         }
         return tools;
@@ -292,15 +293,16 @@ public class ToolExecutor {
      * @param <T>           目标类型
      * @return 转换后的工具注册列表
      */
-    public <T> List<T> buildToolByHandlers(Function<ToolRegister, T> function, java.util.Set<String> includeHandlers) {
+    public <T> List<T> buildToolByHandlers(Function<ToolRegister, T> function, Set<String> includeHandlers) {
         List<T> tools = new ArrayList<>();
-        if (includeHandlers == null || includeHandlers.isEmpty()) {
+        if (CollectionUtils.isEmpty(includeHandlers)) {
             return tools;
         }
         for (ToolHandler tool : toolMap.values()) {
-            if (includeHandlers.contains(tool.name())) {
-                tools.add(function.apply(tool.getRegister()));
+            if (!includeHandlers.contains(tool.name())) {
+                continue;
             }
+            tools.add(function.apply(tool.getRegister()));
         }
         return tools;
     }

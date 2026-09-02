@@ -10,6 +10,7 @@ package com.fishsunny.assistant.websocket.processor;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ChatMessageRequest;
 import com.fishsunny.assistant.dto.FileData;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
@@ -29,7 +30,6 @@ import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.UserSettings;
 import com.fishsunny.assistant.utils.Base64Utils;
 import com.fishsunny.assistant.utils.ObjectUtils;
-import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.websocket.SessionMessageBus;
 import com.fishsunny.assistant.websocket.SynchronizedWebSocketSession;
 import org.slf4j.Logger;
@@ -40,7 +40,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.File;

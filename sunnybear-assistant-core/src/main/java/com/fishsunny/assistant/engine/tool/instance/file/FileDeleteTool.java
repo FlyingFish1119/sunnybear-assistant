@@ -10,21 +10,18 @@ package com.fishsunny.assistant.engine.tool.instance.file;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ToolAsk;
-import com.fishsunny.assistant.engine.ChatHttpHandler;
-import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKit;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
+import com.fishsunny.assistant.engine.tool.service.DangerChecker;
 import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
 import com.fishsunny.assistant.mvc.controller.ChatController;
-import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.ToolContextBuilder;
-import com.fishsunny.assistant.constants.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -42,8 +39,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 /**
@@ -65,17 +60,15 @@ public class FileDeleteTool implements ToolHandler {
 
     private final ObjectMapper objectMapper;
     private final Settings settings;
-    private final ChatHttpHandler chatHttpHandler;
-    private final AISettings aiSettings;
+    private final DangerChecker dangerChecker;
 
     public FileDeleteTool(ObjectMapper objectMapper,
                           @Qualifier(SETTINGS) Settings settings,
-                          @Qualifier(AISettings.CUB) AISettings aiSettings,
-                          ChatHttpHandler chatHttpHandler) {
+                          DangerChecker dangerChecker
+                          ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
-        this.chatHttpHandler = chatHttpHandler;
-        this.aiSettings = aiSettings;
+        this.dangerChecker = dangerChecker;
     }
 
     @Override
@@ -104,10 +97,6 @@ public class FileDeleteTool implements ToolHandler {
 
             boolean isDirectory = Files.isDirectory(targetPath);
             boolean recursive = arguments.getRecursive() != null && arguments.getRecursive();
-
-            if (isDirectory && recursive && !arguments.getRecursive()) {
-                // 目录且未指定 recursive=true，默认拒绝
-            }
 
             // 收集删除目标的信息，用于安全检测和展示
             String targetInfo = buildTargetInfo(targetPath, isDirectory, recursive);
@@ -248,32 +237,7 @@ public class FileDeleteTool implements ToolHandler {
                 .replace("${recursive}", String.valueOf(recursive))
                 .replace("${targetInfo}", targetInfo);
 
-        ChatRequest request = new ChatRequest()
-                .loadSettings(aiSettings)
-                .setMessages(List.of(
-                        new ChatMessage().system(systemPrompt),
-                        new ChatMessage().user(userPrompt)
-                ));
-        AtomicBoolean isDanger = new AtomicBoolean(false);
-        AtomicReference<String> exceptionMessage = new AtomicReference<>("");
-        chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
-                aiSettings.getStream(),
-                null,
-                ((result, lastRes) -> {
-                    String answer = result.content() != null ? result.content().trim().toLowerCase() : "";
-                    if ("true".equals(answer)) {
-                        isDanger.set(true);
-                    } else if ("false".equals(answer)) {
-                        isDanger.set(false);
-                    } else {
-                        exceptionMessage.set("危险解析器输出了无法识别的格式[" + result.content() + "]，工具停止执行。");
-                    }
-                })
-        );
-        if (StringUtils.hasText(exceptionMessage.get())) {
-            throw new ToolExecutor.ToolExecuteException(exceptionMessage.get());
-        }
-        return isDanger.get();
+        return dangerChecker.checkDanger(systemPrompt, userPrompt);
     }
 
     /**

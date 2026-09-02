@@ -9,13 +9,16 @@ package com.fishsunny.assistant.engine.tool.service.extension;
  */
 
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.io.*;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -214,20 +217,8 @@ public class ExtensionScriptService {
         try {
             process = prepared.processBuilder().start();
 
-            try (InputStream inputStream = process.getInputStream();
-                 OutputStream outputStream = Files.newOutputStream(logFile,
-                         StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
-
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    outputStream.write(buffer, 0, bytesRead);
-                    outputStream.flush();
-                }
-            }
-
-            int exitCode = process.waitFor();
-            appendFooter(logFile, "脚本执行完成，退出码: " + exitCode);
+            OSToolKit.writeLog(logFile, process);
+            appendFooter(logFile, "脚本执行完成，退出码: " + process.waitFor());
         } catch (Exception e) {
             log.error("Error executing script in background: {}", e.getMessage());
             appendFooter(logFile, "脚本执行异常: " + e.getMessage());

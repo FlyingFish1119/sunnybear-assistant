@@ -9,6 +9,8 @@ package com.fishsunny.assistant.websocket.processor;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ControlSign;
+import com.fishsunny.assistant.constants.PromptReplaceVariable;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
@@ -17,7 +19,6 @@ import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.standard.chat.tools.register.StandardToolRegister;
-import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.SubAgentToolHandler;
 import com.fishsunny.assistant.exception.UserException;
@@ -28,10 +29,8 @@ import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.ToolContextBuilder;
-import com.fishsunny.assistant.constants.ControlSign;
-import com.fishsunny.assistant.constants.PromptReplaceVariable;
+import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.websocket.ChatProvider;
-import com.fishsunny.assistant.websocket.SessionMessageBus;
 import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandExecutor;
 import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandHandler;
 import lombok.Getter;
@@ -78,26 +77,26 @@ public class ChatProcessor {
                             ToolExecutor toolExecutor,
                             KnowledgeService knowledgeService,
                             MemoryService memoryService,
-                            List<SubAgentToolHandler> subAgentTools,
                             @Qualifier(AISettings.CHAT) AISettings aiSettings,
                             @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
                             SlashCommandExecutor slashCommandExecutor,
-                            ChatHttpHandler chatHttpHandler) {
+                            ChatHttpHandler chatHttpHandler,
+                            List<SubAgentToolHandler> subAgentTools
+                         ) {
         this.chatMessageService = chatMessageService;
         this.objectMapper = objectMapper;
         this.assistantSettings = assistantSettings;
         this.toolExecutor = toolExecutor;
         this.knowledgeService = knowledgeService;
         this.memoryService = memoryService;
-        for (SubAgentToolHandler subAgentTool : subAgentTools) {
-            EXCLUDE_TOOLS.add(subAgentTool.name());
-        }
         this.aiSettings = aiSettings;
         this.chatProAISettings = chatProAISettings;
         this.slashCommandExecutor = slashCommandExecutor;
         this.chatHttpHandler = chatHttpHandler;
-    }
 
+        EXCLUDE_TOOLS.addAll(subAgentTools.stream().map(SubAgentToolHandler::name).toList());
+        log.info("Exclude tools: {}", EXCLUDE_TOOLS);
+    }
     /**
      * 核心对话处理逻辑
      */

@@ -17,7 +17,7 @@ import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
-import com.fishsunny.assistant.engine.tool.instance.SystemPrompts;
+import com.fishsunny.assistant.engine.tool.service.SystemPrompts;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
 import com.fishsunny.assistant.utils.image.ScaleImageHelper;

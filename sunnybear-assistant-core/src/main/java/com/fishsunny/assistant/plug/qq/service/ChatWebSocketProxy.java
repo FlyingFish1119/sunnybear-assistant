@@ -9,11 +9,11 @@ package com.fishsunny.assistant.plug.qq.service;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ChatMessageRequest;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

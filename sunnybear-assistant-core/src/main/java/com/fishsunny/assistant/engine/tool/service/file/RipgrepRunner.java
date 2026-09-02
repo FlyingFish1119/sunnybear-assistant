@@ -24,11 +24,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -263,10 +259,11 @@ public class RipgrepRunner {
             Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
         }
         Files.writeString(sizeFile, String.valueOf(Files.size(target)));
-        if (!platform.startsWith("windows")) {
-            target.toFile().setExecutable(true, false);
+        if (!platform.startsWith("windows") && !target.toFile().setExecutable(true, false)) {
+            log.warn("无法设置 rg 二进制可执行权限: {}", target);
+        } else {
+            log.info("已解压内置 rg 到 {}", target);
         }
-        log.info("已解压内置 rg 到 {}", target);
         return target;
     }
 

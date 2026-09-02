@@ -8,8 +8,8 @@ package com.fishsunny.assistant.engine.protocol.project.entity.message.content.i
  * @Date 2026/6/27 20:28
  */
 
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.constants.ContentTypeVariable;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import lombok.Data;
 import lombok.experimental.Accessors;
 

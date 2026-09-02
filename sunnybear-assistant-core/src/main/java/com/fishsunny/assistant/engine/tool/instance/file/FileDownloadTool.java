@@ -10,6 +10,7 @@ package com.fishsunny.assistant.engine.tool.instance.file;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
@@ -20,7 +21,6 @@ import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.utils.ToolContextBuilder;
-import com.fishsunny.assistant.constants.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -117,16 +117,33 @@ public class FileDownloadTool implements ToolHandler {
                 }
             }
 
-            // 执行下载
-            int timeoutSeconds = arguments.getTimeout() != null && arguments.getTimeout() > 0
-                    ? arguments.getTimeout()
-                    : DEFAULT_TIMEOUT_SECONDS;
+            String result = download(arguments, savePath);
+            return new ToolExecutor.ToolExecuteResponse(name(), result);
+        } catch (ToolExecutor.ToolExecuteException e) {
+            throw e;
+        } catch (IOException e) {
+            throw new ToolExecutor.ToolExecuteException("文件下载失败（IO 错误）: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ToolExecutor.ToolExecuteException("文件下载被中断: " + e.getMessage());
+        } catch (Exception e) {
+            throw new ToolExecutor.ToolExecuteException(e.getMessage());
+        } finally {
+            if (lock != null) lock.close();
+            ChatController.cleanupConfirm(uuid);
+        }
+    }
 
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(timeoutSeconds))
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
+    private String download(Arguments arguments, Path savePath) throws Exception {
+        // 执行下载
+        int timeoutSeconds = arguments.getTimeout() != null && arguments.getTimeout() > 0
+                ? arguments.getTimeout()
+                : DEFAULT_TIMEOUT_SECONDS;
 
+        try (HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(timeoutSeconds))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build()) {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(arguments.getUrl()))
                     .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
@@ -145,33 +162,21 @@ public class FileDownloadTool implements ToolHandler {
 
             try (InputStream in = response.body()) {
                 Files.copy(in, savePath, StandardCopyOption.REPLACE_EXISTING);
+
+                long savedSize = Files.size(savePath);
+
+                StringBuilder sb = new StringBuilder();
+                sb.append("文件下载成功\n\n");
+                sb.append("下载地址: ").append(arguments.getUrl()).append("\n");
+                sb.append("保存路径: ").append(savePath).append("\n");
+                if (contentLength > 0) {
+                    sb.append("响应大小: ").append(ToolKit.formatSize(contentLength)).append("（").append(contentLength).append(" 字节）\n");
+                }
+                sb.append("实际大小: ").append(ToolKit.formatSize(savedSize)).append("（").append(savedSize).append(" 字节）\n");
+                sb.append("HTTP 状态: ").append(statusCode).append("\n");
+
+                return sb.toString();
             }
-
-            long savedSize = Files.size(savePath);
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("文件下载成功\n\n");
-            sb.append("下载地址: ").append(arguments.getUrl()).append("\n");
-            sb.append("保存路径: ").append(savePath).append("\n");
-            if (contentLength > 0) {
-                sb.append("响应大小: ").append(ToolKit.formatSize(contentLength)).append("（").append(contentLength).append(" 字节）\n");
-            }
-            sb.append("实际大小: ").append(ToolKit.formatSize(savedSize)).append("（").append(savedSize).append(" 字节）\n");
-            sb.append("HTTP 状态: ").append(statusCode).append("\n");
-
-            return new ToolExecutor.ToolExecuteResponse(name(), sb.toString());
-        } catch (ToolExecutor.ToolExecuteException e) {
-            throw e;
-        } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("文件下载失败（IO 错误）: " + e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ToolExecutor.ToolExecuteException("文件下载被中断: " + e.getMessage());
-        } catch (Exception e) {
-            throw new ToolExecutor.ToolExecuteException(e.getMessage());
-        } finally {
-            if (lock != null) lock.close();
-            ChatController.cleanupConfirm(uuid);
         }
     }
 

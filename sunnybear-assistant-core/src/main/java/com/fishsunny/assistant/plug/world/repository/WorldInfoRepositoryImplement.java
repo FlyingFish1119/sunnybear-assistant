@@ -9,7 +9,6 @@ package com.fishsunny.assistant.plug.world.repository;
  */
 
 import com.fishsunny.assistant.plug.world.entity.WorldInfo;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;

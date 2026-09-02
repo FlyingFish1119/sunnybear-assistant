@@ -8,7 +8,6 @@ package com.fishsunny.assistant.websocket.processor;
  * @Date 2026/8/24
  */
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.dto.ChatMessageRequest;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
@@ -19,14 +18,11 @@ import com.fishsunny.assistant.settings.AISettings;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 临时聊天处理器：接收一条用户消息，使用 mission AI 做单次问答。

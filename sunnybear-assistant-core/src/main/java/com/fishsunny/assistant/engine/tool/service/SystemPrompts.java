@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.tool.instance;
+package com.fishsunny.assistant.engine.tool.service;
 
 /*
  * @Usage 工具内置系统提示词常量。AI 配置中的 prompt 为占位符时（如 task/cub），各使用点在此固化自身 system prompt。

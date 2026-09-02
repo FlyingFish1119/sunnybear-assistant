@@ -9,6 +9,7 @@ package com.fishsunny.assistant.engine.protocol.project.processor;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.protocol.project.AgentLogEntry;
@@ -18,7 +19,6 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.settings.AISettings;
-import com.fishsunny.assistant.constants.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;

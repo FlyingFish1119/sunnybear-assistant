@@ -105,12 +105,12 @@ public class FileListTool implements ToolHandler {
         }
 
         // 解析参数默认值
-        int depth = arguments.getDepth() == null ? 1 : Math.min(Math.max(arguments.getDepth(), 1), MAX_DEPTH);
+        int depth = arguments.getDepth() == null ? 1 : Math.clamp(arguments.getDepth(), 1, MAX_DEPTH);
 
         String filter = arguments.getFilter();
 
         int offset = arguments.getOffset() == null ? 0 : Math.max(arguments.getOffset(), 0);
-        int limit = arguments.getLimit() == null ? DEFAULT_LIMIT : Math.min(Math.max(arguments.getLimit(), 1), MAX_LIMIT);
+        int limit = arguments.getLimit() == null ? DEFAULT_LIMIT : Math.clamp(arguments.getLimit(), 1, MAX_LIMIT);
 
         try {
             // 构建文件树

@@ -10,13 +10,13 @@ package com.fishsunny.assistant.engine.protocol.project.entity.message.content;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fishsunny.assistant.constants.ContentTypeVariable;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.audio.AudioContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.file.FileContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.video.VideoContent;
 import com.fishsunny.assistant.utils.ObjectUtils;
-import com.fishsunny.assistant.constants.ContentTypeVariable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

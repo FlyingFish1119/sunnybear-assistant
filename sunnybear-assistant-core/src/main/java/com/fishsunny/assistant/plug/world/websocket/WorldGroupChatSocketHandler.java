@@ -9,11 +9,11 @@ package com.fishsunny.assistant.plug.world.websocket;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ChatMessageRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.plug.world.service.WorldGroupChatService;
-import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import com.fishsunny.assistant.websocket.SessionMessageBus;
 import com.fishsunny.assistant.websocket.SynchronizedWebSocketSession;
@@ -21,7 +21,6 @@ import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.task.TaskExecutor;
@@ -29,9 +28,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
-import java.util.List;
-
-    @Slf4j
+@Slf4j
     @Component("worldGroupChatSocketHandler")
     public class WorldGroupChatSocketHandler extends ChatWebSocketHandler {
 

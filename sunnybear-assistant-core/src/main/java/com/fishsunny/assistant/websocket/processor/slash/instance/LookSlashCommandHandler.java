@@ -10,7 +10,6 @@ package com.fishsunny.assistant.websocket.processor.slash.instance;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
-import com.fishsunny.assistant.engine.protocol.AIResponse;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
@@ -20,8 +19,6 @@ import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandComponent;
 import com.fishsunny.assistant.websocket.processor.slash.framwork.SlashCommandHandler;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;

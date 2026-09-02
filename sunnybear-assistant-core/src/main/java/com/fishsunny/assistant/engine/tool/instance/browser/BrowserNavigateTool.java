@@ -9,17 +9,17 @@ package com.fishsunny.assistant.engine.tool.instance.browser;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.service.browser.PlaywrightBrowserService;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framwork.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framwork.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
+import com.fishsunny.assistant.engine.tool.service.browser.PlaywrightBrowserService;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.utils.ToolContextBuilder;
-import com.fishsunny.assistant.constants.ControlSign;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;

@@ -9,7 +9,6 @@ package com.fishsunny.assistant.engine.tool.instance.mcp;
  * @Date 2026/8/25 16:30
  */
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framwork.ToolHandler;
