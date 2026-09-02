@@ -26,7 +26,7 @@ import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
-import com.fishsunny.assistant.utils.ToolContextBuilder;
+import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
@@ -113,7 +113,7 @@ public class NetExploreTool implements SubAgentToolHandler {
                 throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: chatSession 缺失");
             }
 
-            if (ChatSession.TYPE_CHAT.equals(chatSession.getType()) && !ToolContextBuilder.isUnreviewed(context)) {
+            if (ChatSession.TYPE_CHAT.equals(chatSession.getType()) && !ToolContextUtils.isUnreviewed(context)) {
                 // ========== 确认机制（无审查模式跳过） ==========
                 String uuid = UUID.randomUUID().toString();
                 try {

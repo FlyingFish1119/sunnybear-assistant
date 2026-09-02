@@ -282,6 +282,21 @@
                                         <div class="markdown-body" v-html="$md.render($toolParsed(content).result)"></div>
                                     </template>
                                 </div>
+                                <div v-else-if="content.type === 'image'" class="message-attachment-image">
+                                    <img :src="$fileUrl.proxy(content.url)" @click.stop="$fileUrl.previewImage(content.url)" />
+                                </div>
+                                <div v-else-if="content.type === 'audio'" class="message-attachment-audio">
+                                    <audio :src="$fileUrl.proxy(content.url)" controls preload="metadata"></audio>
+                                </div>
+                                <div v-else-if="content.type === 'video'" class="message-attachment-video">
+                                    <video :src="$fileUrl.proxy(content.url)" controls preload="metadata"></video>
+                                </div>
+                                <div v-else-if="content.type === 'file'" class="message-attachment-file">
+                                    <a :href="$fileUrl.proxy(content.url)" target="_blank">
+                                        <i data-lucide="file" style="width:18px;height:18px"></i>
+                                        <span>{{ $fileUrl.fileName(content.url) }}</span>
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </div>

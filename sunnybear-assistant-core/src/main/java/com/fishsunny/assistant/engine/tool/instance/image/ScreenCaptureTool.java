@@ -48,9 +48,6 @@ public class ScreenCaptureTool implements ToolHandler, MultimodalResultAble {
 
     public static final String NAME = "screen_capture_tool";
 
-    /** 图片缩放的最大宽度（像素） */
-    private static final int MAX_IMAGE_WIDTH = 1024;
-
     /** 模式常量 */
     private static final String MODE_LOCATION = "location";
     private static final String MODE_CAPTION = "caption";
@@ -140,7 +137,7 @@ public class ScreenCaptureTool implements ToolHandler, MultimodalResultAble {
             throw new ToolExecutor.ToolExecuteException("当前上下文缺少 chatSession，无法执行 raw 截屏返回模式");
         }
         Path imagePath = chatSession.buildSessionFilePath(basePath).resolve(UUID.randomUUID() + ".png");
-        String result = "已截取屏幕，并把截屏图片通过多模态 tool 内容返回。请直接查看返回的截屏图片进行分析定位；"
+        String result = "已截取屏幕。\n"
                 + "图片已保存至：" + imagePath;
         return new ToolExecutor.ToolExecuteResponse(name(), result)
                 .modalContent(imagePath.toString(), ContentTypeVariable.IMAGE, imageBase64);
@@ -166,11 +163,8 @@ public class ScreenCaptureTool implements ToolHandler, MultimodalResultAble {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         ImageIO.write(capture, "png", outputStream);
 
-        // 4. 压缩图片
         byte[] bytes = outputStream.toByteArray();
-        MultipartScaleImageHelper helper = new MultipartScaleImageHelper(bytes);
-        byte[] afterScale = helper.scaleImage(MAX_IMAGE_WIDTH);
-        return ScaleImageHelper.byteArrayToBase64(afterScale);
+        return ScaleImageHelper.byteArrayToBase64(bytes);
     }
 
     /**

@@ -30,7 +30,7 @@ import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.mvc.service.TaskPromptService;
 import com.fishsunny.assistant.mvc.service.TaskService;
 import com.fishsunny.assistant.settings.AISettings;
-import com.fishsunny.assistant.utils.ToolContextBuilder;
+import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
@@ -127,7 +127,7 @@ public class TaskRunTool implements ToolHandler {
             // 确认机制：始终要求用户确认（无审查模式跳过）
             String uuid = UUID.randomUUID().toString();
             try {
-                if (!ToolContextBuilder.isUnreviewed(context)) {
+                if (!ToolContextUtils.isUnreviewed(context)) {
                     ask(uuid, (WebSocketSession) context.get("session"), task, steps);
                 }
             } finally {

@@ -14,6 +14,7 @@ package com.fishsunny.assistant.utils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.socket.TextMessage;
@@ -70,9 +71,12 @@ public final class ToolExecuteNotifier {
         Consumer<ToolExecutor.ToolExecuteResponse> afterExec = response -> {
             try {
                 String toolName = response.getName();
+                // 携带多模态 content 分片：工具结果含图片/音频时，实时 tool_response 帧即带上该分片，
+                // 前端 tool 气泡可立刻渲染媒体，无需等待 init_tool 落库帧
                 ChatMessage resultMsg = new ChatMessage()
                         .setId(UUID.randomUUID().toString())
-                        .tool(response.getToolCallId(), objectMapper.writeValueAsString(response))
+                        .tool(response.getToolCallId(), objectMapper.writeValueAsString(response),
+                                MessageContent.toMessageContents(response.getMultimodalContents()))
                         .makeInsertable(chatSessionId, null, toolName)
                         .setCreateTime(LocalDateTime.now());
                 ChatResponse push = new ChatResponse().afterToolCall(List.of(resultMsg));

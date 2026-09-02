@@ -16,7 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class ToolContextBuilder {
+public class ToolContextUtils {
 
     public static Map<String, Object> defaultBuild(Object... args) {
         List<String> clsSimpleNames = new ArrayList<>();

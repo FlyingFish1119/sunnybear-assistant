@@ -21,7 +21,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import com.fishsunny.assistant.engine.tool.service.DangerChecker;
 import com.fishsunny.assistant.mvc.controller.ChatController;
-import com.fishsunny.assistant.utils.ToolContextBuilder;
+import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -177,7 +177,7 @@ public class CommandTool implements ToolHandler {
             }
 
             // 无审查模式：跳过黑名单/白名单/AI 危险检测与用户确认，直接执行
-            if (!ToolContextBuilder.isUnreviewed(context)) {
+            if (!ToolContextUtils.isUnreviewed(context)) {
                 switch (settings.getMode()) {
                     case AUTO:
                         if (isBlacklisted(arguments.getCommand())) {

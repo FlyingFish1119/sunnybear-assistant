@@ -9,23 +9,26 @@ package com.fishsunny.assistant.engine.tool.instance.image;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ContentTypeVariable;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
 import com.fishsunny.assistant.engine.tool.service.SystemPrompts;
 import com.fishsunny.assistant.settings.AISettings;
-import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
 import com.fishsunny.assistant.utils.image.ScaleImageHelper;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
@@ -37,6 +40,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -45,16 +49,21 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @ToolKitComponent(ImageToolKit.class)
 @ConditionalOnExpression("${engine.tool.image.enable:true} && ${engine.tool.image.image-caption.enable:true}")
-public class ImageCaptionTool implements ToolHandler {
+public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
 
     public static final String NAME = "image_caption_tool";
     public static final String SETTINGS = "image_caption_tool_settings";
 
+    /** capture_type 常量：analyze = 现有行为（内部 AI 识别返回文本）；raw = 直接把原图以多模态 content 数组返回 */
+    private static final String CAPTURE_TYPE_ANALYZE = "analyze";
+    private static final String CAPTURE_TYPE_RAW = "raw";
+
     private static final Long MAX_TIMEOUT = 15L;
     private static final Integer DEFAULT_IMAGE_LENGTH = 1024;
 
-    private static final String TYPE_IMAGE = "image";
-    private static final String TYPE_VIDEO = "video";
+    /** 会话文件落盘根路径 */
+    @Value("${assistant.file.base-path:data/}")
+    private String basePath;
 
     private final ToolRegister register;
 
@@ -79,25 +88,25 @@ public class ImageCaptionTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("识别和理解图片/视频内容。支持网络链接和本地文件，返回中文描述。适用于描述图片、识别图中文字、分析图表、理解视频等。")
+                .setDescription("识别和理解图片内容，或（capture_type=raw）直接把原图以多模态 content 数组返回给上层模型查看。支持网络链接和本地文件路径。analyze 模式返回中文描述，适用于描述图片、识别图中文字、分析图表等。")
                 .setRequired(List.of("url"));
 
         ToolRegister.Parameters urlParam = new ToolRegister.Parameters()
                 .setParameterName("url")
                 .setType("string")
-                .setDescription("图片或视频的URL地址。支持 http/https 网络链接，也支持本地文件绝对路径。当 type 为 image 时，传入图片URL；当 type 为 video 时，传入视频URL。");
+                .setDescription("图片的URL地址。支持 http/https 网络链接，也支持本地文件绝对路径。");
 
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
                 .setParameterName("target")
                 .setType("string")
-                .setDescription("识别目标，告诉AI你希望从图片/视频中重点了解什么。例如：'描述图片整体内容'、'识别图中的文字'、'判断图片中是否包含错误弹窗'、'分析图表中的数据趋势'。不填则默认对媒体内容进行全面描述。");
+                .setDescription("识别目标，告诉AI你希望从图片中重点了解什么。例如：'描述图片整体内容'、'识别图中的文字'、'判断图片中是否包含错误弹窗'、'分析图表中的数据趋势'。不填则默认对图片进行全面描述。capture_type=raw 时忽略。");
 
-        ToolRegister.Parameters typeParam = new ToolRegister.Parameters()
-                .setParameterName("type")
+        ToolRegister.Parameters captureTypeParam = new ToolRegister.Parameters()
+                .setParameterName("captureType")
                 .setType("string")
-                .setDescription("媒体类型。可选值：'image'（图片模式，默认值）或 'video'（视频模式）。image模式处理图片URL，video模式处理视频URL。默认为 'image'。");
+                .setDescription("返回方式。可选值：'analyze'（默认，内部 AI 识别图片并返回中文描述）或 'raw'（不调用 AI，直接把原图以多模态内容返回，由你直接查看图片分析）。默认为 'analyze'。");
 
-        register.setParameters(List.of(urlParam, targetParam, typeParam));
+        register.setParameters(List.of(urlParam, targetParam, captureTypeParam));
     }
 
     @Override
@@ -107,20 +116,61 @@ public class ImageCaptionTool implements ToolHandler {
         }
         try {
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
-            String type = StringUtils.hasText(arguments.getType()) ? arguments.getType() : TYPE_IMAGE;
+            String captureType = StringUtils.hasText(arguments.getCaptureType()) ? arguments.getCaptureType() : CAPTURE_TYPE_ANALYZE;
 
             if (!StringUtils.hasText(arguments.getUrl())) {
                 throw new ToolExecutor.ToolExecuteException("参数错误，url不能为空。");
             }
 
-            if (TYPE_VIDEO.equals(type)) {
-                return executeVideoMode(arguments);
-            } else {
-                return executeImageMode(arguments);
+            if (CAPTURE_TYPE_RAW.equals(captureType)) {
+                return executeRawImageMode(arguments, context);
             }
+            return executeImageMode(arguments);
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }
+    }
+
+    /**
+     * raw 模式：不调用内部 AI，按内部 OCR 同一套解析（网络 data URI / 本地文件缩放）
+     * 拿到图片后落盘为会话目录下的图片文件，并以多模态 tool content 数组返回，供外层模型直接查看原图。
+     */
+    private ToolExecutor.ToolExecuteResponse executeRawImageMode(Arguments arguments, Map<String, Object> context) throws Exception {
+        if (!(context.get("chatSession") instanceof ChatSession chatSession)) {
+            throw new ToolExecutor.ToolExecuteException("当前上下文缺少 chatSession，无法执行 raw 图片返回模式");
+        }
+        String dataUri = findImage(arguments);
+        byte[] bytes = ScaleImageHelper.base64ToByteArray(dataUri);
+        if (bytes.length == 0) {
+            throw new ToolExecutor.ToolExecuteException("图片数据为空，无法执行 raw 图片返回模式");
+        }
+        String ext = extractImageSubtype(dataUri);
+        Path imagePath = chatSession.buildSessionFilePath(basePath).resolve(UUID.randomUUID() + "." + ext);
+        String result = "已获取图片。\n"
+                + "图片已保存至：" + imagePath;
+        return new ToolExecutor.ToolExecuteResponse(name(), result)
+                .modalContent(imagePath.toString(), ContentTypeVariable.IMAGE, ScaleImageHelper.byteArrayToBase64(bytes));
+    }
+
+    /**
+     * 从 data URI（如 data:image/jpeg;base64,...）提取图片子类型作为文件后缀，缺省返回 png。
+     */
+    private String extractImageSubtype(String dataUri) {
+        if (dataUri == null || !dataUri.startsWith("data:")) {
+            return "png";
+        }
+        int colonIdx = dataUri.indexOf(':');
+        int semicolonIdx = dataUri.indexOf(';');
+        if (semicolonIdx > colonIdx) {
+            String mimeType = dataUri.substring(colonIdx + 1, semicolonIdx);
+            int slashIdx = mimeType.indexOf('/');
+            String subType = slashIdx >= 0 ? mimeType.substring(slashIdx + 1) : mimeType;
+            if (subType.contains("+")) {
+                subType = subType.substring(0, subType.indexOf('+'));
+            }
+            return subType.isBlank() ? "png" : subType;
+        }
+        return "png";
     }
 
     /**
@@ -138,20 +188,6 @@ public class ImageCaptionTool implements ToolHandler {
         return execute(request);
     }
 
-    /**
-     * video 模式：处理视频URL，构建 VideoContent 发送给 AI。
-     */
-    private ToolExecutor.ToolExecuteResponse executeVideoMode(Arguments arguments) throws Exception {
-        String userPrompt = "请用中文解释视频中的内容。\n[任务目标]\n" + arguments.getTarget();
-        ChatRequest request = new ChatRequest()
-                .loadSettings(aiSettings)
-                .setMessages(List.of(
-                        new ChatMessage().system(SystemPrompts.OCR),
-                        new ChatMessage().userWithVideo(userPrompt, findVideo(arguments))
-                ));
-        return execute(request);
-
-    }
     private ToolExecutor.ToolExecuteResponse execute(ChatRequest request) throws Exception {
         AtomicReference<String> caption = new AtomicReference<>("");
         chatHttpHandler.translate(UUID.randomUUID().toString(), aiSettings.getAdapterName(), request,
@@ -189,30 +225,6 @@ public class ImageCaptionTool implements ToolHandler {
         }
     }
 
-    /**
-     * 读取视频文件或下载网络视频，编码为 dataUrl。
-     */
-    private String findVideo(Arguments arguments) throws Exception {
-        if (arguments.getUrl().startsWith("http")) {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(new URI(arguments.getUrl()))
-                    .timeout(Duration.ofSeconds(MAX_TIMEOUT))
-                    .build();
-            HttpResponse<byte[]> response = this.httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            byte[] bytes = response.body();
-            if (response.statusCode() != 200) {
-                throw new ToolExecutor.ToolExecuteException("下载视频失败：" + new String(bytes, StandardCharsets.UTF_8));
-            }
-            return ObjectUtils.encodeToDataUrl(arguments.getUrl(), bytes);
-        } else {
-            File file = new File(arguments.getUrl());
-            try (FileInputStream inputStream = new FileInputStream(file)) {
-                byte[] bytes = inputStream.readAllBytes();
-                return ObjectUtils.encodeToDataUrl(arguments.getUrl(), bytes);
-            }
-        }
-    }
-
     @Override
     public String name() {
         return NAME;
@@ -228,7 +240,7 @@ public class ImageCaptionTool implements ToolHandler {
     public static class Arguments{
         private String url;
         private String target;
-        private String type;
+        private String captureType;
     }
 
     @Data

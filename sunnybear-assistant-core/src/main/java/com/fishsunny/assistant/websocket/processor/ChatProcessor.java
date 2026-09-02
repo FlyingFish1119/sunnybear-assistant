@@ -21,7 +21,6 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
 import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
@@ -30,7 +29,7 @@ import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
-import com.fishsunny.assistant.utils.ToolContextBuilder;
+import com.fishsunny.assistant.utils.ToolContextUtils;
 import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.websocket.ChatProvider;
 import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandExecutor;
@@ -312,7 +311,7 @@ public class ChatProcessor {
 
                 // 并行执行
                 // 构建上下文：session 用总线包装器，工具发送的消息（确认/执行状态等）走总线广播，重连客户端也能收到
-                Map<String, Object> context = ToolContextBuilder.minimumBuild(session, chatSession);
+                Map<String, Object> context = ToolContextUtils.minimumBuild(session, chatSession);
                 if (chatProvider.getContextProvider() != null) {
                     context = chatProvider.getContextProvider().apply(context);
                 }

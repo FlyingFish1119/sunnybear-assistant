@@ -170,8 +170,8 @@
 
 /* ---- 消息内附件 ---- */
 .message-attachment-image img {
-    max-width: 200px;
-    max-height: 200px;
+    max-width: min(100%, 600px);
+    max-height: 70vh;
     border-radius: 8px;
     cursor: pointer;
     margin: 4px 0;
@@ -179,7 +179,7 @@
 .message-attachment-audio audio,
 .message-attachment-video video {
     max-width: 100%;
-    max-height: 200px;
+    max-height: 480px;
     border-radius: 8px;
     margin: 4px 0;
 }
@@ -235,7 +235,7 @@
     .drag-overlay-content i { width: 36px; height: 36px; }
 
     .message-attachment-image img {
-        max-width: 150px;
-        max-height: 150px;
+        max-width: 100%;
+        max-height: 40vh;
     }
 }

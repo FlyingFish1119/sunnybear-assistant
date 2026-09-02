@@ -21,7 +21,7 @@ import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import com.fishsunny.assistant.engine.tool.service.DangerChecker;
 import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
 import com.fishsunny.assistant.mvc.controller.ChatController;
-import com.fishsunny.assistant.utils.ToolContextBuilder;
+import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -95,7 +95,7 @@ public class FileWriteTool implements ToolHandler {
             lock = FilePathLock.acquire(filePath);
 
             // 无审查模式：跳过 AI 危险检测与用户确认，直接执行
-            if (!ToolContextBuilder.isUnreviewed(context)) {
+            if (!ToolContextUtils.isUnreviewed(context)) {
                 switch (settings.getMode()) {
                     case NEVER_ASKED:
                         break;

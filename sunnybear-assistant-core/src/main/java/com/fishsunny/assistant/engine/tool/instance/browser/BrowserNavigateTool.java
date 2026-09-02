@@ -19,7 +19,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
 import com.fishsunny.assistant.engine.tool.service.browser.PlaywrightBrowserService;
 import com.fishsunny.assistant.mvc.controller.ChatController;
-import com.fishsunny.assistant.utils.ToolContextBuilder;
+import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -82,7 +82,7 @@ public class BrowserNavigateTool implements ToolHandler {
             }
 
             // 始终需要用户确认（无审查模式跳过）
-            if (!ToolContextBuilder.isUnreviewed(context)) {
+            if (!ToolContextUtils.isUnreviewed(context)) {
                 ask(uuid, session, arguments);
             }
 

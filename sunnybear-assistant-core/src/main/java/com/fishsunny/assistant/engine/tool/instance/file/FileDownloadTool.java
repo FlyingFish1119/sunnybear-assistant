@@ -20,7 +20,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
 import com.fishsunny.assistant.mvc.controller.ChatController;
-import com.fishsunny.assistant.utils.ToolContextBuilder;
+import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -91,7 +91,7 @@ public class FileDownloadTool implements ToolHandler {
             lock = FilePathLock.acquire(savePath);
 
             // 无审查模式：跳过用户确认，直接执行
-            if (!ToolContextBuilder.isUnreviewed(context)) {
+            if (!ToolContextUtils.isUnreviewed(context)) {
                 // 安全检测
                 switch (settings.getMode()) {
                     case NEVER_ASKED:
