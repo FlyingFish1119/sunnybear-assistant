@@ -212,7 +212,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
             if (!config.enable()) {
                 return readyToSave;
             }
-            String markup = chatSelectService.generateOptions(sessionId, readyToSave, config.format());
+            String markup = chatSelectService.generateOptions(sessionId, readyToSave, config.format(), character);
             if (StringUtils.hasText(markup)) {
                 CharacterChatSelectService.appendChatSelect(readyToSave, markup);
                 log.debug("已为会话 [{}] 追加快捷选项", sessionId);

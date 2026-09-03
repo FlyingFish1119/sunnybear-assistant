@@ -24,6 +24,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.te
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.settings.UserSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -68,13 +69,16 @@ public class CharacterChatSelectService {
     private final ChatHttpHandler chatHttpHandler;
     private final AISettings missionAISettings;
     private final ObjectMapper objectMapper;
+    private final UserSettings userSettings;
 
     public CharacterChatSelectService(ChatMessageService chatMessageService,
                                       ChatHttpHandler chatHttpHandler,
                                       @Qualifier(AISettings.MISSION) AISettings missionAISettings,
+                                      UserSettings userSettings,
                                       ObjectMapper objectMapper) {
         this.chatMessageService = chatMessageService;
         this.chatHttpHandler = chatHttpHandler;
+        this.userSettings = userSettings;
         this.missionAISettings = missionAISettings;
         this.objectMapper = objectMapper;
     }
@@ -183,7 +187,7 @@ public class CharacterChatSelectService {
      * @param format          角色配置的格式/风格指导，可为空（空则用内置默认）
      * @return 标准化的 <chat-select> 标记；不可用/失败返回 null（调用方静默跳过）
      */
-    public String generateOptions(String sessionId, ChatMessage currentAssistant, String format) {
+    public String generateOptions(String sessionId, ChatMessage currentAssistant, String format, CharacterInfo character) {
         try {
             List<ChatMessage> history;
             try {
@@ -197,7 +201,7 @@ public class CharacterChatSelectService {
             }
 
             // 1. 把历史 + 最新 assistant 序列化成“QA 整轮”（user 开头、含随后的 assistant 文本）
-            List<String> turns = buildQaTurns(history, currentAssistant);
+            List<String> turns = buildQaTurns(history, currentAssistant, character.getName());
             if (turns.isEmpty()) {
                 return null;
             }
@@ -254,7 +258,7 @@ public class CharacterChatSelectService {
      * 只保留 user / assistant 的纯文本；assistant 正文中已有的 <chat-select> 原文原样保留（供 mission 参考风格）。
      * 最新的 assistant（尚未落库）补到最后一个 QA 末尾。
      */
-    private List<String> buildQaTurns(List<ChatMessage> history, ChatMessage currentAssistant) {
+    private List<String> buildQaTurns(List<ChatMessage> history, ChatMessage currentAssistant, String characterName) {
         List<String> turns = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         for (ChatMessage message : history) {
@@ -267,12 +271,13 @@ public class CharacterChatSelectService {
                 }
                 String text = singleLine(message.resolveText());
                 if (StringUtils.hasText(text)) {
-                    current.append("玩家：").append(text).append("\n");
+                    String userName = StringUtils.hasText(userSettings.getUsername()) ? userSettings.getUsername() : "玩家";
+                    current.append("用户（").append(userName).append("）：").append(text).append("\n");
                 }
             } else if (ChatMessage.ROLE_ASSISTANT.equals(role)) {
                 String text = singleLine(message.resolveText());
                 if (StringUtils.hasText(text)) {
-                    current.append("角色：").append(text).append("\n");
+                    current.append("角色（").append(characterName).append("）：").append(text).append("\n");
                 }
             }
             // tool / system 消息不进 QA 上下文
@@ -316,26 +321,31 @@ public class CharacterChatSelectService {
 
     private String buildSystemPrompt(String format) {
         StringBuilder sb = new StringBuilder("""
-                你是一个“快捷选项（quick reply）生成器”。你会看到一段玩家与角色(AI)的对话记录，
-                请为“这段对话最后一条 角色(AI) 回复之后”的玩家，生成他接下来最可能点击发送的几个快捷选项。
+                你是“角色扮演对话 · 快捷选项（quick reply）生成器”。你会看到一段玩家与角色(AI)的对话（对话中的“用户”即玩家本人），
+                请站在玩家视角，为“这段对话最后一条 角色(AI) 回复之后”生成一组快捷选项。每一条被玩家点击后，会作为玩家的下一条发言发出，
+                它决定的是“这段对话接下来往哪个方向走”。
+
+                方向要求（最重要）：
+                - 选项要像“岔路口”：不同选项必须指向互不相同的走向——追问某个细节、应和当前话头、岔开新话题、表达某种情绪、发起某个行动……玩家点哪一条，角色随后的回应方向都应有本质区别。
+                - 禁止“同向复读”：换了个说法但落点相同的一批选项（比如几条都在答应、都在婉拒、都在追同一件事、都是同一种撒娇），只能保留最自然的一条，其余一律改写成别的走向；凑不出更多走向就少给，不要硬凑数量。
+                - 每条要具体、有接点：是玩家本人此刻会说/会做的事，口语化、贴合剧情与人设，让角色有得可回；避免“哈哈”“嗯嗯”“好吧”这类发出去就没下文、选哪条都会滑向同一个结果的纯附和/感叹。
+                - 写完自检：把每条选项想象成真的被玩家发出，若某两条会让角色给出几乎一样的回应，删掉其中一条、换成别的走向。
 
                 硬性输出要求：
                 - 只输出一个 <chat-select> 标记块，不要输出任何解释、编号列表、Markdown 代码块或多余文字。
                 - 结构如下（title 可选，没有合适的标题可以省略 title 属性）：
                   <chat-select title="标题">
-                    <chat-option content="选项一">
-                    </chat-option><chat-option content="选项二">
-                    </chat-option><chat-option content="选项三">
-                  </chat-option></chat-select>
-                - 默认生成 3 个选项；没有好的“可说的话 / 可做的动作”时可以只生成 2 个，不要硬凑。
-                - 选项站在玩家视角，是他此时最可能输入的话或想做的动作，口语化、贴合剧情与角色性格，每条不超过 40 字。
-                - content 属性内不要使用双引号 "、尖括号 < > 或 & 等特殊字符；需要引号时使用中文引号‘’“”。
+                    <chat-option content="选项一"></chat-option>
+                    <chat-option content="选项二"></chat-option>
+                    <chat-option content="选项三"></chat-option>
+                  </chat-select>
+                - 一般给 3 条、最多 4 条；每条不超过 40 字，且彼此走向互不相同。
                 """);
         sb.append("\n\n");
         if (StringUtils.hasText(format)) {
-            sb.append("风格指导（来自角色配置，优先级高于默认，请严格遵守）：\n").append(format);
+            sb.append("风格指导：\n").append(format);
         } else {
-            sb.append("风格指导（默认）：选项应是玩家自己会说的话/会做的事，第一人称，简短自然，按最可能到次可能的顺序排列。");
+            sb.append("风格指导：选项应是玩家自己会说的话/会做的事，第一人称，简短自然，按最可能到次可能的顺序排列。");
         }
         return sb.toString();
     }
