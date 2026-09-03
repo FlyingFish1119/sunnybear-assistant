@@ -12,12 +12,14 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.plug.character.db.BattleDbManager;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
 import com.fishsunny.assistant.plug.character.entity.CharacterSessionMapping;
 import com.fishsunny.assistant.plug.character.repository.CharacterInfoRepository;
+import com.fishsunny.assistant.plug.character.service.CharacterChatSelectService;
 import com.fishsunny.assistant.plug.character.service.CharacterGlossaryService;
 import com.fishsunny.assistant.plug.character.service.CharacterSessionMappingService;
 import com.fishsunny.assistant.plug.character.tool.glossary.QueryGlossaryTool;
@@ -49,6 +51,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
     private final CharacterSessionMappingService mappingService;
     private final CharacterGlossaryService glossaryService;
     private final BattleDbManager battleDbManager;
+    private final CharacterChatSelectService chatSelectService;
 
     @Autowired
     public CharacterChatSocketHandler(ServiceProcessor serviceProcessor,
@@ -60,12 +63,14 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                                        CharacterSessionMappingService mappingService,
                                        CharacterGlossaryService glossaryService,
                                        ObjectMapper objectMapper,
-                                       BattleDbManager battleDbManager) {
+                                       BattleDbManager battleDbManager,
+                                       CharacterChatSelectService chatSelectService) {
         super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper, sessionMessageBus);
         this.characterInfoRepository = characterInfoRepository;
         this.mappingService = mappingService;
         this.glossaryService = glossaryService;
         this.battleDbManager = battleDbManager;
+        this.chatSelectService = chatSelectService;
     }
 
     @Override
@@ -173,8 +178,63 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                 .setSystemProvider(systemProvider)
                 .setToolProvider(toolProvider)
                 .setContextProvider(contextProvider)
+                // 主对话喂给对话 AI 前，剥掉历史 assistant 正文里已持久化的快捷选项标签，避免对话 AI 看到选项
+                .setSessionMessageProvider(CharacterChatSelectService::stripTagsFromMessages)
+                // assistant 回复生成后、落库前：启用 chat_select 时用 mission 模型生成新选项并追加
+                .setBeforeSaveAssistantProvider(this::beforeSaveAssistant)
                 .setEnableSlashCommand(() -> false)
                 .setEnableSwitchPro(() -> false);
+    }
+
+    /**
+     * 落库前钩子：为最新的 assistant 回复生成并追加快捷选项。
+     * 仅对“无工具调用的最终回复”生效；中间的工具调用轮直接放行。
+     * 生成/解析失败时静默跳过，不影响主对话。
+     */
+    private ChatMessage beforeSaveAssistant(ChatMessage readyToSave) {
+        try {
+            if (readyToSave.getToolCalls() != null && !readyToSave.getToolCalls().isEmpty()) {
+                return readyToSave;
+            }
+            // 没有正文的回复（如纯异常兜底）不生成选项
+            if (!StringUtils.hasText(readyToSave.resolveText())) {
+                return readyToSave;
+            }
+            String sessionId = readyToSave.getSessionId();
+            if (!StringUtils.hasText(sessionId)) {
+                return readyToSave;
+            }
+            CharacterInfo character = getCharacterBySessionId(sessionId);
+            if (character == null) {
+                return readyToSave;
+            }
+            CharacterChatSelectService.ChatSelectConfig config = chatSelectService.parseConfig(character);
+            if (!config.enable()) {
+                return readyToSave;
+            }
+            String markup = chatSelectService.generateOptions(sessionId, readyToSave, config.format());
+            if (StringUtils.hasText(markup)) {
+                CharacterChatSelectService.appendChatSelect(readyToSave, markup);
+                log.debug("已为会话 [{}] 追加快捷选项", sessionId);
+            }
+        } catch (Exception e) {
+            log.warn("生成快捷选项失败: {}", e.getMessage());
+        }
+        return readyToSave;
+    }
+
+    /** 通过会话查询绑定的角色；未绑定返回 null（不阻塞等待） */
+    private CharacterInfo getCharacterBySessionId(String sessionId) {
+        try {
+            CharacterSessionMapping mapping = mappingService.findBySessionId(sessionId);
+            if (mapping == null) {
+                return null;
+            }
+            return characterInfoRepository.selectById(mapping.getCharacterId());
+        } catch (Exception e) {
+            log.warn("查询会话 [{}] 绑定角色失败: {}", sessionId, e.getMessage());
+            return null;
+        }
     }
 
     private CharacterInfo getCharacterInfo(ChatSession ctxSession) {

@@ -42,6 +42,7 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
         characterInfo.setMainColor(resultSet.getString("main_color"));
         characterInfo.setOpacity(resultSet.getDouble("opacity"));
         characterInfo.setTools(resultSet.getString("tools"));
+        characterInfo.setChatSelect(resultSet.getString("chat_select"));
         characterInfo.setCreateTime(LocalDateTime.parse(resultSet.getString("create_time"), formatter));
         characterInfo.setUpdateTime(LocalDateTime.parse(resultSet.getString("update_time"), formatter));
         return characterInfo;
@@ -52,8 +53,8 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
         String sql =
                 """
                 INSERT INTO character_info
-                (id, name, avatar, background, ai_settings, preset, main_color, opacity, tools, create_time, update_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, name, avatar, background, ai_settings, preset, main_color, opacity, tools, chat_select, create_time, update_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         jdbcTemplate.update(sql,
                 characterInfo.getId(),
@@ -65,6 +66,7 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
                 characterInfo.getMainColor() != null ? characterInfo.getMainColor() : "",
                 characterInfo.getOpacity() != null ? characterInfo.getOpacity() : 0.85,
                 characterInfo.getTools() != null ? characterInfo.getTools() : "{}",
+                characterInfo.getChatSelect() != null ? characterInfo.getChatSelect() : "{}",
                 characterInfo.getCreateTime().format(formatter),
                 characterInfo.getUpdateTime().format(formatter)
         );
@@ -77,7 +79,7 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
         String sql =
                 """
                 UPDATE character_info
-                SET name = ?, avatar = ?, background = ?, ai_settings = ?, preset = ?, main_color = ?, opacity = ?, tools = ?, update_time = ?
+                SET name = ?, avatar = ?, background = ?, ai_settings = ?, preset = ?, main_color = ?, opacity = ?, tools = ?, chat_select = ?, update_time = ?
                 WHERE id = ?
                 """;
         jdbcTemplate.update(sql,
@@ -89,6 +91,7 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
                 characterInfo.getMainColor() != null ? characterInfo.getMainColor() : "",
                 characterInfo.getOpacity() != null ? characterInfo.getOpacity() : 0.85,
                 characterInfo.getTools() != null ? characterInfo.getTools() : "{}",
+                characterInfo.getChatSelect() != null ? characterInfo.getChatSelect() : "{}",
                 characterInfo.getUpdateTime().format(formatter),
                 characterInfo.getId()
         );
@@ -101,6 +104,12 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
         // 安全迁移：为存量数据库添加 tools 列（如果不存在）
         try {
             jdbcTemplate.execute("ALTER TABLE character_info ADD COLUMN tools TEXT NOT NULL DEFAULT '{}'");
+        } catch (Exception ignored) {
+            // 列已存在，后续启动时忽略错误
+        }
+        // 安全迁移：为存量数据库添加 chat_select 列（如果不存在）
+        try {
+            jdbcTemplate.execute("ALTER TABLE character_info ADD COLUMN chat_select TEXT NOT NULL DEFAULT '{}'");
         } catch (Exception ignored) {
             // 列已存在，后续启动时忽略错误
         }

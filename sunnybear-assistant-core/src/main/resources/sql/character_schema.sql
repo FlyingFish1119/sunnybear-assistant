@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS character_info (
     main_color   TEXT NOT NULL DEFAULT '',
     opacity      REAL NOT NULL DEFAULT 0.85,
     tools        TEXT NOT NULL DEFAULT '{}',
+    chat_select  TEXT NOT NULL DEFAULT '{}',
     create_time  TEXT NOT NULL,
     update_time  TEXT NOT NULL
 );

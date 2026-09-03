@@ -93,11 +93,14 @@ public class CharacterInfoServiceImplement implements CharacterInfoService {
         if (!StringUtils.hasText(characterInfo.getId())) {
             throw new RuntimeException("角色 ID 不能为空");
         }
-        clearIllegal(characterInfo);
-
         // 背景图由 uploadBackground() / deleteBackground() 单独处理，这里始终保留旧值
         CharacterInfo existing = findById(characterInfo.getId());
         characterInfo.setBackground(existing.getBackground());
+        // 快捷选项配置前端未必随 body 提交：未提供时保留旧值，避免被清成默认
+        if (!StringUtils.hasText(characterInfo.getChatSelect()) && StringUtils.hasText(existing.getChatSelect())) {
+            characterInfo.setChatSelect(existing.getChatSelect());
+        }
+        clearIllegal(characterInfo);
         characterInfo.setUpdateTime(LocalDateTime.now());
         return characterInfoRepository.update(characterInfo);
     }
@@ -123,6 +126,9 @@ public class CharacterInfoServiceImplement implements CharacterInfoService {
         }
         if (!StringUtils.hasText(characterInfo.getTools())) {
             characterInfo.setTools("{}");
+        }
+        if (!StringUtils.hasText(characterInfo.getChatSelect())) {
+            characterInfo.setChatSelect("{}");
         }
     }
 

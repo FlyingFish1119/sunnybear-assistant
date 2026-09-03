@@ -667,6 +667,47 @@
             .dialog-btn { width: 100%; justify-content: center; padding: 12px 20px; }
             .dialog-header-wrap span { font-size: 15px; }
         }
+
+
+        /* 用户设置弹窗：其他模型配置（mission / cub） */
+        .dialog-model-section {
+            margin-top: 6px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+        }
+        .dialog-model-section-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #303133;
+        }
+        .dialog-model-section-hint {
+            font-weight: 400;
+            font-size: 11px;
+            color: #c0c4cc;
+            margin-left: 4px;
+        }
+        .dialog-model-block {
+            margin-top: 10px;
+            padding: 10px 12px;
+            background: rgba(0, 0, 0, 0.02);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            border-radius: 8px;
+        }
+        .dialog-model-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #606266;
+            margin-bottom: 6px;
+        }
+        .dialog-model-block .el-form-item {
+            margin-bottom: 8px;
+        }
+        .dialog-model-block .settings-input {
+            width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -921,6 +962,33 @@
                     </div>
                 </div>
 
+                <!-- 快捷选项配置（可折叠） -->
+                <div class="char-form-group">
+                    <span class="char-form-label" @click="toggleChatSelect" style="cursor:pointer;user-select:none">
+                        <i data-lucide="list-plus" style="width:14px;height:14px"></i>
+                        快捷选项
+                        <span style="font-size:12px;color:#c0c4cc;margin-left:4px">assistant 回复后生成可点击选项（chat-select）</span>
+                        <i data-lucide="chevron-down" style="width:14px;height:14px;margin-left:auto;transition:transform 0.25s"
+                           :style="{ transform: showChatSelect ? 'rotate(180deg)' : '' }"></i>
+                    </span>
+                    <div class="advanced-params" :class="{ expanded: showChatSelect }">
+                        <div class="advanced-params-inner">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <span style="font-size:13px;color:#606266">启用选项生成</span>
+                                <el-switch v-model="form.chatSelect.enable" size="small"
+                                    :active-color="mainColor"></el-switch>
+                            </div>
+                            <div style="margin-top:10px">
+                                <div style="font-size:13px;color:#606266;margin-bottom:6px">格式 / 风格指导（可选）</div>
+                                <textarea class="char-form-textarea" rows="3"
+                                    v-model="form.chatSelect.format"
+                                    placeholder="例如：选项用第一人称、口语化，3 条；或 TRPG 风格，包含动作、DC 值和优劣势…（留空使用默认风格）"></textarea>
+                                <span class="char-form-hint">此文本会追加到 mission 选项生成的提示词中</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 主题色 -->
                 <div class="char-form-group">
                     <span class="char-form-label">
@@ -974,7 +1042,7 @@
     </div>
 
     <!-- ========== 用户设置弹框 ========== -->
-    <el-dialog v-model="userDialogVisible" title="" width="540px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+    <el-dialog v-model="userDialogVisible" title="" width="620px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
         <template #header>
             <div class="dialog-header-wrap">
                 <i data-lucide="settings" style="width:20px;height:20px"></i>
@@ -1008,6 +1076,54 @@
                     @change="onUserAvatarFileChange">
             </el-form-item>
         </el-form>
+
+        <!-- 其他模型配置（mission / cub，全局生效） -->
+        <div class="dialog-model-section">
+            <div class="dialog-model-section-title">
+                <i data-lucide="cpu" style="width:14px;height:14px"></i> 其他模型配置
+                <span class="dialog-model-section-hint">保存用户设置时一并保存（全局 ai_settings.json）</span>
+            </div>
+
+            <div class="dialog-model-block">
+                <div class="dialog-model-name">任务模型 mission</div>
+                <el-form label-width="64px" label-position="left">
+                    <el-form-item label="适配器">
+                        <el-select v-model="userMissionForm.adapterName" size="small" style="width:100%" placeholder="选择适配器">
+                            <el-option v-for="name in adapterList" :key="'mission-' + name" :label="name" :value="name"></el-option>
+                        </el-select>
+                    </el-form-item>
+                    <el-form-item label="模型">
+                        <input class="settings-input" v-model="userMissionForm.model" placeholder="模型名称">
+                    </el-form-item>
+                    <el-form-item label="开关">
+                        <div style="display:flex;gap:16px;align-items:center">
+                            <el-switch v-model="userMissionForm.stream" size="small" active-text="流式" :active-color="mainColor"></el-switch>
+                            <el-switch v-model="userMissionForm.thinking" size="small" active-text="思考" :active-color="mainColor"></el-switch>
+                        </div>
+                    </el-form-item>
+                </el-form>
+            </div>
+
+            <div class="dialog-model-block">
+                <div class="dialog-model-name">小熊崽 cub</div>
+                <el-form label-width="64px" label-position="left">
+                    <el-form-item label="适配器">
+                        <el-select v-model="userCubForm.adapterName" size="small" style="width:100%" placeholder="选择适配器">
+                            <el-option v-for="name in adapterList" :key="'cub-' + name" :label="name" :value="name"></el-option>
+                        </el-select>
+                    </el-form-item>
+                    <el-form-item label="模型">
+                        <input class="settings-input" v-model="userCubForm.model" placeholder="模型名称">
+                    </el-form-item>
+                    <el-form-item label="开关">
+                        <div style="display:flex;gap:16px;align-items:center">
+                            <el-switch v-model="userCubForm.stream" size="small" active-text="流式" :active-color="mainColor"></el-switch>
+                            <el-switch v-model="userCubForm.thinking" size="small" active-text="思考" :active-color="mainColor"></el-switch>
+                        </div>
+                    </el-form-item>
+                </el-form>
+            </div>
+        </div>
         <template #footer>
             <div class="dialog-footer">
                 <button class="dialog-btn dialog-btn-cancel" @click="userDialogVisible = false">取消</button>
@@ -1044,6 +1160,7 @@ const app = Vue.createApp({
             sidebarOpen: false,
             showAdvanced: false,
             showTools: false,
+            showChatSelect: false,
             userDialogVisible: false,
             toolCategories: [
                 { key: 'glossary', label: '角色词条', tools: ['character_glossary_create_tool', 'character_glossary_update_tool', 'character_glossary_delete_tool', 'character_glossary_query_tool'], hint: 'AI 可增删改查角色专属术语词条' },
@@ -1056,11 +1173,17 @@ const app = Vue.createApp({
                 '#fd7e14', '#28a745', '#dc3545', '#ffc107', '#007bff'
             ],
             userForm: { username: '', avatar: '' },
+            // 用户设置弹窗内的“其他模型”配置（mission / cub，全局生效）
+            userMissionRaw: {},
+            userCubRaw: {},
+            userMissionForm: { adapterName: '', model: '', stream: false, thinking: false },
+            userCubForm: { adapterName: '', model: '', stream: false, thinking: false },
             form: {
                 name: '', avatar: '', background: '',
                 mainColor: 'lightsalmon', opacity: 0.85,
                 preset: '',
                 tools: {},
+                chatSelect: { enable: false, format: '' },
                 aiSettings: {
                     prompt: '',
                     adapterName: '', model: '',
@@ -1194,6 +1317,7 @@ const app = Vue.createApp({
             this.selectedId = c.id;
             this.isEdit = true;
             this.showAdvanced = false;
+            this.showChatSelect = false;
             // 选中角色时立即切换主题色
             if (c.mainColor) {
                 this.mainColor = c.mainColor;
@@ -1210,6 +1334,11 @@ const app = Vue.createApp({
                 const idx = ['low','high','max'].indexOf(aiSettings.reasoningEffort);
                 aiSettings.reasoningEffort = idx >= 0 ? idx : null;
             }
+            // 快捷选项配置
+            let chatSelect = { enable: false, format: '' };
+            if (c.chatSelect) {
+                try { chatSelect = Object.assign(chatSelect, JSON.parse(c.chatSelect)); } catch (e) {}
+            }
             this.form = {
                 name: c.name || '',
                 avatar: c.avatar || '',
@@ -1218,6 +1347,7 @@ const app = Vue.createApp({
                 opacity: c.opacity != null ? c.opacity : 0.85,
                 preset: c.preset || '',
                 tools: this.parseTools(c.tools),
+                chatSelect: chatSelect,
                 aiSettings: aiSettings
             };
         },
@@ -1227,6 +1357,7 @@ const app = Vue.createApp({
             this.isEdit = true;
             this.showAdvanced = false;
             this.showTools = false;
+            this.showChatSelect = false;
             const switches = {};
             this.toolCategories.forEach(cat => { switches[cat.key] = false; });
             this.toolSwitches = switches;
@@ -1235,6 +1366,7 @@ const app = Vue.createApp({
                 mainColor: 'lightsalmon', opacity: 0.85,
                 preset: '',
                 tools: {},
+                chatSelect: { enable: false, format: '' },
                 aiSettings: { prompt: '', adapterName: '', model: '', stream: true, thinking: false, temperature: null, top_p: null, maxTokens: null, frequencyPenalty: null, presencePenalty: null, reasoningEffort: null }
             };
         },
@@ -1246,6 +1378,8 @@ const app = Vue.createApp({
                 name: '', avatar: '', background: '',
                 mainColor: 'lightsalmon', opacity: 0.85,
                 preset: '',
+                tools: {},
+                chatSelect: { enable: false, format: '' },
                 aiSettings: { prompt: '', adapterName: '', model: '', stream: true, thinking: false, temperature: null, top_p: null, maxTokens: null, frequencyPenalty: null, presencePenalty: null, reasoningEffort: null }
             };
         },
@@ -1291,6 +1425,10 @@ const app = Vue.createApp({
 
         toggleTools() {
             this.showTools = !this.showTools;
+        },
+
+        toggleChatSelect() {
+            this.showChatSelect = !this.showChatSelect;
         },
 
         parseTools(json) {
@@ -1341,6 +1479,7 @@ const app = Vue.createApp({
                     aiSettings.presencePenalty = null;
                     aiSettings.reasoningEffort = null;
                 }
+                const chatSelect = this.form.chatSelect || {};
                 const body = {
                     name: this.form.name.trim(),
                     avatar: this.form.avatar,
@@ -1348,6 +1487,10 @@ const app = Vue.createApp({
                     opacity: this.form.opacity,
                     preset: this.form.preset || '',
                     tools: JSON.stringify(this.buildToolsObject()),
+                    chatSelect: JSON.stringify({
+                        enable: !!chatSelect.enable,
+                        format: chatSelect.format || ''
+                    }),
                     aiSettings: JSON.stringify(aiSettings)
                 };
                 if (isUpdate) {
@@ -1457,8 +1600,37 @@ const app = Vue.createApp({
                     this.userForm.avatar = r.data.avatar || '';
                 }
             }).catch(e => console.error(e));
+            this.loadModelSettings();
             this.userDialogVisible = true;
             this.$nextTick(() => lucide.createIcons());
+        },
+
+        /** 加载用户设置弹窗里的 mission / cub 模型配置 */
+        async loadModelSettings() {
+            const pick = (res) => {
+                const src = (res && res.status === 200 && res.data) ? res.data : {};
+                return {
+                    raw: { ...src },
+                    form: {
+                        adapterName: src.adapterName || '',
+                        model: src.model || '',
+                        stream: !!src.stream,
+                        thinking: !!src.thinking
+                    }
+                };
+            };
+            try {
+                const [m, c] = await Promise.all([
+                    API.settings.mission.get().catch(() => null),
+                    API.settings.cub.get().catch(() => null)
+                ]);
+                this.userMissionRaw = pick(m).raw;
+                this.userCubRaw = pick(c).raw;
+                this.userMissionForm = pick(m).form;
+                this.userCubForm = pick(c).form;
+            } catch (e) {
+                console.error('加载 mission/cub 模型设置失败', e);
+            }
         },
 
         triggerUserAvatarUpload() { this.$refs.userAvatarInput.click(); },
@@ -1495,6 +1667,31 @@ const app = Vue.createApp({
             }
         },
 
+        /** 一并保存弹窗里的 mission / cub 模型配置（仅当加载到过配置时才保存，避免误覆盖） */
+        async saveModelSettings() {
+            const tasks = [];
+            if (this.userMissionRaw && Object.keys(this.userMissionRaw).length > 0) {
+                tasks.push(API.settings.mission.save({
+                    ...this.userMissionRaw,
+                    adapterName: this.userMissionForm.adapterName,
+                    model: this.userMissionForm.model,
+                    stream: this.userMissionForm.stream,
+                    thinking: this.userMissionForm.thinking
+                }).catch(() => null));
+            }
+            if (this.userCubRaw && Object.keys(this.userCubRaw).length > 0) {
+                tasks.push(API.settings.cub.save({
+                    ...this.userCubRaw,
+                    adapterName: this.userCubForm.adapterName,
+                    model: this.userCubForm.model,
+                    stream: this.userCubForm.stream,
+                    thinking: this.userCubForm.thinking
+                }).catch(() => null));
+            }
+            const results = await Promise.all(tasks);
+            return results.length === 0 || results.every(x => x == null || x.status === 200);
+        },
+
         async saveUserSettings() {
             if (!this.userForm.username.trim()) {
                 ElementPlus.ElMessage.warning('用户名不能为空');
@@ -1508,7 +1705,12 @@ const app = Vue.createApp({
                     opacity: 0.3
                 });
                 if (r.status === 200) {
-                    ElementPlus.ElMessage.success('用户设置已保存');
+                    const modelOk = await this.saveModelSettings();
+                    if (modelOk) {
+                        ElementPlus.ElMessage.success('用户设置已保存');
+                    } else {
+                        ElementPlus.ElMessage.warning('用户设置已保存，但部分模型配置保存失败，请检查设置');
+                    }
                     this.userDialogVisible = false;
                 } else {
                     ElementPlus.ElMessage.error(r.message || '保存失败');

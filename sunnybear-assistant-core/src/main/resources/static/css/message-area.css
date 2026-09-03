@@ -730,3 +730,54 @@
     100% { opacity: 0; }
 }
 
+/* ============================================
+   快捷选项（chat-select）—— 最后一条 assistant 下的竖排可点按钮
+   ============================================ */
+.chat-select-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    max-width: 100%;
+}
+
+.chat-select-title {
+    font-size: var(--text-sm, 12px);
+    color: var(--text-secondary, #666);
+    opacity: 0.85;
+}
+
+.chat-select-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 12px;
+    margin: 0;
+    background: rgba(255, 255, 255, 0.75);
+    color: var(--text-primary, #333);
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1.5;
+    font-family: inherit;
+    /* 主色由 .chat-select-panel 上的内联 --cs-main 提供 */
+    transition: border-color var(--transition-fast, 0.15s),
+                color var(--transition-fast, 0.15s),
+                box-shadow var(--transition-fast, 0.15s),
+                transform var(--transition-fast, 0.15s);
+}
+
+.chat-select-option:hover {
+    border-color: var(--cs-main, lightsalmon);
+    color: var(--cs-main, lightsalmon);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.chat-select-option:active {
+    transform: scale(0.985);
+}
+
+

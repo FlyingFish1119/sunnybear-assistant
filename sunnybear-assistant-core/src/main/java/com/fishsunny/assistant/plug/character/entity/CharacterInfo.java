@@ -44,6 +44,9 @@ public class CharacterInfo {
     /** 工具开关（JSON 字符串，格式为 {"toolName": true/false}），列出的工具才会在角色对话中注入 */
     private String tools;
 
+    /** 快捷选项配置（JSON 字符串，格式为 {"enable": bool, "format": "..."}），控制 assistant 回复后是否生成可点击的 chat-select 选项 */
+    private String chatSelect;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 

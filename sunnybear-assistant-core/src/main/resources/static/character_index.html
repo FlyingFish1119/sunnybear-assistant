@@ -262,6 +262,16 @@
                                     <i style="width: 14px; height: 14px" data-lucide="trash-2"></i>
                                 </span>
                             </div>
+                            <!-- 快捷选项：仅最后一条已完成的 assistant 消息显示 -->
+                            <div v-if="isActiveChatSelect(msg)" class="chat-select-panel" :style="{ '--cs-main': mainColor }">
+                                <div v-if="msg.chatSelect && msg.chatSelect.title" class="chat-select-title">{{ msg.chatSelect.title }}</div>
+                                <button v-for="(opt, oi) in (msg.chatSelect ? msg.chatSelect.options : [])"
+                                        :key="'cs-' + msg.id + '-' + oi"
+                                        class="chat-select-option"
+                                        @click.stop="onChatSelectClick(msg, opt)">
+                                    {{ opt }}
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div v-else-if="msg.role === 'tool'" class="message-area-bubble">
@@ -762,6 +772,8 @@
                 API.message.getHistory(session.id).then(result => {
                     if (result.status === 200) {
                         this.currentMessages = result.data;
+                        // 解析历史里的快捷选项：剥除正文中的 chat-select 标记、回填 msg.chatSelect（仅最后一条展示）
+                        (this.currentMessages || []).forEach(m => this.extractChatSelect(m));
                         this.scrollToBottom(true);
                         // 请求该会话的总线续传：若当前有一轮在进行中，服务端回放缓冲事件重建在途消息
                         if (this.ws && this.ws.readyState === 1) {
@@ -779,6 +791,98 @@
                 }).finally(() => {
                     this.sessionSelectLoading = false;
                 });
+            },
+
+            /* ========== 快捷选项（chat-select）========== */
+
+            /** 取消息所有文本块拼接后的正文（不含推理/工具内容） */
+            contentsText(msg) {
+                if (!msg || !Array.isArray(msg.contents)) return '';
+                const parts = [];
+                for (const c of msg.contents) {
+                    if (c && c.type === 'text' && typeof c.content === 'string') parts.push(c.content);
+                }
+                return parts.join('\n\n');
+            },
+
+            /** 把消息正文整体设为指定文本（保留其他类型内容块不动） */
+            setContentsText(msg, text) {
+                if (!msg) return;
+                if (!Array.isArray(msg.contents) || msg.contents.length === 0) {
+                    msg.contents = [{ type: 'text', content: text }];
+                    return;
+                }
+                const first = msg.contents.find(c => c && c.type === 'text');
+                if (first) {
+                    first.content = text;
+                } else {
+                    msg.contents.unshift({ type: 'text', content: text });
+                }
+            },
+
+            /** 从消息正文里剥除 <chat-select> 标记并回填 msg.chatSelect（仅最后一条展示用） */
+            extractChatSelect(msg) {
+                let chosen = null;
+                if (!msg || !Array.isArray(msg.contents)) return;
+                for (const c of msg.contents) {
+                    if (!c || c.type !== 'text' || typeof c.content !== 'string') continue;
+                    const parsed = this.parseChatSelectContent(c.content);
+                    if (parsed.changed) c.content = parsed.plain;
+                    if (parsed.block) chosen = parsed.block;
+                }
+                msg.chatSelect = chosen;
+            },
+
+            /** 解析一段文本里的快捷选项：标记只在末尾追加，遇到首个 <chat-select 后全部丢弃即可 */
+            parseChatSelectContent(text) {
+                const idx = text.indexOf('<chat-select');
+                if (idx < 0) return { plain: text, changed: false, block: null };
+                const plain = text.slice(0, idx).trimEnd();
+                const block = this.decodeChatSelectAttrs(text.slice(idx));
+                return { plain, changed: true, block };
+            },
+
+            decodeChatSelectAttrs(raw) {
+                const decode = s => String(s == null ? '' : s)
+                    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+                    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+                    .replace(/&amp;/g, '&');
+                const titleM = /<chat-select\b[^>]*\btitle="([^"]*)"/.exec(raw);
+                const title = titleM ? decode(titleM[1]) : '';
+                const options = [];
+                const optRe = /<chat-option\b([^>]*?)\/>|<chat-option\b([^>]*)>([\s\S]*?)<\/chat-option>/g;
+                let m;
+                while ((m = optRe.exec(raw)) !== null) {
+                    const attrs = m[1] != null ? m[1] : (m[2] || '');
+                    const body = m[3];
+                    let content = '';
+                    const attrM = /content\s*=\s*"([^"]*)"/.exec(attrs);
+                    if (attrM) content = decode(attrM[1]);
+                    if (!content && body != null) content = decode(body);
+                    content = content.trim().replace(/\s+/g, ' ');
+                    if (content) options.push(content);
+                }
+                if (options.length === 0) return null;
+                return { title: title.trim(), options };
+            },
+
+            /** 是否把该消息渲染成可点击的快捷选项（仅当它是最后一条、且已完成、非流式） */
+            isActiveChatSelect(msg) {
+                if (!msg || msg.role !== 'assistant') return false;
+                if (!msg.id || msg.id.startsWith('streaming_')) return false;
+                if (this.isStreaming) return false;
+                const list = this.currentMessages;
+                const last = list && list.length ? list[list.length - 1] : null;
+                if (!last || last.id !== msg.id) return false;
+                return !!(msg.chatSelect && msg.chatSelect.options && msg.chatSelect.options.length > 0);
+            },
+
+            /** 点击选项：立即消失，并把内容作为下一条玩家消息发送 */
+            onChatSelectClick(msg, content) {
+                if (!content) return;
+                if (msg) msg.chatSelect = null; // 选项消费后消失，防止重复点击
+                this.inputText = content;
+                this.sendMessage();
             },
 
             /**
@@ -1208,13 +1312,18 @@
                         if (serverMsg.createTime) streamingMessage.createTime = serverMsg.createTime;
                         if (serverMsg.siblingCount != null) streamingMessage.siblingCount = serverMsg.siblingCount;
                         if (serverMsg.siblingIndex != null) streamingMessage.siblingIndex = serverMsg.siblingIndex;
-                        // 斜杠指令等场景：没有 chunk 流，文字直接附在 init_assistant 里
-                        if (response.text) {
-                            let lastContent = Utils.getLast(streamingMessage.contents);
-                            if (lastContent && !lastContent.content) {
-                                lastContent.content = response.text;
-                            }
+                        // 快捷选项兼容：服务端在流结束后可能往正文末尾追加了 <chat-select> 标记。
+                        // 若最终正文比本地已流式内容更长且以之为前缀，则补齐尾部；
+                        // 随后解析并剥除标记，回填 streamingMessage.chatSelect。
+                        let serverText = this.contentsText(serverMsg);
+                        if (!serverText && response.text) {
+                            serverText = response.text;
                         }
+                        const localText = this.contentsText(streamingMessage);
+                        if (serverText && (!localText || (serverText.length > localText.length && serverText.startsWith(localText)))) {
+                            this.setContentsText(streamingMessage, serverText);
+                        }
+                        this.extractChatSelect(streamingMessage);
                         break;
                     }
                     case "error": {
