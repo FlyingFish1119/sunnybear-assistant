@@ -98,6 +98,8 @@ engine:
         - url: https://mcp.context7.com/mcp
           server-name: Context7 v4.0.3
           timeout-s: 30
+  chat:
+    idle-timeout-s: 30
   adapter-register:
     register:
       # Kimi（Moonshot）流式
