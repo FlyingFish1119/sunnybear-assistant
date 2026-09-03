@@ -22,6 +22,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.Me
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
+import com.fishsunny.assistant.engine.tool.service.review.AISafetyReviewService;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
@@ -315,6 +316,8 @@ public class ChatProcessor {
                 if (chatProvider.getContextProvider() != null) {
                     context = chatProvider.getContextProvider().apply(context);
                 }
+                // 附带本轮的完整 messages 快照，供 AI 安全审查等消费方自行提取上下文（如判断用户意图），其它工具无感
+                context.put(AISafetyReviewService.CTX_MESSAGES, new ArrayList<>(request.getMessages()));
                 List<ToolExecutor.ToolExecuteResponse> toolResults = toolExecutor.executeAdapter(toolCalls, context,
                         ToolExecuteNotifier.buildProvider(session, chatSession.getId(), objectMapper));
                 // 构建工具消息

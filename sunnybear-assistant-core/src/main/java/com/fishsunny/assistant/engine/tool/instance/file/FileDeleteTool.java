@@ -18,8 +18,9 @@ import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
-import com.fishsunny.assistant.engine.tool.service.DangerChecker;
 import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
+import com.fishsunny.assistant.engine.tool.service.review.AISafetyReviewService;
+import com.fishsunny.assistant.engine.tool.service.review.ReviewResult;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
@@ -60,15 +61,15 @@ public class FileDeleteTool implements ToolHandler {
 
     private final ObjectMapper objectMapper;
     private final Settings settings;
-    private final DangerChecker dangerChecker;
+    private final AISafetyReviewService safetyReviewService;
 
     public FileDeleteTool(ObjectMapper objectMapper,
                           @Qualifier(SETTINGS) Settings settings,
-                          DangerChecker dangerChecker
+                          AISafetyReviewService safetyReviewService
                           ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
-        this.dangerChecker = dangerChecker;
+        this.safetyReviewService = safetyReviewService;
     }
 
     @Override
@@ -108,18 +109,22 @@ public class FileDeleteTool implements ToolHandler {
                     case NEVER_ASKED:
                         break;
                     case ALWAYS_ASKED:
-                        ask(uuid, session, arguments, targetPath, isDirectory, recursive, targetInfo);
+                        ask(uuid, session, arguments, targetPath, isDirectory, recursive, targetInfo, null);
                         break;
-                    case AUTO:
-                        if (isDanger(arguments, targetPath, isDirectory, recursive, targetInfo)) {
-                            ask(uuid, session, arguments, targetPath, isDirectory, recursive, targetInfo);
+                    case AUTO: {
+                        ReviewResult review = isDanger(arguments, targetPath, isDirectory, recursive, targetInfo, context);
+                        if (review.isDanger()) {
+                            ask(uuid, session, arguments, targetPath, isDirectory, recursive, targetInfo, review.reason());
                         }
                         break;
-                    case ALWAYS_REJECT_DANGER:
-                        if (isDanger(arguments, targetPath, isDirectory, recursive, targetInfo)) {
-                            throw new ToolExecutor.ToolExecuteException("AI 判定此文件删除操作存在危险，操作被拒绝");
+                    }
+                    case ALWAYS_REJECT_DANGER: {
+                        ReviewResult review = isDanger(arguments, targetPath, isDirectory, recursive, targetInfo, context);
+                        if (review.isDanger()) {
+                            throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件删除操作存在危险", review.reason()));
                         }
                         break;
+                    }
                     default:
                         throw new ToolExecutor.ToolExecuteException("FileDelete 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
                 }
@@ -209,48 +214,39 @@ public class FileDeleteTool implements ToolHandler {
     }
 
     /**
-     * 使用 AI 对文件删除操作进行危险性评估
+     * 使用 AI 对文件删除操作进行危险性评估（子 Agent 审查，可读文件/列目录/解码取证）。
      */
-    private boolean isDanger(Arguments arguments, Path targetPath, boolean isDirectory,
-                             boolean recursive, String targetInfo) throws Exception {
-        String systemPrompt = """
-                你是一个文件删除安全检测器。你的唯一任务是对给出的文件删除操作进行危险性评估。
-                危险操作指删除后可能导致系统损坏、数据丢失、权限泄露、未授权访问或严重后果的行为。
-                请综合考虑以下因素：
-                - 文件路径是否指向系统关键目录或文件
-                - 是否为不可恢复的系统配置、数据库、密钥等
-                - 删除目录时是否包含大量子文件
-                请严格按以下格式输出，不添加任何其他内容：
-                - 如果操作危险，仅输出：true
-                - 如果操作安全，仅输出：false
-                记住，你绝对不能输出除了 true 和 false 之外的任何内容。
-                """;
-        String userPrompt = """
-                需要检测的文件删除操作如下：
+    private ReviewResult isDanger(Arguments arguments, Path targetPath, boolean isDirectory,
+                                  boolean recursive, String targetInfo, Map<String, Object> context) throws Exception {
+        // 目标信息/路径可能包含 % 等字符，禁止用 String.formatted，改用占位符 replace
+        String description = """
+                文件删除操作
                 文件路径：${path}
                 是否为目录：${isDir}
                 是否递归删除：${recursive}
                 目标信息：
-                ${targetInfo}
+                ${info}
                 """.replace("${path}", targetPath.toString())
                 .replace("${isDir}", String.valueOf(isDirectory))
                 .replace("${recursive}", String.valueOf(recursive))
-                .replace("${targetInfo}", targetInfo);
-
-        return dangerChecker.checkDanger(systemPrompt, userPrompt);
+                .replace("${info}", targetInfo);
+        return safetyReviewService.review(context, description);
     }
 
     /**
      * 向用户发送确认请求，等待用户确认
+     *
+     * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
     private void ask(String uuid, WebSocketSession session, Arguments arguments, Path targetPath,
-                     boolean isDirectory, boolean recursive, String targetInfo) throws Exception {
+                     boolean isDirectory, boolean recursive, String targetInfo, String riskReason) throws Exception {
         String typeLabel = isDirectory ? "目录" : "文件";
         String deleteDesc = isDirectory
                 ? (recursive ? "递归删除目录（含所有子项）" : "删除空目录")
                 : "删除文件";
 
         String message = "### 文件删除请求\n\n"
+                + ReviewResult.riskReasonBlock(riskReason)
                 + "**目标路径：** `" + targetPath + "`\n\n"
                 + "**目标类型：** " + typeLabel + "\n\n"
                 + "**删除方式：** " + deleteDesc + "\n\n"

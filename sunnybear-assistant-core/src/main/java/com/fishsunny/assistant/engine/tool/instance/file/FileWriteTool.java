@@ -18,8 +18,9 @@ import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
-import com.fishsunny.assistant.engine.tool.service.DangerChecker;
 import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
+import com.fishsunny.assistant.engine.tool.service.review.AISafetyReviewService;
+import com.fishsunny.assistant.engine.tool.service.review.ReviewResult;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
@@ -60,15 +61,15 @@ public class FileWriteTool implements ToolHandler {
 
     private final ObjectMapper objectMapper;
     private final Settings settings;
-    private final DangerChecker checkDanger;
+    private final AISafetyReviewService safetyReviewService;
 
     public FileWriteTool(ObjectMapper objectMapper,
                          @Qualifier(SETTINGS) Settings settings,
-                         DangerChecker checkDanger
+                         AISafetyReviewService safetyReviewService
                          ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
-        this.checkDanger = checkDanger;
+        this.safetyReviewService = safetyReviewService;
     }
 
     @Override
@@ -100,18 +101,22 @@ public class FileWriteTool implements ToolHandler {
                     case NEVER_ASKED:
                         break;
                     case ALWAYS_ASKED:
-                        ask(uuid, session, arguments, filePath);
+                        ask(uuid, session, arguments, filePath, null);
                         break;
-                    case AUTO:
-                        if (isDanger(arguments, filePath)) {
-                            ask(uuid, session, arguments, filePath);
+                    case AUTO: {
+                        ReviewResult review = isDanger(arguments, filePath, context);
+                        if (review.isDanger()) {
+                            ask(uuid, session, arguments, filePath, review.reason());
                         }
                         break;
-                    case ALWAYS_REJECT_DANGER:
-                        if (isDanger(arguments, filePath)) {
-                            throw new ToolExecutor.ToolExecuteException("AI 判定此文件写入操作存在危险，操作被拒绝");
+                    }
+                    case ALWAYS_REJECT_DANGER: {
+                        ReviewResult review = isDanger(arguments, filePath, context);
+                        if (review.isDanger()) {
+                            throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件写入操作存在危险", review.reason()));
                         }
                         break;
+                    }
                     default:
                         throw new ToolExecutor.ToolExecuteException("FileWrite 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
                 }
@@ -168,53 +173,45 @@ public class FileWriteTool implements ToolHandler {
     }
 
     /**
-     * 使用 AI 对文件写入操作进行危险性评估
+     * 使用 AI 对文件写入操作进行危险性评估（子 Agent 审查，可读文件/列目录/解码取证）。
      */
-    private boolean isDanger(Arguments arguments, Path filePath) throws Exception {
-        String systemPrompt = """
-                你是一个文件写入安全检测器。你的唯一任务是对给出的文件写入操作进行危险性评估。
-                危险操作指写入后可能导致系统损坏、数据丢失、权限泄露、未授权访问、植入后门或资源耗尽等严重后果的行为。
-                请综合考虑以下因素：
-                - 文件路径是否指向系统关键目录
-                - 文件扩展名是否为可执行/脚本类型
-                - 文件内容是否包含恶意代码或敏感操作
-                请严格按以下格式输出，不添加任何其他内容：
-                - 如果操作危险，仅输出：true
-                - 如果操作安全，仅输出：false
-                记住，你绝对不能输出除了 true 和 false 之外的任何内容。
-                """;
-        String userPrompt = """
-                需要检测的文件写入操作如下：
+    private ReviewResult isDanger(Arguments arguments, Path filePath, Map<String, Object> context) throws Exception {
+        // 写入内容可能包含 % 等字符，禁止用 String.formatted，改用占位符 replace
+        String description = """
+                文件写入操作
                 文件路径：${path}
                 文件内容：
                 ${content}
                 """.replace("${path}", filePath.toString())
                 .replace("${content}", arguments.getContent());
-
-        return checkDanger.checkDanger(systemPrompt, userPrompt);
+        return safetyReviewService.review(context, description);
     }
 
     /**
      * 向用户发送确认请求，等待用户确认
+     *
+     * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
-    private void ask(String uuid, WebSocketSession session, Arguments arguments, Path filePath) throws Exception {
+    private void ask(String uuid, WebSocketSession session, Arguments arguments, Path filePath, String riskReason) throws Exception {
         String language = inferLanguage(filePath);
         String content = arguments.getContent();
         int contentLength = content.length();
 
-        String message = "### 文件写入请求\n\n"
-                + "**目标文件：** `" + filePath + "`\n\n"
-                + "**写入字符数：** " + String.format("%,d", contentLength) + "\n\n"
-                + "**内容预览：**\n\n"
-                + "```" + language + "\n"
-                + content + "\n"
-                + "```\n\n"
-                + "> 请确认此写入操作安全后再允许执行。";
+        StringBuilder message = new StringBuilder();
+        message.append("### 文件写入请求\n\n")
+                .append(ReviewResult.riskReasonBlock(riskReason))
+                .append("**目标文件：** `").append(filePath).append("`\n\n")
+                .append("**写入字符数：** ").append(String.format("%,d", contentLength)).append("\n\n")
+                .append("**内容预览：**\n\n")
+                .append("```").append(language).append("\n")
+                .append(content).append("\n")
+                .append("```\n\n")
+                .append("> 请确认此写入操作安全后再允许执行。");
 
         ToolAsk confirmation = new ToolAsk()
                 .setId(uuid)
                 .setToolName(NAME)
-                .setMessage(message)
+                .setMessage(message.toString())
                 .setTimeout(30);
 
         session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));

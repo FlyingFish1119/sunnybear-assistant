@@ -19,7 +19,8 @@ import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
-import com.fishsunny.assistant.engine.tool.service.DangerChecker;
+import com.fishsunny.assistant.engine.tool.service.review.AISafetyReviewService;
+import com.fishsunny.assistant.engine.tool.service.review.ReviewResult;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
@@ -150,18 +151,18 @@ public class CommandTool implements ToolHandler {
 
     private final ObjectMapper objectMapper;
     private final Settings settings;
-    private final DangerChecker dangerChecker;
+    private final AISafetyReviewService safetyReviewService;
 
     @Value("${assistant.file.base-path:}")
     private String basePath;
 
     public CommandTool(ObjectMapper objectMapper,
                        @Qualifier(SETTINGS) Settings settings,
-                       DangerChecker dangerChecker
+                       AISafetyReviewService safetyReviewService
                        ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
-        this.dangerChecker = dangerChecker;
+        this.safetyReviewService = safetyReviewService;
     }
 
     @Override
@@ -179,29 +180,33 @@ public class CommandTool implements ToolHandler {
             // 无审查模式：跳过黑名单/白名单/AI 危险检测与用户确认，直接执行
             if (!ToolContextUtils.isUnreviewed(context)) {
                 switch (settings.getMode()) {
-                    case AUTO:
+                    case AUTO: {
                         if (isBlacklisted(arguments.getCommand())) {
-                            ask(uuid, session, arguments);
+                            ask(uuid, session, arguments, null);
                         } else if (!isWhitelisted(arguments.getCommand())) {
-                            if (isDanger(arguments)) {
-                                ask(uuid, session, arguments);
+                            ReviewResult review = isDanger(arguments, context);
+                            if (review.isDanger()) {
+                                ask(uuid, session, arguments, review.reason());
                             }
                         }
                         break;
+                    }
                     case ALWAYS_ASKED:
-                        ask(uuid, session, arguments);
+                        ask(uuid, session, arguments, null);
                         break;
                     case NEVER_ASKED:
                         break;
-                    case ALWAYS_REJECT_DANGER:
+                    case ALWAYS_REJECT_DANGER: {
                         if (isBlacklisted(arguments.getCommand())) {
                             throw new ToolExecutor.ToolExecuteException("此命令行命令被拒绝执行");
                         } else if (!isWhitelisted(arguments.getCommand())) {
-                            if (isDanger(arguments)) {
-                                throw new ToolExecutor.ToolExecuteException("此命令行命令被拒绝执行");
+                            ReviewResult review = isDanger(arguments, context);
+                            if (review.isDanger()) {
+                                throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("执行此命令行命令存在危险", review.reason()));
                             }
                         }
                         break;
+                    }
                     default:
                         throw new ToolExecutor.ToolExecuteException("Command 工具的模式设置错误[" + settings.getMode() +"]，导致该工具无法执行");
                 }
@@ -393,25 +398,23 @@ public class CommandTool implements ToolHandler {
         return true;
     }
 
-    private boolean isDanger(Arguments arguments) throws Exception {
-        String systemPrompt = """
-                你是一个命令安全检测器。你的唯一任务是对给出的命令进行危险性评估。
-                危险命令指执行后可能导致系统损坏、数据丢失、权限泄露、未授权访问、植入后门或资源耗尽等严重后果的命令。
-                请严格按以下格式输出，不添加任何其他内容：
-                - 如果命令危险，仅输出：true
-                - 如果命令安全，仅输出：false
-                记住，你绝对不能输出除了 true 和 false 之外的任何内容。
-                """;
-        String userPrompt = """
-                需要检测的命令如下：
+    private ReviewResult isDanger(Arguments arguments, Map<String, Object> context) throws Exception {
+        // 命令文本可能包含 % 等字符，禁止用 String.formatted，改用占位符 replace
+        String description = """
+                在终端执行命令
+                命令内容：
                 ${command}
                 """.replace("${command}", arguments.getCommand());
-        return dangerChecker.checkDanger(systemPrompt, userPrompt);
+        return safetyReviewService.review(context, description);
     }
 
-    private void ask(String uuid, WebSocketSession session, Arguments arguments) throws Exception {
+    /**
+     * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
+     */
+    private void ask(String uuid, WebSocketSession session, Arguments arguments, String riskReason) throws Exception {
         String shellName = IS_WINDOWS ? "cmd" : "bash";
         String message = "### 命令执行请求\n\n"
+                + ReviewResult.riskReasonBlock(riskReason)
                 + "AI 请求在系统中执行以下命令：\n\n"
                 + "```" + shellName + "\n"
                 + arguments.getCommand() + "\n"

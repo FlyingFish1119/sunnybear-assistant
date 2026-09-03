@@ -18,8 +18,9 @@ import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
-import com.fishsunny.assistant.engine.tool.service.DangerChecker;
 import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
+import com.fishsunny.assistant.engine.tool.service.review.AISafetyReviewService;
+import com.fishsunny.assistant.engine.tool.service.review.ReviewResult;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
@@ -76,16 +77,16 @@ public class FileEditTool implements ToolHandler {
 
     private final ObjectMapper objectMapper;
     private final Settings settings;
-    private final DangerChecker dangerChecker;
+    private final AISafetyReviewService safetyReviewService;
 
     public FileEditTool(ObjectMapper objectMapper,
                         @Qualifier(SETTINGS) Settings settings,
-                        DangerChecker dangerChecker
+                        AISafetyReviewService safetyReviewService
 
                         ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
-        this.dangerChecker = dangerChecker;
+        this.safetyReviewService = safetyReviewService;
     }
 
     @Override
@@ -148,18 +149,22 @@ public class FileEditTool implements ToolHandler {
                     case NEVER_ASKED:
                         break;
                     case ALWAYS_ASKED:
-                        ask(uuid, session, filePath, modeDesc, match, diffPreview);
+                        ask(uuid, session, filePath, modeDesc, match, diffPreview, null);
                         break;
-                    case AUTO:
-                        if (isDanger(filePath, modeDesc, diffPreview, match)) {
-                            ask(uuid, session, filePath, modeDesc, match, diffPreview);
+                    case AUTO: {
+                        ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
+                        if (review.isDanger()) {
+                            ask(uuid, session, filePath, modeDesc, match, diffPreview, review.reason());
                         }
                         break;
-                    case ALWAYS_REJECT_DANGER:
-                        if (isDanger(filePath, modeDesc, diffPreview, match)) {
-                            throw new ToolExecutor.ToolExecuteException("AI 判定此文件编辑操作存在危险，操作被拒绝");
+                    }
+                    case ALWAYS_REJECT_DANGER: {
+                        ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
+                        if (review.isDanger()) {
+                            throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件编辑操作存在危险", review.reason()));
                         }
                         break;
+                    }
                     default:
                         throw new ToolExecutor.ToolExecuteException("FileEdit 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
                 }
@@ -376,50 +381,40 @@ public class FileEditTool implements ToolHandler {
     // ======================== AI 安全检测 ========================
 
     /**
-     * 使用 AI 对文件编辑操作进行危险性评估
+     * 使用 AI 对文件编辑操作进行危险性评估（子 Agent 审查，可读文件/列目录/解码取证）。
      */
-    private boolean isDanger(Path filePath, String modeDesc, String previewContent,
-                             MatchResult match) throws Exception {
-        String systemPrompt = """
-                你是一个文件编辑安全检测器。你的唯一任务是对给出的文件编辑操作进行危险性评估。
-                危险操作指编辑后可能导致系统损坏、数据丢失、权限泄露、未授权访问、植入后门或资源耗尽等严重后果的行为。
-                请综合考虑以下因素：
-                - 文件路径是否指向系统关键目录
-                - 文件扩展名是否为可执行/脚本类型
-                - 编辑操作（删除、替换）是否会导致恶意行为
-                - 编辑后的内容是否包含恶意代码或敏感操作
-                请严格按以下格式输出，不添加任何其他内容：
-                - 如果操作危险，仅输出：true
-                - 如果操作安全，仅输出：false
-                记住，你绝对不能输出除了 true 和 false 之外的任何内容。
-                """;
-        String userPrompt = """
-                需要检测的文件编辑操作如下：
+    private ReviewResult isDanger(Path filePath, String modeDesc, String previewContent,
+                                  MatchResult match, Map<String, Object> context) throws Exception {
+        // 预览内容可能包含 % 等字符，禁止用 String.formatted，改用占位符 replace
+        String description = """
+                文件编辑操作（替换/删除文件中的一段内容）
                 编辑模式：${mode}
                 文件路径：${path}
-                操作范围：第 ${startLine} ~ ${endLine} 行
+                操作范围：第 ${start} ~ ${end} 行
                 以下是变更预览（- 表示删除的行，+ 表示添加的行，空格前缀为未变更的上下文行）：
                 ${content}
                 """.replace("${mode}", modeDesc)
                 .replace("${path}", filePath.toString())
-                .replace("${startLine}", String.valueOf(match.startLine + 1))
-                .replace("${endLine}", String.valueOf(match.endLine + 1))
+                .replace("${start}", String.valueOf(match.startLine + 1))
+                .replace("${end}", String.valueOf(match.endLine + 1))
                 .replace("${content}", previewContent);
-
-        return dangerChecker.checkDanger(systemPrompt, userPrompt);
+        return safetyReviewService.review(context, description);
     }
 
     // ======================== 用户确认 ========================
 
     /**
      * 向用户发送确认请求，等待用户确认
+     *
+     * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
     private void ask(String uuid, WebSocketSession session, Path filePath,
-                     String modeDesc, MatchResult match, String previewContent) throws Exception {
+                     String modeDesc, MatchResult match, String previewContent, String riskReason) throws Exception {
 
         String lineRange = "第 " + (match.startLine + 1) + " ~ " + (match.endLine + 1) + " 行";
 
         String message = "### 文件编辑请求\n\n"
+                + ReviewResult.riskReasonBlock(riskReason)
                 + "**目标文件：** `" + filePath + "`\n\n"
                 + "**编辑模式：** " + modeDesc + "（" + lineRange + "）\n\n"
                 + "**变更预览：**\n\n"

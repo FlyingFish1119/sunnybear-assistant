@@ -341,11 +341,11 @@ public class CharacterChatSelectService {
                   </chat-select>
                 - 一般给 3 条、最多 4 条；每条不超过 40 字，且彼此走向互不相同。
                 """);
-        sb.append("\n\n");
+        sb.append("\n");
         if (StringUtils.hasText(format)) {
             sb.append("风格指导：\n").append(format);
         } else {
-            sb.append("风格指导：选项应是玩家自己会说的话/会做的事，第一人称，简短自然，按最可能到次可能的顺序排列。");
+            sb.append("风格指导：\n选项应是玩家自己会说的话/会做的事，第一人称，简短自然，按最可能到次可能的顺序排列。");
         }
         return sb.toString();
     }
