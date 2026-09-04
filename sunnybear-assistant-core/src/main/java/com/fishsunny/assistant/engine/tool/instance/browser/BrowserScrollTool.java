@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
@@ -60,6 +61,7 @@ public class BrowserScrollTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = "chatSession", type = ChatSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context)
             throws ToolExecutor.ToolExecuteException {
         try {

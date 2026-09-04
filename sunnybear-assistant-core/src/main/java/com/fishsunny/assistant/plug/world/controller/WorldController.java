@@ -13,10 +13,9 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.plug.world.dto.WorldFileData;
 import com.fishsunny.assistant.plug.world.entity.WorldInfo;
-import com.fishsunny.assistant.plug.world.entity.WorldSessionMapping;
 import com.fishsunny.assistant.plug.world.service.WorldImportExportService;
 import com.fishsunny.assistant.plug.world.service.WorldInfoService;
-import com.fishsunny.assistant.plug.world.service.WorldSessionMappingService;
+import com.fishsunny.assistant.plug.world.service.WorldSessionBindings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,7 +25,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/world")
@@ -38,17 +36,14 @@ public class WorldController {
     private static final int MAX_NAME_LENGTH = 50;
 
     private final WorldInfoService worldInfoService;
-    private final WorldSessionMappingService mappingService;
     private final ChatSessionService chatSessionService;
     private final WorldImportExportService importExportService;
 
     @Autowired
     public WorldController(WorldInfoService worldInfoService,
-                           WorldSessionMappingService mappingService,
                            ChatSessionService chatSessionService,
                            WorldImportExportService importExportService) {
         this.worldInfoService = worldInfoService;
-        this.mappingService = mappingService;
         this.chatSessionService = chatSessionService;
         this.importExportService = importExportService;
     }
@@ -225,53 +220,16 @@ public class WorldController {
             return new RestResponse().error("会话 ID 不能为空");
         }
         try {
-            WorldSessionMapping mapping = mappingService.findBySessionId(sessionId);
-            if (mapping == null) {
+            ChatSession session = chatSessionService.findById(sessionId);
+            String worldId = WorldSessionBindings.resolveWorldId(session);
+            if (worldId == null) {
                 return new RestResponse().success(null);
             }
-            WorldInfo world = worldInfoService.findById(mapping.getWorldId());
+            WorldInfo world = worldInfoService.findById(worldId);
             return new RestResponse().success(world);
         } catch (Exception e) {
             log.error("通过会话获取世界观失败", e);
             return new RestResponse().error("获取世界观失败: " + e.getMessage());
-        }
-    }
-
-    /** 绑定群聊会话到世界观 */
-    @PostMapping("/bind-session")
-    public RestResponse bindSession(@RequestBody(required = false) Map<String, String> body) {
-        if (body == null) {
-            return new RestResponse().error("参数不能为空");
-        }
-        String sessionId = body.get("sessionId");
-        String worldId = body.get("worldId");
-        if (!StringUtils.hasText(sessionId)) {
-            return new RestResponse().error("会话 ID 不能为空");
-        }
-        if (!StringUtils.hasText(worldId)) {
-            return new RestResponse().error("世界观 ID 不能为空");
-        }
-        try {
-            WorldSessionMapping mapping = mappingService.createMapping(sessionId, worldId);
-            return new RestResponse().success(mapping);
-        } catch (Exception e) {
-            log.error("绑定会话失败", e);
-            return new RestResponse().error("绑定会话失败: " + e.getMessage());
-        }
-    }
-
-    /** 解绑群聊会话与世界观的映射 */
-    @RequestMapping("/unbind-session")
-    public RestResponse unbindSession(@RequestParam("sessionId") String sessionId) {
-        if (!StringUtils.hasText(sessionId)) {
-            return new RestResponse().error("会话 ID 不能为空");
-        }
-        try {
-            mappingService.deleteBySessionId(sessionId);
-            return new RestResponse().success("解绑成功");
-        } catch (Exception e) {
-            log.error("解绑会话失败", e);
-            return new RestResponse().error("解绑会话失败: " + e.getMessage());
         }
     }
 
@@ -282,18 +240,8 @@ public class WorldController {
             return new RestResponse().error("世界观 ID 不能为空");
         }
         try {
-            List<String> sessionIds = mappingService.findSessionIdsByWorldId(worldId);
-            List<ChatSession> sessions = new ArrayList<>();
-            for (String sessionId : sessionIds) {
-                try {
-                    ChatSession session = chatSessionService.findById(sessionId);
-                    if (session != null) {
-                        sessions.add(session);
-                    }
-                } catch (Exception e) {
-                    log.warn("会话 [{}] 不存在，跳过", sessionId);
-                }
-            }
+            List<ChatSession> sessions = chatSessionService.findByTypeAndExtensionValue(
+                    WorldSessionBindings.SESSION_TYPE, WorldSessionBindings.EXTENSION_KEY, worldId);
             return new RestResponse().success(sessions);
         } catch (Exception e) {
             log.error("获取世界观会话失败", e);

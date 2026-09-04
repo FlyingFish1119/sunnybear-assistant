@@ -21,10 +21,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolKit;
-import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
-import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.*;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.mvc.controller.ChatController;
@@ -97,10 +94,8 @@ public class TaskRunTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = "session", type = WebSocketSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
-        if (!(context.get("session") instanceof WebSocketSession)) {
-            throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
-        }
         try {
             if (!cas.compareAndSet(false, true)) {
                 throw new ToolExecutor.ToolExecuteException("工具正在执行中，请稍后再试");

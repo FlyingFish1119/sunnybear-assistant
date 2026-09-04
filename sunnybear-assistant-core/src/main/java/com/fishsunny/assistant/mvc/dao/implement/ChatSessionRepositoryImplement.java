@@ -55,6 +55,13 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         } catch (Exception e) {
             log.debug("Migration: unreviewed column may already exist, skipping. {}", e.getMessage());
         }
+        // 自动迁移：为旧数据库添加 extension 列（插件扩展字段，语义由各插件自行约定）
+        try {
+            jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN extension TEXT");
+            log.info("Migration: added extension column to chat_session");
+        } catch (Exception e) {
+            log.debug("Migration: extension column may already exist, skipping. {}", e.getMessage());
+        }
     }
 
     private final RowMapper<ChatSession> rowMapper = (resultSet, i) -> {
@@ -66,6 +73,7 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         chatSession.setUpdateTime(LocalDateTime.parse(resultSet.getString("update_time"), formatter));
         chatSession.setEnablePro(resultSet.getInt("enable_pro") == 1);
         chatSession.setUnreviewed(resultSet.getInt("unreviewed") == 1);
+        chatSession.setExtension(resultSet.getString("extension"));
         return chatSession;
     };
 
@@ -74,9 +82,9 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         String sql =
                 """
                 INSERT INTO chat_session
-                (id, name, type, create_time, update_time, enable_pro, unreviewed)
+                (id, name, type, create_time, update_time, enable_pro, unreviewed, extension)
                 VALUES
-                (?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         jdbcTemplate.update(sql,
                 chatSession.getId(),
@@ -85,7 +93,8 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
                 chatSession.getCreateTime().format(formatter),
                 chatSession.getUpdateTime().format(formatter),
                 chatSession.getEnablePro() != null && chatSession.getEnablePro() ? 1 : 0,
-                chatSession.getUnreviewed() != null && chatSession.getUnreviewed() ? 1 : 0
+                chatSession.getUnreviewed() != null && chatSession.getUnreviewed() ? 1 : 0,
+                chatSession.getExtension()
         );
 
         ChatSession session = selectById(chatSession.getId());
@@ -155,5 +164,11 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         String sql = "SELECT * FROM chat_session WHERE id = ?";
         List<ChatSession> results = jdbcTemplate.query(sql, rowMapper, id);
         return results.isEmpty() ? null : results.get(0);
+    }
+
+    @Override
+    public List<ChatSession> selectByTypeAndExtensionValue(String type, String jsonKey, String value) {
+        String sql = "SELECT * FROM chat_session WHERE type = ? AND json_extract(extension, ?) = ? ORDER BY update_time DESC";
+        return jdbcTemplate.query(sql, rowMapper, type, "$." + jsonKey, value);
     }
 }

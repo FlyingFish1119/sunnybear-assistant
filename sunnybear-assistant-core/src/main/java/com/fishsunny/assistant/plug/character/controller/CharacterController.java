@@ -14,9 +14,8 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.plug.character.db.CharacterDbManager;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
-import com.fishsunny.assistant.plug.character.entity.CharacterSessionMapping;
 import com.fishsunny.assistant.plug.character.service.CharacterInfoService;
-import com.fishsunny.assistant.plug.character.service.CharacterSessionMappingService;
+import com.fishsunny.assistant.plug.character.service.CharacterSessionBindings;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.UserSettings;
@@ -49,7 +48,6 @@ public class CharacterController {
     private final ObjectMapper objectMapper;
     private final CharacterDbManager characterDbManager;
     private final CharacterInfoService characterInfoService;
-    private final CharacterSessionMappingService mappingService;
     private final ChatSessionService chatSessionService;
     private final AssistantSettings assistantSettings;
     private final UserSettings userSettings;
@@ -64,7 +62,6 @@ public class CharacterController {
             ObjectMapper objectMapper,
             CharacterDbManager characterDbManager,
             CharacterInfoService characterInfoService,
-            CharacterSessionMappingService mappingService,
             ChatSessionService chatSessionService,
             AssistantSettings assistantSettings,
             UserSettings userSettings,
@@ -79,7 +76,6 @@ public class CharacterController {
         this.objectMapper = objectMapper;
         this.characterDbManager = characterDbManager;
         this.characterInfoService = characterInfoService;
-        this.mappingService = mappingService;
         this.chatSessionService = chatSessionService;
         this.assistantSettings = assistantSettings;
         this.userSettings = userSettings;
@@ -415,18 +411,8 @@ public class CharacterController {
             return new RestResponse().error("角色 ID 不能为空");
         }
         try {
-            List<String> sessionIds = mappingService.findSessionIdsByCharacterId(characterId);
-            List<ChatSession> sessions = new ArrayList<>();
-            for (String sessionId : sessionIds) {
-                try {
-                    ChatSession session = chatSessionService.findById(sessionId);
-                    if (session != null) {
-                        sessions.add(session);
-                    }
-                } catch (Exception e) {
-                    log.warn("会话 [{}] 不存在，跳过", sessionId);
-                }
-            }
+            List<ChatSession> sessions = chatSessionService.findByTypeAndExtensionValue(
+                    CharacterSessionBindings.SESSION_TYPE, CharacterSessionBindings.EXTENSION_KEY, characterId);
             return new RestResponse().success(sessions);
         } catch (Exception e) {
             log.error("获取角色会话失败", e);
@@ -440,11 +426,12 @@ public class CharacterController {
             return new RestResponse().error("会话 ID 不能为空");
         }
         try {
-            CharacterSessionMapping mapping = mappingService.findBySessionId(sessionId);
-            if (mapping == null) {
+            ChatSession session = chatSessionService.findById(sessionId);
+            String characterId = CharacterSessionBindings.resolveCharacterId(session);
+            if (characterId == null) {
                 return new RestResponse().success(null);
             }
-            CharacterInfo character = characterInfoService.findById(mapping.getCharacterId());
+            CharacterInfo character = characterInfoService.findById(characterId);
             return new RestResponse().success(character);
         } catch (Exception e) {
             log.error("通过会话获取角色失败", e);
@@ -452,39 +439,4 @@ public class CharacterController {
         }
     }
 
-    @PostMapping("/bind-session")
-    public RestResponse bindSession(@RequestBody(required = false) Map<String, String> body) {
-        if (body == null) {
-            return new RestResponse().error("参数不能为空");
-        }
-        String sessionId = body.get("sessionId");
-        String characterId = body.get("characterId");
-        if (!StringUtils.hasText(sessionId)) {
-            return new RestResponse().error("会话 ID 不能为空");
-        }
-        if (!StringUtils.hasText(characterId)) {
-            return new RestResponse().error("角色 ID 不能为空");
-        }
-        try {
-            CharacterSessionMapping mapping = mappingService.createMapping(sessionId, characterId);
-            return new RestResponse().success(mapping);
-        } catch (Exception e) {
-            log.error("绑定会话失败", e);
-            return new RestResponse().error("绑定会话失败: " + e.getMessage());
-        }
-    }
-
-    @RequestMapping("/unbind-session")
-    public RestResponse unbindSession(@RequestParam("sessionId") String sessionId) {
-        if (!StringUtils.hasText(sessionId)) {
-            return new RestResponse().error("会话 ID 不能为空");
-        }
-        try {
-            mappingService.deleteBySessionId(sessionId);
-            return new RestResponse().success("解绑成功");
-        } catch (Exception e) {
-            log.error("解绑会话失败", e);
-            return new RestResponse().error("解绑会话失败: " + e.getMessage());
-        }
-    }
 }

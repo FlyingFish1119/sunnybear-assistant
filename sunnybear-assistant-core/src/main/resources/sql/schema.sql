@@ -7,7 +7,9 @@ CREATE TABLE IF NOT EXISTS chat_session (
     update_time TEXT NOT NULL,
     enable_pro INTEGER NOT NULL DEFAULT 0,
     -- 无审查模式：开启后该会话内所有工具的确认与 AI 危险审查失效（与工具内的 AUTO 模式语义相反）
-    unreviewed INTEGER NOT NULL DEFAULT 0
+    unreviewed INTEGER NOT NULL DEFAULT 0,
+    -- 插件扩展字段（JSON 字符串，语义由各插件自行约定，核心层不解析）。角色/世界会话存放绑定资源 ID
+    extension TEXT
 );
 -- 索引：按会话 ID 加速查询
 CREATE INDEX IF NOT EXISTS idx_chat_session_id ON chat_session(id);

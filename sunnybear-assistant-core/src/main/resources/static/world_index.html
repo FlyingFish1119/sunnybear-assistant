@@ -1200,6 +1200,10 @@
                     sessionId: this.currentSessionId,
                     content: this.inputText
                 };
+                if (mode === 'create') {
+                    // 一次性注册：新会话随首条消息携带世界观 ID 扩展字段，服务端落库即完成绑定匹配，无需再二次 bind
+                    request.extension = { worldId: this.worldId };
+                }
                 if (this.uploadedFiles.length > 0) {
                     request.files = this.uploadedFiles;
                 }
@@ -1300,15 +1304,6 @@
                     const ta = document.querySelector('.send-area-textarea');
                     if (ta) ta.focus();
                 });
-            },
-
-            /** 将会话绑定到当前世界观 */
-            async bindSessionToWorld(sessionId) {
-                try {
-                    await API.world.bindSession({ sessionId: sessionId, worldId: this.worldId });
-                } catch (error) {
-                    console.error('绑定会话到世界观失败:', error);
-                }
             },
 
             /**
@@ -1482,10 +1477,7 @@
                         this.sending = false; // 服务端已确认收到消息，恢复可发送
                         if (!this.currentSession.id) {
                             this.currentSession.id = response.sessionId;
-                            // 新会话创建后，绑定到当前世界观
-                            if (this.worldId && response.sessionId) {
-                                this.bindSessionToWorld(response.sessionId);
-                            }
+                            // 新会话已在 create 时携带 extension 完成一次注册，无需再二次绑定
                         }
 
                         // 编辑/重发场景：后端用同一 parentId 重新确认用户消息（旧 B 与新 B' 的 parentId 相同），

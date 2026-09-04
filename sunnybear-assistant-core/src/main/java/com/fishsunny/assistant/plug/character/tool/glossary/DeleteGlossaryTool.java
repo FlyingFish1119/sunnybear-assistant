@@ -11,6 +11,7 @@ package com.fishsunny.assistant.plug.character.tool.glossary;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
@@ -48,6 +49,7 @@ public class DeleteGlossaryTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = "character", type = CharacterInfo.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         Arguments arguments;
         try {
@@ -60,10 +62,8 @@ public class DeleteGlossaryTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("参数 id 不能为空");
         }
 
+        // action 已声明 character 依赖（@ToolIncludeContext），此处直接取用
         CharacterInfo character = (CharacterInfo) context.get("character");
-        if (character == null) {
-            throw new ToolExecutor.ToolExecuteException("无法获取当前角色信息");
-        }
 
         // 查找并校验所有权
         CharacterGlossary existing = glossaryService.getById(arguments.getId());

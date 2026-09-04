@@ -43,6 +43,12 @@ public class ChatSession {
      */
     private Boolean unreviewed = false;
 
+    /**
+     * 插件扩展字段（JSON 字符串，语义由各插件自行约定，核心层不解析不解释）。
+     * 例如角色/世界会话在此存放绑定资源 ID；普通会话与定时任务会话为 null。
+     */
+    private String extension;
+
     public ChatSession() {
     }
 

@@ -15,6 +15,7 @@ import lombok.experimental.Accessors;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Accessors(chain = true)
@@ -38,8 +39,6 @@ public class ChatMessageRequest {
     /** cron 任务 ID，不为空时表示该请求来自 cron 定时触发 */
     private Integer cronId;
 
-    private String content;
-
     /**
      * replace 模式专用：要被替换的助手消息 ID
      */
@@ -50,7 +49,14 @@ public class ChatMessageRequest {
      */
     private String editMessageId;
 
+    private String content;
+
     private List<FileData> files;
+
+    /**
+     * 扩展字段
+     */
+    private Map<String, Object> extension;
 
     public ChatMessageRequest() {
     }

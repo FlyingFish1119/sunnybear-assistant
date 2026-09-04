@@ -14,6 +14,7 @@ import com.fishsunny.assistant.dto.ChatMessageRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.plug.world.service.WorldGroupChatService;
+import com.fishsunny.assistant.plug.world.service.WorldSessionBindings;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import com.fishsunny.assistant.websocket.SessionMessageBus;
 import com.fishsunny.assistant.websocket.SynchronizedWebSocketSession;
@@ -47,6 +48,11 @@ import org.springframework.web.socket.WebSocketSession;
         }
 
         @Override
+        public String sessionType() {
+            return WorldSessionBindings.SESSION_TYPE;
+        }
+
+        @Override
         protected void handleTextMessage(@NonNull WebSocketSession session, @NonNull TextMessage message) {
             super.chatAsyncExecutor.execute(() -> {
                 // 用线程安全的包装器保护 session，防止多线程并发 sendMessage 时出现 TEXT_PARTIAL_WRITING
@@ -63,7 +69,7 @@ import org.springframework.web.socket.WebSocketSession;
 
                     // 创建/追加会话，落盘用户消息并推送 init_user
                     ServiceProcessor.ChatSessionModeParseResult parseResult =
-                            super.serviceProcessor.handleChatSession(request, safeSession, false);
+                            super.serviceProcessor.handleChatSession(request, safeSession, false, sessionType());
                     ChatSession chatSession = parseResult.chatSession();
                     if (chatSession == null) {
                         throw new UserException("无效的会话 ID");

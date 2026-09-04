@@ -11,11 +11,11 @@ package com.fishsunny.assistant.plug.character.tool.state;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.plug.character.db.CharacterDbManager;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
-import com.fishsunny.assistant.plug.character.service.CharacterSessionMappingService;
 import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,14 +41,11 @@ public class SqlQueryTool implements ToolHandler {
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
     private final CharacterDbManager dbManager;
-    private final CharacterSessionMappingService mappingService;
 
     public SqlQueryTool(ObjectMapper objectMapper,
-                        CharacterDbManager dbManager,
-                        CharacterSessionMappingService mappingService) {
+                        CharacterDbManager dbManager) {
         this.objectMapper = objectMapper;
         this.dbManager = dbManager;
-        this.mappingService = mappingService;
 
         register = new ToolRegister()
                 .setName(NAME)
@@ -61,6 +58,7 @@ public class SqlQueryTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = "character", type = CharacterInfo.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         Arguments arguments;
         try {
@@ -75,10 +73,8 @@ public class SqlQueryTool implements ToolHandler {
         }
         sql = sql.trim();
 
+        // action 已声明 character 依赖（@ToolIncludeContext），此处直接取用
         CharacterInfo characterInfo = (CharacterInfo) context.get("character");
-        if (characterInfo == null) {
-            throw new ToolExecutor.ToolExecuteException("角色信息未找到");
-        }
 
         DataSource ds = dbManager.getOrCreate(characterInfo.getId());
 
@@ -95,7 +91,7 @@ public class SqlQueryTool implements ToolHandler {
                 sb.append(" ").append(meta.getColumnName(i)).append(" |");
             }
             sb.append("\n|");
-            sb.append(" --- |".repeat(Math.max(0, colCount)));
+            sb.repeat(" --- |", Math.max(0, colCount));
             sb.append("\n");
 
             // 数据行

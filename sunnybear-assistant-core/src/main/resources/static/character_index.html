@@ -1003,21 +1003,16 @@
                     sessionId: this.currentSessionId,
                     content: this.inputText
                 };
+                if (mode === 'create') {
+                    // 一次性注册：新会话随首条消息携带角色 ID 扩展字段，服务端落库即完成绑定匹配，无需再二次 bind
+                    request.extension = { characterId: this.characterId };
+                }
                 if (this.uploadedFiles.length > 0) {
                     request.files = this.uploadedFiles;
                 }
                 this.ws.send(JSON.stringify(request));
                 // 不在这里清空 inputText/uploadedFiles，改为在收到服务端 init_user 确认后再清空
                 // 避免移动端 WebSocket 假连接导致消息丢失
-            },
-
-            /** 将会话绑定到当前角色 */
-            async bindSessionToCharacter(sessionId) {
-                try {
-                    await API.character.bindSession({ sessionId: sessionId, characterId: this.characterId });
-                } catch (error) {
-                    console.error('绑定会话到角色失败:', error);
-                }
             },
 
             /**
@@ -1168,10 +1163,7 @@
                         this.sending = false; // 服务端已确认收到消息，恢复可发送
                         if (!this.currentSession.id) {
                             this.currentSession.id = response.sessionId;
-                            // 新会话创建后，绑定到当前角色
-                            if (this.characterId && response.sessionId) {
-                                this.bindSessionToCharacter(response.sessionId);
-                            }
+                            // 新会话已在 create 时携带 extension 完成一次注册，无需再二次绑定
                         }
 
                         // 编辑/重发场景：后端用同一 parentId 重新确认用户消息（旧 B 与新 B' 的 parentId 相同），

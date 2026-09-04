@@ -17,6 +17,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
@@ -110,6 +111,7 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
     }
 
     @Override
+    @ToolIncludeContext(key = "chatSession", type = ChatSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         if (settings.getMaxLength() == null || settings.getMaxLength() < 0) {
             throw new ToolExecutor.ToolExecuteException("工具配置信息错误，maxLength不能小于0。");
@@ -136,9 +138,8 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
      * 拿到图片后落盘为会话目录下的图片文件，并以多模态 tool content 数组返回，供外层模型直接查看原图。
      */
     private ToolExecutor.ToolExecuteResponse executeRawImageMode(Arguments arguments, Map<String, Object> context) throws Exception {
-        if (!(context.get("chatSession") instanceof ChatSession chatSession)) {
-            throw new ToolExecutor.ToolExecuteException("当前上下文缺少 chatSession，无法执行 raw 图片返回模式");
-        }
+        // action 已声明 chatSession 依赖（@ToolIncludeContext），此处直接取用
+        ChatSession chatSession = (ChatSession) context.get("chatSession");
         String dataUri = findImage(arguments);
         byte[] bytes = ScaleImageHelper.base64ToByteArray(dataUri);
         if (bytes.length == 0) {

@@ -71,6 +71,11 @@ public class ChatSessionServiceImplement implements ChatSessionService {
     }
 
     @Override
+    public List<ChatSession> findByTypeAndExtensionValue(String type, String jsonKey, String value) {
+        return chatSessionRepository.selectByTypeAndExtensionValue(type, jsonKey, value);
+    }
+
+    @Override
     public ChatSession deleteById(String id) {
         ChatSession deleted = chatSessionRepository.deleteById(id);
         // 删除会话对应的文件目录

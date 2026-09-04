@@ -20,6 +20,7 @@ import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.calc.CalculateTool;
@@ -99,6 +100,8 @@ public class BattleEngineTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = {"character", "chatSession", "session"},
+            type = {CharacterInfo.class, ChatSession.class, WebSocketSession.class})
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         CharacterInfo character = (CharacterInfo) context.get("character");
 
@@ -116,16 +119,10 @@ public class BattleEngineTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("敌人描述（enemyDescription）不能为空");
         }
 
-        // Step 2: 从上下文获取 sessionId 和 WebSocket 会话
+        // Step 2: 从上下文获取 sessionId 和 WebSocket 会话（action 已声明这些依赖，直接取用）
         ChatSession chatSession = (ChatSession) context.get("chatSession");
-        String sessionId = chatSession != null ? chatSession.getId() : null;
-        WebSocketSession wsSession = null;
-        if (context.get("session") instanceof WebSocketSession s) {
-            wsSession = s;
-        }
-        if (sessionId == null || wsSession == null) {
-            throw new ToolExecutor.ToolExecuteException("战斗引擎需要有效的 session 和 WebSocket 连接");
-        }
+        String sessionId = chatSession.getId();
+        WebSocketSession wsSession = (WebSocketSession) context.get("session");
 
         // Step 2: 调用 MissionAI 生成结构化卡牌
         BattleCardResult cardResult;
@@ -269,7 +266,7 @@ public class BattleEngineTool implements ToolHandler {
                 UUID.randomUUID().toString(),
                 missionAISettings.getAdapterName(),
                 request,
-                missionAISettings.getStream() != null ? missionAISettings.getStream() : false,
+                missionAISettings.getStream(),
                 null,
                 (result, lastRes) -> afterResolve.set(result.content())
         );
@@ -420,7 +417,7 @@ public class BattleEngineTool implements ToolHandler {
                     queryState(ds, "player_state"), enemyState, ds);
 
             // 4. 敌人 AI 决策
-            String lastNarrative = roundMessages.isEmpty() ? null : roundMessages.get(roundMessages.size() - 1);
+            String lastNarrative = roundMessages.isEmpty() ? null : roundMessages.getLast();
             BattleTurnAction enemyAction = enemyAction(ds, lastNarrative, context);
 
             // 5. 敌人回合结算

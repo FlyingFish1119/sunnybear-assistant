@@ -91,6 +91,15 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
+     * 本连接端点归属的会话类型：新建会话（MODE_CREATE）时用于给 ChatSession.type 打标，
+     * 使插件会话（角色/世界）只需 create 携带 extension 即可一次性完成绑定注册。
+     * null = 核心普通会话（保持默认 'chat'）。插件子类重写返回各自占用的会话类型常量。
+     */
+    public String sessionType() {
+        return null;
+    }
+
+    /**
      * 额外的信号解析 Hook。子类可重写此方法以拦截并处理特定信号。
      * 在正常的聊天流程之前调用。
      *
@@ -159,7 +168,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 if (chatToAiProvider().getEnableSwitchPro() != null) {
                     enableSwitchPro = Boolean.TRUE.equals(chatToAiProvider().getEnableSwitchPro().get());
                 }
-                ServiceProcessor.ChatSessionModeParseResult parseResult = serviceProcessor.handleChatSession(request, safeSession, enableSwitchPro);
+                ServiceProcessor.ChatSessionModeParseResult parseResult = serviceProcessor.handleChatSession(request, safeSession, enableSwitchPro, sessionType());
 
                 // 处理请求
                 chatSession = parseResult.chatSession();

@@ -8,12 +8,11 @@ package com.fishsunny.assistant.plug.character.service;
  * @Date 2026/7/9
  */
 
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
-import com.fishsunny.assistant.plug.character.entity.CharacterSessionMapping;
 import com.fishsunny.assistant.plug.character.repository.CharacterGlossaryRepository;
 import com.fishsunny.assistant.plug.character.repository.CharacterInfoRepository;
-import com.fishsunny.assistant.plug.character.repository.CharacterSessionMappingRepository;
 import com.fishsunny.assistant.utils.image.Database64ScaleImageHelper;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
 import org.slf4j.Logger;
@@ -47,19 +46,16 @@ public class CharacterInfoServiceImplement implements CharacterInfoService {
     private static final int BACKGROUND_MAX_PX = 1920;
 
     private final CharacterInfoRepository characterInfoRepository;
-    private final CharacterSessionMappingRepository mappingRepository;
     private final CharacterGlossaryRepository glossaryRepository;
     private final ChatSessionService chatSessionService;
     private final String backgroundDir;
 
     @Autowired
     public CharacterInfoServiceImplement(CharacterInfoRepository characterInfoRepository,
-                                          CharacterSessionMappingRepository mappingRepository,
                                           CharacterGlossaryRepository glossaryRepository,
                                           ChatSessionService chatSessionService,
                                           @Value("${assistant.file.base-path:data/}") String fileBasePath) {
         this.characterInfoRepository = characterInfoRepository;
-        this.mappingRepository = mappingRepository;
         this.glossaryRepository = glossaryRepository;
         this.chatSessionService = chatSessionService;
         this.backgroundDir = fileBasePath + "characters/";
@@ -186,15 +182,16 @@ public class CharacterInfoServiceImplement implements CharacterInfoService {
     @Override
     @Transactional
     public CharacterInfo deleteById(String id) {
-        List<CharacterSessionMapping> mappings = mappingRepository.selectByCharacterId(id);
-        for (CharacterSessionMapping mapping : mappings) {
+        // 级联删除：绑定该角色的所有会话一并删除
+        List<ChatSession> boundSessions = chatSessionService.findByTypeAndExtensionValue(
+                CharacterSessionBindings.SESSION_TYPE, CharacterSessionBindings.EXTENSION_KEY, id);
+        for (ChatSession session : boundSessions) {
             try {
-                chatSessionService.deleteById(mapping.getSessionId());
+                chatSessionService.deleteById(session.getId());
             } catch (Exception e) {
-                log.warn("删除角色关联会话失败 [sessionId={}]: {}", mapping.getSessionId(), e.getMessage());
+                log.warn("删除角色关联会话失败 [sessionId={}]: {}", session.getId(), e.getMessage());
             }
         }
-        mappingRepository.deleteByCharacterId(id);
         glossaryRepository.deleteByCharacterId(id);
         CharacterInfo deleted = characterInfoRepository.deleteById(id);
         // 清理角色文件目录（data/characters/{characterId}/）

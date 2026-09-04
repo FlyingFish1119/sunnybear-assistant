@@ -19,6 +19,7 @@ import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
@@ -95,6 +96,7 @@ public class NetExploreTool implements SubAgentToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = {"chatSession", "session"}, type = {ChatSession.class, WebSocketSession.class})
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         Arguments arguments;
         try {
@@ -112,22 +114,12 @@ public class NetExploreTool implements SubAgentToolHandler {
         }
 
         try {
-            Object chatSessionObj = context.get("chatSession");
-            if (! (chatSessionObj instanceof ChatSession chatSession)) {
-                throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: chatSession 缺失");
-            }
+            ChatSession chatSession = (ChatSession) context.get("chatSession");
+            WebSocketSession session = (WebSocketSession) context.get("session");
 
+            // ========== 确认机制（无审查模式跳过） ==========
             if (ChatSession.TYPE_CHAT.equals(chatSession.getType()) && !ToolContextUtils.isUnreviewed(context)) {
-                // ========== 确认机制（无审查模式跳过） ==========
-                String uuid = UUID.randomUUID().toString();
-                try {
-                    if (!(context.get("session") instanceof WebSocketSession session)) {
-                        throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
-                    }
-                    ask(session, arguments.getTarget());
-                } finally {
-                    ChatController.cleanupConfirm(uuid);
-                }
+                ask(session, arguments.getTarget());
             }
 
             // ========== 构建请求 ==========

@@ -12,10 +12,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolKit;
-import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
-import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import com.fishsunny.assistant.engine.tool.service.extension.ExtensionScriptService;
 import lombok.Data;
@@ -61,6 +58,7 @@ public class ExtensionScriptTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = "chatSession", type = ChatSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
@@ -71,9 +69,7 @@ public class ExtensionScriptTool implements ToolHandler {
             String result;
             Map<String, Object> params = arguments.getArguments() == null ? Map.of() : arguments.getArguments();
             if (Boolean.TRUE.equals(arguments.getBackground())) {
-                if (!(context.get("chatSession") instanceof ChatSession chatSession)) {
-                    throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可用，原因: chatSession 依赖缺失");
-                }
+                ChatSession chatSession = (ChatSession) context.get("chatSession");
                 result = extensionScriptService.runScriptAsync(arguments.getScriptName(), params, chatSession.getId());
             } else {
                 result = extensionScriptService.runScript(arguments.getScriptName(), params, settings.getTimeout());

@@ -15,11 +15,11 @@ import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
+import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.plug.world.constant.WorldControlSign;
 import com.fishsunny.assistant.plug.world.entity.WorldCharacter;
 import com.fishsunny.assistant.plug.world.entity.WorldInfo;
 import com.fishsunny.assistant.plug.world.entity.WorldKnowledge;
-import com.fishsunny.assistant.plug.world.entity.WorldSessionMapping;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.UserSettings;
@@ -72,7 +72,7 @@ public class WorldGroupChatService {
     private static final Pattern SWITCH_TAG_PATTERN = Pattern.compile(
             "(?is)<switch\\s+to\\s*[:=]\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+))");
 
-    private final WorldSessionMappingService mappingService;
+    private final ChatSessionService chatSessionService;
     private final WorldInfoService worldInfoService;
     private final WorldCharacterService worldCharacterService;
     private final WorldKnowledgeService worldKnowledgeService;
@@ -82,7 +82,7 @@ public class WorldGroupChatService {
     private final UserSettings userSettings;
     private final ObjectMapper objectMapper;
 
-    public WorldGroupChatService(WorldSessionMappingService mappingService,
+    public WorldGroupChatService(ChatSessionService chatSessionService,
                                  WorldInfoService worldInfoService,
                                  WorldCharacterService worldCharacterService,
                                  WorldKnowledgeService worldKnowledgeService,
@@ -91,7 +91,7 @@ public class WorldGroupChatService {
                                  ChatHttpHandler chatHttpHandler,
                                  UserSettings userSettings,
                                  ObjectMapper objectMapper) {
-        this.mappingService = mappingService;
+        this.chatSessionService = chatSessionService;
         this.worldInfoService = worldInfoService;
         this.worldCharacterService = worldCharacterService;
         this.worldKnowledgeService = worldKnowledgeService;
@@ -103,26 +103,19 @@ public class WorldGroupChatService {
     }
 
     /**
-     * 通过会话 ID 找到绑定的世界观，MODE_CREATE 时前端 HTTP bind 请求可能还在路上，轮询等待。
+     * 通过会话 ID 找到绑定的世界观。
+     * <p>一次性注册已取代"先 create、后 HTTP bind"的延时绑定：新会话的 extension 在 create 时即随会话落库，
+     * 旧绑定也已由启动迁移写入 extension，因此不需要再轮询等待。
      */
     public WorldInfo resolveWorld(String sessionId) {
-        WorldSessionMapping mapping = null;
-        for (int i = 0; i < 50; i++) {
-            mapping = mappingService.findBySessionId(sessionId);
-            if (mapping != null) break;
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("等待世界观绑定时被中断");
-            }
+        ChatSession session = chatSessionService.findById(sessionId);
+        String worldId = WorldSessionBindings.resolveWorldId(session);
+        if (worldId == null) {
+            throw new RuntimeException("会话未绑定世界观，请从世界页发起对话");
         }
-        if (mapping == null) {
-            throw new RuntimeException("会话未绑定世界观");
-        }
-        WorldInfo world = worldInfoService.findById(mapping.getWorldId());
+        WorldInfo world = worldInfoService.findById(worldId);
         if (world == null) {
-            throw new RuntimeException("世界观不存在: " + mapping.getWorldId());
+            throw new RuntimeException("世界观不存在: " + worldId);
         }
         return world;
     }

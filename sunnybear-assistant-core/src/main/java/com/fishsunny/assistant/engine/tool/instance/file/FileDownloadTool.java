@@ -11,10 +11,7 @@ package com.fishsunny.assistant.engine.tool.instance.file;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolKit;
-import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
-import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.utils.ToolContextUtils;
@@ -65,12 +62,10 @@ public class FileDownloadTool implements ToolHandler {
     }
 
     @Override
-    @FileToolKit.FileLock
+    @ToolIncludeContext(key = "session", type = WebSocketSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
-            if (!(context.get("session") instanceof WebSocketSession session)) {
-                throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
-            }
+            WebSocketSession session = (WebSocketSession) context.get("session");
 
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
             if (!StringUtils.hasText(arguments.getUrl())) {

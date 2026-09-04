@@ -14,6 +14,7 @@ import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
@@ -71,12 +72,12 @@ public class BrowserNavigateTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = {"session", "chatSession"}, type = {WebSocketSession.class, ChatSession.class})
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context)
             throws ToolExecutor.ToolExecuteException {
         try {
-            if (!(context.get("session") instanceof WebSocketSession session)) {
-                throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
-            }
+            WebSocketSession session = (WebSocketSession) context.get("session");
+            ChatSession chatSession = (ChatSession) context.get("chatSession");
 
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
 
@@ -85,12 +86,8 @@ public class BrowserNavigateTool implements ToolHandler {
             }
 
             // 始终需要用户确认（无审查模式跳过）
-            if (!ToolContextUtils.isUnreviewed(context)) {
+            if (!ToolContextUtils.isUnreviewed(context) && !ChatSession.TYPE_CRON.equals(chatSession.getType())) {
                 ask(session, arguments);
-            }
-
-            if (!session.isOpen()) {
-                throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
             }
 
             int timeout = DEFAULT_TIMEOUT_MS;

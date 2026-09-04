@@ -108,7 +108,15 @@ public class ServiceProcessor {
         this.sessionMessageBus = sessionMessageBus;
     }
 
-    public ChatSessionModeParseResult handleChatSession(ChatMessageRequest request, SynchronizedWebSocketSession safeSession, boolean isEnablePro) throws Exception {
+    /**
+     * 解析一次 WS 消息：按 mode 创建/加载会话、落库用户消息并推送 init_user。
+     *
+     * @param request        消息请求
+     * @param safeSession    线程安全包装的 WS 连接
+     * @param isEnablePro    是否允许本轮启用高级模型
+     * @param sessionType    MODE_CREATE 新建插件会话时的类型打标（如 character/world）；null = 普通会话。由连接端点决定，核心层不感知语义
+     */
+    public ChatSessionModeParseResult handleChatSession(ChatMessageRequest request, SynchronizedWebSocketSession safeSession, boolean isEnablePro, String sessionType) throws Exception {
         ChatSession chatSession;
         boolean isNewChat;
         List<ChatMessage> messages = new ArrayList<>();
@@ -121,7 +129,7 @@ public class ServiceProcessor {
                     chatSession = createCronChatSession(request.getCronId());
                 } else {
                     boolean enablePro = isEnablePro && judgeProModel(request.getContent());
-                    chatSession = createChatSession(enablePro);
+                    chatSession = createChatSession(request, enablePro, sessionType);
                 }
                 sessionMessageBus.subscribeExclusive(chatSession.getId(), safeSession.delegate());
                 request.setSessionId(chatSession.getId());
@@ -166,12 +174,28 @@ public class ServiceProcessor {
 
 
     /**
-     * 创建会话
-     * @param enablePro 是否启用高级模型
+     * 创建普通会话。
+     * <p>插件（角色/世界）会话的一次性注册在此完成：create 消息携带的 extension（如 {"characterId":...}/{"worldId":...}）
+     * 直接序列化进 ChatSession.extension，sessionType 由连接的 WS 端点提供（插件 handler 打标），
+     * 前端无需再二次调用 bind 接口 —— 服务端随后按 type + extension 即可匹配到该资源下的会话。
+     *
+     * @param request     消息请求（可能携带 extension 扩展字段，语义由各插件约定）
+     * @param enablePro   是否启用高级模型
+     * @param sessionType 会话类型；null 表示核心普通会话（保持默认 'chat'）
      */
-    private ChatSession createChatSession(boolean enablePro) throws Exception {
+    private ChatSession createChatSession(ChatMessageRequest request, boolean enablePro, String sessionType) throws Exception {
         ChatSession chatSession = new ChatSession("新会话");
         chatSession.setEnablePro(enablePro);
+        if (StringUtils.hasText(sessionType)) {
+            chatSession.setType(sessionType);
+        }
+        if (!CollectionUtils.isEmpty(request.getExtension())) {
+            try {
+                chatSession.setExtension(objectMapper.writeValueAsString(request.getExtension()));
+            } catch (Exception e) {
+                log.warn("写入会话扩展字段失败: {}", e.getMessage());
+            }
+        }
         try {
             return chatSessionService.save(chatSession);
         } catch (Exception e) {

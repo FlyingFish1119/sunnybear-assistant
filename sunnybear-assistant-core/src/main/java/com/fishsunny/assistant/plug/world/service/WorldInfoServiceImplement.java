@@ -8,11 +8,12 @@ package com.fishsunny.assistant.plug.world.service;
  * @Date 2026/8/27
  */
 
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
+import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.plug.world.entity.WorldInfo;
 import com.fishsunny.assistant.plug.world.repository.WorldCharacterRepository;
 import com.fishsunny.assistant.plug.world.repository.WorldInfoRepository;
 import com.fishsunny.assistant.plug.world.repository.WorldKnowledgeRepository;
-import com.fishsunny.assistant.plug.world.repository.WorldSessionMappingRepository;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,19 +48,19 @@ public class WorldInfoServiceImplement implements WorldInfoService {
     private final WorldInfoRepository worldInfoRepository;
     private final WorldCharacterRepository worldCharacterRepository;
     private final WorldKnowledgeRepository worldKnowledgeRepository;
-    private final WorldSessionMappingRepository worldSessionMappingRepository;
+    private final ChatSessionService chatSessionService;
     private final String worldDir;
 
     @Autowired
     public WorldInfoServiceImplement(WorldInfoRepository worldInfoRepository,
                                      WorldCharacterRepository worldCharacterRepository,
                                      WorldKnowledgeRepository worldKnowledgeRepository,
-                                     WorldSessionMappingRepository worldSessionMappingRepository,
+                                     ChatSessionService chatSessionService,
                                      @Value("${assistant.file.base-path:data/}") String fileBasePath) {
         this.worldInfoRepository = worldInfoRepository;
         this.worldCharacterRepository = worldCharacterRepository;
         this.worldKnowledgeRepository = worldKnowledgeRepository;
-        this.worldSessionMappingRepository = worldSessionMappingRepository;
+        this.chatSessionService = chatSessionService;
         this.worldDir = fileBasePath + "worlds/";
     }
 
@@ -179,8 +180,17 @@ public class WorldInfoServiceImplement implements WorldInfoService {
     @Override
     @Transactional
     public WorldInfo deleteById(String id) {
-        // 级联删除：先会话映射，再知识（含其角色关联），再角色，再世界观本体
-        worldSessionMappingRepository.deleteByWorldId(id);
+        // 级联处理：删除所有绑定到该世界观的会话（与角色插件一致），
+        // 再删知识（含其角色关联）、角色、世界观本体
+        List<ChatSession> boundSessions = chatSessionService.findByTypeAndExtensionValue(
+                WorldSessionBindings.SESSION_TYPE, WorldSessionBindings.EXTENSION_KEY, id);
+        for (ChatSession session : boundSessions) {
+            try {
+                chatSessionService.deleteById(session.getId());
+            } catch (Exception e) {
+                log.warn("删除世界观关联会话失败 [sessionId={}]: {}", session.getId(), e.getMessage());
+            }
+        }
         worldKnowledgeRepository.deleteCharacterAssocByWorldId(id);
         worldKnowledgeRepository.deleteByWorldId(id);
         worldCharacterRepository.deleteByWorldId(id);

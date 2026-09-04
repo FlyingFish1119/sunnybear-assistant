@@ -16,6 +16,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FlowToolKit;
@@ -70,11 +71,11 @@ public class FlowMultimodalTestTool implements ToolHandler, MultimodalResultAble
     }
 
     @Override
+    @ToolIncludeContext(key = "chatSession", type = ChatSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
-            if (!(context.get("chatSession") instanceof ChatSession chatSession)) {
-                throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: chatSession 依赖缺失");
-            }
+            // action 已声明 chatSession 依赖（@ToolIncludeContext），此处直接取用
+            ChatSession chatSession = (ChatSession) context.get("chatSession");
 
             LocalDateTime startTime = LocalDateTime.now();
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);

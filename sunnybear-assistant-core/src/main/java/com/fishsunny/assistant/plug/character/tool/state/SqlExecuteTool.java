@@ -11,6 +11,7 @@ package com.fishsunny.assistant.plug.character.tool.state;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.plug.character.db.CharacterDbManager;
@@ -54,6 +55,7 @@ public class SqlExecuteTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = "character", type = CharacterInfo.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         Arguments arguments;
         try {
@@ -68,10 +70,8 @@ public class SqlExecuteTool implements ToolHandler {
         }
         sql = sql.trim();
 
+        // action 已声明 character 依赖（@ToolIncludeContext），此处直接取用
         CharacterInfo characterInfo = (CharacterInfo) context.get("character");
-        if (characterInfo == null) {
-            throw new ToolExecutor.ToolExecuteException("角色信息未找到");
-        }
 
         DataSource ds = dbManager.getOrCreate(characterInfo.getId());
 

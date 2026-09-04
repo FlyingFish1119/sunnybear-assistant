@@ -35,11 +35,9 @@ public class CronListTool implements ToolHandler {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final ToolRegister register;
-    private final ObjectMapper objectMapper;
     private final CronJobService cronJobService;
 
-    public CronListTool(ObjectMapper objectMapper, CronJobService cronJobService) {
-        this.objectMapper = objectMapper;
+    public CronListTool(CronJobService cronJobService) {
         this.cronJobService = cronJobService;
 
         register = new ToolRegister()

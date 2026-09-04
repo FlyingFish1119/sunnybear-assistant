@@ -15,6 +15,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
@@ -44,16 +45,16 @@ public class BrowserReadContentTool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final ToolRegister register;
     private final PlaywrightBrowserService browserService;
-    private final AISettings taskAISettings;
+    private final AISettings cubAISettings;
     private final ChatHttpHandler chatHttpHandler;
 
     public BrowserReadContentTool(ObjectMapper objectMapper,
                                   PlaywrightBrowserService browserService,
-                                  @Qualifier(AISettings.CUB) AISettings taskAISettings,
+                                  @Qualifier(AISettings.CUB) AISettings cubAISettings,
                                   ChatHttpHandler chatHttpHandler) {
         this.objectMapper = objectMapper;
         this.browserService = browserService;
-        this.taskAISettings = taskAISettings;
+        this.cubAISettings = cubAISettings;
         this.chatHttpHandler = chatHttpHandler;
 
         register = new ToolRegister()
@@ -78,6 +79,7 @@ public class BrowserReadContentTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = "chatSession", type = ChatSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context)
             throws ToolExecutor.ToolExecuteException {
         try {
@@ -155,11 +157,11 @@ public class BrowserReadContentTool implements ToolHandler {
                         new ChatMessage().system(SystemPrompts.SUMMARY),
                         new ChatMessage().user(prompt + "\n\n页面HTML:\n```html\n" + html + "\n```")
                 ))
-                .loadSettings(taskAISettings);
+                .loadSettings(cubAISettings);
 
         AtomicReference<String> result = new AtomicReference<>("");
-        chatHttpHandler.translate(UUID.randomUUID().toString(), taskAISettings.getAdapterName(), request,
-                taskAISettings.getStream() != null ? taskAISettings.getStream() : true,
+        chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request,
+                cubAISettings.getStream(),
                 null,
                 (r, lastRes) -> result.set(r.content())
         );

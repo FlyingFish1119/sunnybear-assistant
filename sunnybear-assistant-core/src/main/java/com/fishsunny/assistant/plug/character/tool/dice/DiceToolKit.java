@@ -14,8 +14,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
-import com.fishsunny.assistant.plug.character.entity.CharacterSessionMapping;
-import com.fishsunny.assistant.plug.character.service.CharacterSessionMappingService;
+import com.fishsunny.assistant.plug.character.service.CharacterSessionBindings;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -34,15 +33,15 @@ public class DiceToolKit extends ToolKit {
     /**
      * 从上下文中解析角色 ID。如果当前会话未绑定角色则抛出异常。
      */
-    public static String resolveCharacterId(Map<String, Object> context, CharacterSessionMappingService mappingService) throws ToolExecutor.ToolExecuteException {
+    public static String resolveCharacterId(Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         ChatSession chatSession = (ChatSession) context.get("chatSession");
         if (chatSession == null) {
             throw new ToolExecutor.ToolExecuteException("无法获取当前会话信息");
         }
-        CharacterSessionMapping mapping = mappingService.findBySessionId(chatSession.getId());
-        if (mapping == null) {
+        String characterId = CharacterSessionBindings.resolveCharacterId(chatSession);
+        if (characterId == null) {
             throw new ToolExecutor.ToolExecuteException("当前会话未绑定角色");
         }
-        return mapping.getCharacterId();
+        return characterId;
     }
 }

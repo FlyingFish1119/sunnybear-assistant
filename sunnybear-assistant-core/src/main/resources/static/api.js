@@ -216,7 +216,6 @@ const API = (function () {
             update: function (data) { return post('character/update', data); },
             delete: function (id) { return get('character/delete?id=' + encodeURIComponent(id)); },
             activate: function (data) { return post('character/activate', data); },
-            bindSession: function (data) { return post('character/bind-session', data); },
             getSessions: function (characterId) {
                 return get('character/sessions?characterId=' + encodeURIComponent(characterId));
             },
@@ -267,16 +266,6 @@ const API = (function () {
             },
             uploadBackground: function (id, file) {
                 return upload('world/upload-background?id=' + encodeURIComponent(id), file);
-            },
-            /** 绑定群聊会话到世界观 */
-            bindSession: function (data) { return post('world/bind-session', data); },
-            /** 解绑群聊会话 */
-            unbindSession: function (sessionId) {
-                return get('world/unbind-session?sessionId=' + encodeURIComponent(sessionId));
-            },
-            /** 通过会话 ID 获取绑定的世界观 */
-            getBySession: function (sessionId) {
-                return get('world/get-by-session?sessionId=' + encodeURIComponent(sessionId));
             },
             /** 获取绑定到某世界观的全部群聊会话 */
             getSessions: function (worldId) {

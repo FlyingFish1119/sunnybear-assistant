@@ -10,10 +10,7 @@ package com.fishsunny.assistant.engine.tool.instance.session;
 
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolKit;
-import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
-import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.SessionToolKit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -62,10 +59,9 @@ public class SessionFileTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = "chatSession", type = ChatSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
-        if (! (context.get("chatSession") instanceof ChatSession chatSession)) {
-            throw new ToolExecutor.ToolExecuteException("无法获取当前会话信息，请检查上下文配置");
-        }
+        ChatSession chatSession = (ChatSession) context.get("chatSession");
         // 从上下文获取会话信息
         String sessionId = chatSession.getId();
 

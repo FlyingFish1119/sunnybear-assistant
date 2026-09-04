@@ -17,6 +17,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
@@ -100,6 +101,7 @@ public class ScreenCaptureTool implements ToolHandler, MultimodalResultAble {
     }
 
     @Override
+    @ToolIncludeContext(key = "chatSession", type = ChatSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
@@ -133,9 +135,8 @@ public class ScreenCaptureTool implements ToolHandler, MultimodalResultAble {
      * @throws Exception 上下文缺失或构建路径失败
      */
     private ToolExecutor.ToolExecuteResponse executeRawMode(Map<String, Object> context, String imageBase64) throws Exception {
-        if (!(context.get("chatSession") instanceof ChatSession chatSession)) {
-            throw new ToolExecutor.ToolExecuteException("当前上下文缺少 chatSession，无法执行 raw 截屏返回模式");
-        }
+        // action 已声明 chatSession 依赖（@ToolIncludeContext），此处直接取用
+        ChatSession chatSession = (ChatSession) context.get("chatSession");
         Path imagePath = chatSession.buildSessionFilePath(basePath).resolve(UUID.randomUUID() + ".png");
         String result = "已截取屏幕。\n"
                 + "图片已保存至：" + imagePath;

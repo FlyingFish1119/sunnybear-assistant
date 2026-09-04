@@ -16,18 +16,6 @@ CREATE TABLE IF NOT EXISTS character_info (
 -- 索引：按角色名称加速查询
 CREATE INDEX IF NOT EXISTS idx_character_info_name ON character_info(name);
 
--- CharacterSessionMapping 角色-会话映射表
-CREATE TABLE IF NOT EXISTS character_session_mapping (
-    id          TEXT PRIMARY KEY,
-    session_id  TEXT NOT NULL UNIQUE,
-    character_id TEXT NOT NULL,
-    create_time TEXT NOT NULL
-);
--- 索引：按会话 ID 加速查询
-CREATE INDEX IF NOT EXISTS idx_character_session_mapping_session ON character_session_mapping(session_id);
--- 索引：按角色 ID 加速查询
-CREATE INDEX IF NOT EXISTS idx_character_session_mapping_character ON character_session_mapping(character_id);
-
 -- CharacterGlossary 角色词条表
 CREATE TABLE IF NOT EXISTS character_glossary (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

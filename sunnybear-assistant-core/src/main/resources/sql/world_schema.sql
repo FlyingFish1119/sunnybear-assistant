@@ -52,15 +52,3 @@ CREATE TABLE IF NOT EXISTS world_knowledge_character (
 );
 -- 反查：某角色知晓哪些知识
 CREATE INDEX IF NOT EXISTS idx_world_knowledge_character_char ON world_knowledge_character(character_id);
-
--- WorldSessionMapping 世界-会话映射表（群聊会话绑定到世界观，一个会话只属于一个世界）
-CREATE TABLE IF NOT EXISTS world_session_mapping (
-    id          TEXT PRIMARY KEY,
-    session_id  TEXT NOT NULL UNIQUE,
-    world_id    TEXT NOT NULL,
-    create_time TEXT NOT NULL
-);
--- 索引：按会话 ID 加速查询
-CREATE INDEX IF NOT EXISTS idx_world_session_mapping_session ON world_session_mapping(session_id);
--- 索引：按世界观 ID 加速查询
-CREATE INDEX IF NOT EXISTS idx_world_session_mapping_world ON world_session_mapping(world_id);

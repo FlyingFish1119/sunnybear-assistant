@@ -9,9 +9,9 @@ package com.fishsunny.assistant.plug.character.tool.glossary;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
@@ -51,6 +51,7 @@ public class QueryGlossaryTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = "character", type = CharacterInfo.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         Arguments arguments;
         try {
@@ -63,17 +64,8 @@ public class QueryGlossaryTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("参数 keyword 不能为空");
         }
 
-        // 从上下文获取当前会话
-        ChatSession chatSession = (ChatSession) context.get("chatSession");
-        if (chatSession == null) {
-            throw new ToolExecutor.ToolExecuteException("无法获取当前会话信息");
-        }
-
-        // 按角色 + 关键词查询词条
+        // action 已声明 character 依赖（@ToolIncludeContext），此处直接取用
         CharacterInfo characterInfo = (CharacterInfo) context.get("character");
-        if (characterInfo == null) {
-            throw new ToolExecutor.ToolExecuteException("无法获取当前角色信息");
-        }
 
         CharacterGlossary glossary = glossaryService.getByCharacterIdAndKeyword(
                 characterInfo.getId(), arguments.getKeyword().trim());

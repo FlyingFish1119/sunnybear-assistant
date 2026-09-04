@@ -20,9 +20,8 @@ import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
-import com.fishsunny.assistant.plug.character.entity.CharacterSessionMapping;
 import com.fishsunny.assistant.plug.character.service.CharacterInfoService;
-import com.fishsunny.assistant.plug.character.service.CharacterSessionMappingService;
+import com.fishsunny.assistant.plug.character.service.CharacterSessionBindings;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import org.slf4j.Logger;
@@ -51,20 +50,17 @@ public class D20Tool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final AISettings missionAISettings;
     private final ChatHttpHandler chatHttpHandler;
-    private final CharacterSessionMappingService mappingService;
     private final CharacterInfoService characterInfoService;
     private final ChatMessageService messageService;
 
     public D20Tool(ObjectMapper objectMapper,
                    @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                    ChatHttpHandler chatHttpHandler,
-                   CharacterSessionMappingService mappingService,
                    CharacterInfoService characterInfoService,
                    ChatMessageService messageService) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
         this.chatHttpHandler = chatHttpHandler;
-        this.mappingService = mappingService;
         this.characterInfoService = characterInfoService;
         this.messageService = messageService;
 
@@ -148,9 +144,9 @@ public class D20Tool implements ToolHandler {
         // 角色设定
         String characterSetting = "";
         if (chatSession != null) {
-            CharacterSessionMapping mapping = mappingService.findBySessionId(chatSession.getId());
-            if (mapping != null) {
-                CharacterInfo character = characterInfoService.findById(mapping.getCharacterId());
+            String characterId = CharacterSessionBindings.resolveCharacterId(chatSession);
+            if (characterId != null) {
+                CharacterInfo character = characterInfoService.findById(characterId);
                 if (character != null) {
                     characterSetting = buildCharacterSetting(character);
                 }

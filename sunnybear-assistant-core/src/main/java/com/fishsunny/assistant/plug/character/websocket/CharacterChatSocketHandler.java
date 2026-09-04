@@ -14,14 +14,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.plug.character.db.BattleDbManager;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
-import com.fishsunny.assistant.plug.character.entity.CharacterSessionMapping;
 import com.fishsunny.assistant.plug.character.repository.CharacterInfoRepository;
 import com.fishsunny.assistant.plug.character.service.CharacterChatSelectService;
 import com.fishsunny.assistant.plug.character.service.CharacterGlossaryService;
-import com.fishsunny.assistant.plug.character.service.CharacterSessionMappingService;
+import com.fishsunny.assistant.plug.character.service.CharacterSessionBindings;
 import com.fishsunny.assistant.plug.character.tool.glossary.QueryGlossaryTool;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.websocket.ChatProvider;
@@ -48,7 +48,7 @@ import java.util.stream.Collectors;
 public class CharacterChatSocketHandler extends ChatWebSocketHandler {
 
     private final CharacterInfoRepository characterInfoRepository;
-    private final CharacterSessionMappingService mappingService;
+    private final ChatSessionService chatSessionService;
     private final CharacterGlossaryService glossaryService;
     private final BattleDbManager battleDbManager;
     private final CharacterChatSelectService chatSelectService;
@@ -60,17 +60,22 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                                        TaskExecutor chatAsyncExecutor,
                                        SessionMessageBus sessionMessageBus,
                                        CharacterInfoRepository characterInfoRepository,
-                                       CharacterSessionMappingService mappingService,
+                                       ChatSessionService chatSessionService,
                                        CharacterGlossaryService glossaryService,
                                        ObjectMapper objectMapper,
                                        BattleDbManager battleDbManager,
                                        CharacterChatSelectService chatSelectService) {
         super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper, sessionMessageBus);
         this.characterInfoRepository = characterInfoRepository;
-        this.mappingService = mappingService;
+        this.chatSessionService = chatSessionService;
         this.glossaryService = glossaryService;
         this.battleDbManager = battleDbManager;
         this.chatSelectService = chatSelectService;
+    }
+
+    @Override
+    public String sessionType() {
+        return CharacterSessionBindings.SESSION_TYPE;
     }
 
     @Override
@@ -226,11 +231,12 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
     /** 通过会话查询绑定的角色；未绑定返回 null（不阻塞等待） */
     private CharacterInfo getCharacterBySessionId(String sessionId) {
         try {
-            CharacterSessionMapping mapping = mappingService.findBySessionId(sessionId);
-            if (mapping == null) {
+            ChatSession session = chatSessionService.findById(sessionId);
+            String characterId = CharacterSessionBindings.resolveCharacterId(session);
+            if (characterId == null) {
                 return null;
             }
-            return characterInfoRepository.selectById(mapping.getCharacterId());
+            return characterInfoRepository.selectById(characterId);
         } catch (Exception e) {
             log.warn("查询会话 [{}] 绑定角色失败: {}", sessionId, e.getMessage());
             return null;
@@ -238,23 +244,21 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
     }
 
     private CharacterInfo getCharacterInfo(ChatSession ctxSession) {
-        // 通过 session 查角色绑定，MODE_CREATE 时前端 HTTP bind 请求可能还在路上，轮询等待
-        CharacterSessionMapping mapping = null;
-        for (int i = 0; i < 50; i++) {
-            mapping = mappingService.findBySessionId(ctxSession.getId());
-            if (mapping != null) break;
-            try { Thread.sleep(100); } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("等待角色绑定时被中断");
-            }
+        // 一次性注册已取代"先 create、后 HTTP bind"的延时绑定：新会话的 extension 在 create 时即随会话落库，
+        // 旧绑定也已由启动迁移写入 extension，因此不再需要轮询等待。传参会话若已带角色绑定直接取用，
+        // 否则按 id 回读一次兜底。
+        String characterId = CharacterSessionBindings.resolveCharacterId(ctxSession);
+        if (characterId == null) {
+            ChatSession dbSession = chatSessionService.findById(ctxSession.getId());
+            characterId = CharacterSessionBindings.resolveCharacterId(dbSession);
         }
-        if (mapping == null) {
-            throw new RuntimeException("会话未绑定角色");
+        if (characterId == null) {
+            throw new RuntimeException("会话未绑定角色，请从角色页发起对话");
         }
 
-        CharacterInfo character = characterInfoRepository.selectById(mapping.getCharacterId());
+        CharacterInfo character = characterInfoRepository.selectById(characterId);
         if (character == null) {
-            throw new RuntimeException("角色不存在");
+            throw new RuntimeException("角色不存在: " + characterId);
         }
         return character;
     }

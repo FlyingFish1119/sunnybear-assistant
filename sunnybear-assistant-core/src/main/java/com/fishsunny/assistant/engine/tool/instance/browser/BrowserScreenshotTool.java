@@ -18,6 +18,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
@@ -87,6 +88,7 @@ public class BrowserScreenshotTool implements ToolHandler, MultimodalResultAble 
     }
 
     @Override
+    @ToolIncludeContext(key = "chatSession", type = ChatSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context)
             throws ToolExecutor.ToolExecuteException {
         try {
@@ -122,9 +124,8 @@ public class BrowserScreenshotTool implements ToolHandler, MultimodalResultAble 
      */
     private ToolExecutor.ToolExecuteResponse executeRawMode(Map<String, Object> context, String imageBase64,
                                                             String pageTitle, String currentUrl) throws Exception {
-        if (!(context.get("chatSession") instanceof ChatSession chatSession)) {
-            throw new ToolExecutor.ToolExecuteException("当前上下文缺少 chatSession，无法执行 raw 截图返回模式");
-        }
+        // action 已声明 chatSession 依赖（@ToolIncludeContext），此处直接取用
+        ChatSession chatSession = (ChatSession) context.get("chatSession");
         Path imagePath = chatSession.buildSessionFilePath(basePath).resolve(UUID.randomUUID() + ".png");
         String result = "已截取当前浏览器页面。\n"
                 + "当前页面标题: " + pageTitle + "\n"

@@ -45,8 +45,8 @@ public class FileSearchTool implements ToolHandler {
     /** 单次最大返回匹配数 */
     private static final int MAX_RESULTS_LIMIT = 500;
 
-    /** 最大递归深度 */
-    private static final int MAX_DEPTH = 15;
+    /** 递归深度 */
+    private static final int MAX_DEPTH = 30;
 
     /** 上下文行数上限 */
     private static final int MAX_CONTEXT_LINES = 5;
@@ -72,10 +72,10 @@ public class FileSearchTool implements ToolHandler {
                 .setRequired(List.of("path", "pattern"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("path", "string", "搜索的起始目录路径，例如 D:\\projects 或 /home/user"),
-                        new ToolRegister.Parameters("pattern", "string", "搜索的文字或正则表达式。默认作为普通文本匹配（非正则），如需使用正则请设置 useRegex=true"),
-                        new ToolRegister.Parameters("useRegex", "boolean", "是否将 pattern 作为正则表达式匹配，默认 false（普通文本匹配）"),
+                        new ToolRegister.Parameters("pattern", "string", "搜索的文字或正则表达式。默认作为正则表达式，如需使用文字请设置 useRegex=false"),
+                        new ToolRegister.Parameters("useRegex", "boolean", "是否将 pattern 作为正则表达式匹配，默认 true"),
                         new ToolRegister.Parameters("filter", "string", "glob 文件名过滤，例如 *.java、*.{java,kt}，不指定则搜索所有文本文件"),
-                        new ToolRegister.Parameters("depth", "integer", "递归深度，默认 " + MAX_DEPTH + "（递归搜索所有子目录）。设为 1 仅搜索当前目录"),
+                        new ToolRegister.Parameters("depth", "integer", "递归深度，最大（默认） " + MAX_DEPTH + "（递归搜索所有子目录）。设为 1 仅搜索当前目录"),
                         new ToolRegister.Parameters("caseSensitive", "boolean", "是否区分大小写，默认 false（不区分大小写）"),
                         new ToolRegister.Parameters("contextLines", "integer", "匹配行前后各显示多少行上下文，默认 0（仅显示匹配行），最大 " + MAX_CONTEXT_LINES),
                         new ToolRegister.Parameters("maxResults", "integer", "最大返回匹配数，默认 " + DEFAULT_MAX_RESULTS + "，上限 " + MAX_RESULTS_LIMIT),
@@ -208,7 +208,7 @@ public class FileSearchTool implements ToolHandler {
     private static class Arguments {
         private String path;
         private String pattern;
-        private Boolean useRegex;
+        private Boolean useRegex = true;
         private String filter;
         private Integer depth;
         private Boolean caseSensitive;

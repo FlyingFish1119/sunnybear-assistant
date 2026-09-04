@@ -12,6 +12,7 @@ package com.fishsunny.assistant.plug.character.tool.battle;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import lombok.Data;
@@ -53,6 +54,7 @@ public class BattleSqlQueryTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = "battleDataSource", type = DataSource.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         Arguments arguments;
         try {
@@ -67,10 +69,8 @@ public class BattleSqlQueryTool implements ToolHandler {
         }
         sql = sql.trim();
 
+        // 本工具仅在战斗内置子 Agent 中执行，battleDataSource 必已注入（@ToolIncludeContext），直接取用
         DataSource ds = (DataSource) context.get("battleDataSource");
-        if (ds == null) {
-            throw new ToolExecutor.ToolExecuteException("当前没有活跃的战斗会话，无法查询战斗数据库");
-        }
 
         try (Connection conn = ds.getConnection();
              Statement stmt = conn.createStatement();
@@ -85,7 +85,7 @@ public class BattleSqlQueryTool implements ToolHandler {
                 sb.append(" ").append(meta.getColumnName(i)).append(" |");
             }
             sb.append("\n|");
-            sb.append(" --- |".repeat(Math.max(0, colCount)));
+            sb.repeat(" --- |", Math.max(0, colCount));
             sb.append("\n");
 
             // 数据行

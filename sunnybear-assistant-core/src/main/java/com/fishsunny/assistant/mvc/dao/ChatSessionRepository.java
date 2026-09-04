@@ -26,4 +26,10 @@ public interface ChatSessionRepository {
     public List<ChatSession> selectByType(String type);
 
     public ChatSession selectById(String id);
+
+    /**
+     * 按 type + extension 内的 JSON 字段值查询会话（json_extract）。
+     * jsonKey/value 的语义由调用方（插件）约定，核心层不感知。
+     */
+    public List<ChatSession> selectByTypeAndExtensionValue(String type, String jsonKey, String value);
 }
