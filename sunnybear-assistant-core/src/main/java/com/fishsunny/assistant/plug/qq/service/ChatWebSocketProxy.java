@@ -105,7 +105,7 @@ public class ChatWebSocketProxy {
         String sessionId = sessionMap.get(qqUserId);
         if (sessionId != null) {
             // 新语义：STOP_SIGN 中存在该 sessionId 即表示"需要停止"（与 ChatController.stopStreaming 一致）
-            ChatHttpHandler.getSTOP_SIGN().add(sessionId);
+            ChatHttpHandler.getPASS_SIGN().remove(sessionId);
         }
     }
 

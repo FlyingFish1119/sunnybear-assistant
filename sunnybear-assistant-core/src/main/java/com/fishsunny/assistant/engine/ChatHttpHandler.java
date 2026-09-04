@@ -48,7 +48,7 @@ public class ChatHttpHandler {
     private static final int QUEUE_CAPACITY = 1024;
 
     @Getter
-    private static final Set<String> STOP_SIGN = ConcurrentHashMap.newKeySet();
+    private static final Set<String> PASS_SIGN = ConcurrentHashMap.newKeySet();
 
     @Autowired
     public ChatHttpHandler(ObjectMapper objectMapper, AIAdapterFactory adapterFactory,
@@ -81,8 +81,7 @@ public class ChatHttpHandler {
         InTranslateCallback inTranslate = handler.inTranslate();
         CompleteCallback onComplete = handler.complete();
 
-        if (STOP_SIGN.contains(stopId)) {
-            STOP_SIGN.remove(stopId);
+        if (!PASS_SIGN.contains(stopId)) {
             return;
         }
 
@@ -107,8 +106,7 @@ public class ChatHttpHandler {
         try {
             while (true){
                 // 如果 ID 存在，则认为被中断
-                if (STOP_SIGN.contains(stopId)) {
-                    STOP_SIGN.remove(stopId);
+                if (!PASS_SIGN.contains(stopId)) {
                     break;
                 }
 
@@ -168,7 +166,7 @@ public class ChatHttpHandler {
             // 结束/中断/超时都通知泵线程停止并尽力关闭底层流，Stream.close() 会取消订阅
             // 释放连接与 JDK HttpClient 的 Direct ByteBuffer
             stopPump(cancelled, streamRef, pump);
-            STOP_SIGN.remove(stopId);
+            PASS_SIGN.remove(stopId);
         }
     }
 

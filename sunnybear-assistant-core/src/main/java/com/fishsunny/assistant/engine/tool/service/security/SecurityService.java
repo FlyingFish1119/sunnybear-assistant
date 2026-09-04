@@ -83,12 +83,10 @@ public class SecurityService {
     }
 
     public void ask(String toolName, String message, @Nullable Integer timeout, WebSocketSession session) throws Exception {
-        ToolAsk toolAsk = new ToolAsk()
-                .loadInfo(toolName, message)
-                .expire(timeout);
+        ToolAsk toolAsk = new ToolAsk().loadInfo(toolName, message).expire(timeout);
         try {
             session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(toolAsk)));
-            Boolean result = ChatController.awaitConfirm(toolAsk.getId(), 30);
+            Boolean result = ChatController.awaitConfirm(toolAsk.getId(), timeout);
             if (result == null) {
                 throw new ToolExecutor.ToolExecuteException("用户未在时间内确认命令，工具已取消。请停止重复调用此工具。");
             }

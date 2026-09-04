@@ -51,7 +51,7 @@ public class ChatController {
     public Map<String, Object> stopStreaming(@RequestBody Map<String, String> body) {
         String sessionId = body.get("sessionId");
         if (sessionId != null && !sessionId.isEmpty()) {
-            ChatHttpHandler.getSTOP_SIGN().add(sessionId);
+            ChatHttpHandler.getPASS_SIGN().remove(sessionId);
             log.info("收到中止信号，已移除 sessionId: {}", sessionId);
             return Map.of("success", true);
         }
