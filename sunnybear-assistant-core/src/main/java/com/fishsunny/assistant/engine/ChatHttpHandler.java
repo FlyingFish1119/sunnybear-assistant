@@ -60,7 +60,7 @@ public class ChatHttpHandler {
 
 
     public record TranslateData(
-            String stopId,
+            String passId,
             String adapterName,
             Boolean stream,
             AIRequest request
@@ -74,16 +74,13 @@ public class ChatHttpHandler {
     }
 
     public void translate(TranslateData data, TranslateHandler handler) throws Exception {
-        String stopId = data.stopId();
+        String passId = data.passId();
         String adapterName = data.adapterName();
         Boolean stream = data.stream();
         AIRequest request = data.request();
         InTranslateCallback inTranslate = handler.inTranslate();
         CompleteCallback onComplete = handler.complete();
-
-        if (!PASS_SIGN.contains(stopId)) {
-            return;
-        }
+        PASS_SIGN.add(passId);
 
         boolean safeStream = stream != null && stream;
         AIAdapter adapter = adapterFactory.getAdapter(adapterName, safeStream);
@@ -96,7 +93,7 @@ public class ChatHttpHandler {
         BlockingQueue<StreamEvent> queue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
         Thread pump = new Thread(
                 () -> pumpLines(adapter, request, cancelled, streamRef, queue),
-                "stream-pump" + (StringUtils.hasText(stopId) ? "-" + stopId : ""));
+                "stream-pump" + (StringUtils.hasText(passId) ? "-" + passId : ""));
         pump.setDaemon(true);
         pump.start();
 
@@ -106,7 +103,7 @@ public class ChatHttpHandler {
         try {
             while (true){
                 // 如果 ID 存在，则认为被中断
-                if (!PASS_SIGN.contains(stopId)) {
+                if (!PASS_SIGN.contains(passId)) {
                     break;
                 }
 
@@ -166,7 +163,7 @@ public class ChatHttpHandler {
             // 结束/中断/超时都通知泵线程停止并尽力关闭底层流，Stream.close() 会取消订阅
             // 释放连接与 JDK HttpClient 的 Direct ByteBuffer
             stopPump(cancelled, streamRef, pump);
-            PASS_SIGN.remove(stopId);
+            PASS_SIGN.remove(passId);
         }
     }
 
