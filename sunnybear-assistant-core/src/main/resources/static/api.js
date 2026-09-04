@@ -215,7 +215,7 @@ const API = (function () {
             create: function (data) { return post('character/create', data); },
             update: function (data) { return post('character/update', data); },
             delete: function (id) { return get('character/delete?id=' + encodeURIComponent(id)); },
-            activate: function (data) { return post('character/activate', data); },
+            activate: function (id) { return post('character/activate?id=' + encodeURIComponent(id)); },
             getSessions: function (characterId) {
                 return get('character/sessions?characterId=' + encodeURIComponent(characterId));
             },
@@ -316,7 +316,7 @@ const API = (function () {
             /** 回传工具确认结果 */
             confirm: function (data) { return post('chat/confirm', data); },
             /** 中止流式传输 */
-            stop: function (data) { return post('chat/stop', data); }
+            stop: function (sessionId) { return post('chat/stop?sessionId=' + encodeURIComponent(sessionId)); }
         },
 
         /* ---------- 知识库 ---------- */

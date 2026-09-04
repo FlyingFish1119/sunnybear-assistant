@@ -8,6 +8,7 @@ package com.fishsunny.assistant.mvc.controller;
  * @Date 2026/7/25
  */
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fishsunny.assistant.dto.RestResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskPrompt;
 import com.fishsunny.assistant.mvc.service.TaskPromptService;
@@ -18,7 +19,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/task-prompt")
@@ -65,14 +65,14 @@ public class TaskPromptController {
 
     /** 新增或更新提示词。请求体: { type, prompt, description } */
     @PostMapping("/save")
-    public RestResponse save(@RequestBody(required = false) Map<String, String> body) {
+    public RestResponse save(@RequestBody(required = false) TaskPromptSaveRequest body) {
         if (body == null) {
             return new RestResponse().error("请求体不能为空");
         }
         try {
-            String type = body.get("type");
-            String prompt = body.get("prompt");
-            String description = body.getOrDefault("description", "");
+            String type = body.type();
+            String prompt = body.prompt();
+            String description = body.description() == null ? "" : body.description();
 
             if (!StringUtils.hasText(type)) {
                 return new RestResponse().error("type 不能为空");
@@ -88,6 +88,11 @@ public class TaskPromptController {
             log.error("保存提示词失败", e);
             return new RestResponse().error("保存提示词失败: " + e.getMessage());
         }
+    }
+
+    /** 新增/更新提示词的请求体 */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record TaskPromptSaveRequest(String type, String prompt, String description) {
     }
 
     /** 删除提示词 */

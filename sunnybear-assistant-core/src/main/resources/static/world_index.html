@@ -1312,7 +1312,7 @@
             stopStreaming() {
                 console.log('Abort streaming')
                 if (!this.isStreaming || !this.currentSessionId) return;
-                API.chat.stop({ sessionId: this.currentSessionId })
+                API.chat.stop(this.currentSessionId)
                     .catch(err => console.error('中止请求发送失败:', err));
             },
 

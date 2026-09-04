@@ -327,11 +327,11 @@ public class CharacterController {
      * 激活角色 —— 将该角色的设定应用到 assistant settings 和 AI chat settings
      */
     @PostMapping("/activate")
-    public RestResponse activate(@RequestBody(required = false) Map<String, String> body) {
-        if (body == null || !StringUtils.hasText(body.get("id"))) {
+    public RestResponse activate(@RequestParam("id") String id) {
+        if (!StringUtils.hasText(id)) {
             return new RestResponse().error("角色 ID 不能为空");
         }
-        String characterId = body.get("id");
+        String characterId = id;
         try {
             CharacterInfo character = characterInfoService.findById(characterId);
             if (character == null) {

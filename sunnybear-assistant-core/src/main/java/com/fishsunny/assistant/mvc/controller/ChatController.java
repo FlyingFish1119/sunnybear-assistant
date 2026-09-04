@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
@@ -48,8 +49,7 @@ public class ChatController {
      * 前端中止流式传输
      */
     @PostMapping("/stop")
-    public Map<String, Object> stopStreaming(@RequestBody Map<String, String> body) {
-        String sessionId = body.get("sessionId");
+    public Map<String, Object> stopStreaming(@RequestParam(value = "sessionId", required = false) String sessionId) {
         if (sessionId != null && !sessionId.isEmpty()) {
             ChatHttpHandler.getPASS_SIGN().remove(sessionId);
             log.info("收到中止信号，已移除 sessionId: {}", sessionId);

@@ -8,6 +8,7 @@ package com.fishsunny.assistant.mvc.controller;
  * @Date 2026/7/23
  */
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fishsunny.assistant.dto.RestResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.KnowledgeRecord;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
@@ -18,7 +19,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/knowledge")
@@ -63,17 +63,17 @@ public class KnowledgeController {
         }
     }
 
-    /** 新增或更新知识条目。请求体: { id, intro, content, mode: "add"|"update" } */
+    /** 新增或更新知识条目。id 为空表示新增，非空表示更新。 */
     @PostMapping("/save")
-    public RestResponse save(@RequestBody(required = false) Map<String, Object> body) {
+    public RestResponse save(@RequestBody(required = false) KnowledgeSaveRequest body) {
         if (body == null) {
             return new RestResponse().error("请求体不能为空");
         }
         try {
-            String mode = (String) body.getOrDefault("mode", "add");
-            String intro = (String) body.get("intro");
-            String content = (String) body.get("content");
-            Integer id = body.get("id") != null ? ((Number) body.get("id")).intValue() : null;
+            String mode = body.mode() == null ? "add" : body.mode();
+            String intro = body.intro();
+            String content = body.content();
+            Integer id = body.id();
 
             if (!StringUtils.hasText(intro)) {
                 return new RestResponse().error("简介不能为空");
@@ -91,6 +91,11 @@ public class KnowledgeController {
             log.error("保存知识条目失败", e);
             return new RestResponse().error("保存知识条目失败: " + e.getMessage());
         }
+    }
+
+    /** 新增/更新知识条目的请求体；id 为空表示新增 */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record KnowledgeSaveRequest(Integer id, String intro, String content, String mode) {
     }
 
     /** 删除知识条目 */

@@ -1581,7 +1581,7 @@ const app = Vue.createApp({
                 if (!this.selectedId) return; // 新建角色保存失败则中止
             }
             try {
-                const r = await API.character.activate({ id: this.selectedId });
+                const r = await API.character.activate(this.selectedId);
                 if (r.status === 200) {
                     ElementPlus.ElMessage.success('已切换至角色「' + this.form.name + '」');
                     window.location.href = this.$api('character_index.html?characterId=') + encodeURIComponent(this.selectedId);
