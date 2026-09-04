@@ -61,6 +61,7 @@ public class FileReadTool implements ToolHandler {
     }
 
     @Override
+    @FileToolKit.FileLock(readOnly = true)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         Arguments arguments;
         try {

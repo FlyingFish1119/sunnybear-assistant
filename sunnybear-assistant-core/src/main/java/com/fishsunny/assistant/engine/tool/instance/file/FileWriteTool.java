@@ -10,25 +10,20 @@ package com.fishsunny.assistant.engine.tool.instance.file;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.constants.ControlSign;
-import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
-import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
-import com.fishsunny.assistant.engine.tool.service.review.AISafetyReviewService;
-import com.fishsunny.assistant.engine.tool.service.review.ReviewResult;
-import com.fishsunny.assistant.mvc.controller.ChatController;
+import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
+import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.File;
@@ -39,7 +34,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import static com.fishsunny.assistant.engine.tool.framework.ToolKit.inferLanguage;
 
@@ -61,21 +55,20 @@ public class FileWriteTool implements ToolHandler {
 
     private final ObjectMapper objectMapper;
     private final Settings settings;
-    private final AISafetyReviewService safetyReviewService;
+    private final SecurityService securityService;
 
     public FileWriteTool(ObjectMapper objectMapper,
                          @Qualifier(SETTINGS) Settings settings,
-                         AISafetyReviewService safetyReviewService
+                         SecurityService securityService
                          ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
-        this.safetyReviewService = safetyReviewService;
+        this.securityService = securityService;
     }
 
     @Override
+    @FileToolKit.FileLock
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
-        String uuid = UUID.randomUUID().toString();
-        FilePathLock.LockHandle lock = null;
         try {
             if (!(context.get("session") instanceof WebSocketSession session)) {
                 throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
@@ -92,21 +85,18 @@ public class FileWriteTool implements ToolHandler {
             // 路径规范化
             Path filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
 
-            // 加锁：须覆盖 AI 安全检测与用户确认等待，防止确认期间文件被其他会话修改
-            lock = FilePathLock.acquire(filePath);
-
             // 无审查模式：跳过 AI 危险检测与用户确认，直接执行
             if (!ToolContextUtils.isUnreviewed(context)) {
                 switch (settings.getMode()) {
                     case NEVER_ASKED:
                         break;
                     case ALWAYS_ASKED:
-                        ask(uuid, session, arguments, filePath, null);
+                        ask(session, arguments, filePath, null);
                         break;
                     case AUTO: {
                         ReviewResult review = isDanger(arguments, filePath, context);
                         if (review.isDanger()) {
-                            ask(uuid, session, arguments, filePath, review.reason());
+                            ask(session, arguments, filePath, review.reason());
                         }
                         break;
                     }
@@ -166,9 +156,6 @@ public class FileWriteTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("文件写入失败: " + e.getMessage());
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
-        } finally {
-            if (lock != null) lock.close();
-            ChatController.cleanupConfirm(uuid);
         }
     }
 
@@ -184,7 +171,7 @@ public class FileWriteTool implements ToolHandler {
                 ${content}
                 """.replace("${path}", filePath.toString())
                 .replace("${content}", arguments.getContent());
-        return safetyReviewService.review(context, description);
+        return securityService.review(context, description);
     }
 
     /**
@@ -192,36 +179,21 @@ public class FileWriteTool implements ToolHandler {
      *
      * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
-    private void ask(String uuid, WebSocketSession session, Arguments arguments, Path filePath, String riskReason) throws Exception {
+    private void ask(WebSocketSession session, Arguments arguments, Path filePath, String riskReason) throws Exception {
         String language = inferLanguage(filePath);
         String content = arguments.getContent();
         int contentLength = content.length();
 
-        StringBuilder message = new StringBuilder();
-        message.append("### 文件写入请求\n\n")
-                .append(ReviewResult.riskReasonBlock(riskReason))
-                .append("**目标文件：** `").append(filePath).append("`\n\n")
-                .append("**写入字符数：** ").append(String.format("%,d", contentLength)).append("\n\n")
-                .append("**内容预览：**\n\n")
-                .append("```").append(language).append("\n")
-                .append(content).append("\n")
-                .append("```\n\n")
-                .append("> 请确认此写入操作安全后再允许执行。");
-
-        ToolAsk confirmation = new ToolAsk()
-                .setId(uuid)
-                .setToolName(NAME)
-                .setMessage(message.toString())
-                .setTimeout(30);
-
-        session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
-        Boolean result = ChatController.awaitConfirm(uuid, 30);
-        if (result == null) {
-            throw new ToolExecutor.ToolExecuteException("用户未确认文件写入操作，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整操作。");
-        }
-        if (!result) {
-            throw new ToolExecutor.ToolExecuteException("用户拒绝了文件写入操作，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整操作。");
-        }
+        String message = "### 文件写入请求\n\n" +
+                ReviewResult.riskReasonBlock(riskReason) +
+                "**目标文件：** `" + filePath + "`\n\n" +
+                "**写入字符数：** " + String.format("%,d", contentLength) + "\n\n" +
+                "**内容预览：**\n\n" +
+                "```" + language + "\n" +
+                content + "\n" +
+                "```\n\n" +
+                "> 请确认此写入操作安全后再允许执行。";
+        securityService.ask(NAME, message, 60, session);
     }
 
     @Override

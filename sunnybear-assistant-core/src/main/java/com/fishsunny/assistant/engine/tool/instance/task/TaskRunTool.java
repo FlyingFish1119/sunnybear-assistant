@@ -26,6 +26,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.*;
+import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.mvc.service.TaskPromptService;
 import com.fishsunny.assistant.mvc.service.TaskService;
@@ -73,6 +74,7 @@ public class TaskRunTool implements ToolHandler {
     private final ToolExecutor toolExecutor;
     private final ToolCallLoop toolCallLoop;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final SecurityService securityService;
 
     @Autowired
     public TaskRunTool(TaskService taskService, ObjectMapper objectMapper,
@@ -81,6 +83,7 @@ public class TaskRunTool implements ToolHandler {
                        TaskPromptService taskPromptService,
                        ChatHttpHandler chatHttpHandler,
                        @Lazy ToolExecutor toolExecutor,
+                       SecurityService securityService,
                        ToolCallLoop toolCallLoop) {
         this.taskService = taskService;
         this.objectMapper = objectMapper;
@@ -89,6 +92,7 @@ public class TaskRunTool implements ToolHandler {
         this.taskPromptService = taskPromptService;
         this.chatHttpHandler = chatHttpHandler;
         this.toolExecutor = toolExecutor;
+        this.securityService = securityService;
         this.toolCallLoop = toolCallLoop;
     }
 
@@ -125,13 +129,8 @@ public class TaskRunTool implements ToolHandler {
             }
 
             // 确认机制：始终要求用户确认（无审查模式跳过）
-            String uuid = UUID.randomUUID().toString();
-            try {
-                if (!ToolContextUtils.isUnreviewed(context)) {
-                    ask(uuid, (WebSocketSession) context.get("session"), task, steps);
-                }
-            } finally {
-                ChatController.cleanupConfirm(uuid);
+            if (!ToolContextUtils.isUnreviewed(context)) {
+                ask((WebSocketSession) context.get("session"), task, steps);
             }
 
             // 异步执行
@@ -355,7 +354,7 @@ public class TaskRunTool implements ToolHandler {
     /**
      * 向用户发送确认请求并等待响应。
      */
-    private void ask(String uuid, WebSocketSession session, Task task, List<TaskStep> steps) throws Exception {
+    private void ask(WebSocketSession session, Task task, List<TaskStep> steps) throws Exception {
         StringBuilder stepList = new StringBuilder();
         for (int i = 0; i < steps.size(); i++) {
             TaskStep step = steps.get(i);
@@ -383,20 +382,7 @@ public class TaskRunTool implements ToolHandler {
                 + "| 任务描述 | " + (StringUtils.hasText(task.getTaskDesc()) ? task.getTaskDesc() : "(无)") + " |\n"
                 + "\n**步骤列表：**\n" + stepList + "\n"
                 + "> ⚠️ 任务将在后台异步执行，可能涉及多次 AI 调用和工具操作。请确认后再允许执行。";
-
-        ToolAsk confirmation = new ToolAsk()
-                .setId(uuid)
-                .setToolName(NAME)
-                .setMessage(message);
-
-        session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
-        Boolean result = ChatController.awaitConfirm(uuid, null);
-        if (result == null) {
-            throw new ToolExecutor.ToolExecuteException("用户未确认任务执行，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整任务。");
-        }
-        if (!result) {
-            throw new ToolExecutor.ToolExecuteException("用户拒绝了任务执行，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整任务。");
-        }
+        securityService.ask(NAME, message, null, session);
     }
 
     @Override

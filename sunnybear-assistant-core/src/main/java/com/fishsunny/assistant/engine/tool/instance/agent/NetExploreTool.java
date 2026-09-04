@@ -24,6 +24,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
+import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.ToolContextUtils;
@@ -65,14 +66,17 @@ public class NetExploreTool implements SubAgentToolHandler {
     private final AISettings missionAISettings;
     private final ToolCallLoop toolCallLoop;
     private final ToolExecutor toolExecutor;
+    private final SecurityService securityService;
 
     public NetExploreTool(ObjectMapper objectMapper,
                           @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                           ToolCallLoop toolCallLoop,
+                          SecurityService securityService,
                           @Lazy ToolExecutor toolExecutor) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
         this.toolCallLoop = toolCallLoop;
+        this.securityService = securityService;
         this.toolExecutor = toolExecutor;
 
         register = new ToolRegister()
@@ -120,24 +124,11 @@ public class NetExploreTool implements SubAgentToolHandler {
                     if (!(context.get("session") instanceof WebSocketSession session)) {
                         throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
                     }
-                    ask(uuid, session, arguments.getTarget());
+                    ask(session, arguments.getTarget());
                 } finally {
                     ChatController.cleanupConfirm(uuid);
                 }
             }
-
-            // ========== 收集器（全量收集） ==========
-            StringBuilder collector = new StringBuilder();
-
-            // ========== 工具结果钩子 ==========
-            ToolCallLoop.ToolResultHook hook = (roundResults, aiText) -> {
-                for (ToolCallLoop.RoundResult r : roundResults) {
-                    collector.append("### ").append(r.toolName()).append("\n");
-                    collector.append("**参数:** ").append(truncate(r.arguments(), 300)).append("\n\n");
-                    collector.append(truncate(r.result(), MAX_RESULT_LENGTH)).append("\n\n---\n\n");
-                }
-                return true; // 始终继续循环，由 AI 决定何时停止
-            };
 
             // ========== 构建请求 ==========
             List<StandardToolRegister> subAgentTools = StandardToolRegister.buildToolRegisterByHandlers(
@@ -153,40 +144,16 @@ public class NetExploreTool implements SubAgentToolHandler {
                     .setTools(subAgentTools);
 
             // ========== 执行循环，捕获 AI 的最终报告 ==========
-            String finalReport = toolCallLoop.execute(missionAISettings, request, context,
-                    new ToolCallLoop.AgentLoopHook(null, hook));
+            String finalReport = toolCallLoop.execute(missionAISettings, request, context, null );
 
             // ========== 组装返回结果 ==========
-            return assembleResponse(finalReport, collector.toString());
+            return new ToolExecutor.ToolExecuteResponse(name(), finalReport);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
         } catch (Exception e) {
             log.error("NetExploreTool 执行异常: {}", e.getMessage(), e);
             throw new ToolExecutor.ToolExecuteException("网络探索子 Agent 执行失败: " + e.getMessage());
         }
-    }
-
-    /**
-     * 组装最终返回结果：AI 最终报告 + 附录（工具调用明细，单独长度保护后拼接到末尾）。
-     */
-    private ToolExecutor.ToolExecuteResponse assembleResponse(String finalReport, String rawData) {
-        StringBuilder result = new StringBuilder();
-
-        result.append(finalReport.trim());
-
-        // --- 附录：对原始收集数据单独截断，再拼接到末尾 ---
-        if (StringUtils.hasText(rawData)) {
-            if (!result.isEmpty()) {
-                result.append("\n\n---\n");
-            }
-            result.append("## 📎 附录：工具调用明细\n\n");
-
-            // 附录单独长度保护：截断后再拼入
-            String truncatedAppendix = truncate(rawData, APPENDIX_MAX_LENGTH);
-            result.append(truncatedAppendix);
-        }
-
-        return new ToolExecutor.ToolExecuteResponse(name(), result.toString());
     }
 
     /**
@@ -201,7 +168,7 @@ public class NetExploreTool implements SubAgentToolHandler {
     /**
      * 向用户发送确认请求并等待响应。
      */
-    private void ask(String uuid, WebSocketSession session, String target) throws Exception {
+    private void ask(WebSocketSession session, String target) throws Exception {
         String message = "### 网络探索请求\n\n"
                 + "AI 请求进行联网深度探索，将自动搜索并阅读网页内容。\n\n"
                 + "| 属性 | 内容 |\n"
@@ -210,21 +177,7 @@ public class NetExploreTool implements SubAgentToolHandler {
                 + "| 可用工具 | web_search_tool（搜索）、web_reader_tool（阅读网页） |\n"
                 + "| 模式 | 深度探索（子 Agent 循环） |\n\n"
                 + "> ⚠️ 子 Agent 将自动进行多轮搜索与网页阅读，可能消耗较多 token。请确认目标合理后再允许执行。";
-
-        ToolAsk confirmation = new ToolAsk()
-                .setId(uuid)
-                .setToolName(NAME)
-                .setMessage(message)
-                .setTimeout(30);
-
-        session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
-        Boolean result = ChatController.awaitConfirm(uuid, 30);
-        if (result == null) {
-            throw new ToolExecutor.ToolExecuteException("用户未确认网络探索，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整目标。");
-        }
-        if (!result) {
-            throw new ToolExecutor.ToolExecuteException("用户拒绝了网络探索，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整目标。");
-        }
+        securityService.ask(NAME, message, 60, session);
     }
 
     // ==================== 提示词 ====================

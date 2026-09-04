@@ -10,8 +10,6 @@ package com.fishsunny.assistant.engine.tool.instance.os;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.constants.ControlSign;
-import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
@@ -19,9 +17,8 @@ import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
-import com.fishsunny.assistant.engine.tool.service.review.AISafetyReviewService;
-import com.fishsunny.assistant.engine.tool.service.review.ReviewResult;
-import com.fishsunny.assistant.mvc.controller.ChatController;
+import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
+import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -29,7 +26,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.BufferedWriter;
@@ -44,7 +40,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.*;
 
 /**
@@ -151,23 +146,22 @@ public class CommandTool implements ToolHandler {
 
     private final ObjectMapper objectMapper;
     private final Settings settings;
-    private final AISafetyReviewService safetyReviewService;
+    private final SecurityService securityService;
 
     @Value("${assistant.file.base-path:}")
     private String basePath;
 
     public CommandTool(ObjectMapper objectMapper,
                        @Qualifier(SETTINGS) Settings settings,
-                       AISafetyReviewService safetyReviewService
+                       SecurityService securityService
                        ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
-        this.safetyReviewService = safetyReviewService;
+        this.securityService = securityService;
     }
 
     @Override
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
-        String uuid = UUID.randomUUID().toString();
         try {
             if (!(context.get("session") instanceof WebSocketSession session)) {
                 throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
@@ -182,17 +176,17 @@ public class CommandTool implements ToolHandler {
                 switch (settings.getMode()) {
                     case AUTO: {
                         if (isBlacklisted(arguments.getCommand())) {
-                            ask(uuid, session, arguments, null);
+                            ask(session, arguments, null);
                         } else if (!isWhitelisted(arguments.getCommand())) {
                             ReviewResult review = isDanger(arguments, context);
                             if (review.isDanger()) {
-                                ask(uuid, session, arguments, review.reason());
+                                ask(session, arguments, review.reason());
                             }
                         }
                         break;
                     }
                     case ALWAYS_ASKED:
-                        ask(uuid, session, arguments, null);
+                        ask(session, arguments, null);
                         break;
                     case NEVER_ASKED:
                         break;
@@ -273,8 +267,6 @@ public class CommandTool implements ToolHandler {
             throw e;
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
-        } finally {
-            ChatController.cleanupConfirm(uuid);
         }
     }
 
@@ -405,13 +397,13 @@ public class CommandTool implements ToolHandler {
                 命令内容：
                 ${command}
                 """.replace("${command}", arguments.getCommand());
-        return safetyReviewService.review(context, description);
+        return securityService.review(context, description);
     }
 
     /**
      * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
-    private void ask(String uuid, WebSocketSession session, Arguments arguments, String riskReason) throws Exception {
+    private void ask(WebSocketSession session, Arguments arguments, String riskReason) throws Exception {
         String shellName = IS_WINDOWS ? "cmd" : "bash";
         String message = "### 命令执行请求\n\n"
                 + ReviewResult.riskReasonBlock(riskReason)
@@ -420,21 +412,7 @@ public class CommandTool implements ToolHandler {
                 + arguments.getCommand() + "\n"
                 + "```\n\n"
                 + "> 请确认此命令安全后再允许执行。";
-
-        ToolAsk confirmation = new ToolAsk()
-                .setId(uuid)
-                .setToolName(NAME)
-                .setMessage(message)
-                .setTimeout(30);
-
-        session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
-        Boolean result = ChatController.awaitConfirm(uuid, 30);
-        if (result == null) {
-            throw new ToolExecutor.ToolExecuteException("用户未确认命令，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整命令。");
-        }
-        if (!result) {
-            throw new ToolExecutor.ToolExecuteException("用户拒绝了命令，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整命令。");
-        }
+        securityService.ask(NAME, message, null, session);
     }
 
     /**

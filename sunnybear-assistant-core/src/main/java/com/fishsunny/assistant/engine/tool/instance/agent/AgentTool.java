@@ -18,6 +18,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -27,13 +28,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @ToolKitComponent(AgentToolKit.class)
 @ConditionalOnExpression("${engine.tool.agent.enable:true}")
 public class AgentTool implements ToolHandler {
 
     public static final String NAME = "agent_tool";
-
-    private static final Logger log = LoggerFactory.getLogger(AgentTool.class);
 
     /** 子 Agent 路由表：key = 子 Agent 工具名（name()），value = 子 Agent 工具 */
     private final Map<String, ToolHandler> registry;

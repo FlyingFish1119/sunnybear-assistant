@@ -10,25 +10,20 @@ package com.fishsunny.assistant.engine.tool.instance.file;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.constants.ControlSign;
-import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
-import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
-import com.fishsunny.assistant.engine.tool.service.review.AISafetyReviewService;
-import com.fishsunny.assistant.engine.tool.service.review.ReviewResult;
-import com.fishsunny.assistant.mvc.controller.ChatController;
+import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
+import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
@@ -36,7 +31,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 文件编辑工具
@@ -77,22 +75,21 @@ public class FileEditTool implements ToolHandler {
 
     private final ObjectMapper objectMapper;
     private final Settings settings;
-    private final AISafetyReviewService safetyReviewService;
+    private final SecurityService securityService;
 
     public FileEditTool(ObjectMapper objectMapper,
                         @Qualifier(SETTINGS) Settings settings,
-                        AISafetyReviewService safetyReviewService
+                        SecurityService securityService
 
                         ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
-        this.safetyReviewService = safetyReviewService;
+        this.securityService = securityService;
     }
 
     @Override
+    @FileToolKit.FileLock
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
-        String uuid = UUID.randomUUID().toString();
-        FilePathLock.LockHandle lock = null;
         try {
             if (!(context.get("session") instanceof WebSocketSession session)) {
                 throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
@@ -111,10 +108,6 @@ public class FileEditTool implements ToolHandler {
 
             // 路径规范化
             Path filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
-
-            // 加锁：须覆盖 AI 安全检测与用户确认等待，保证 read-modify-write 整体原子化，
-            // 防止并发编辑同一文件时互相覆盖（lost update）
-            lock = FilePathLock.acquire(filePath);
 
             // 检查文件
             validateFile(filePath);
@@ -149,12 +142,12 @@ public class FileEditTool implements ToolHandler {
                     case NEVER_ASKED:
                         break;
                     case ALWAYS_ASKED:
-                        ask(uuid, session, filePath, modeDesc, match, diffPreview, null);
+                        ask(session, filePath, modeDesc, match, diffPreview, null);
                         break;
                     case AUTO: {
                         ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
                         if (review.isDanger()) {
-                            ask(uuid, session, filePath, modeDesc, match, diffPreview, review.reason());
+                            ask(session, filePath, modeDesc, match, diffPreview, review.reason());
                         }
                         break;
                     }
@@ -201,9 +194,6 @@ public class FileEditTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("文件编辑失败: " + e.getMessage());
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
-        } finally {
-            if (lock != null) lock.close();
-            ChatController.cleanupConfirm(uuid);
         }
     }
 
@@ -398,7 +388,7 @@ public class FileEditTool implements ToolHandler {
                 .replace("${start}", String.valueOf(match.startLine + 1))
                 .replace("${end}", String.valueOf(match.endLine + 1))
                 .replace("${content}", previewContent);
-        return safetyReviewService.review(context, description);
+        return securityService.review(context, description);
     }
 
     // ======================== 用户确认 ========================
@@ -408,7 +398,7 @@ public class FileEditTool implements ToolHandler {
      *
      * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
-    private void ask(String uuid, WebSocketSession session, Path filePath,
+    private void ask(WebSocketSession session, Path filePath,
                      String modeDesc, MatchResult match, String previewContent, String riskReason) throws Exception {
 
         String lineRange = "第 " + (match.startLine + 1) + " ~ " + (match.endLine + 1) + " 行";
@@ -420,21 +410,7 @@ public class FileEditTool implements ToolHandler {
                 + "**变更预览：**\n\n"
                 + previewContent + "\n\n"
                 + "> 请确认此编辑操作安全后再允许执行。";
-
-        ToolAsk confirmation = new ToolAsk()
-                .setId(uuid)
-                .setToolName(NAME)
-                .setMessage(message)
-                .setTimeout(30);
-
-        session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
-        Boolean result = ChatController.awaitConfirm(uuid, 30);
-        if (result == null) {
-            throw new ToolExecutor.ToolExecuteException("用户未确认文件编辑操作，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整操作。");
-        }
-        if (!result) {
-            throw new ToolExecutor.ToolExecuteException("用户拒绝了文件编辑操作，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整操作。");
-        }
+        securityService.ask(NAME, message, 60, session);
     }
 
     // ======================== ToolHandler 接口实现 ========================

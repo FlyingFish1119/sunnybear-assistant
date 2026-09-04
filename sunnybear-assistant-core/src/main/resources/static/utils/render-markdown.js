@@ -89,5 +89,15 @@ const MarkdownUtils = (function () {
         return html;
     }
 
-    return { render: render, clearCache: clearCache };
+    /* ---- JSON 参数美化：成功则格式化缩进，失败（流式半截 JSON/纯文本参数）原样返回 ---- */
+    function beautify(text) {
+        if (!text) return text;
+        try {
+            return JSON.stringify(JSON.parse(text), null, 2);
+        } catch (e) {
+            return text;
+        }
+    }
+
+    return { render: render, clearCache: clearCache, beautify: beautify };
 })();

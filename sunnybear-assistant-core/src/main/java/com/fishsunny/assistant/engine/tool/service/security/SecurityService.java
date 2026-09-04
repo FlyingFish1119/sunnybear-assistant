@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.tool.service.review;
+package com.fishsunny.assistant.engine.tool.service.security;
 
 /*
  * @Usage AI 安全审查 service —— 用一个受限工具集的子 Agent 对"将要执行的操作"做危险性评估，
@@ -12,6 +12,8 @@ package com.fishsunny.assistant.engine.tool.service.review;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ControlSign;
+import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.protocol.project.AgentLogEntry;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
@@ -21,11 +23,15 @@ import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.instance.file.FileListTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileReadTool;
 import com.fishsunny.assistant.engine.tool.instance.security.DecodeTool;
+import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
+import jakarta.annotation.Nullable;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketSession;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,7 +49,7 @@ import java.util.function.Consumer;
  * 让工具停止执行（与旧 DangerChecker"无法识别格式则停止"语义一致）。
  */
 @Component
-public class AISafetyReviewService {
+public class SecurityService {
 
     /**
      * 工具上下文 key：触发本轮操作的 messages 快照（含主 system prompt 与历史/当前用户消息）。
@@ -66,14 +72,32 @@ public class AISafetyReviewService {
     private final AISettings aiSettings;
     private final ObjectMapper objectMapper;
 
-    public AISafetyReviewService(ToolCallLoop toolCallLoop,
-                                 @Lazy ToolExecutor toolExecutor,
-                                 @Qualifier(AISettings.MISSION) AISettings aiSettings,
-                                 ObjectMapper objectMapper) {
+    public SecurityService(ToolCallLoop toolCallLoop,
+                           @Lazy ToolExecutor toolExecutor,
+                           @Qualifier(AISettings.MISSION) AISettings aiSettings,
+                           ObjectMapper objectMapper) {
         this.toolCallLoop = toolCallLoop;
         this.toolExecutor = toolExecutor;
         this.aiSettings = aiSettings;
         this.objectMapper = objectMapper;
+    }
+
+    public void ask(String toolName, String message, @Nullable Integer timeout, WebSocketSession session) throws Exception {
+        ToolAsk toolAsk = new ToolAsk()
+                .loadInfo(toolName, message)
+                .expire(timeout);
+        try {
+            session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(toolAsk)));
+            Boolean result = ChatController.awaitConfirm(toolAsk.getId(), 30);
+            if (result == null) {
+                throw new ToolExecutor.ToolExecuteException("用户未在时间内确认命令，工具已取消。请停止重复调用此工具。");
+            }
+            if (!result) {
+                throw new ToolExecutor.ToolExecuteException("用户拒绝了命令，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整命令。");
+            }
+        } finally {
+            ChatController.cleanupConfirm(toolAsk.getId());
+        }
     }
 
     /**

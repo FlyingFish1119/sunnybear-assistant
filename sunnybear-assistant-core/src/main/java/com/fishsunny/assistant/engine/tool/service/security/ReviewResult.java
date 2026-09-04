@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.tool.service.review;
+package com.fishsunny.assistant.engine.tool.service.security;
 
 /**
  * AI 安全审查判定结果。

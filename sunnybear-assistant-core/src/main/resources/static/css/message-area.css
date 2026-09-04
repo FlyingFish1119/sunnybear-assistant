@@ -402,6 +402,12 @@
     overflow-wrap: break-word;
 }
 
+/* 工具参数区折行：JSON 美化后每行较短，长字符串值/非 JSON 文本兜底折行，不再横向歇菜 */
+.message-area-bubble-tools pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 /* ---- 工具调用可折叠头部 ---- */
 .message-area-bubble-tools-header {
     margin-top: 8px;

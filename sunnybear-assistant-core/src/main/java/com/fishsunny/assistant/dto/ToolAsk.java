@@ -11,6 +11,8 @@ package com.fishsunny.assistant.dto;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
+import java.util.UUID;
+
 @Data
 @Accessors(chain = true)
 public class ToolAsk {
@@ -22,4 +24,16 @@ public class ToolAsk {
     private String message;
     /** 超时时间（秒） */
     private Integer timeout;
+
+    public ToolAsk loadInfo(String toolName, String message) {
+        this.id = UUID.randomUUID().toString();
+        this.toolName = toolName;
+        this.message = message;
+        return this;
+    }
+
+    public ToolAsk expire(Integer timeout) {
+        this.timeout = timeout;
+        return this;
+    }
 }

@@ -108,11 +108,10 @@ public class DecodeTool implements ToolHandler {
             return new ToolExecutor.ToolExecuteResponse(name(), head + " 原文如下：\n\n" + result.output());
         }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("解码成功，编码类型：").append(result.triedType()).append("\n\n");
-        sb.append("解码结果（共 ").append(result.output().length()).append(" 字符）：\n");
-        sb.append("```\n").append(result.output()).append("\n```");
-        return new ToolExecutor.ToolExecuteResponse(name(), sb.toString());
+        String sb = "解码成功，编码类型：" + result.triedType() + "\n\n" +
+                "解码结果（共 " + result.output().length() + " 字符）：\n" +
+                "```\n" + result.output() + "\n```";
+        return new ToolExecutor.ToolExecuteResponse(name(), sb);
     }
 
     // ======================== 解码实现 ========================
@@ -169,7 +168,7 @@ public class DecodeTool implements ToolHandler {
         // 覆盖 反斜杠+u 四十六进制数 与 反斜杠+u 大括号形态（单反斜杠形态）
         String out = data;
         Matcher m1 = UNICODE_BRACED.matcher(out);
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         while (m1.find()) {
             int cp = Integer.parseInt(m1.group(1), 16);
             m1.appendReplacement(sb, Matcher.quoteReplacement(new String(Character.toChars(cp))));
@@ -178,7 +177,7 @@ public class DecodeTool implements ToolHandler {
         out = sb.toString();
 
         Matcher m2 = UNICODE_ESCAPE.matcher(out);
-        StringBuffer sb2 = new StringBuffer();
+        StringBuilder sb2 = new StringBuilder();
         while (m2.find()) {
             char c = (char) Integer.parseInt(m2.group(1), 16);
             m2.appendReplacement(sb2, Matcher.quoteReplacement(String.valueOf(c)));

@@ -10,22 +10,18 @@ package com.fishsunny.assistant.engine.tool.instance.file;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.constants.ControlSign;
-import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
-import com.fishsunny.assistant.engine.tool.service.file.FilePathLock;
-import com.fishsunny.assistant.mvc.controller.ChatController;
+import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
@@ -41,7 +37,6 @@ import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * 文件下载工具
@@ -61,16 +56,17 @@ public class FileDownloadTool implements ToolHandler {
 
     private final ObjectMapper objectMapper;
     private final Settings settings;
+    private final SecurityService securityService;
 
-    public FileDownloadTool(ObjectMapper objectMapper, Settings settings) {
+    public FileDownloadTool(ObjectMapper objectMapper, Settings settings, SecurityService securityService) {
         this.objectMapper = objectMapper;
+        this.securityService = securityService;
         this.settings = settings;
     }
 
     @Override
+    @FileToolKit.FileLock
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
-        String uuid = UUID.randomUUID().toString();
-        FilePathLock.LockHandle lock = null;
         try {
             if (!(context.get("session") instanceof WebSocketSession session)) {
                 throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
@@ -87,9 +83,6 @@ public class FileDownloadTool implements ToolHandler {
             // 路径规范化
             Path savePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
 
-            // 加锁：须覆盖用户确认等待，防止下载写入期间保存路径被其他会话修改
-            lock = FilePathLock.acquire(savePath);
-
             // 无审查模式：跳过用户确认，直接执行
             if (!ToolContextUtils.isUnreviewed(context)) {
                 // 安全检测
@@ -97,7 +90,7 @@ public class FileDownloadTool implements ToolHandler {
                     case NEVER_ASKED:
                         break;
                     case ALWAYS_ASKED:
-                        ask(uuid, session, arguments, savePath);
+                        ask(session, arguments, savePath);
                         break;
                     default:
                         throw new ToolExecutor.ToolExecuteException("FileDownload 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
@@ -128,9 +121,6 @@ public class FileDownloadTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("文件下载被中断: " + e.getMessage());
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
-        } finally {
-            if (lock != null) lock.close();
-            ChatController.cleanupConfirm(uuid);
         }
     }
 
@@ -183,7 +173,7 @@ public class FileDownloadTool implements ToolHandler {
     /**
      * 向用户发送确认请求，等待用户确认
      */
-    private void ask(String uuid, WebSocketSession session, Arguments arguments, Path savePath) throws Exception {
+    private void ask(WebSocketSession session, Arguments arguments, Path savePath) throws Exception {
         int timeoutSeconds = arguments.getTimeout() != null && arguments.getTimeout() > 0
                 ? arguments.getTimeout()
                 : DEFAULT_TIMEOUT_SECONDS;
@@ -193,21 +183,7 @@ public class FileDownloadTool implements ToolHandler {
                 + "**保存路径：** `" + savePath + "`\n\n"
                 + "**超时时间：** " + timeoutSeconds + " 秒\n\n"
                 + "> ⚠️ 请确认下载来源可信后再允许执行。";
-
-        ToolAsk confirmation = new ToolAsk()
-                .setId(uuid)
-                .setToolName(NAME)
-                .setMessage(message)
-                .setTimeout(30);
-
-        session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
-        Boolean result = ChatController.awaitConfirm(uuid, 30);
-        if (result == null) {
-            throw new ToolExecutor.ToolExecuteException("用户未确认文件下载操作，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整操作。");
-        }
-        if (!result) {
-            throw new ToolExecutor.ToolExecuteException("用户拒绝了文件下载操作，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整操作。");
-        }
+        securityService.ask(NAME, message, 60, session);
     }
 
     @Override

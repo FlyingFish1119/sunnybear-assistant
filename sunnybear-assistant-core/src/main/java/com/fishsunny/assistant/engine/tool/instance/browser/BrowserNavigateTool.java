@@ -18,6 +18,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
 import com.fishsunny.assistant.engine.tool.service.browser.PlaywrightBrowserService;
+import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
@@ -42,10 +43,13 @@ public class BrowserNavigateTool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final ToolRegister register;
     private final PlaywrightBrowserService browserService;
+    private final SecurityService securityService;
 
     public BrowserNavigateTool(ObjectMapper objectMapper,
+                               SecurityService securityService,
                                PlaywrightBrowserService browserService) {
         this.objectMapper = objectMapper;
+        this.securityService = securityService;
         this.browserService = browserService;
 
         register = new ToolRegister()
@@ -69,7 +73,6 @@ public class BrowserNavigateTool implements ToolHandler {
     @Override
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context)
             throws ToolExecutor.ToolExecuteException {
-        String uuid = UUID.randomUUID().toString();
         try {
             if (!(context.get("session") instanceof WebSocketSession session)) {
                 throw new ToolExecutor.ToolExecuteException("工具内部错误导致此工具不可使用，原因: session 依赖缺失");
@@ -83,7 +86,7 @@ public class BrowserNavigateTool implements ToolHandler {
 
             // 始终需要用户确认（无审查模式跳过）
             if (!ToolContextUtils.isUnreviewed(context)) {
-                ask(uuid, session, arguments);
+                ask(session, arguments);
             }
 
             if (!session.isOpen()) {
@@ -103,34 +106,18 @@ public class BrowserNavigateTool implements ToolHandler {
             throw e;
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("浏览器导航失败: " + e.getMessage());
-        } finally {
-            ChatController.cleanupConfirm(uuid);
         }
     }
 
     /**
      * 向用户发送导航确认请求，等待用户确认
      */
-    private void ask(String uuid, WebSocketSession session, Arguments arguments) throws Exception {
+    private void ask(WebSocketSession session, Arguments arguments) throws Exception {
         String message = "### 浏览器导航请求\n\n"
                 + "AI 请求在浏览器中打开以下 URL：\n\n"
                 + "**目标地址：** `" + arguments.getUrl() + "`\n\n"
                 + "> ⚠️ 请确认此导航操作安全后再允许执行。";
-
-        ToolAsk confirmation = new ToolAsk()
-                .setId(uuid)
-                .setToolName(NAME)
-                .setMessage(message);
-
-        session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(confirmation)));
-        // 本工具确认无超时（ToolAsk 不携带 timeout），一直等待用户确认，与前端"等待确认中"一致
-        Boolean result = ChatController.awaitConfirm(uuid, null);
-        if (result == null) {
-            throw new ToolExecutor.ToolExecuteException("用户未确认浏览器导航操作，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整 URL。");
-        }
-        if (!result) {
-            throw new ToolExecutor.ToolExecuteException("用户拒绝了浏览器导航操作，工具已取消。请停止重复调用此工具，改为询问用户原因或是否需要调整 URL。");
-        }
+        securityService.ask(NAME, message, null, session);
     }
 
     @Override
