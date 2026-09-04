@@ -15,7 +15,6 @@ import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
-import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -87,32 +86,28 @@ public class FileDeleteTool implements ToolHandler {
             // 收集删除目标的信息，用于安全检测和展示
             String targetInfo = buildTargetInfo(targetPath, isDirectory, recursive);
 
-            // 无审查模式：跳过 AI 危险检测与用户确认，直接执行
-            if (!ToolContextUtils.isUnreviewed(context)) {
-                // 安全检测
-                switch (settings.getMode()) {
-                    case NEVER_ASKED:
-                        break;
-                    case ALWAYS_ASKED:
-                        ask(session, targetPath, isDirectory, recursive, targetInfo, null);
-                        break;
-                    case AUTO: {
-                        ReviewResult review = isDanger(arguments, targetPath, isDirectory, recursive, targetInfo, context);
-                        if (review.isDanger()) {
-                            ask(session, targetPath, isDirectory, recursive, targetInfo, review.reason());
-                        }
-                        break;
+            switch (settings.getMode()) {
+                case NEVER_ASKED:
+                    break;
+                case ALWAYS_ASKED:
+                    ask(context, targetPath, isDirectory, recursive, targetInfo, null);
+                    break;
+                case AUTO: {
+                    ReviewResult review = isDanger(arguments, targetPath, isDirectory, recursive, targetInfo, context);
+                    if (review.isDanger()) {
+                        ask(context, targetPath, isDirectory, recursive, targetInfo, review.reason());
                     }
-                    case ALWAYS_REJECT_DANGER: {
-                        ReviewResult review = isDanger(arguments, targetPath, isDirectory, recursive, targetInfo, context);
-                        if (review.isDanger()) {
-                            throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件删除操作存在危险", review.reason()));
-                        }
-                        break;
-                    }
-                    default:
-                        throw new ToolExecutor.ToolExecuteException("FileDelete 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                    break;
                 }
+                case ALWAYS_REJECT_DANGER: {
+                    ReviewResult review = isDanger(arguments, targetPath, isDirectory, recursive, targetInfo, context);
+                    if (review.isDanger()) {
+                        throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件删除操作存在危险", review.reason()));
+                    }
+                    break;
+                }
+                default:
+                    throw new ToolExecutor.ToolExecuteException("FileDelete 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
             }
 
             if (!session.isOpen()) {
@@ -220,7 +215,7 @@ public class FileDeleteTool implements ToolHandler {
      *
      * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
-    private void ask(WebSocketSession session, Path targetPath,
+    private void ask(Map<String, Object> context, Path targetPath,
                      boolean isDirectory, boolean recursive, String targetInfo, String riskReason) throws Exception {
         String typeLabel = isDirectory ? "目录" : "文件";
         String deleteDesc = isDirectory
@@ -237,7 +232,7 @@ public class FileDeleteTool implements ToolHandler {
                 + targetInfo
                 + "```\n\n"
                 + "> ⚠️ 删除操作不可逆，请确认此操作安全后再允许执行。";
-        securityService.ask(NAME, message, 60, session);
+        securityService.ask(NAME, message, 60, context);
     }
 
     @Override

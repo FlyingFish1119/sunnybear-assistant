@@ -14,7 +14,6 @@ import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
-import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -78,18 +77,14 @@ public class FileDownloadTool implements ToolHandler {
             // 路径规范化
             Path savePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
 
-            // 无审查模式：跳过用户确认，直接执行
-            if (!ToolContextUtils.isUnreviewed(context)) {
-                // 安全检测
-                switch (settings.getMode()) {
-                    case NEVER_ASKED:
-                        break;
-                    case ALWAYS_ASKED:
-                        ask(session, arguments, savePath);
-                        break;
-                    default:
-                        throw new ToolExecutor.ToolExecuteException("FileDownload 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
-                }
+            switch (settings.getMode()) {
+                case NEVER_ASKED:
+                    break;
+                case ALWAYS_ASKED:
+                    ask(context, arguments, savePath);
+                    break;
+                default:
+                    throw new ToolExecutor.ToolExecuteException("FileDownload 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
             }
 
             if (!session.isOpen()) {
@@ -168,7 +163,7 @@ public class FileDownloadTool implements ToolHandler {
     /**
      * 向用户发送确认请求，等待用户确认
      */
-    private void ask(WebSocketSession session, Arguments arguments, Path savePath) throws Exception {
+    private void ask(Map<String, Object> context, Arguments arguments, Path savePath) throws Exception {
         int timeoutSeconds = arguments.getTimeout() != null && arguments.getTimeout() > 0
                 ? arguments.getTimeout()
                 : DEFAULT_TIMEOUT_SECONDS;
@@ -178,7 +173,7 @@ public class FileDownloadTool implements ToolHandler {
                 + "**保存路径：** `" + savePath + "`\n\n"
                 + "**超时时间：** " + timeoutSeconds + " 秒\n\n"
                 + "> ⚠️ 请确认下载来源可信后再允许执行。";
-        securityService.ask(NAME, message, 60, session);
+        securityService.ask(NAME, message, 60, context);
     }
 
     @Override

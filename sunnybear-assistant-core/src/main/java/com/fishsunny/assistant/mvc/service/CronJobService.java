@@ -21,9 +21,11 @@ public interface CronJobService {
      * @param description 任务描述
      * @param cron        cron 表达式
      * @param message     触发消息
+     * @param enablePro   是否启用高级模型
+     * @param unreviewed  是否无审查模式
      * @return 创建后的 CronJob
      */
-    CronJob create(String title, String description, String cron, String message, boolean enablePro);
+    CronJob create(String title, String description, String cron, String message, boolean enablePro, boolean unreviewed);
 
     /**
      * 更新定时任务
@@ -34,9 +36,10 @@ public interface CronJobService {
      * @param cron        新的 cron 表达式
      * @param message     新的触发消息
      * @param enablePro   是否启用高级模型
+     * @param unreviewed  是否无审查模式
      * @return 更新后的 CronJob
      */
-    CronJob update(Integer id, String title, String description, String cron, String message, boolean enablePro);
+    CronJob update(Integer id, String title, String description, String cron, String message, boolean enablePro, boolean unreviewed);
 
     /**
      * 删除定时任务

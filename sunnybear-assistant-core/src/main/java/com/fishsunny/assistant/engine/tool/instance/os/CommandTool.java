@@ -16,7 +16,6 @@ import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
-import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -168,39 +167,36 @@ public class CommandTool implements ToolHandler {
                 throw new ToolExecutor.ToolExecuteException("参数 command 不能为空");
             }
 
-            // 无审查模式：跳过黑名单/白名单/AI 危险检测与用户确认，直接执行
-            if (!ToolContextUtils.isUnreviewed(context)) {
-                switch (settings.getMode()) {
-                    case AUTO: {
-                        if (isBlacklisted(arguments.getCommand())) {
-                            ask(session, arguments, null);
-                        } else if (!isWhitelisted(arguments.getCommand())) {
-                            ReviewResult review = isDanger(arguments, context);
-                            if (review.isDanger()) {
-                                ask(session, arguments, review.reason());
-                            }
+            switch (settings.getMode()) {
+                case AUTO: {
+                    if (isBlacklisted(arguments.getCommand())) {
+                        ask(context, arguments, null);
+                    } else if (!isWhitelisted(arguments.getCommand())) {
+                        ReviewResult review = isDanger(arguments, context);
+                        if (review.isDanger()) {
+                            ask(context, arguments, review.reason());
                         }
-                        break;
                     }
-                    case ALWAYS_ASKED:
-                        ask(session, arguments, null);
-                        break;
-                    case NEVER_ASKED:
-                        break;
-                    case ALWAYS_REJECT_DANGER: {
-                        if (isBlacklisted(arguments.getCommand())) {
-                            throw new ToolExecutor.ToolExecuteException("此命令行命令被拒绝执行");
-                        } else if (!isWhitelisted(arguments.getCommand())) {
-                            ReviewResult review = isDanger(arguments, context);
-                            if (review.isDanger()) {
-                                throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("执行此命令行命令存在危险", review.reason()));
-                            }
-                        }
-                        break;
-                    }
-                    default:
-                        throw new ToolExecutor.ToolExecuteException("Command 工具的模式设置错误[" + settings.getMode() +"]，导致该工具无法执行");
+                    break;
                 }
+                case ALWAYS_ASKED:
+                    ask(context, arguments, null);
+                    break;
+                case NEVER_ASKED:
+                    break;
+                case ALWAYS_REJECT_DANGER: {
+                    if (isBlacklisted(arguments.getCommand())) {
+                        throw new ToolExecutor.ToolExecuteException("此命令行命令被拒绝执行");
+                    } else if (!isWhitelisted(arguments.getCommand())) {
+                        ReviewResult review = isDanger(arguments, context);
+                        if (review.isDanger()) {
+                            throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("执行此命令行命令存在危险", review.reason()));
+                        }
+                    }
+                    break;
+                }
+                default:
+                    throw new ToolExecutor.ToolExecuteException("Command 工具的模式设置错误[" + settings.getMode() +"]，导致该工具无法执行");
             }
 
             if (!session.isOpen()) {
@@ -400,7 +396,7 @@ public class CommandTool implements ToolHandler {
     /**
      * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
-    private void ask(WebSocketSession session, Arguments arguments, String riskReason) throws Exception {
+    private void ask(Map<String, Object> context, Arguments arguments, String riskReason) throws Exception {
         String shellName = IS_WINDOWS ? "cmd" : "bash";
         String message = "### 命令执行请求\n\n"
                 + ReviewResult.riskReasonBlock(riskReason)
@@ -409,7 +405,7 @@ public class CommandTool implements ToolHandler {
                 + arguments.getCommand() + "\n"
                 + "```\n\n"
                 + "> 请确认此命令安全后再允许执行。";
-        securityService.ask(NAME, message, null, session);
+        securityService.ask(NAME, message, null, context);
     }
 
     /**

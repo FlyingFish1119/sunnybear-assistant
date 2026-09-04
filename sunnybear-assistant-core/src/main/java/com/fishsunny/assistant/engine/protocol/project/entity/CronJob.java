@@ -35,6 +35,9 @@ public class CronJob {
     /** 是否启用高级模型 */
     private Boolean enablePro = false;
 
+    /** 无审查模式：开启后该定时任务触发的会话自动跳过工具确认与 AI 危险审查 */
+    private Boolean unreviewed = false;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 

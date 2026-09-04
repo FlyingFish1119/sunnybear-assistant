@@ -28,7 +28,6 @@ import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
-import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
@@ -114,13 +113,8 @@ public class NetExploreTool implements SubAgentToolHandler {
         }
 
         try {
-            ChatSession chatSession = (ChatSession) context.get("chatSession");
-            WebSocketSession session = (WebSocketSession) context.get("session");
-
-            // ========== 确认机制（无审查模式跳过） ==========
-            if (ChatSession.TYPE_CHAT.equals(chatSession.getType()) && !ToolContextUtils.isUnreviewed(context)) {
-                ask(session, arguments.getTarget());
-            }
+            // ========== 确认机制（无审查/定时任务由 SecurityService 统一裁决） ==========
+            ask(context, arguments.getTarget());
 
             // ========== 构建请求 ==========
             List<StandardToolRegister> subAgentTools = StandardToolRegister.buildToolRegisterByHandlers(
@@ -160,7 +154,7 @@ public class NetExploreTool implements SubAgentToolHandler {
     /**
      * 向用户发送确认请求并等待响应。
      */
-    private void ask(WebSocketSession session, String target) throws Exception {
+    private void ask(Map<String, Object> context, String target) throws Exception {
         String message = "### 网络探索请求\n\n"
                 + "AI 请求进行联网深度探索，将自动搜索并阅读网页内容。\n\n"
                 + "| 属性 | 内容 |\n"
@@ -169,7 +163,7 @@ public class NetExploreTool implements SubAgentToolHandler {
                 + "| 可用工具 | web_search_tool（搜索）、web_reader_tool（阅读网页） |\n"
                 + "| 模式 | 深度探索（子 Agent 循环） |\n\n"
                 + "> ⚠️ 子 Agent 将自动进行多轮搜索与网页阅读，可能消耗较多 token。请确认目标合理后再允许执行。";
-        securityService.ask(NAME, message, 60, session);
+        securityService.ask(NAME, message, 60, context);
     }
 
     // ==================== 提示词 ====================

@@ -15,7 +15,6 @@ import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
-import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -130,32 +129,28 @@ public class FileEditTool implements ToolHandler {
             // 生成 diff 风格预览
             String diffPreview = buildDiffResult(allLines, match, newContent, filePath);
 
-            // 无审查模式：跳过 AI 危险检测与用户确认，直接执行
-            if (!ToolContextUtils.isUnreviewed(context)) {
-                // 安全检测
-                switch (settings.getMode()) {
-                    case NEVER_ASKED:
-                        break;
-                    case ALWAYS_ASKED:
-                        ask(session, filePath, modeDesc, match, diffPreview, null);
-                        break;
-                    case AUTO: {
-                        ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
-                        if (review.isDanger()) {
-                            ask(session, filePath, modeDesc, match, diffPreview, review.reason());
-                        }
-                        break;
+            switch (settings.getMode()) {
+                case NEVER_ASKED:
+                    break;
+                case ALWAYS_ASKED:
+                    ask(context, filePath, modeDesc, match, diffPreview, null);
+                    break;
+                case AUTO: {
+                    ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
+                    if (review.isDanger()) {
+                        ask(context, filePath, modeDesc, match, diffPreview, review.reason());
                     }
-                    case ALWAYS_REJECT_DANGER: {
-                        ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
-                        if (review.isDanger()) {
-                            throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件编辑操作存在危险", review.reason()));
-                        }
-                        break;
-                    }
-                    default:
-                        throw new ToolExecutor.ToolExecuteException("FileEdit 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                    break;
                 }
+                case ALWAYS_REJECT_DANGER: {
+                    ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
+                    if (review.isDanger()) {
+                        throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件编辑操作存在危险", review.reason()));
+                    }
+                    break;
+                }
+                default:
+                    throw new ToolExecutor.ToolExecuteException("FileEdit 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
             }
 
             if (!session.isOpen()) {
@@ -393,7 +388,7 @@ public class FileEditTool implements ToolHandler {
      *
      * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
-    private void ask(WebSocketSession session, Path filePath,
+    private void ask(Map<String, Object> context, Path filePath,
                      String modeDesc, MatchResult match, String previewContent, String riskReason) throws Exception {
 
         String lineRange = "第 " + (match.startLine + 1) + " ~ " + (match.endLine + 1) + " 行";
@@ -405,7 +400,7 @@ public class FileEditTool implements ToolHandler {
                 + "**变更预览：**\n\n"
                 + previewContent + "\n\n"
                 + "> 请确认此编辑操作安全后再允许执行。";
-        securityService.ask(NAME, message, 60, session);
+        securityService.ask(NAME, message, 60, context);
     }
 
     // ======================== ToolHandler 接口实现 ========================

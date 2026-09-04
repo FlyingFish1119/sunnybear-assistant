@@ -33,22 +33,23 @@ public class CronJobServiceImplement implements CronJobService {
     }
 
     @Override
-    public CronJob create(String title, String description, String cron, String message, boolean enablePro) {
+    public CronJob create(String title, String description, String cron, String message, boolean enablePro, boolean unreviewed) {
         validateCron(cron);
         CronJob cronJob = new CronJob()
                 .setTitle(title)
                 .setDescription(description)
                 .setCron(cron)
                 .setMessage(message)
-                .setEnablePro(enablePro);
+                .setEnablePro(enablePro)
+                .setUnreviewed(unreviewed);
         CronJob saved = cronJobRepository.insert(cronJob);
-        log.info("创建定时任务: id={}, title={}, cron={}, enablePro={}", saved.getId(), saved.getTitle(), saved.getCron(), saved.getEnablePro());
+        log.info("创建定时任务: id={}, title={}, cron={}, enablePro={}, unreviewed={}", saved.getId(), saved.getTitle(), saved.getCron(), saved.getEnablePro(), saved.getUnreviewed());
         cronScheduler.scheduleJob(saved);
         return saved;
     }
 
     @Override
-    public CronJob update(Integer id, String title, String description, String cron, String message, boolean enablePro) {
+    public CronJob update(Integer id, String title, String description, String cron, String message, boolean enablePro, boolean unreviewed) {
         validateCron(cron);
         CronJob existing = cronJobRepository.selectById(id);
         if (existing == null) {
@@ -59,6 +60,7 @@ public class CronJobServiceImplement implements CronJobService {
         existing.setCron(cron);
         existing.setMessage(message);
         existing.setEnablePro(enablePro);
+        existing.setUnreviewed(unreviewed);
         CronJob saved = cronJobRepository.update(existing);
         log.info("更新定时任务: id={}", saved.getId());
         cronScheduler.scheduleJob(saved);

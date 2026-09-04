@@ -21,7 +21,6 @@ import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
 import com.fishsunny.assistant.engine.tool.service.browser.PlaywrightBrowserService;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.mvc.controller.ChatController;
-import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -76,19 +75,14 @@ public class BrowserNavigateTool implements ToolHandler {
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context)
             throws ToolExecutor.ToolExecuteException {
         try {
-            WebSocketSession session = (WebSocketSession) context.get("session");
-            ChatSession chatSession = (ChatSession) context.get("chatSession");
-
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
 
             if (!StringUtils.hasText(arguments.getUrl())) {
                 throw new ToolExecutor.ToolExecuteException("参数 url 不能为空");
             }
 
-            // 始终需要用户确认（无审查模式跳过）
-            if (!ToolContextUtils.isUnreviewed(context) && !ChatSession.TYPE_CRON.equals(chatSession.getType())) {
-                ask(session, arguments);
-            }
+            // 始终需要用户确认（无审查/定时任务由 SecurityService 统一裁决）
+            ask(context, arguments);
 
             int timeout = DEFAULT_TIMEOUT_MS;
             if (StringUtils.hasText(arguments.getTimeoutMs())) {
@@ -109,12 +103,12 @@ public class BrowserNavigateTool implements ToolHandler {
     /**
      * 向用户发送导航确认请求，等待用户确认
      */
-    private void ask(WebSocketSession session, Arguments arguments) throws Exception {
+    private void ask(Map<String, Object> context, Arguments arguments) throws Exception {
         String message = "### 浏览器导航请求\n\n"
                 + "AI 请求在浏览器中打开以下 URL：\n\n"
                 + "**目标地址：** `" + arguments.getUrl() + "`\n\n"
                 + "> ⚠️ 请确认此导航操作安全后再允许执行。";
-        securityService.ask(NAME, message, null, session);
+        securityService.ask(NAME, message, null, context);
     }
 
     @Override

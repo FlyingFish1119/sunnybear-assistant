@@ -28,7 +28,6 @@ import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.mvc.service.TaskPromptService;
 import com.fishsunny.assistant.mvc.service.TaskService;
 import com.fishsunny.assistant.settings.AISettings;
-import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
@@ -123,10 +122,8 @@ public class TaskRunTool implements ToolHandler {
                 throw new ToolExecutor.ToolExecuteException("任务已完成，不能再次执行。如需重新执行，请创建新任务。");
             }
 
-            // 确认机制：始终要求用户确认（无审查模式跳过）
-            if (!ToolContextUtils.isUnreviewed(context)) {
-                ask((WebSocketSession) context.get("session"), task, steps);
-            }
+            // 确认机制：始终要求用户确认（无审查/定时任务由 SecurityService 统一裁决）
+            ask(context, task, steps);
 
             // 异步执行
             executor.submit(() -> {
@@ -349,7 +346,7 @@ public class TaskRunTool implements ToolHandler {
     /**
      * 向用户发送确认请求并等待响应。
      */
-    private void ask(WebSocketSession session, Task task, List<TaskStep> steps) throws Exception {
+    private void ask(Map<String, Object> context, Task task, List<TaskStep> steps) throws Exception {
         StringBuilder stepList = new StringBuilder();
         for (int i = 0; i < steps.size(); i++) {
             TaskStep step = steps.get(i);
@@ -377,7 +374,7 @@ public class TaskRunTool implements ToolHandler {
                 + "| 任务描述 | " + (StringUtils.hasText(task.getTaskDesc()) ? task.getTaskDesc() : "(无)") + " |\n"
                 + "\n**步骤列表：**\n" + stepList + "\n"
                 + "> ⚠️ 任务将在后台异步执行，可能涉及多次 AI 调用和工具操作。请确认后再允许执行。";
-        securityService.ask(NAME, message, null, session);
+        securityService.ask(NAME, message, null, context);
     }
 
     @Override

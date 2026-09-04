@@ -35,6 +35,13 @@ public class CronJobRepositoryImplement implements CronJobRepository {
 
     public CronJobRepositoryImplement(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+        // 自动迁移：为旧数据库添加 unreviewed 列（无审查模式）
+        try {
+            jdbcTemplate.execute("ALTER TABLE cron_job ADD COLUMN unreviewed INTEGER NOT NULL DEFAULT 0");
+            log.info("Migration: added unreviewed column to cron_job");
+        } catch (Exception e) {
+            log.debug("Migration: unreviewed column may already exist, skipping. {}", e.getMessage());
+        }
     }
 
     private final RowMapper<CronJob> rowMapper = new RowMapper<>() {
@@ -46,7 +53,8 @@ public class CronJobRepositoryImplement implements CronJobRepository {
                     .setDescription(rs.getString("description"))
                     .setCron(rs.getString("cron"))
                     .setMessage(rs.getString("message"))
-                    .setEnablePro(rs.getInt("enable_pro") == 1);
+                    .setEnablePro(rs.getInt("enable_pro") == 1)
+                    .setUnreviewed(rs.getInt("unreviewed") == 1);
             try {
                 cronJob.setCreateTime(LocalDateTime.parse(rs.getString("create_time"), FORMATTER));
                 cronJob.setUpdateTime(LocalDateTime.parse(rs.getString("update_time"), FORMATTER));
@@ -61,8 +69,8 @@ public class CronJobRepositoryImplement implements CronJobRepository {
     @Override
     public CronJob insert(CronJob cronJob) {
         String sql = """
-                INSERT INTO cron_job (title, description, cron, message, enable_pro, create_time, update_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO cron_job (title, description, cron, message, enable_pro, unreviewed, create_time, update_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         String now = LocalDateTime.now().format(FORMATTER);
@@ -75,8 +83,9 @@ public class CronJobRepositoryImplement implements CronJobRepository {
             ps.setString(3, cronJob.getCron());
             ps.setString(4, cronJob.getMessage());
             ps.setInt(5, cronJob.getEnablePro() != null && cronJob.getEnablePro() ? 1 : 0);
-            ps.setString(6, now);
+            ps.setInt(6, cronJob.getUnreviewed() != null && cronJob.getUnreviewed() ? 1 : 0);
             ps.setString(7, now);
+            ps.setString(8, now);
             return ps;
         }, keyHolder);
 
@@ -93,6 +102,7 @@ public class CronJobRepositoryImplement implements CronJobRepository {
                     cron = ?,
                     message = ?,
                     enable_pro = ?,
+                    unreviewed = ?,
                     update_time = ?
                 WHERE id = ?
                 """;
@@ -104,6 +114,7 @@ public class CronJobRepositoryImplement implements CronJobRepository {
                 cronJob.getCron(),
                 cronJob.getMessage(),
                 cronJob.getEnablePro() != null && cronJob.getEnablePro() ? 1 : 0,
+                cronJob.getUnreviewed() != null && cronJob.getUnreviewed() ? 1 : 0,
                 now,
                 cronJob.getId());
 

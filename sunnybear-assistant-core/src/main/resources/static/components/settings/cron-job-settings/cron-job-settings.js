@@ -51,6 +51,7 @@ const CronJobSettings = {
                             <span>{{ item.title }}</span>
                             <code style="background:#f0f0f0;padding:1px 6px;border-radius:3px;font-size:12px;margin-left:8px">{{ item.cron }}</code>
                             <span v-if="item.enablePro" style="margin-left:6px;color:var(--main-color);font-size:12px;font-weight:700">高级</span>
+                            <span v-if="item.unreviewed" style="margin-left:6px;color:#e6a23c;font-size:12px;font-weight:700">无审查</span>
                         </div>
                         <div class="entry-item-content" style="max-height:40px;overflow:hidden">{{ item.message }}</div>
                         <div class="entry-item-time">{{ formatTime(item.createTime) }}</div>
@@ -97,6 +98,10 @@ const CronJobSettings = {
                     <el-switch v-model="cronJobEditForm.enablePro" active-text="开启" inactive-text="关闭"></el-switch>
                     <span style="margin-left:12px;color:#909399;font-size:13px">开启后触发时使用 chat_pro 模型</span>
                 </el-form-item>
+                <el-form-item label="无审查">
+                    <el-switch v-model="cronJobEditForm.unreviewed" active-text="开启" inactive-text="关闭"></el-switch>
+                    <span style="margin-left:12px;color:#909399;font-size:13px">开启后触发时跳过工具确认与 AI 危险审查</span>
+                </el-form-item>
             </el-form>
             <template #footer>
                 <div class="dialog-footer">
@@ -117,7 +122,7 @@ const CronJobSettings = {
             dialogs: { cronjobmanage: false, cronjobedit: false },
             cronJobList: [],
             cronJobLoading: false,
-            cronJobEditForm: { id: null, title: '', description: '', cron: '', message: '', enablePro: false }
+            cronJobEditForm: { id: null, title: '', description: '', cron: '', message: '', enablePro: false, unreviewed: false }
         };
     },
 
@@ -148,10 +153,11 @@ const CronJobSettings = {
                 this.cronJobEditForm = {
                     id: item.id, title: item.title, description: item.description || '',
                     cron: item.cron, message: item.message,
-                    enablePro: item.enablePro || false
+                    enablePro: item.enablePro || false,
+                    unreviewed: item.unreviewed || false
                 };
             } else {
-                this.cronJobEditForm = { id: null, title: '', description: '', cron: '', message: '', enablePro: false };
+                this.cronJobEditForm = { id: null, title: '', description: '', cron: '', message: '', enablePro: false, unreviewed: false };
             }
             this.dialogs.cronjobedit = true;
             this.$nextTick(() => lucide.createIcons());
@@ -177,7 +183,8 @@ const CronJobSettings = {
                     description: this.cronJobEditForm.description.trim(),
                     cron: this.cronJobEditForm.cron.trim(),
                     message: this.cronJobEditForm.message,
-                    enablePro: this.cronJobEditForm.enablePro
+                    enablePro: this.cronJobEditForm.enablePro,
+                    unreviewed: this.cronJobEditForm.unreviewed
                 };
                 if (this.cronJobEditForm.id) {
                     body.id = this.cronJobEditForm.id;

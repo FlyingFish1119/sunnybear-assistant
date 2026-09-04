@@ -217,6 +217,7 @@ public class ServiceProcessor {
         ChatSession chatSession = new ChatSession(name);
         chatSession.setType("cron");
         chatSession.setEnablePro(cronJob.getEnablePro() != null && cronJob.getEnablePro());
+        chatSession.setUnreviewed(cronJob.getUnreviewed() != null && cronJob.getUnreviewed());
         try {
             return chatSessionService.save(chatSession);
         } catch (Exception e) {

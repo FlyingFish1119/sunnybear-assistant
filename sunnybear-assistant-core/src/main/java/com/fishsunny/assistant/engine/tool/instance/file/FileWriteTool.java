@@ -15,7 +15,6 @@ import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
-import com.fishsunny.assistant.utils.ToolContextUtils;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -80,31 +79,28 @@ public class FileWriteTool implements ToolHandler {
             // 路径规范化
             Path filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
 
-            // 无审查模式：跳过 AI 危险检测与用户确认，直接执行
-            if (!ToolContextUtils.isUnreviewed(context)) {
-                switch (settings.getMode()) {
-                    case NEVER_ASKED:
-                        break;
-                    case ALWAYS_ASKED:
-                        ask(session, arguments, filePath, null);
-                        break;
-                    case AUTO: {
-                        ReviewResult review = isDanger(arguments, filePath, context);
-                        if (review.isDanger()) {
-                            ask(session, arguments, filePath, review.reason());
-                        }
-                        break;
+            switch (settings.getMode()) {
+                case NEVER_ASKED:
+                    break;
+                case ALWAYS_ASKED:
+                    ask(context, arguments, filePath, null);
+                    break;
+                case AUTO: {
+                    ReviewResult review = isDanger(arguments, filePath, context);
+                    if (review.isDanger()) {
+                        ask(context, arguments, filePath, review.reason());
                     }
-                    case ALWAYS_REJECT_DANGER: {
-                        ReviewResult review = isDanger(arguments, filePath, context);
-                        if (review.isDanger()) {
-                            throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件写入操作存在危险", review.reason()));
-                        }
-                        break;
-                    }
-                    default:
-                        throw new ToolExecutor.ToolExecuteException("FileWrite 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                    break;
                 }
+                case ALWAYS_REJECT_DANGER: {
+                    ReviewResult review = isDanger(arguments, filePath, context);
+                    if (review.isDanger()) {
+                        throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件写入操作存在危险", review.reason()));
+                    }
+                    break;
+                }
+                default:
+                    throw new ToolExecutor.ToolExecuteException("FileWrite 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
             }
 
             if (!session.isOpen()) {
@@ -176,7 +172,7 @@ public class FileWriteTool implements ToolHandler {
      *
      * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
-    private void ask(WebSocketSession session, Arguments arguments, Path filePath, String riskReason) throws Exception {
+    private void ask(Map<String, Object> context, Arguments arguments, Path filePath, String riskReason) throws Exception {
         String language = inferLanguage(filePath);
         String content = arguments.getContent();
         int contentLength = content.length();
@@ -190,7 +186,7 @@ public class FileWriteTool implements ToolHandler {
                 content + "\n" +
                 "```\n\n" +
                 "> 请确认此写入操作安全后再允许执行。";
-        securityService.ask(NAME, message, 60, session);
+        securityService.ask(NAME, message, 60, context);
     }
 
     @Override

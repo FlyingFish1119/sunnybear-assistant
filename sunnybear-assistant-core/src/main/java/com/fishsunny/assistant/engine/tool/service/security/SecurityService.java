@@ -16,6 +16,7 @@ import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.protocol.project.AgentLogEntry;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
@@ -82,7 +83,17 @@ public class SecurityService {
         this.objectMapper = objectMapper;
     }
 
-    public void ask(String toolName, String message, @Nullable Integer timeout, WebSocketSession session) throws Exception {
+    public void ask(String toolName, String message, @Nullable Integer timeout, Map<String, Object> context) throws Exception {
+        ChatSession chatSession = (ChatSession) context.get("chatSession");
+        // 无审查模式：跳过用户确认，直接放行
+        if (chatSession != null && Boolean.TRUE.equals(chatSession.getUnreviewed())) {
+            return;
+        }
+        // 定时任务会话没有前端确认渠道：fail-fast，避免挂到超时。可给定时任务开「无审查」以允许自动执行
+        if (chatSession != null && ChatSession.TYPE_CRON.equals(chatSession.getType())) {
+            throw new ToolExecutor.ToolExecuteException("定时任务会话无用户确认渠道，操作被拒绝。可在定时任务中开启「无审查」以允许自动执行。");
+        }
+        WebSocketSession session = (WebSocketSession) context.get("session");
         ToolAsk toolAsk = new ToolAsk().loadInfo(toolName, message).expire(timeout);
         try {
             session.sendMessage(new TextMessage(ControlSign.SIGN_TOOL_ASK + objectMapper.writeValueAsString(toolAsk)));
@@ -107,6 +118,11 @@ public class SecurityService {
      * @throws ToolExecutor.ToolExecuteException 子 Agent 执行失败、轮次超限或判定不可识别时抛出（fail-closed）
      */
     public ReviewResult review(Map<String, Object> context, String operationDescription) throws ToolExecutor.ToolExecuteException {
+        ChatSession chatSession = context == null ? null : (ChatSession) context.get("chatSession");
+        // 无审查模式：跳过 AI 危险审查，直接判定安全
+        if (chatSession != null && Boolean.TRUE.equals(chatSession.getUnreviewed())) {
+            return ReviewResult.safe();
+        }
         String description = operationDescription == null ? "" : operationDescription;
 
         // 从 ctx 里的 messages 快照取最近一条用户问题（判断用户意图用），缺失则为空

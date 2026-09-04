@@ -8,6 +8,7 @@ package com.fishsunny.assistant.mvc.controller;
  * @Date 2026/7/30
  */
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fishsunny.assistant.dto.RestResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
 import com.fishsunny.assistant.mvc.service.CronJobService;
@@ -18,7 +19,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/cron-job")
@@ -63,18 +63,19 @@ public class CronJobController {
         }
     }
 
-    /** 新增或更新定时任务。请求体: { title, description, cron, message, enablePro }，更新时加 id */
+    /** 新增或更新定时任务。id 为空表示新增，非空表示更新。 */
     @PostMapping("/save")
-    public RestResponse save(@RequestBody(required = false) Map<String, Object> body) {
+    public RestResponse save(@RequestBody(required = false) CronJobSaveRequest body) {
         if (body == null) {
             return new RestResponse().error("请求体不能为空");
         }
         try {
-            String title = (String) body.get("title");
-            String description = (String) body.getOrDefault("description", "");
-            String cron = (String) body.get("cron");
-            String message = (String) body.get("message");
-            boolean enablePro = Boolean.TRUE.equals(body.get("enablePro"));
+            String title = body.title();
+            String description = body.description() == null ? "" : body.description();
+            String cron = body.cron();
+            String message = body.message();
+            boolean enablePro = Boolean.TRUE.equals(body.enablePro());
+            boolean unreviewed = Boolean.TRUE.equals(body.unreviewed());
 
             if (!StringUtils.hasText(title)) {
                 return new RestResponse().error("title 不能为空");
@@ -86,21 +87,25 @@ public class CronJobController {
                 return new RestResponse().error("message 不能为空");
             }
 
-            Object idObj = body.get("id");
             CronJob saved;
-            if (idObj != null) {
-                Integer id = idObj instanceof Number ? ((Number) idObj).intValue() : Integer.parseInt(idObj.toString());
-                saved = cronJobService.update(id, title.trim(), description != null ? description.trim() : "",
-                        cron.trim(), message, enablePro);
+            if (body.id() != null) {
+                saved = cronJobService.update(body.id(), title.trim(), description.trim(),
+                        cron.trim(), message, enablePro, unreviewed);
             } else {
-                saved = cronJobService.create(title.trim(), description != null ? description.trim() : "",
-                        cron.trim(), message, enablePro);
+                saved = cronJobService.create(title.trim(), description.trim(),
+                        cron.trim(), message, enablePro, unreviewed);
             }
             return new RestResponse().success(saved);
         } catch (Exception e) {
             log.error("保存定时任务失败", e);
             return new RestResponse().error("保存定时任务失败: " + e.getMessage());
         }
+    }
+
+    /** 新增/更新定时任务的请求体；id 为空表示新增，非空表示更新 */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record CronJobSaveRequest(String title, String description, String cron, String message,
+                                     Boolean enablePro, Boolean unreviewed, Integer id) {
     }
 
     /** 删除定时任务 */
