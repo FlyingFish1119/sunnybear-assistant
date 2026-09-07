@@ -105,6 +105,7 @@ const ToolConfirm = {
                 'file_delete_tool': 'trash-2',
                 'task_run_tool': 'play-circle',
                 'net_explore_tool': 'globe',
+                'file_explore_tool': 'folder-search',
             },
             titleMap: {
                 'command_tool': '命令执行确认',
@@ -113,6 +114,7 @@ const ToolConfirm = {
                 'file_delete_tool': '文件删除确认',
                 'task_run_tool': '任务执行确认',
                 'net_explore_tool': '网络探索确认',
+                'file_explore_tool': '目录探索确认',
             }
         };
     },
