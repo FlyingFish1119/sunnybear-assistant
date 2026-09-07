@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.task;
+package com.fishsunny.assistant.engine.task;
 
 /*
  * @Usage 定时检测程序启动目录下的 application.yml，内容变更后热加载 adapter-register 并重建工厂配方，

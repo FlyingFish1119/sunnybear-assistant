@@ -2,6 +2,7 @@ package com.fishsunny.assistant.engine.adapter;
 
 import com.fishsunny.assistant.engine.protocol.AIRequest;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.utils.EnvResolver;
 import lombok.Data;
 import lombok.Getter;
 import lombok.experimental.Accessors;
@@ -67,7 +68,7 @@ public abstract class AIAdapter {
 
     public AIAdapter(AIAdapterOption option) throws Exception {
         this.baseUrl = option.getBaseUrl();
-        this.apiKey = option.getApiKey();
+        this.apiKey = EnvResolver.resolve(option.getApiKey());
         this.headers = option.getHeaders();
         this.masterReqCls = option.getMasterReqCls();
         this.targetReqCls = option.getTargetReqCls();

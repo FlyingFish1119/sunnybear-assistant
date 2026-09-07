@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.task;
+package com.fishsunny.assistant.engine.task;
 
 /*
  * @Usage 从外部 application.yml 解析 adapter-register 段 —— register 是纯 POJO，直接用 Jackson 解析 + Class.forName 装配，

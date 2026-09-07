@@ -67,11 +67,11 @@ public class FileSearchTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("搜索文件内容的首选工具（基于 ripgrep，比执行 findstr/grep 命令更安全、无需用户确认、无输出限制）。支持正则/文本匹配和 glob 文件过滤，自动忽略 .gitignore 与常见构建/依赖目录，根据文字/关键词快速查找相关文件。返回匹配的文件路径、行号和内容，可显示上下文行。" +
+                .setDescription("搜索文件内容的首选工具（基于 ripgrep，比执行 findstr/grep 命令更安全、无需用户确认、无输出限制）。path 可为目录（在其中递归搜索）或单个文件。支持正则/文本匹配和 glob 文件过滤，自动忽略 .gitignore 与常见构建/依赖目录，根据文字/关键词快速查找相关文件。返回匹配的文件路径、行号和内容，可显示上下文行。" +
                         "注意：永远不要尝试从根目录开始搜索，这几乎一定会超时。")
                 .setRequired(List.of("path", "pattern"))
                 .setParameters(List.of(
-                        new ToolRegister.Parameters("path", "string", "搜索的起始目录路径，例如 D:\\projects 或 /home/user"),
+                        new ToolRegister.Parameters("path", "string", "搜索目标路径：目录（递归搜索其中文件内容）或单个文件，例如 D:\\projects、/home/user 或 /home/user/main.java"),
                         new ToolRegister.Parameters("pattern", "string", "搜索的文字或正则表达式。默认作为正则表达式，如需使用文字请设置 useRegex=false"),
                         new ToolRegister.Parameters("useRegex", "boolean", "是否将 pattern 作为正则表达式匹配，默认 true"),
                         new ToolRegister.Parameters("filter", "string", "glob 文件名过滤，例如 *.java、*.{java,kt}，不指定则搜索所有文本文件"),
@@ -99,16 +99,19 @@ public class FileSearchTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("参数 pattern 不能为空");
         }
 
-        Path dirPath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
+        Path targetPath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
 
-        if (!Files.exists(dirPath)) {
-            throw new ToolExecutor.ToolExecuteException("路径不存在: " + dirPath);
+        if (!Files.exists(targetPath)) {
+            throw new ToolExecutor.ToolExecuteException("路径不存在: " + targetPath);
         }
-        if (!Files.isDirectory(dirPath)) {
-            throw new ToolExecutor.ToolExecuteException("路径指向的不是目录: " + dirPath);
+        // 支持两种搜索目标：目录（递归搜其中文件内容）或单个文件（只搜该文件内容）
+        boolean isDir = Files.isDirectory(targetPath);
+        boolean isFile = Files.isRegularFile(targetPath);
+        if (!isDir && !isFile) {
+            throw new ToolExecutor.ToolExecuteException("路径既不是目录也不是常规文件: " + targetPath);
         }
-        if (!Files.isReadable(dirPath)) {
-            throw new ToolExecutor.ToolExecuteException("目录不可读: " + dirPath);
+        if (!Files.isReadable(targetPath)) {
+            throw new ToolExecutor.ToolExecuteException((isDir ? "目录" : "文件") + "不可读: " + targetPath);
         }
 
         // 解析参数默认值
@@ -120,7 +123,7 @@ public class FileSearchTool implements ToolHandler {
 
         // 构造 rg 搜索请求
         RipgrepRunner.SearchRequest request = new RipgrepRunner.SearchRequest();
-        request.root = dirPath;
+        request.root = targetPath;
         request.pattern = arguments.getPattern();
         request.useRegex = useRegex;
         request.filter = arguments.getFilter();
@@ -129,7 +132,8 @@ public class FileSearchTool implements ToolHandler {
         request.contextLines = contextLines;
         request.maxResults = maxResults;
         request.hidden = arguments.getHidden() != null && arguments.getHidden();
-        request.excludes = DEFAULT_EXCLUDES;
+        // 单文件搜索时无需排除型 glob（否则可能把目标文件本身过滤掉）
+        request.excludes = isFile ? List.of() : DEFAULT_EXCLUDES;
 
         RipgrepRunner.SearchResult result;
         try {
@@ -142,7 +146,7 @@ public class FileSearchTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }
 
-        return renderResult(dirPath, arguments, useRegex, caseSensitive, depth, result, maxResults);
+        return renderResult(targetPath, arguments, useRegex, caseSensitive, depth, result, maxResults);
     }
 
     /**

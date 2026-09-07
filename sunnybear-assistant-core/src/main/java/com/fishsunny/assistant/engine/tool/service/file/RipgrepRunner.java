@@ -133,8 +133,18 @@ public class RipgrepRunner {
             throw new RgUnavailableException("未找到可用的 rg 二进制（内置资源缺失或当前平台不受支持）");
         }
 
-        ProcessBuilder pb = new ProcessBuilder(buildArgs(binary, req));
-        pb.directory(req.root.toFile());
+        // 支持目录/单文件两种目标：目录在内部递归搜，单文件直接搜该文件
+        Path root = req.root.toAbsolutePath().normalize();
+        boolean fileMode = Files.isRegularFile(root);
+        Path workDir = fileMode ? root.getParent() : root;
+        if (workDir == null) {
+            workDir = root;
+        }
+        // 单文件模式：以父目录为工作目录、以文件名为搜索对象，输出相对路径即文件名
+        String operand = fileMode ? root.getFileName().toString() : ".";
+
+        ProcessBuilder pb = new ProcessBuilder(buildArgs(binary, req, fileMode, operand));
+        pb.directory(workDir.toFile());
         Process process = pb.start();
 
         SearchResult result = new SearchResult();
@@ -278,7 +288,7 @@ public class RipgrepRunner {
 
     // ======================== 命令构造 ========================
 
-    private List<String> buildArgs(Path binary, SearchRequest req) {
+    private List<String> buildArgs(Path binary, SearchRequest req, boolean fileMode, String operand) {
         List<String> args = new ArrayList<>();
         args.add(binary.toString());
         args.add("--json");
@@ -311,21 +321,23 @@ public class RipgrepRunner {
             args.add("-C");
             args.add(String.valueOf(req.contextLines));
         }
-        if (StringUtils.hasText(req.filter)) {
-            args.add("-g");
-            args.add(req.filter);
-        }
-        // 常见构建产物/依赖目录排除，避免非 git 仓库目录下的超时
-        for (String exclude : req.excludes) {
-            if (StringUtils.hasText(exclude)) {
+        // 目录模式：glob 过滤 + 构建/依赖目录排除；单文件模式不需要（反而可能把目标文件过滤掉）
+        if (!fileMode) {
+            if (StringUtils.hasText(req.filter)) {
                 args.add("-g");
-                args.add("!**/" + exclude.trim());
+                args.add(req.filter);
+            }
+            for (String exclude : req.excludes) {
+                if (StringUtils.hasText(exclude)) {
+                    args.add("-g");
+                    args.add("!**/" + exclude.trim());
+                }
             }
         }
         // pattern 作为独立 argv 元素传入，无 shell 注入风险
         args.add(req.pattern);
-        // 工作目录设为搜索根，输出路径即相对路径
-        args.add(".");
+        // 搜索对象：目录模式 "."（工作目录即搜索根，输出相对路径）；单文件模式为文件名
+        args.add(operand);
         return args;
     }
 

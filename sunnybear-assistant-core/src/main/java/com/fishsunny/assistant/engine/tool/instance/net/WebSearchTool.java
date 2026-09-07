@@ -113,7 +113,7 @@ public class WebSearchTool implements ToolHandler {
                 : DEFAULT_ENGINE;
 
         // 从 Settings 中取对应引擎的 API Key
-        String apiKey = settings.getApiKey(engineName);
+        String apiKey = com.fishsunny.assistant.utils.EnvResolver.resolve(settings.getApiKey(engineName));
         if (!StringUtils.hasText(apiKey)) {
             throw new ToolExecutor.ToolExecuteException(
                     "搜索引擎 [" + engineName + "] 的 API Key 未配置，请在设置中配置。");

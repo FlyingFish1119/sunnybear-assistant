@@ -47,6 +47,20 @@ class FileSearchToolTest {
     }
 
     @Test
+    void searchSingleFile() throws Exception {
+        // path 直接指向单个文件时，应搜索该文件内容而非报"不是目录"
+        String filePath = SEARCH_ROOT + "/instance/file/FileSearchTool.java";
+        ToolExecutor.ToolExecuteResponse resp = search(
+                "{\"path\":\"" + filePath + "\",\"pattern\":\"public static final String NAME\"}");
+        String result = resp.getResult();
+        System.out.println("===== searchSingleFile =====");
+        System.out.println(result);
+        assertTrue(result.contains("匹配结果:"), result);
+        assertTrue(result.contains("FileSearchTool.java"), "应命中 FileSearchTool.java");
+        assertTrue(result.contains("file_search_tool"), "匹配行应包含搜索词");
+    }
+
+    @Test
     void caseSensitiveMissReturnsZero() throws Exception {
         ToolExecutor.ToolExecuteResponse resp = search(
                 "{\"path\":\"" + SEARCH_ROOT + "\",\"pattern\":\"FILE_SEARCH_TOOL\",\"caseSensitive\":true}");

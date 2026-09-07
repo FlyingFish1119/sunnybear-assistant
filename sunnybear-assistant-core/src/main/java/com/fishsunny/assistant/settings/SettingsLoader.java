@@ -1,6 +1,5 @@
 package com.fishsunny.assistant.settings;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.EmbeddingAPI;
@@ -81,54 +80,6 @@ public class SettingsLoader {
 
     public SettingsLoader(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-    }
-
-    // ============================== 环境变量解析 ==============================
-
-    private static final String ENV_PREFIX = "env:";
-
-    /**
-     * 递归遍历 JSON 树，将 "env:XXX" 形式的字符串值替换为环境变量 XXX 的值。
-     * <p>
-     * 用于规避设置文件中明文保存 API Key 等敏感信息：
-     * 设置文件中写成 "env:METASO_API_KEY"，加载时自动从系统环境变量解析；
-     * 若环境变量不存在，替换为空串并打印 warn 日志。
-     * 非文本节点或非 env: 前缀的字符串不会被修改。
-     */
-    private JsonNode resolveEnvNode(JsonNode node) {
-        if (node == null) {
-            return null;
-        }
-        if (node.isTextual()) {
-            String text = node.textValue();
-            if (text != null && text.startsWith(ENV_PREFIX)) {
-                String envKey = text.substring(ENV_PREFIX.length()).trim();
-                String value = System.getenv(envKey);
-                if (value != null && !value.isEmpty()) {
-                    return com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.textNode(value);
-                }
-                log.warn("环境变量不存在或为空: env:{}，已替换为空串", envKey);
-                return com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.textNode("");
-            }
-            return node;
-        }
-        if (node.isObject()) {
-            var object = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
-            var fields = node.fields();
-            while (fields.hasNext()) {
-                var entry = fields.next();
-                object.set(entry.getKey(), resolveEnvNode(entry.getValue()));
-            }
-            return object;
-        }
-        if (node.isArray()) {
-            var array = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
-            for (JsonNode item : node) {
-                array.add(resolveEnvNode(item));
-            }
-            return array;
-        }
-        return node;
     }
 
     // =========================== 用户 & 助手设置 ===========================
@@ -271,7 +222,7 @@ public class SettingsLoader {
             }
             try {
                 JavaType mapType = objectMapper.getTypeFactory().constructMapType(Map.class, String.class, AISettings.class);
-                aiSettingsCache = objectMapper.convertValue(resolveEnvNode(objectMapper.readTree(settingsFile)), mapType);
+                aiSettingsCache = objectMapper.readValue(settingsFile, mapType);
             } catch (IOException e) {
                 log.warn("AI设置文件读取失败: {}，将使用默认设置", settingsFile.getAbsolutePath());
                 aiSettingsCache = loadDefaultAISettings();
@@ -325,7 +276,7 @@ public class SettingsLoader {
             }
             try {
                 JavaType mapType = objectMapper.getTypeFactory().constructMapType(Map.class, String.class, Object.class);
-                knowledgeSettingsCache = objectMapper.convertValue(resolveEnvNode(objectMapper.readTree(settingsFile)), mapType);
+                knowledgeSettingsCache = objectMapper.readValue(settingsFile, mapType);
             } catch (IOException e) {
                 log.warn("知识库设置文件读取失败: {}，将使用默认设置", settingsFile.getAbsolutePath());
                 knowledgeSettingsCache = loadDefaultKnowledgeSettings();
@@ -411,7 +362,7 @@ public class SettingsLoader {
             }
             try {
                 JavaType mapType = objectMapper.getTypeFactory().constructMapType(Map.class, String.class, Object.class);
-                toolSettingsCache = objectMapper.convertValue(resolveEnvNode(objectMapper.readTree(settingsFile)), mapType);
+                toolSettingsCache = objectMapper.readValue(settingsFile, mapType);
             } catch (IOException e) {
                 log.warn("工具设置文件读取失败: {}，将使用默认设置", settingsFile.getAbsolutePath());
                 toolSettingsCache = loadDefaultToolSettings();

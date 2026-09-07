@@ -55,7 +55,8 @@ public class EmbeddingHttpHandler {
             log.warn("Embedding url未指定");
             return null;
         }
-        if (!StringUtils.hasText(embeddingAPI.getApiKey())) {
+        String resolvedApiKey = com.fishsunny.assistant.utils.EnvResolver.resolve(embeddingAPI.getApiKey());
+        if (!StringUtils.hasText(resolvedApiKey)) {
             log.warn("Embedding apiKey未指定");
             return null;
         }
@@ -69,7 +70,7 @@ public class EmbeddingHttpHandler {
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                     .timeout(TIMEOUT);
             if (tokenBuilder == null) {
-                httpBuilder.headers("Authorization", "Bearer " + embeddingAPI.getApiKey());
+                httpBuilder.headers("Authorization", "Bearer " + resolvedApiKey);
             } else {
                 Map.Entry<String, String> token = tokenBuilder.apply(embeddingAPI);
                 httpBuilder.headers(token.getKey(), token.getValue());
