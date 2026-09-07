@@ -155,6 +155,20 @@ const AiSettings = {
                         </el-form-item>
                     </div>
                 </div>
+
+                <!-- 自定义请求字段（厂商扩展） -->
+                <div class="form-group-title" style="display:flex;align-items:center">
+                    <span>自定义请求字段</span>
+                    <span style="font-size:12px;color:#c0c4cc;margin-left:4px">厂商扩展参数，原样展开到请求体顶层</span>
+                </div>
+                <el-form-item>
+                    <textarea class="settings-textarea" v-model="aiForm.customFieldsText" rows="4" spellcheck="false"
+                              style="font-family:Consolas,Menlo,monospace;font-size:12px"
+                              placeholder='JSON 对象，例如 {"metadata":{"type":"conversation"},"max_completion_tokens":8000}'></textarea>
+                    <div style="font-size:12px;color:#909399;line-height:1.6;margin-top:4px">
+                        留空或 {} = 不传额外字段；与内置参数（温度 / 最大 token / top_p / 频率惩罚等）同名的 key 会被忽略；必须是合法 JSON 对象。
+                    </div>
+                </el-form-item>
             </el-form>
             <template #footer>
                 <div class="dialog-footer">
@@ -174,7 +188,7 @@ const AiSettings = {
             // 当前 AI 对话框的类型 (chat/chat_pro/cub/ocr/mission/task)
             aiDialogType: 'chat',
             showAiAdvanced: false,
-            aiForm: { prompt: '', adapterName: '', model: '', stream: false, thinking: false, reasoningEffort: null, temperature: 1, top_p: 1, maxTokens: 4096, frequencyPenalty: 0, presencePenalty: 0 },
+            aiForm: { prompt: '', adapterName: '', model: '', stream: false, thinking: false, reasoningEffort: null, temperature: 1, top_p: 1, maxTokens: 4096, frequencyPenalty: 0, presencePenalty: 0, customFieldsText: '' },
             // 可用适配器列表
             adapterList: []
         };
@@ -210,7 +224,8 @@ const AiSettings = {
                 top_p: ai.top_p != null ? ai.top_p : null,
                 maxTokens: ai.maxTokens != null ? ai.maxTokens : null,
                 frequencyPenalty: ai.frequencyPenalty != null ? ai.frequencyPenalty : null,
-                presencePenalty: ai.presencePenalty != null ? ai.presencePenalty : null
+                presencePenalty: ai.presencePenalty != null ? ai.presencePenalty : null,
+                customFieldsText: (ai.customFields && Object.keys(ai.customFields).length) ? JSON.stringify(ai.customFields, null, 2) : ''
             };
             // 已有高级参数值则自动展开并填充默认值
             const hasAdvanced = ai.temperature != null || ai.top_p != null || ai.maxTokens != null || ai.frequencyPenalty != null || ai.presencePenalty != null || ai.reasoningEffort != null;
@@ -237,6 +252,23 @@ const AiSettings = {
                 ElementPlus.ElMessage.warning('模型名称不能为空');
                 return;
             }
+            // 解析自定义请求字段：空文本 = {}；否则必须是合法 JSON 对象
+            let customFields = {};
+            const customRaw = (this.aiForm.customFieldsText || '').trim();
+            if (customRaw) {
+                let parsed;
+                try {
+                    parsed = JSON.parse(customRaw);
+                } catch (e) {
+                    ElementPlus.ElMessage.error('自定义请求字段不是合法 JSON，请检查后重试');
+                    return;
+                }
+                if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                    ElementPlus.ElMessage.error('自定义请求字段必须是 JSON 对象（不能是数组或标量）');
+                    return;
+                }
+                customFields = parsed;
+            }
             const body = {
                 // 仅对话模型可配置提示词；其余类型提示词由系统内置固定，保存时清空
                 prompt: this.aiDialogType === 'chat' ? this.aiForm.prompt : '',
@@ -250,7 +282,8 @@ const AiSettings = {
                 top_p: this.showAiAdvanced ? this.aiForm.top_p : null,
                 maxTokens: this.showAiAdvanced ? this.aiForm.maxTokens : null,
                 frequencyPenalty: this.showAiAdvanced ? this.aiForm.frequencyPenalty : null,
-                presencePenalty: this.showAiAdvanced ? this.aiForm.presencePenalty : null
+                presencePenalty: this.showAiAdvanced ? this.aiForm.presencePenalty : null,
+                customFields
             };
             this.postSave('settings/' + this.aiDialogType + '/save', body, 'ai');
         },

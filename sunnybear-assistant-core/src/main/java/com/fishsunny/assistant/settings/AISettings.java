@@ -12,6 +12,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @Data
 @Accessors(chain = true)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -61,6 +64,14 @@ public class AISettings {
     //Default = 1;
     private Double top_p;
 
+    /** 厂商/自定义扩展字段（JSON 对象）。对话时原样展开到请求体顶层；与内置已映射参数同名的会被忽略（内置优先） */
+    private Map<String, Object> customFields = new HashMap<>();
+
+    public AISettings setCustomFields(Map<String, Object> customFields) {
+        this.customFields = customFields == null ? new HashMap<>() : customFields;
+        return this;
+    }
+
     public AISettings() {
     }
 
@@ -76,7 +87,8 @@ public class AISettings {
                 .setPresencePenalty(settings.getPresencePenalty())
                 .setResponseFormat(settings.getResponseFormat())
                 .setTemperature(settings.getTemperature())
-                .setTop_p(settings.getTop_p());
+                .setTop_p(settings.getTop_p())
+                .setCustomFields(settings.getCustomFields());
     }
 
     public AISettings json() {

@@ -62,6 +62,7 @@ public class StandardAIAdapter extends StandardBaseAIAdapter {
                     new StandardAIRequest.ResponseFormat(settings.getResponse_format().getType()));
         }
 
+        standardAIRequest.setExtraBody(settings.getCustomFields());
         return standardAIRequest;
     }
 

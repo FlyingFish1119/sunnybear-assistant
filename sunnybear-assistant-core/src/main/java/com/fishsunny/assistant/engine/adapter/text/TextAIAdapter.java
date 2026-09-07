@@ -61,6 +61,7 @@ public class TextAIAdapter extends TextBaseAIAdapter {
                     new TextAIRequest.ResponseFormat(settings.getResponse_format().getType()));
         }
 
+        textAIRequest.setExtraBody(settings.getCustomFields());
         return textAIRequest;
     }
 

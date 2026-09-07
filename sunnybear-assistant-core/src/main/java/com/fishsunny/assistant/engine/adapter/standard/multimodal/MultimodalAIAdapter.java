@@ -61,6 +61,7 @@ public class MultimodalAIAdapter extends MultimodalBaseAIAdapter {
                     new MultimodalAIRequest.ResponseFormat(settings.getResponse_format().getType()));
         }
 
+        multimodalRequest.setExtraBody(settings.getCustomFields());
         return multimodalRequest;
     }
 

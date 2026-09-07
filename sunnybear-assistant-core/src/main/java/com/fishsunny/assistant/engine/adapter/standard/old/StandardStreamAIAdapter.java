@@ -65,6 +65,7 @@ public class StandardStreamAIAdapter extends StandardBaseAIAdapter {
                             settings.getResponse_format().getType()));
         }
 
+        standardAIRequest.setExtraBody(settings.getCustomFields());
         return standardAIRequest;
     }
 

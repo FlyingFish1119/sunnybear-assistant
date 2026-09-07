@@ -71,6 +71,7 @@ public class AnthropicAIAdapter extends AnthropicBaseAIAdapter {
             anthropicRequest.setTools(anthropicTools);
         }
 
+        anthropicRequest.setExtraBody(settings.getCustomFields());
         return anthropicRequest;
     }
 

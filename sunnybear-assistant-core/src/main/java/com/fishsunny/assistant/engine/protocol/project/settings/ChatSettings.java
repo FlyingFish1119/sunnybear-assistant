@@ -12,6 +12,9 @@ import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @Data
 @Accessors(chain = true)
 public class ChatSettings {
@@ -48,6 +51,14 @@ public class ChatSettings {
     /** 响应格式，对应 OpenAI response_format。null 表示不设置 */
     private ResponseFormat response_format;
 
+    /** 厂商/自定义扩展字段，透传给各适配器展开到请求体顶层 */
+    private Map<String, Object> customFields = new HashMap<>();
+
+    public ChatSettings setCustomFields(Map<String, Object> customFields) {
+        this.customFields = customFields == null ? new HashMap<>() : customFields;
+        return this;
+    }
+
     public ChatSettings() {
     }
 
@@ -63,6 +74,9 @@ public class ChatSettings {
         this.reasoning_effort = aiSettings.getReasoningEffort();
         if (aiSettings.getResponseFormat() != null) {
             this.response_format = new ResponseFormat(aiSettings.getResponseFormat());
+        }
+        if (aiSettings.getCustomFields() != null) {
+            this.customFields = new HashMap<>(aiSettings.getCustomFields());
         }
     }
 
