@@ -105,7 +105,7 @@ public class WebReaderTool implements ToolHandler {
                        如果目标网页有大量异步加载的内容（如 SPA 页面），建议设置为 true。""");
 
         register.setParameters(List.of(urlParam, targetParam, modeParam, waitNetParam));
-        register.setTimeoutMs(settings.getBrowserTimeoutMs() * 2);
+        register.setTimeoutMs(settings.getBrowserTimeoutMs() * 3);
 
         this.objectMapper = objectMapper;
         this.taskAISettings = taskAISettings;

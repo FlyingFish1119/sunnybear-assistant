@@ -1,17 +1,15 @@
 package com.fishsunny.assistant.engine.tool.instance.agent;
 
 /*
- * @Usage 网络探索子 Agent - 接受收集目标，联网搜索并阅读网页，收集完成后输出结构化报告。
+ * @Usage 文件探索子 Agent - 接受一个目标目录，自动列目录、内容搜索、读取文件，完成后输出结构化探索报告。
  *        作为 SubAgentToolHandler 由 agent_tool 路由调用。
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
- * @Date 2026/7/24
+ * @Date 2026/9/7
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.constants.ControlSign;
-import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
@@ -23,10 +21,10 @@ import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
-import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
-import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
+import com.fishsunny.assistant.engine.tool.instance.file.FileListTool;
+import com.fishsunny.assistant.engine.tool.instance.file.FileReadTool;
+import com.fishsunny.assistant.engine.tool.instance.file.FileSearchTool;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
-import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -36,23 +34,23 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.util.StringUtils;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.*;
 
 @ToolKitComponent(AgentToolKit.class)
-@ConditionalOnExpression("${engine.tool.agent.enable:true} && ${engine.tool.agent.net-explore.enable:true}")
-public class NetExploreTool implements SubAgentToolHandler {
+@ConditionalOnExpression("${engine.tool.agent.enable:true} && ${engine.tool.agent.file-explore.enable:true}")
+public class FileExploreTool implements SubAgentToolHandler {
 
-    public static final String NAME = "net_explore_tool";
+    public static final String NAME = "file_explore_tool";
 
-    private static final Logger log = LoggerFactory.getLogger(NetExploreTool.class);
+    private static final Logger log = LoggerFactory.getLogger(FileExploreTool.class);
 
-    /** 子 Agent 可用的网络工具（按 handler 名称过滤，避免递归到自己） */
+    /** 子 Agent 可用的本地文件工具（按 handler 名称过滤，避免递归到自己） */
     private static final Set<String> SUB_AGENT_TOOLS = Set.of(
-            WebSearchTool.NAME,   // web_search_tool
-            WebReaderTool.NAME         // web_reader_tool
+            FileListTool.NAME,    // file_list_tool
+            FileSearchTool.NAME,  // file_search_tool
+            FileReadTool.NAME     // file_read_tool
     );
 
     private final ToolRegister register;
@@ -62,11 +60,11 @@ public class NetExploreTool implements SubAgentToolHandler {
     private final ToolExecutor toolExecutor;
     private final SecurityService securityService;
 
-    public NetExploreTool(ObjectMapper objectMapper,
-                          @Qualifier(AISettings.MISSION) AISettings missionAISettings,
-                          ToolCallLoop toolCallLoop,
-                          SecurityService securityService,
-                          @Lazy ToolExecutor toolExecutor) {
+    public FileExploreTool(ObjectMapper objectMapper,
+                           @Qualifier(AISettings.MISSION) AISettings missionAISettings,
+                           ToolCallLoop toolCallLoop,
+                           SecurityService securityService,
+                           @Lazy ToolExecutor toolExecutor) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
         this.toolCallLoop = toolCallLoop;
@@ -76,14 +74,13 @@ public class NetExploreTool implements SubAgentToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        联网探索信息的子 Agent。接受一个收集目标，自动搜索、阅读网页、评估结果，\
-                        最终返回一份结构化的收集报告。适合需要深度调研某个主题的场景。""")
+                        探索本地目录的子 Agent。接受一个目标目录，自动浏览目录结构、搜索文件内容、阅读关键文件，\
+                        最终返回一份结构化的探索报告。适合需要快速了解某个项目/目录结构或定位某段实现逻辑的场景。""")
                 .setRequired(List.of("target"));
 
-        ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
-                .setParameterName("target")
-                .setType("string")
-                .setDescription("收集目标，描述你需要收集什么信息。例如'AI 安全的最新进展'、'微服务架构最佳实践'");
+        ToolRegister.Parameters targetParam = new ToolRegister.Parameters(
+                "target", "string",
+                "要探索的目标目录路径（可顺带说明想弄清的问题），例如 /home/user/project，或“梳理 D:/proj 里订单模块的实现”");
 
         register.setParameters(List.of(targetParam));
     }
@@ -98,7 +95,7 @@ public class NetExploreTool implements SubAgentToolHandler {
                 throw new ToolExecutor.ToolExecuteException("参数为空");
             }
             if (!StringUtils.hasText(arguments.getTarget())) {
-                throw new ToolExecutor.ToolExecuteException("参数 target 不能为空");
+                throw new ToolExecutor.ToolExecuteException("参数 target 不能为空，需指定要探索的目标目录");
             }
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
@@ -124,15 +121,15 @@ public class NetExploreTool implements SubAgentToolHandler {
                     .setTools(subAgentTools);
 
             // ========== 执行循环，捕获 AI 的最终报告 ==========
-            String finalReport = toolCallLoop.execute(missionAISettings, request, context, null );
+            String finalReport = toolCallLoop.execute(missionAISettings, request, context, null);
 
             // ========== 组装返回结果 ==========
             return new ToolExecutor.ToolExecuteResponse(name(), finalReport);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
         } catch (Exception e) {
-            log.error("NetExploreTool 执行异常: {}", e.getMessage(), e);
-            throw new ToolExecutor.ToolExecuteException("网络探索子 Agent 执行失败: " + e.getMessage());
+            log.error("FileExploreTool 执行异常: {}", e.getMessage(), e);
+            throw new ToolExecutor.ToolExecuteException("文件探索子 Agent 执行失败: " + e.getMessage());
         }
     }
 
@@ -140,14 +137,14 @@ public class NetExploreTool implements SubAgentToolHandler {
      * 向用户发送确认请求并等待响应。
      */
     private void ask(Map<String, Object> context, String target) throws Exception {
-        String message = "### 网络探索请求\n\n"
-                + "AI 请求进行联网深度探索，将自动搜索并阅读网页内容。\n\n"
+        String message = "### 目录探索请求\n\n"
+                + "AI 请求对本地目录进行探索，将自动浏览目录结构、搜索文件内容并读取文件。\n\n"
                 + "| 属性 | 内容 |\n"
                 + "|------|------|\n"
-                + "| 收集目标 | **" + target + "** |\n"
-                + "| 可用工具 | web_search_tool（搜索）、web_reader_tool（阅读网页） |\n"
-                + "| 模式 | 深度探索（子 Agent 循环） |\n\n"
-                + "> ⚠️ 子 Agent 将自动进行多轮搜索与网页阅读，可能消耗较多 token。请确认目标合理后再允许执行。";
+                + "| 目标目录 | **" + target + "** |\n"
+                + "| 可用工具 | file_list_tool（浏览目录）、file_search_tool（内容搜索）、file_read_tool（读取文件） |\n"
+                + "| 模式 | 深度探索（子 Agent 循环，仅只读、不改动文件） |\n\n"
+                + "> ⚠️ 子 Agent 将自动多轮读取本地文件并进行分析，可能消耗较多 token。请确认目标合理后再允许执行。";
         securityService.ask(NAME, message, 60, context);
     }
 
@@ -155,70 +152,68 @@ public class NetExploreTool implements SubAgentToolHandler {
 
     /**
      * 子 Agent 系统提示词。
-     * AI 负责：调度工具 → 评估每轮进展 → 最终输出结构化收集报告。
+     * AI 负责：调度工具 → 评估每轮进展 → 最终输出结构化探索报告。
      */
     private String buildSystemPrompt() {
         return """
-                你是一个网络信息检索助手。你的职责是调用工具收集信息，并最终输出一份完整的收集报告。
+                你是一个本地文件探索助手。你的职责是围绕给定的目标目录，调用工具了解其结构、定位并精读关键内容，\
+                最终输出一份完整的探索报告。
 
                 ## 可用工具
-                - **web_search_tool** — 搜索互联网，获取网页列表和摘要
-                - **web_reader_tool** — 阅读指定网页的详细内容
+                - **file_list_tool** — 浏览目录，列出文件和子目录（递归、glob 过滤、分页）
+                - **file_search_tool** — 在目录内按内容搜索文件（支持关键词/正则、glob 过滤、上下文行）
+                - **file_read_tool** — 读取文件内容（支持多文件与行范围）
 
                 ## 每轮工作规则（必须严格遵守）
                 1. 在每一轮中，先**简短评估当前进展**（不超过 20 字），然后调用一个或多个工具。
                 2. 说明后立即调用工具，不要在中间输出长篇分析。
-                3. 如果上一轮结果不理想，**换策略**：换关键词、换搜索角度、换来源类型。
+                3. 如果上一轮结果不理想，**换策略**：换搜索关键词、换子目录、换过滤条件。
                 4. 前面各轮的工具结果都在对话上下文中，下一轮可直接看到；最终报告由你自行汇总要点，**不会自动附加工具调用明细附录**。
 
-                ## 收集策略
-                - 从**多个角度、多个关键词**搜索，确保覆盖面
-                - 对高质量来源（官方文档、权威媒体、学术论文）优先深入阅读
-                - 遇到矛盾信息时交叉验证
-                - 在三轮搜索仍无有价值发现时，停止收集。比如：
-                    1. 已经尝试了多个关键词和搜索角度，但仍然没有有价值发现。
-                    2. 搜集到的信息无法验证其真实性或可靠性。
-                    3. 信息之间始终互相矛盾，无法确定真相。
+                ## 探索策略
+                - **只围绕 target 指定的目标目录活动**，不要漫游到无关的系统目录
+                - 先用 file_list_tool 从 depth=1 开始逐层了解目录结构（不要一次深度拉满大目录）
+                - 需要在大量文件里定位内容时，用 file_search_tool 搜关键词/正则，比逐目录翻快得多
+                - 定位到候选文件后用 file_read_tool 精读（大文件可指定行范围，避免整段贴出）
+                - 目录或文件不存在/不可读时，如实说明并停止该分支，**禁止臆造内容或路径**
+                - 不要在找不到有价值信息时无限加深度：多轮仍无发现即可停止
 
                 ## 最终报告格式
                 当你认为信息已收集充分时，**停止调用工具**，输出最终报告：
 
-                # 收集报告：{一句话概括目标}
+                # 目录探索报告：{目标目录}
 
-                ## 收集概况
-                - 从哪些角度进行了搜索
-                - 阅读了多少个页面
-                - 信息质量总体评估
+                ## 结构概览
+                - 目录布局 / 主要模块划分
+                - 关键入口与核心文件
 
                 ## 关键发现
                 ### 1. {发现标题}
-                {详细描述，引用具体来源}
+                {详细描述，引用具体文件路径与行号}
 
                 ### 2. {发现标题}
                 ...
 
-                ## 信息来源
-                - [{来源标题}](URL) — {简短说明}
-                ...
+                ## 引用文件
+                - {文件路径} — {一句话说明，可含行号}
 
-                ## 信息评估
-                - **可信度**：高 / 中 / 低（说明原因）
-                - **完整度**：高 / 中 / 低（说明是否还有未覆盖的方面）
-                - **时效性**：信息的新旧程度
+                ## 探索范围与限制
+                - 覆盖了哪些子目录 / 哪些未深入
+                - 遗留问题（若目标问题未完全回答，说明还差什么）
 
                 ## 严禁行为
-                - 禁止编造未收集到的信息
+                - 禁止编造未读到的文件内容
                 - 禁止在非最终轮输出完整报告
-                - 禁止凭空猜测来源 URL
+                - 禁止读取目标目录之外、与探索目标无关的敏感系统文件
                 - 报告中的每一条信息都必须来自工具返回的实际内容""";
     }
 
     private String buildUserPrompt(String target) {
         return """
-                [收集目标]
+                [目标目录]
                 %s
 
-                开始检索。按规则逐步收集，信息充足后输出最终报告。""".formatted(target);
+                开始探索。以该目录为根，先了解结构，再定位并精读相关文件，信息充足后输出最终报告。""".formatted(target);
     }
 
     // ==================== 基础方法 ====================
