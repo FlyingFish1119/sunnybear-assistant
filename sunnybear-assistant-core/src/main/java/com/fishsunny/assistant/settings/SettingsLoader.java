@@ -114,7 +114,7 @@ public class SettingsLoader {
         }
         if (node.isObject()) {
             var object = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
-            var fields = node.properties().entrySet().iterator();
+            var fields = node.fields();
             while (fields.hasNext()) {
                 var entry = fields.next();
                 object.set(entry.getKey(), resolveEnvNode(entry.getValue()));
