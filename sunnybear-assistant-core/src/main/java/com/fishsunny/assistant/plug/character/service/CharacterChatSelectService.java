@@ -7,8 +7,8 @@ package com.fishsunny.assistant.plug.character.service;
  *  1) 解析 character_info.chat_select 配置（enable / format）
  *  2) 把对话历史按“QA 整轮”切片，并做“满 7 丢 5 保 2”的滑动窗口压缩，
  *     只把最新一段连续窗口发给 mission 模型，用于为最新一条 assistant 回复生成快捷选项
- *  3) 解析并清洗 mission 返回的 <chat-select> 标记，输出标准标记
- *  4) 提供把 <chat-select> 标签从文本中剥除的工具（主对话喂给对话 AI 前使用）
+ *  3) 解析并清洗 mission 返回的 <chat-select> 标记，输出结构化选项
+ *  4) 把选项写入 assistant 消息的 ChatMessage.extension["chatSelect"]（不进正文，编辑不受影响）
  *
  * @Project sunnybear-assistant
  * @Author FlyingFish-SunnyBear
@@ -19,8 +19,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
 import com.fishsunny.assistant.settings.AISettings;
@@ -29,10 +27,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -111,83 +109,44 @@ public class CharacterChatSelectService {
         }
     }
 
-    // ==================== 标签工具 ====================
+    // ==================== 结构化结果与写回 ====================
 
-    /**
-     * 从一段文本中剥除快捷选项标记。
-     * 约定标记总是在消息正文末尾追加，因此从首个 <chat-select 出现处直接截断、丢弃其后内容即可。
-     * 对话 AI 的请求在构造前调用，确保它看不到选项。
-     */
-    public static String stripTags(String text) {
-        if (text == null) {
-            return null;
-        }
-        int idx = text.indexOf("<chat-select");
-        if (idx < 0) {
-            return text;
-        }
-        String prefix = text.substring(0, idx);
-        // 清理截断处可能残留的空行/空格
-        return prefix.replaceFirst("\\s+$", "");
+    /** 一组可点击的快捷选项（结构化，不再以标记拼进正文） */
+    public record ChatSelectData(String title, List<String> options) {
     }
 
     /**
-     * 就地清理一批消息：把每条消息文本块里的 chat-select 标签剥掉。
-     * 返回原集合（引用不变），便于作为 sessionMessageProvider 直接返回。
+     * 把生成的选项写入 assistant 消息的 extension["chatSelect"]（{"title":…, "options":[…] }）。
+     * 选项不进正文 —— 编辑 assistant（重建 contents）不会冲掉它；extension 由 ChatMessageRepository.update() 原样保留。
      */
-    public static List<ChatMessage> stripTagsFromMessages(List<ChatMessage> messages) {
-        if (CollectionUtils.isEmpty(messages)) {
-            return messages;
+    public static void applyChatSelect(ChatMessage chatMessage, ChatSelectData data) {
+        if (chatMessage == null || data == null || data.options() == null || data.options().isEmpty()) {
+            return;
         }
-        for (ChatMessage message : messages) {
-            if (message.getContents() == null) {
-                continue;
-            }
-            for (MessageContent content : message.getContents()) {
-                if (content instanceof TextContent textContent) {
-                    String clean = stripTags(textContent.getContent());
-                    if (!java.util.Objects.equals(clean, textContent.getContent())) {
-                        textContent.setContent(clean);
-                    }
-                }
-            }
+        Map<String, Object> extension = chatMessage.getExtension();
+        if (extension == null) {
+            extension = new HashMap<>();
+            chatMessage.setExtension(extension);
         }
-        return messages;
-    }
-
-    /**
-     * 将标准标记追加到 assistant 消息正文末尾。
-     */
-    public static void appendChatSelect(ChatMessage chatMessage, String markup) {
-        List<MessageContent> contents = chatMessage.getContents();
-        if (contents == null) {
-            contents = new ArrayList<>();
-            chatMessage.setContents(contents);
+        Map<String, Object> chatSelect = new HashMap<>();
+        if (StringUtils.hasText(data.title())) {
+            chatSelect.put("title", data.title());
         }
-        TextContent lastText = null;
-        for (MessageContent content : contents) {
-            if (content instanceof TextContent textContent) {
-                lastText = textContent;
-            }
-        }
-        if (lastText == null) {
-            contents.add(new TextContent(markup));
-        } else {
-            lastText.setContent(lastText.getContent() + "\n\n" + markup);
-        }
+        chatSelect.put("options", data.options());
+        extension.put("chatSelect", chatSelect);
     }
 
     // ==================== 生成快捷选项 ====================
 
     /**
-     * 为指定会话最新一条 assistant 回复生成快捷选项。
+     * 为指定会话最新一条 assistant 回复生成一组快捷选项。
      *
      * @param sessionId      会话 ID
      * @param currentAssistant 刚生成、尚未落库的 assistant 消息（作为最新一轮的结尾）
      * @param format          角色配置的格式/风格指导，可为空（空则用内置默认）
-     * @return 标准化的 <chat-select> 标记；不可用/失败返回 null（调用方静默跳过）
+     * @return 结构化选项；不可用/失败返回 null（调用方静默跳过）
      */
-    public String generateOptions(String sessionId, ChatMessage currentAssistant, String format, CharacterInfo character) {
+    public ChatSelectData generateOptions(String sessionId, ChatMessage currentAssistant, String format, CharacterInfo character) {
         try {
             List<ChatMessage> history;
             try {
@@ -236,14 +195,14 @@ public class CharacterChatSelectService {
                 return null;
             }
 
-            // 4. 解析并清洗成标准标记
-            String markup = normalizeMarkup(raw);
-            if (!StringUtils.hasText(markup)) {
+            // 4. 解析并清洗成结构化选项
+            ChatSelectData data = normalizeMarkup(raw);
+            if (data == null) {
                 log.warn("mission 返回内容无法解析为有效 chat-select，已跳过 [sessionId={}]，原文片段: {}",
                         sessionId, preview(raw));
                 return null;
             }
-            return markup;
+            return data;
         } catch (Exception e) {
             log.warn("生成快捷选项失败 [sessionId={}]: {}", sessionId, e.getMessage());
             return null;
@@ -353,10 +312,10 @@ public class CharacterChatSelectService {
     // ==================== 标记解析与清洗 ====================
 
     /**
-     * 从 mission 输出中提取第一个 <chat-select> 块并标准化。
+     * 从 mission 输出中提取第一个 <chat-select> 块并清洗成结构化选项。
      * 即便模型在里面夹带了列表文字、代码块等，也只信任该块内的 chat-option。
      */
-    private String normalizeMarkup(String raw) {
+    private ChatSelectData normalizeMarkup(String raw) {
         Matcher blockMatcher = SELECT_BLOCK.matcher(raw);
         if (!blockMatcher.find()) {
             return null;
@@ -388,17 +347,7 @@ public class CharacterChatSelectService {
         if (options.isEmpty()) {
             return null;
         }
-
-        StringBuilder sb = new StringBuilder("<chat-select");
-        if (StringUtils.hasText(title)) {
-            sb.append(" title=\"").append(encodeAttr(title.trim())).append("\"");
-        }
-        sb.append(">");
-        for (String option : options) {
-            sb.append("<chat-option content=\"").append(encodeAttr(option)).append("\"></chat-option>");
-        }
-        sb.append("</chat-select>");
-        return sb.toString();
+        return new ChatSelectData(StringUtils.hasText(title) ? title.trim() : "", options);
     }
 
     /** 读取标签属性（双引号包裹），返回解码后的值 */
@@ -408,13 +357,6 @@ public class CharacterChatSelectService {
             return decodeEntities(matcher.group(1));
         }
         return "";
-    }
-
-    private String encodeAttr(String text) {
-        return text.replace("&", "&amp;")
-                .replace("\"", "&quot;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;");
     }
 
     private String decodeEntities(String text) {

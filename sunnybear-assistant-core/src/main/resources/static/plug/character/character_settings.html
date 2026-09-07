@@ -10,6 +10,7 @@
     <script src="../../lib/element-plus.full.min.js"></script>
     <script src="../../lib/lucide.min.js"></script>
     <script src="../../api.js"></script>
+    <script src="character-api.js"></script>
     <script src="../../components/confirm-dialog/confirm-dialog.js"></script>
     <link rel="stylesheet" href="../../components/confirm-dialog/confirm-dialog.css"/>
     <script src="components/glossary-manager/glossary-manager.js"></script>
@@ -1230,7 +1231,7 @@ const app = Vue.createApp({
     methods: {
         $api(path) { return API.BASE_PATH + path; },
 
-        goBack() { window.location.href = this.$api('character_index.html'); },
+        goBack() { window.location.href = this.$api('plug/character/character_index.html'); },
 
         toggleSidebar() {
             if (window.innerWidth >= 769) {
@@ -1582,7 +1583,7 @@ const app = Vue.createApp({
             }
             // 角色人设/AI/外观已按会话挂载，进入角色聊天页即可生效，不再调 activate 覆写全局 settings
             ElementPlus.ElMessage.success('即将进入「' + (this.form.name || '') + '」的对话');
-            window.location.href = this.$api('character_index.html?characterId=') + encodeURIComponent(this.selectedId);
+            window.location.href = this.$api('plug/character/character_index.html?characterId=') + encodeURIComponent(this.selectedId);
         },
 
         /* ---- 用户设置弹框 ---- */

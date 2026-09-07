@@ -27,7 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @RestController
-@RequestMapping("/world")
+@RequestMapping("/plug/world")
 public class WorldController {
 
     private static final Logger log = LoggerFactory.getLogger(WorldController.class);

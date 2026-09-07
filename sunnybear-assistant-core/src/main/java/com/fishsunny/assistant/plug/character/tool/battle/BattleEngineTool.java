@@ -56,7 +56,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 @ToolKitComponent(BattleToolKit.class)
-@ConditionalOnExpression("${plug.character.tool.battle.enable:false} && ${plug.character.tool.battle.battle-engine.enable:true}")
+@ConditionalOnExpression("${plug.character.tool.battle.enable:true} && ${plug.character.tool.battle.battle-engine.enable:true}")
 public class BattleEngineTool implements ToolHandler {
 
     public static final String NAME = "battle_engine_tool";

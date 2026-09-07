@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.Map;
 
 @ToolKitComponent(BattleToolKit.class)
-@ConditionalOnExpression("${plug.character.tool.battle.enable:false} && ${plug.character.tool.battle.battle-query.enable:true}")
+@ConditionalOnExpression("${plug.character.tool.battle.enable:true} && ${plug.character.tool.battle.battle-query.enable:true}")
 public class BattleSqlQueryTool implements ToolHandler {
 
     public static final String NAME = "battle_db_query";

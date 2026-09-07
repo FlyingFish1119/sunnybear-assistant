@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.Map;
 
 @ToolKitComponent(CharacterSqlToolKit.class)
-@ConditionalOnExpression("${plug.character.tool.sql.enable:false} && ${plug.character.tool.sql.query.enable:true}")
+@ConditionalOnExpression("${plug.character.tool.sql.enable:true} && ${plug.character.tool.sql.query.enable:true}")
 public class SqlQueryTool implements ToolHandler {
 
     public static final String NAME = "character_db_query";

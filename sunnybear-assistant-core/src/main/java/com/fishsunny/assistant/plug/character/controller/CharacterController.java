@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/character")
+@RequestMapping("/plug/character")
 public class CharacterController {
 
     private static final Logger log = LoggerFactory.getLogger(CharacterController.class);

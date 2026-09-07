@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @RestController
-@RequestMapping("/character/battle")
+@RequestMapping("/plug/character/battle")
 public class BattleController {
 
     private static final int TURN_TIMEOUT_MINUTES = 10;

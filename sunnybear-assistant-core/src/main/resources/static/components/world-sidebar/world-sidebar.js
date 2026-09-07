@@ -138,14 +138,14 @@ const WorldSidebar = {
          * 跳转到设置页面（不依赖父页面，组件内直接跳转）
          */
         goSettings: function () {
-            window.location.href = API.BASE_PATH + 'world_settings.html';
+            window.location.href = API.BASE_PATH + 'plug/world/world_settings.html';
         },
 
         /**
          * 跳转到角色扮演页面（不依赖父页面，组件内直接跳转）
          */
         goCharacterChat: function () {
-            window.location.href = API.BASE_PATH + 'character_index.html';
+            window.location.href = API.BASE_PATH + 'plug/character/character_index.html';
         },
 
         /**

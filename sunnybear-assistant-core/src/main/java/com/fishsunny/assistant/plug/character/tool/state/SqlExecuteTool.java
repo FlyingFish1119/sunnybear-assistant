@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 @ToolKitComponent(CharacterSqlToolKit.class)
-@ConditionalOnExpression("${plug.character.tool.sql.enable:false} && ${plug.character.tool.sql.execute.enable:true}")
+@ConditionalOnExpression("${plug.character.tool.sql.enable:true} && ${plug.character.tool.sql.execute.enable:true}")
 public class SqlExecuteTool implements ToolHandler {
 
     public static final String NAME = "character_db_execute";

@@ -38,7 +38,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
 
 @ToolKitComponent(DiceToolKit.class)
-@ConditionalOnExpression("${plug.character.tool.dice.enable:false} && ${plug.character.tool.dice.d20.enable:true}")
+@ConditionalOnExpression("${plug.character.tool.dice.enable:true} && ${plug.character.tool.dice.d20.enable:true}")
 public class D20Tool implements ToolHandler {
 
     public static final String NAME = "d20_check";

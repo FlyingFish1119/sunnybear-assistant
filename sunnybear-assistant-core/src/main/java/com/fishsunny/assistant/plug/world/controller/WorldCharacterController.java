@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/world/character")
+@RequestMapping("/plug/world/character")
 public class WorldCharacterController {
 
     private static final Logger log = LoggerFactory.getLogger(WorldCharacterController.class);

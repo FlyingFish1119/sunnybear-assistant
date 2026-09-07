@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/character/glossary")
+@RequestMapping("/plug/character/glossary")
 public class CharacterGlossaryController {
 
     private static final Logger log = LoggerFactory.getLogger(CharacterGlossaryController.class);

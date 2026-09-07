@@ -23,7 +23,7 @@ public class CharacterWebSocketConfig implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(characterChatSocketHandler, "/ws/character-chat")
+        registry.addHandler(characterChatSocketHandler, "/plug/character/ws/character-chat")
                 .setAllowedOrigins("*");
     }
 }

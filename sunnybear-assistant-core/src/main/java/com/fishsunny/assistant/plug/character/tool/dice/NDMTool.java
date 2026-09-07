@@ -25,7 +25,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 @ToolKitComponent(DiceToolKit.class)
-@ConditionalOnExpression("${plug.character.tool.dice.enable:false} && ${plug.character.tool.dice.ndm.enable:true}")
+@ConditionalOnExpression("${plug.character.tool.dice.enable:true} && ${plug.character.tool.dice.ndm.enable:true}")
 public class NDMTool implements ToolHandler {
 
     public static final String NAME = "ndm_roll";

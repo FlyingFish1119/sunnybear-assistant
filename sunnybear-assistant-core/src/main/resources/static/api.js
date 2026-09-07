@@ -12,10 +12,20 @@
  */
 const API = (function () {
     /* ==================== 根路径 ==================== */
+    // 站点根（含可能的部署 context path）：取 api.js 自身所在目录。
+    // 页面可能被放在子目录（如 /plug/character/index.html），因此不能取“当前页面目录”，
+    // 否则共享接口会被拼成 /plug/character/... 前缀。各插件的 REST/WS 也已挂到 /plug/<插件>/ 下，由插件自己的 api 文件按全路径调用。
     const BASE_PATH = (function () {
+        const script = document.currentScript;
+        if (script && script.src) {
+            const src = script.src;
+            const lastSlash = src.lastIndexOf('/');
+            return src.substring(0, lastSlash + 1).replace(/^[a-z]+:\/\/[^/]*/i, '');
+        }
+        // 兜底：取页面协议+主机之后到第一个路径段（含 context path）
         const path = window.location.pathname;
-        const lastSlash = path.lastIndexOf('/');
-        return path.substring(0, lastSlash + 1);
+        const idx = path.indexOf('/', 1);
+        return idx < 0 ? '/' : path.substring(0, idx + 1);
     })();
 
     // WebSocket 协议跟随页面协议：https 页面必须用 wss（浏览器禁止混合内容）
@@ -68,10 +78,12 @@ const API = (function () {
         /** 通用 POST（适用于未封装为具名函数的路径） */
         post: post,
 
+        /** 通用文件上传（multipart/form-data），供各插件 API 复用 */
+        upload: upload,
+
         ws: {
-            url: WS_PROTO + window.location.host + BASE_PATH + 'ws/chat',
-            characterUrl: WS_PROTO + window.location.host + BASE_PATH + 'ws/character-chat',
-            worldUrl: WS_PROTO + window.location.host + BASE_PATH + 'ws/world-chat'
+            url: WS_PROTO + window.location.host + BASE_PATH + 'ws/chat'
+            // 插件（角色/世界）的 ws 地址由各插件自己的 api 文件补充：API.ws.characterUrl / API.ws.worldUrl
         },
 
         /** 文件代理 URL（用于图片/音视频等本地文件的展示） */
@@ -208,108 +220,7 @@ const API = (function () {
             }
         },
 
-        /* ---------- 角色 ---------- */
-        character: {
-            get: function (id) { return get('character/get?id=' + encodeURIComponent(id)); },
-            list: function () { return get('character/list'); },
-            create: function (data) { return post('character/create', data); },
-            update: function (data) { return post('character/update', data); },
-            delete: function (id) { return get('character/delete?id=' + encodeURIComponent(id)); },
-            activate: function (id) { return post('character/activate?id=' + encodeURIComponent(id)); },
-            getSessions: function (characterId) {
-                return get('character/sessions?characterId=' + encodeURIComponent(characterId));
-            },
-            destroyDb: function (id) {
-                return get('character/destroy-db?id=' + encodeURIComponent(id));
-            },
-            deleteBackground: function (id) {
-                return get('character/delete-background?id=' + encodeURIComponent(id));
-            },
-            uploadBackground: function (id, file) {
-                return upload('character/upload-background?id=' + encodeURIComponent(id), file);
-            },
-
-            /* 角色数据库表查询 */
-            dbTables: function (id) {
-                return get('character/db-tables?id=' + encodeURIComponent(id));
-            },
-
-            /* 角色词条管理 */
-            glossary: {
-                list: function (characterId) {
-                    return get('character/glossary/list?characterId=' + encodeURIComponent(characterId));
-                },
-                /** 按关键词/描述模糊搜索词条 */
-                search: function (characterId, q) {
-                    return get('character/glossary/search?characterId=' + encodeURIComponent(characterId)
-                        + '&q=' + encodeURIComponent(q || ''));
-                },
-                create: function (data) { return post('character/glossary/create', data); },
-                update: function (data) { return post('character/glossary/update', data); },
-                delete: function (id) { return get('character/glossary/delete?id=' + id); },
-                /** 批量导入词条（JSON 数组 [{keyword, desc, content}]），关键词重复的条目覆盖更新 */
-                import: function (characterId, items) {
-                    return post('character/glossary/import?characterId=' + encodeURIComponent(characterId), items);
-                }
-            }
-        },
-
-        /* ---------- 世界观 ---------- */
-        world: {
-            list: function () { return get('world/list'); },
-            get: function (id) { return get('world/get?id=' + encodeURIComponent(id)); },
-            create: function (data) { return post('world/create', data); },
-            update: function (data) { return post('world/update', data); },
-            delete: function (id) { return get('world/delete?id=' + encodeURIComponent(id)); },
-            deleteBackground: function (id) {
-                return get('world/delete-background?id=' + encodeURIComponent(id));
-            },
-            uploadBackground: function (id, file) {
-                return upload('world/upload-background?id=' + encodeURIComponent(id), file);
-            },
-            /** 获取绑定到某世界观的全部群聊会话 */
-            getSessions: function (worldId) {
-                return get('world/sessions?worldId=' + encodeURIComponent(worldId));
-            },
-            /** 导出世界观为 JSON 文件数据（不含头像/背景图，知识按角色名关联） */
-            exportWorld: function (id) {
-                return get('world/export?id=' + encodeURIComponent(id));
-            },
-            /** 导入世界观 JSON：targetWorldId 为空 = 新建世界观，否则覆盖该世界观 */
-            importWorld: function (data, targetWorldId) {
-                return post('world/import' + (targetWorldId ? '?targetWorldId=' + encodeURIComponent(targetWorldId) : ''), data);
-            },
-
-            /* 世界观下的群组角色（id 主键） */
-            character: {
-                list: function (worldId) {
-                    return get('world/character/list?worldId=' + encodeURIComponent(worldId));
-                },
-                get: function (id) {
-                    return get('world/character/get?id=' + encodeURIComponent(id));
-                },
-                create: function (data) { return post('world/character/create', data); },
-                update: function (data) { return post('world/character/update', data); },
-                delete: function (id) {
-                    return get('world/character/delete?id=' + encodeURIComponent(id));
-                }
-            },
-
-            /* 世界观下的知识（标题 + 内容 + 知晓角色） */
-            knowledge: {
-                list: function (worldId) {
-                    return get('world/knowledge/list?worldId=' + encodeURIComponent(worldId));
-                },
-                get: function (id) {
-                    return get('world/knowledge/get?id=' + encodeURIComponent(id));
-                },
-                create: function (data) { return post('world/knowledge/create', data); },
-                update: function (data) { return post('world/knowledge/update', data); },
-                delete: function (id) {
-                    return get('world/knowledge/delete?id=' + encodeURIComponent(id));
-                }
-            }
-        },
+        /* ---------- 角色 / 世界观 API：已抽到各插件目录（plug/character/character-api.js、plug/world/world-api.js） ---------- */
 
         /* ---------- 对话 ---------- */
         chat: {

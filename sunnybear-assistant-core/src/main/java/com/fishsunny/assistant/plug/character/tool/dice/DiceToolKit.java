@@ -1,9 +1,10 @@
 package com.fishsunny.assistant.plug.character.tool.dice;
 
 /*
- * @Usage 状态机工具包 —— 为角色扮演场景提供数据库、计算和 D20 检定工具。
- *        需在配置中显式启用（engine.tool.state-machine.enable）。
- *        包含：角色私有 SQLite 沙箱数据库（查询/执行）、数学计算、D20 检定。
+ * @Usage 骰子检定工具包 —— 为角色扮演场景提供 D20 / NDM 检定。
+ *        默认开启（可用 plug.character.tool.dice.enable 关闭）。
+ *        工具只面向角色对话：构造时把自己组的工具加进 ChatProcessor.EXCLUDE_TOOLS，
+ *        使普通对话看不到；角色对话由 CharacterChatSocketHandler 的 toolProvider 按角色允许表重建。
  *
  * @Project sunnybear-assistant
  * @Author FlyingFish-SunnyBear
@@ -15,6 +16,7 @@ import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.plug.character.service.CharacterSessionBindings;
+import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -23,11 +25,16 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-@ConditionalOnProperty(name = "plug.character.tool.dice.enable", havingValue = "true", matchIfMissing = false)
+@ConditionalOnProperty(name = "plug.character.tool.dice.enable", havingValue = "true", matchIfMissing = true)
 public class DiceToolKit extends ToolKit {
 
-    public DiceToolKit(List<ToolHandler> tools, @Value("${plug.character.tool.dice.enable:false}") boolean enable) {
+    public DiceToolKit(List<ToolHandler> tools, @Value("${plug.character.tool.dice.enable:true}") boolean enable) {
         super(tools, enable);
+        if (enable) {
+            ChatProcessor.getEXCLUDE_TOOLS().addAll(List.of(
+                    D20Tool.NAME,
+                    NDMTool.NAME));
+        }
     }
 
     /**

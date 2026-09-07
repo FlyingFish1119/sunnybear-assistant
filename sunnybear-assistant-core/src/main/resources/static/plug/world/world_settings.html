@@ -10,6 +10,7 @@
     <script src="../../lib/element-plus.full.min.js"></script>
     <script src="../../lib/lucide.min.js"></script>
     <script src="../../api.js"></script>
+    <script src="world-api.js"></script>
     <script src="../../components/confirm-dialog/confirm-dialog.js"></script>
     <link rel="stylesheet" href="../../components/confirm-dialog/confirm-dialog.css"/>
     <link rel="stylesheet" href="../../css/scrollbar.css"/>
@@ -1352,11 +1353,11 @@ const app = Vue.createApp({
 
         goBack() {
             const suffix = this.selectedWorldId ? '?worldId=' + encodeURIComponent(this.selectedWorldId) : '';
-            window.location.href = this.$api('world_index.html' + suffix);
+            window.location.href = this.$api('plug/world/world_index.html' + suffix);
         },
         goGroupChat() {
             if (!this.selectedWorldId) return;
-            window.location.href = this.$api('world_index.html?worldId=' + encodeURIComponent(this.selectedWorldId));
+            window.location.href = this.$api('plug/world/world_index.html?worldId=' + encodeURIComponent(this.selectedWorldId));
         },
 
         toggleSidebar() {

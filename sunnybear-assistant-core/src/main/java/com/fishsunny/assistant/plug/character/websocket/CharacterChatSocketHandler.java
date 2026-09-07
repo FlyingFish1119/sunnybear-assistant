@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.plug.character.db.BattleDbManager;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
@@ -37,11 +38,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import javax.sql.DataSource;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component("characterChatSocketHandler")
@@ -52,6 +54,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
     private final CharacterGlossaryService glossaryService;
     private final BattleDbManager battleDbManager;
     private final CharacterChatSelectService chatSelectService;
+    private final ToolExecutor toolExecutor;
 
     @Autowired
     public CharacterChatSocketHandler(ServiceProcessor serviceProcessor,
@@ -64,13 +67,15 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                                        CharacterGlossaryService glossaryService,
                                        ObjectMapper objectMapper,
                                        BattleDbManager battleDbManager,
-                                       CharacterChatSelectService chatSelectService) {
+                                       CharacterChatSelectService chatSelectService,
+                                       ToolExecutor toolExecutor) {
         super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper, sessionMessageBus);
         this.characterInfoRepository = characterInfoRepository;
         this.chatSessionService = chatSessionService;
         this.glossaryService = glossaryService;
         this.battleDbManager = battleDbManager;
         this.chatSelectService = chatSelectService;
+        this.toolExecutor = toolExecutor;
     }
 
     @Override
@@ -134,12 +139,21 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
             return combined.toString();
         };
 
-        // 2. 工具白名单过滤：严格按照 character_info.tools JSON 配置
+        // 2. 工具：清空通用候选，直接按该角色 character_info.tools 允许表从全量池重建。
+        //    角色工具已由各自 ToolKit 加进 EXCLUDE_TOOLS（普通对话不暴露）；buildToolRegisterByHandlers
+        //    无视 EXCLUDE、缺失的名字静默跳过 —— 因此角色对话能拿到被 EXCLUDE 的角色工具，也不会带出其它被排除工具。
         Function<ChatProvider.ToolProviderContext, List<StandardToolRegister>> toolProvider = ctx -> {
             Map<String, Boolean> toolsMap = toolsEnabledMap(character);
-            return ctx.toolRegisters().stream()
-                    .filter(tr -> toolsMap.getOrDefault(tr.getFunction().getName(), false))
-                    .collect(Collectors.toList());
+            List<String> allowed = new ArrayList<>();
+            for (Map.Entry<String, Boolean> entry : toolsMap.entrySet()) {
+                if (Boolean.TRUE.equals(entry.getValue())) {
+                    allowed.add(entry.getKey());
+                }
+            }
+            if (allowed.isEmpty()) {
+                return List.of();
+            }
+            return StandardToolRegister.buildToolRegisterByHandlers(toolExecutor, new HashSet<>(allowed));
         };
 
         // 3. Context Hook：注入当前角色 + 会话战斗数据库 DataSource
@@ -156,9 +170,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                 .setSystemProvider(systemProvider)
                 .setToolProvider(toolProvider)
                 .setContextProvider(contextProvider)
-                // 主对话喂给对话 AI 前，剥掉历史 assistant 正文里已持久化的快捷选项标签，避免对话 AI 看到选项
-                .setSessionMessageProvider(CharacterChatSelectService::stripTagsFromMessages)
-                // assistant 回复生成后、落库前：启用 chat_select 时用 mission 模型生成新选项并追加
+                // assistant 回复生成后、落库前：启用 chat_select 时用 mission 模型生成新选项并写入 extension
                 .setBeforeSaveAssistantProvider(this::beforeSaveAssistant)
                 // 角色会话固定用自己的模型（chat/chatPro 都指向角色自己的 aiSettings），助手名/头像取角色资料
                 .setSettingsSupplier(() -> new ChatProvider.Settings(effectiveCharAi, effectiveCharAi,
@@ -200,7 +212,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
     }
 
     /**
-     * 落库前钩子：为最新的 assistant 回复生成并追加快捷选项。
+     * 落库前钩子：为最新的 assistant 回复生成快捷选项并写入 extension["chatSelect"]（不进正文）。
      * 仅对“无工具调用的最终回复”生效；中间的工具调用轮直接放行。
      * 生成/解析失败时静默跳过，不影响主对话。
      */
@@ -225,10 +237,11 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
             if (!config.enable()) {
                 return readyToSave;
             }
-            String markup = chatSelectService.generateOptions(sessionId, readyToSave, config.format(), character);
-            if (StringUtils.hasText(markup)) {
-                CharacterChatSelectService.appendChatSelect(readyToSave, markup);
-                log.debug("已为会话 [{}] 追加快捷选项", sessionId);
+            CharacterChatSelectService.ChatSelectData data =
+                    chatSelectService.generateOptions(sessionId, readyToSave, config.format(), character);
+            if (data != null) {
+                CharacterChatSelectService.applyChatSelect(readyToSave, data);
+                log.debug("已为会话 [{}] 写入快捷选项", sessionId);
             }
         } catch (Exception e) {
             log.warn("生成快捷选项失败: {}", e.getMessage());

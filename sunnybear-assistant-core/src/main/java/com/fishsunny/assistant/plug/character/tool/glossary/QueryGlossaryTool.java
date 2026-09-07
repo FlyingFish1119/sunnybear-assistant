@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 @ToolKitComponent(CharacterGlossaryToolKit.class)
-@ConditionalOnExpression("${plug.character.tool.glossary.enable:false} && ${plug.character.tool.glossary.query-glossary.enable:true}")
+@ConditionalOnExpression("${plug.character.tool.glossary.enable:true} && ${plug.character.tool.glossary.query-glossary.enable:true}")
 public class QueryGlossaryTool implements ToolHandler {
 
     public static final String NAME = "character_glossary_query_tool";

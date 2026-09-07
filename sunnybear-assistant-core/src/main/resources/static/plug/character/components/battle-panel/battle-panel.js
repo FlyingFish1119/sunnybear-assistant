@@ -290,7 +290,7 @@ const BattlePanel = {
             if (this.waiting) return;
             this.waiting = true;
 
-            API.post('character/battle/action', action)
+            API.character.battle.action(action)
                 .then(result => {
                     if (result.status !== 200) {
                         console.error('提交战斗行动失败:', result.message);
