@@ -4,58 +4,58 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover">
     <title>角色扮演 — SunnyBear 助手</title>
-    <link rel="icon" type="image/png" href="icon/icon.png">
+    <link rel="icon" type="image/png" href="../../icon/icon.png">
     <!-- Element Plus 样式 -->
-    <link rel="stylesheet" href="lib/element-plus.css">
+    <link rel="stylesheet" href="../../lib/element-plus.css">
     <!-- Vue 3 -->
-    <script src="lib/vue.global.prod.js"></script>
+    <script src="../../lib/vue.global.prod.js"></script>
     <!-- Element Plus 组件库 -->
-    <script src="lib/element-plus.full.min.js"></script>
+    <script src="../../lib/element-plus.full.min.js"></script>
     <!-- lucide 图标 -->
-    <script src="lib/lucide.min.js"></script>
-    <script src="lib/marked.min.js"></script>
-    <script src="lib/highlight.min.js"></script>
+    <script src="../../lib/lucide.min.js"></script>
+    <script src="../../lib/marked.min.js"></script>
+    <script src="../../lib/highlight.min.js"></script>
     <!-- KaTeX 数学公式渲染 -->
-    <link rel="stylesheet" href="lib/katex.min.css">
-    <script src="lib/katex.min.js"></script>
+    <link rel="stylesheet" href="../../lib/katex.min.css">
+    <script src="../../lib/katex.min.js"></script>
     <!-- Mermaid 图表渲染 -->
-    <script src="lib/mermaid.min.js"></script>
+    <script src="../../lib/mermaid.min.js"></script>
     <!-- 项目本地封装 -->
-    <script src="api.js"></script>
-    <script src="utils/render-markdown.js"></script>
-    <script src="utils/color.js"></script>
-    <script src="utils/mermaid.js"></script>
-    <script src="utils/file-url.js"></script>
-    <script src="directives/auto-follow.js"></script>
-    <script src="components/tool-confirm/tool-confirm.js"></script>
+    <script src="../../api.js"></script>
+    <script src="../../utils/render-markdown.js"></script>
+    <script src="../../utils/color.js"></script>
+    <script src="../../utils/mermaid.js"></script>
+    <script src="../../utils/file-url.js"></script>
+    <script src="../../directives/auto-follow.js"></script>
+    <script src="../../components/tool-confirm/tool-confirm.js"></script>
     <script src="components/battle-panel/battle-panel.js"></script>
-    <script src="components/confirm-dialog/confirm-dialog.js"></script>
-    <script src="components/session-name/session-name.js"></script>
+    <script src="../../components/confirm-dialog/confirm-dialog.js"></script>
+    <script src="../../components/session-name/session-name.js"></script>
     <script src="components/character-sidebar/character-sidebar.js"></script>
-    <script src="components/file-upload/file-upload.js"></script>
-    <script src="components/connection-indicator/connection-indicator.js"></script>
-    <script src="components/auto-resize-textarea/auto-resize-textarea.js"></script>
-    <script src="components/command-suggest/command-suggest.js"></script>
+    <script src="../../components/file-upload/file-upload.js"></script>
+    <script src="../../components/connection-indicator/connection-indicator.js"></script>
+    <script src="../../components/auto-resize-textarea/auto-resize-textarea.js"></script>
+    <script src="../../components/command-suggest/command-suggest.js"></script>
     <script src="components/character-db-panel/character-db-panel.js"></script>
     <!-- 样式 -->
-    <link rel="stylesheet" href="css/scrollbar.css"/>
-    <link rel="stylesheet" href="css/layout.css"/>
+    <link rel="stylesheet" href="../../css/scrollbar.css"/>
+    <link rel="stylesheet" href="../../css/layout.css"/>
     <!-- 三大板块样式：侧边栏 | 消息栏 | 发送栏 -->
     <link rel="stylesheet" href="components/character-sidebar/character-sidebar.css"/>
-    <link rel="stylesheet" href="css/message-area.css"/>
-    <link rel="stylesheet" href="components/session-name/session-name.css"/>
-    <link rel="stylesheet" href="css/send-area.css"/>
-    <link rel="stylesheet" href="components/file-upload/file-upload.css"/>
-    <link rel="stylesheet" href="css/markdown.css"/>
-    <link rel="stylesheet" href="components/tool-confirm/tool-confirm.css"/>
+    <link rel="stylesheet" href="../../css/message-area.css"/>
+    <link rel="stylesheet" href="../../components/session-name/session-name.css"/>
+    <link rel="stylesheet" href="../../css/send-area.css"/>
+    <link rel="stylesheet" href="../../components/file-upload/file-upload.css"/>
+    <link rel="stylesheet" href="../../css/markdown.css"/>
+    <link rel="stylesheet" href="../../components/tool-confirm/tool-confirm.css"/>
     <link rel="stylesheet" href="components/battle-panel/battle-panel.css"/>
-    <link rel="stylesheet" href="components/confirm-dialog/confirm-dialog.css"/>
-    <link rel="stylesheet" href="components/connection-indicator/connection-indicator.css"/>
-    <link rel="stylesheet" href="components/auto-resize-textarea/auto-resize-textarea.css"/>
-    <link rel="stylesheet" href="components/command-suggest/command-suggest.css"/>
+    <link rel="stylesheet" href="../../components/confirm-dialog/confirm-dialog.css"/>
+    <link rel="stylesheet" href="../../components/connection-indicator/connection-indicator.css"/>
+    <link rel="stylesheet" href="../../components/auto-resize-textarea/auto-resize-textarea.css"/>
+    <link rel="stylesheet" href="../../components/command-suggest/command-suggest.css"/>
     <link rel="stylesheet" href="components/character-db-panel/character-db-panel.css"/>
     <!-- highlight.js 代码高亮样式 -->
-    <link rel="stylesheet" href="lib/highlight-github-dark.min.css">
+    <link rel="stylesheet" href="../../lib/highlight-github-dark.min.css">
 </head>
 <body>
 <div id="in-loading">
@@ -89,7 +89,7 @@
                 <span class="model-name-tag">
                     <span v-if="characterInfo" :style="{'--main-color': mainColor}" style="font-weight:600;color:var(--main-color);white-space:nowrap">{{ characterInfo.name }}</span>
                     <span v-if="characterInfo" style="color:#999">·</span>
-                    {{ chatModel }} ·
+                    {{ displayChatModel }} ·
                 </span>
                 <session-name
                     :current-session="currentSession"
@@ -440,7 +440,6 @@
             return {
                 mainColor: "lightsalmon",
                 userSettings: { background: '', opacity: 0.3 },
-                assistantSettings: { avatar: '', assistantName: '' },
                 // 角色扮演相关
                 characterId: null,
                 characterInfo: null,
@@ -499,6 +498,20 @@
             currentSessionId () {
                 return this.currentSession.id;
             },
+            // 角色自己配置的模型名（解析 characterInfo.aiSettings.model）
+            charModel() {
+                try {
+                    const ai = this.characterInfo && this.characterInfo.aiSettings
+                        ? JSON.parse(this.characterInfo.aiSettings) : null;
+                    return (ai && ai.model) || null;
+                } catch (e) {
+                    return null;
+                }
+            },
+            // 头部展示的模型名：角色配了自己的模型用角色的，否则回落全局 chat 设置
+            displayChatModel() {
+                return this.charModel || this.chatModel;
+            },
             // 当前会话是否正在流式：只查当前会话自己的标记，其他会话的 START/END 不会互相影响
             isStreaming() {
                 return !!this.streamingMap[this.currentSessionId];
@@ -538,7 +551,9 @@
                 return ColorUtils.lighten(this.mainColor, 0.25);
             },
             backgroundStyle() {
-                const bg = this.userSettings.background;
+                // 角色自己设了背景则用角色的，否则回落用户全局背景（角色页内生效，不改全局 user_settings）
+                const ci = this.characterInfo;
+                const bg = (ci && ci.background) || this.userSettings.background;
                 // loaded 为 false 时 #app 仍是 display:none，
                 // 此时设置 background-image 浏览器不会发起请求
                 if (!bg || !this.loaded) return { display: 'none' };
@@ -547,9 +562,10 @@
                 if (!/^https?:\/\//i.test(bg)) {
                     url = API.fileProxyUrl(bg);
                 }
+                const opacity = (ci && ci.opacity != null) ? ci.opacity : this.userSettings.opacity;
                 return {
                     backgroundImage: "url('" + url + "')",
-                    opacity: this.userSettings.opacity != null ? this.userSettings.opacity : 0.3
+                    opacity: opacity != null ? opacity : 0.3
                 };
             },
         },
@@ -621,9 +637,11 @@
             getMessageAvatar(msg) {
                 if (msg.role === 'user' && this.userAvatarError) return '';
                 if (msg.role === 'assistant' && this.assistantAvatarError) return '';
+                // assistant 头像直接用角色自己的头像，不再依赖全局 assistant 设置
+                const ci = this.characterInfo;
                 const avatar = msg.role === 'user'
                     ? this.userSettings.avatar
-                    : this.assistantSettings.avatar;
+                    : (ci ? ci.avatar : '');
                 if (!avatar) return '';
                 if (avatar.startsWith('data:')) return avatar;
                 if (!/^https?:\/\//i.test(avatar)) {
@@ -639,7 +657,9 @@
                 if (msg.role === 'user') {
                     return (this.userSettings.username || 'U').charAt(0);
                 }
-                return (this.assistantSettings.assistantName || 'A').charAt(0);
+                // assistant 默认首字母取角色名
+                const ci = this.characterInfo;
+                return ((ci && ci.name) || 'A').charAt(0);
             },
 
             inLoading() {
@@ -675,7 +695,6 @@
                     await this.fetchCharacterInfo();
                 }
                 await this.fetchUserSettings();
-                await this.fetchAssistantSettings();
                 await this.getChatSettings();
                 await this.fetchGreeting();
                 // characterId 加载完成后刷新侧边栏会话列表
@@ -720,16 +739,9 @@
                         }
                     } catch (e) {}
                 }
-            },
-
-            async fetchAssistantSettings() {
-                try {
-                    const result = await API.settings.assistant.get();
-                    if (result.status === 200) {
-                        this.assistantSettings = result.data || { avatar: '', assistantName: '' };
-                    }
-                } catch (error) {
-                    console.error('获取助手设置失败:', error);
+                // 角色自己设了主题色则优先于用户全局主题色（仅本页生效，不改全局 user_settings）
+                if (this.characterInfo && this.characterInfo.mainColor) {
+                    this.mainColor = this.characterInfo.mainColor;
                 }
             },
 

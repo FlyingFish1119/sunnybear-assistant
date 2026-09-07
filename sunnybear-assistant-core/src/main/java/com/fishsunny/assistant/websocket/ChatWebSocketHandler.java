@@ -84,10 +84,19 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
-     * 获取 ChatToAiProvider，默认为 null、通过子类继承使用
+     * 会话建立完成后构建真正用于本轮对话的 ChatProvider。
+     * 默认使用 {@link ChatProvider#DEFAULT}；需要按会话解析绑定数据（角色/世界）的插件可重写本方法以挂载 per-session 设置。
      */
-    public ChatProvider chatToAiProvider() {
+    public ChatProvider chatToAiProvider(ChatSession chatSession) {
         return ChatProvider.DEFAULT;
+    }
+
+    /**
+     * 新建会话（MODE_CREATE）时是否允许自动切换到高级模型（pro）。
+     * 普通对话默认允许；绑定固定模型的插件端点（如角色）应重写为 false。
+     */
+    public boolean enableSwitchPro() {
+        return true;
     }
 
     /**
@@ -163,11 +172,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 }
 
                 // 处理会话
-                boolean enableSwitchPro = true;
-                if (chatToAiProvider().getEnableSwitchPro() != null) {
-                    enableSwitchPro = Boolean.TRUE.equals(chatToAiProvider().getEnableSwitchPro().get());
-                }
-                ServiceProcessor.ChatSessionModeParseResult parseResult = serviceProcessor.handleChatSession(request, safeSession, enableSwitchPro, sessionType());
+                ServiceProcessor.ChatSessionModeParseResult parseResult = serviceProcessor.handleChatSession(request, safeSession, enableSwitchPro(), sessionType());
 
                 // 处理请求
                 chatSession = parseResult.chatSession();
@@ -183,7 +188,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
                     WebSocketSession busSession = sessionMessageBus.wrap(safeSession, chatSession.getId());
 
-                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, busSession, chatToAiProvider());
+                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, busSession, chatToAiProvider(chatSession));
 
                     // 如果是新的会话并且不是定时任务，则生成标题
                     if (parseResult.isNewChat() && request.getCronId() == null) {

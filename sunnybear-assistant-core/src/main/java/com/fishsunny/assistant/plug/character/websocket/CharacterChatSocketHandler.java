@@ -9,7 +9,6 @@ package com.fishsunny.assistant.plug.character.websocket;
  */
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
@@ -24,6 +23,7 @@ import com.fishsunny.assistant.plug.character.service.CharacterGlossaryService;
 import com.fishsunny.assistant.plug.character.service.CharacterSessionBindings;
 import com.fishsunny.assistant.plug.character.tool.glossary.QueryGlossaryTool;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.websocket.ChatProvider;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import com.fishsunny.assistant.websocket.SessionMessageBus;
@@ -79,44 +79,40 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
     }
 
     @Override
-    public ChatProvider chatToAiProvider() {
+    public boolean enableSwitchPro() {
+        // 角色会话固定使用角色自己的模型，不允许自动切换 pro
+        return false;
+    }
 
+    /**
+     * 会话感知版 ChatProvider —— 角色的 AI 设置 / 助手名 / 头像按会话挂载，不再覆写全局 settings。
+     * 复用基类的 chatToAiProvider(ChatSession) 缝（ChatWebSocketHandler 真正执行对话处调用）。
+     */
+    @Override
+    public ChatProvider chatToAiProvider(ChatSession chatSession) {
+        CharacterInfo character = getCharacterInfo(chatSession);
+        AISettings charAi = parseCharacterAiSettings(character);
+
+        // 角色配置了 adapter + model 才使用角色自己的 AI 设置；否则 chat/chatPro 返回 null，
+        // 由 ChatProcessor 自动回落全局 chat/chat_pro bean（保留“未配置则继承全局”的语义）
+        boolean useCharAi = charAi != null
+                && StringUtils.hasText(charAi.getAdapterName())
+                && StringUtils.hasText(charAi.getModel());
+        AISettings effectiveCharAi = useCharAi ? charAi : null;
+
+        // 1. 系统提示词：preset + 角色设定（aiSettings.prompt），需要时追加角色词条表
         Function<ChatProvider.SystemProviderContext, String> systemProvider = context -> {
-            ChatSession chatSession = context.chatSession();
-
-            // 1. 通过 sessionId 找到绑定的角色
-            CharacterInfo character = getCharacterInfo(chatSession);
-
-            // 3. 拼接 preset + 角色设定（aiSettings.prompt）
             StringBuilder combined = new StringBuilder();
             String preset = character.getPreset();
             if (StringUtils.hasText(preset)) {
                 combined.append(preset).append("\n\n");
             }
 
-            String aiSettingsJson = character.getAiSettings();
-            if (StringUtils.hasText(aiSettingsJson)) {
-                try {
-                    AISettings charAi = super.objectMapper.readValue(aiSettingsJson, AISettings.class);
-                    if (StringUtils.hasText(charAi.getPrompt())) {
-                        combined.append(charAi.getPrompt());
-                    }
-                } catch (Exception e) {
-                    throw new RuntimeException("角色设定 JSON 解析失败");
-                }
+            if (charAi != null && StringUtils.hasText(charAi.getPrompt())) {
+                combined.append(charAi.getPrompt());
             }
 
-            Map<String, Boolean> tools = new HashMap<>();
-            if (StringUtils.hasText(character.getTools())) {
-                try {
-                    tools = super.objectMapper.readValue(character.getTools(), new TypeReference<Map<String, Boolean>>() {});
-                } catch (Exception e) {
-                    throw new RuntimeException("角色工具 JSON 解析失败");
-                }
-            }
-
-            if (Boolean.TRUE.equals(tools.get(QueryGlossaryTool.NAME))) {
-                // 4. 注入角色词条表（keyword + desc）
+            if (toolsEnabled(character, QueryGlossaryTool.NAME)) {
                 combined.append("\n\n## 角色词条表 (Character Glossary)\n");
                 List<CharacterGlossary> glossaries = glossaryService.listByCharacterId(character.getId());
                 if (glossaries != null && !glossaries.isEmpty()) {
@@ -138,41 +134,18 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
             return combined.toString();
         };
 
-        // 工具白名单过滤：严格按照 character_info.tools JSON 配置
+        // 2. 工具白名单过滤：严格按照 character_info.tools JSON 配置
         Function<ChatProvider.ToolProviderContext, List<StandardToolRegister>> toolProvider = ctx -> {
-            List<StandardToolRegister> toolRegisters = ctx.toolRegisters();
-            ChatSession ctxSession = ctx.chatSession();
-
-            CharacterInfo character = getCharacterInfo(ctxSession);
-
-            String toolsJson = character.getTools();
-
-            try {
-                JavaType mapType = objectMapper.getTypeFactory().constructMapType(Map.class, String.class, Boolean.class);
-                Map<String, Boolean> toolsMap = objectMapper.readValue(toolsJson, mapType);
-
-                return toolRegisters.stream()
-                        .filter(tr -> toolsMap.getOrDefault(tr.getFunction().getName(), false))
-                        .collect(Collectors.toList());
-            } catch (Exception e) {
-                log.warn("解析角色 [{}] 的 tools JSON 失败: {}", character.getId(), e.getMessage());
-                return List.of();
-            }
+            Map<String, Boolean> toolsMap = toolsEnabledMap(character);
+            return ctx.toolRegisters().stream()
+                    .filter(tr -> toolsMap.getOrDefault(tr.getFunction().getName(), false))
+                    .collect(Collectors.toList());
         };
 
-        // Context Hook
+        // 3. Context Hook：注入当前角色 + 会话战斗数据库 DataSource
         Function<Map<String, Object>, Map<String, Object>> contextProvider = ctx -> {
-            ChatSession ctxSession = (ChatSession) ctx.get("chatSession");
-            if (ctxSession == null) {
-                throw new RuntimeException("未找到会话");
-            }
-
-            // 获取当前会话绑定的角色
-            CharacterInfo character = getCharacterInfo(ctxSession);
             ctx.put("character", character);
-
-            // 将当前 session 的战斗数据库 DataSource 注入工具上下文
-            DataSource battleDs = battleDbManager.getDataSource(ctxSession.getId());
+            DataSource battleDs = battleDbManager.getDataSource(chatSession.getId());
             if (battleDs != null) {
                 ctx.put("battleDataSource", battleDs);
             }
@@ -187,8 +160,43 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                 .setSessionMessageProvider(CharacterChatSelectService::stripTagsFromMessages)
                 // assistant 回复生成后、落库前：启用 chat_select 时用 mission 模型生成新选项并追加
                 .setBeforeSaveAssistantProvider(this::beforeSaveAssistant)
-                .setEnableSlashCommand(() -> false)
-                .setEnableSwitchPro(() -> false);
+                // 角色会话固定用自己的模型（chat/chatPro 都指向角色自己的 aiSettings），助手名/头像取角色资料
+                .setSettingsSupplier(() -> new ChatProvider.Settings(effectiveCharAi, effectiveCharAi,
+                        new AssistantSettings()
+                                .setAssistantName(character.getName())
+                                .setAvatar(character.getAvatar())))
+                .setEnableSlashCommand(() -> false);
+    }
+
+    /** 解析角色 aiSettings JSON；为空或解析失败返回 null */
+    private AISettings parseCharacterAiSettings(CharacterInfo character) {
+        if (character == null || !StringUtils.hasText(character.getAiSettings())) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(character.getAiSettings(), AISettings.class);
+        } catch (Exception e) {
+            log.warn("解析角色 [{}] aiSettings JSON 失败: {}", character.getId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** 某工具开关是否开启（tools JSON 中该 key 为 true） */
+    private boolean toolsEnabled(CharacterInfo character, String toolName) {
+        return Boolean.TRUE.equals(toolsEnabledMap(character).get(toolName));
+    }
+
+    /** 解析角色 tools JSON（{"toolName": true/false}）；空/解析失败返回空 map */
+    private Map<String, Boolean> toolsEnabledMap(CharacterInfo character) {
+        Map<String, Boolean> toolsMap = new HashMap<>();
+        if (character != null && StringUtils.hasText(character.getTools())) {
+            try {
+                toolsMap = objectMapper.readValue(character.getTools(), new TypeReference<Map<String, Boolean>>() {});
+            } catch (Exception e) {
+                log.warn("解析角色 [{}] 的 tools JSON 失败: {}", character.getId(), e.getMessage());
+            }
+        }
+        return toolsMap;
     }
 
     /**

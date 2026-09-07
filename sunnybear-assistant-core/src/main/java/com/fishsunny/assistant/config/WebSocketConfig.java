@@ -1,9 +1,5 @@
 package com.fishsunny.assistant.config;
 
-import com.fishsunny.assistant.plug.android.service.AndroidBridgeService;
-import com.fishsunny.assistant.plug.character.websocket.CharacterChatSocketHandler;
-import com.fishsunny.assistant.plug.comfyui.service.ComfyUIBridgeService;
-import com.fishsunny.assistant.plug.world.websocket.WorldGroupChatSocketHandler;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,39 +8,26 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
+/**
+ * 核心 WebSocket 端点注册。
+ * <p>插件的 WS 端点由各插件自己的 config 注册（character / world / android / comfyui），
+ * 核心层不反向依赖插件 handler，此处仅保留核心聊天的 {@code /ws/chat} 端点与容器参数。
+ * <p>注意：{@code @EnableWebSocket} 保留在此，Spring 会收集容器内所有 {@link WebSocketConfigurer} bean
+ * 并逐个调用 {@code registerWebSocketHandlers}，因此插件的 config 无需再写 {@code @EnableWebSocket}。
+ */
 @Configuration
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final ChatWebSocketHandler chatWebSocketHandler;
-    private final CharacterChatSocketHandler characterChatSocketHandler;
-    private final WorldGroupChatSocketHandler worldGroupChatSocketHandler;
-    private final AndroidBridgeService androidBridgeService;
-    private final ComfyUIBridgeService comfyUIBridgeService;
 
-    public WebSocketConfig(ChatWebSocketHandler chatWebSocketHandler,
-                           CharacterChatSocketHandler characterChatSocketHandler,
-                           WorldGroupChatSocketHandler worldGroupChatSocketHandler,
-                           AndroidBridgeService androidBridgeService,
-                           ComfyUIBridgeService comfyUIBridgeService) {
+    public WebSocketConfig(ChatWebSocketHandler chatWebSocketHandler) {
         this.chatWebSocketHandler = chatWebSocketHandler;
-        this.characterChatSocketHandler = characterChatSocketHandler;
-        this.worldGroupChatSocketHandler = worldGroupChatSocketHandler;
-        this.androidBridgeService = androidBridgeService;
-        this.comfyUIBridgeService = comfyUIBridgeService;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(chatWebSocketHandler, "/ws/chat")
-                .setAllowedOrigins("*");
-        registry.addHandler(characterChatSocketHandler, "/ws/character-chat")
-                .setAllowedOrigins("*");
-        registry.addHandler(worldGroupChatSocketHandler, "/ws/world-chat")
-                .setAllowedOrigins("*");
-        registry.addHandler(androidBridgeService, "/android-bridge")
-                .setAllowedOrigins("*");
-        registry.addHandler(comfyUIBridgeService, "/comfyui-bridge")
                 .setAllowedOrigins("*");
     }
 

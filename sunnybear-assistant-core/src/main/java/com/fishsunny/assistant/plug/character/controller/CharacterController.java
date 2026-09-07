@@ -8,7 +8,6 @@ package com.fishsunny.assistant.plug.character.controller;
  * @Date 2026/7/9
  */
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.dto.RestResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
@@ -16,19 +15,13 @@ import com.fishsunny.assistant.plug.character.db.CharacterDbManager;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
 import com.fishsunny.assistant.plug.character.service.CharacterInfoService;
 import com.fishsunny.assistant.plug.character.service.CharacterSessionBindings;
-import com.fishsunny.assistant.settings.AISettings;
-import com.fishsunny.assistant.settings.AssistantSettings;
-import com.fishsunny.assistant.settings.UserSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,50 +38,18 @@ public class CharacterController {
     /** 角色设定最大长度 */
     private static final int MAX_SETTING_LENGTH = 50000;
 
-    private final ObjectMapper objectMapper;
     private final CharacterDbManager characterDbManager;
     private final CharacterInfoService characterInfoService;
     private final ChatSessionService chatSessionService;
-    private final AssistantSettings assistantSettings;
-    private final UserSettings userSettings;
-    private final AISettings chatAISettings;
-    private final String assistantSettingsPath;
-    private final String aiSettingsPath;
-    private final String userSettingsPath;
-    private final Map<String, AISettings> aiSettingsMap;
 
     @Autowired
     public CharacterController(
-            ObjectMapper objectMapper,
             CharacterDbManager characterDbManager,
             CharacterInfoService characterInfoService,
-            ChatSessionService chatSessionService,
-            AssistantSettings assistantSettings,
-            UserSettings userSettings,
-            @Qualifier(AISettings.CHAT) AISettings chatAISettings,
-            @Qualifier(AISettings.OCR) AISettings ocrAISettings,
-            @Qualifier(AISettings.MISSION) AISettings missionAISettings,
-            @Qualifier(AISettings.TASK) AISettings taskAISettings,
-            @Qualifier(AISettings.CUB) AISettings cubAISettings,
-            @Value("${assistant-settings.path:settings/assistant_settings.json}") String assistantSettingsPath,
-            @Value("${ai-settings.path:settings/ai_settings.json}") String aiSettingsPath,
-            @Value("${user-settings.path:settings/user_settings.json}") String userSettingsPath) {
-        this.objectMapper = objectMapper;
+            ChatSessionService chatSessionService) {
         this.characterDbManager = characterDbManager;
         this.characterInfoService = characterInfoService;
         this.chatSessionService = chatSessionService;
-        this.assistantSettings = assistantSettings;
-        this.userSettings = userSettings;
-        this.chatAISettings = chatAISettings;
-        this.assistantSettingsPath = assistantSettingsPath;
-        this.aiSettingsPath = aiSettingsPath;
-        this.userSettingsPath = userSettingsPath;
-        this.aiSettingsMap = new LinkedHashMap<>();
-        this.aiSettingsMap.put(AISettings.CHAT, chatAISettings);
-        this.aiSettingsMap.put(AISettings.OCR, ocrAISettings);
-        this.aiSettingsMap.put(AISettings.MISSION, missionAISettings);
-        this.aiSettingsMap.put(AISettings.TASK, taskAISettings);
-        this.aiSettingsMap.put(AISettings.CUB, cubAISettings);
     }
 
     // ==================== 角色 CRUD ====================
@@ -324,82 +285,24 @@ public class CharacterController {
     // ==================== 角色激活 ====================
 
     /**
-     * 激活角色 —— 将该角色的设定应用到 assistant settings 和 AI chat settings
+     * 进入角色对话的兼容入口。早期版本会把角色人设/外观覆写到全局 settings 文件，
+     * 现已废弃：角色的 AI 设置 / 外观改由 CharacterChatSocketHandler 按会话挂载，此端点不再写任何全局 settings。
      */
     @PostMapping("/activate")
     public RestResponse activate(@RequestParam("id") String id) {
         if (!StringUtils.hasText(id)) {
             return new RestResponse().error("角色 ID 不能为空");
         }
-        String characterId = id;
         try {
-            CharacterInfo character = characterInfoService.findById(characterId);
+            CharacterInfo character = characterInfoService.findById(id);
             if (character == null) {
                 return new RestResponse().error("角色不存在");
             }
-
-            // 1. 更新 AssistantSettings
-            assistantSettings.setAssistantName(character.getName());
-            if (StringUtils.hasText(character.getAvatar())) {
-                assistantSettings.setAvatar(character.getAvatar());
-            }
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(
-                    new File(assistantSettingsPath), assistantSettings);
-
-            // 2. 更新 AI Chat Settings（从 aiSettings JSON 解析完整参数，含 prompt）
-            if (StringUtils.hasText(character.getAiSettings())) {
-                try {
-                    AISettings charAi = objectMapper.readValue(character.getAiSettings(), AISettings.class);
-                    if (StringUtils.hasText(charAi.getPrompt())) {
-                        chatAISettings.setPrompt(charAi.getPrompt());
-                    }
-                    if (StringUtils.hasText(charAi.getAdapterName())) {
-                        chatAISettings.setAdapterName(charAi.getAdapterName());
-                    }
-                    if (StringUtils.hasText(charAi.getModel())) {
-                        chatAISettings.setModel(charAi.getModel());
-                    }
-                    chatAISettings.setStream(charAi.getStream());
-                    chatAISettings.setThinking(charAi.getThinking());
-                    chatAISettings.setTemperature(charAi.getTemperature());
-                    chatAISettings.setTop_p(charAi.getTop_p());
-                    chatAISettings.setMaxTokens(charAi.getMaxTokens());
-                    chatAISettings.setFrequencyPenalty(charAi.getFrequencyPenalty());
-                    chatAISettings.setPresencePenalty(charAi.getPresencePenalty());
-                } catch (Exception e) {
-                    log.warn("解析角色 [{}] aiSettings JSON 失败: {}", characterId, e.getMessage());
-                }
-            }
-            aiSettingsMap.put(AISettings.CHAT, chatAISettings);
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(
-                    new File(aiSettingsPath), aiSettingsMap);
-
-            // 3. 更新 UserSettings（背景图、主题色、透明度）
-            boolean userSettingsChanged = false;
-            if (StringUtils.hasText(character.getBackground())) {
-                userSettings.setBackground(character.getBackground());
-                userSettingsChanged = true;
-            }
-            if (StringUtils.hasText(character.getMainColor())) {
-                userSettings.setMainColor(character.getMainColor());
-                userSettingsChanged = true;
-            }
-            if (character.getOpacity() != null) {
-                userSettings.setOpacity(character.getOpacity());
-                userSettingsChanged = true;
-            }
-            if (userSettingsChanged) {
-                objectMapper.writerWithDefaultPrettyPrinter().writeValue(
-                        new File(userSettingsPath), userSettings);
-            }
-
-            log.info("角色 [{}] 已激活: name={}, aiSettings={}, mainColor={}, opacity={}, background={}",
-                    characterId, character.getName(), character.getAiSettings(),
-                    character.getMainColor(), character.getOpacity(), character.getBackground());
+            log.info("角色 [{}] 激活入口调用（无副作用，仅返回角色信息）", id);
             return new RestResponse().success(character);
         } catch (Exception e) {
-            log.error("激活角色失败", e);
-            return new RestResponse().error("激活角色失败: " + e.getMessage());
+            log.error("查询角色失败", e);
+            return new RestResponse().error("查询角色失败: " + e.getMessage());
         }
     }
 

@@ -442,7 +442,6 @@ public class WorldGroupChatService {
                 .setToolProvider(ctx -> List.of())
                 .setSettingsSupplier(() -> new ChatProvider.Settings(charAi, charAi, new AssistantSettings().setAssistantName(listener)))
                 .setEnableSlashCommand(() -> false)
-                .setEnableSwitchPro(() -> false)
                 .setBeforeSaveAssistantProvider((chatMessage -> {
                     String text = chatMessage.resolveText();
                     if (text.startsWith(listener + ":") || text.startsWith(listener + "：")) {
@@ -495,7 +494,6 @@ public class WorldGroupChatService {
                 .setToolProvider(ctx -> List.of())
                 .setSettingsSupplier(() -> new ChatProvider.Settings(null, null, new AssistantSettings().setAssistantName(narratorName)))
                 .setEnableSlashCommand(() -> false)
-                .setEnableSwitchPro(() -> false)
                 .setBeforeSaveAssistantProvider((chatMessage -> {
                     String text = chatMessage.resolveText();
                     if (text.startsWith(narratorName + ":") || text.startsWith(narratorName + "：")) {

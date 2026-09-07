@@ -36,7 +36,6 @@ public class ChatProvider {
     private Function<ChatMessage, ChatMessage> beforeSaveAssistantProvider;
     private Supplier<Settings> settingsSupplier;
     private Supplier<Boolean> enableSlashCommand;
-    private Supplier<Boolean> enableSwitchPro;
 
     public ChatProvider() {
     }
