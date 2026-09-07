@@ -18,11 +18,11 @@ const KnowledgeApiSettings = {
 
     template: `
     <div>
-        <div class="settings-item" @click="openDialog">
+        <div class="settings-item deprecated" @click="openDialog">
             <div class="settings-item-left">
                 <div class="settings-item-icon"><i data-lucide="link" style="width:16px;height:16px"></i></div>
                 <div class="settings-item-info">
-                    <span class="settings-item-label">知识库 API</span>
+                    <span class="settings-item-label">知识库 API<span class="deprecated-badge">已弃用</span></span>
                     <span class="settings-item-desc">{{ settings.model || '未配置' }}{{ settings.url ? ' · ' + settings.url : '' }}</span>
                 </div>
             </div>
@@ -39,6 +39,7 @@ const KnowledgeApiSettings = {
                     <span>知识库 API</span>
                 </div>
             </template>
+            <p class="deprecated-note">此配置（embedding / 向量检索）已弃用，仅作兼容保留，功能不受影响。</p>
             <el-form :model="knowledgeApiForm" label-width="80px" label-position="left">
                 <el-form-item label="模型">
                     <input class="settings-input" v-model="knowledgeApiForm.model" placeholder="例如: text-embedding-3-small">

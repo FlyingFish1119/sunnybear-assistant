@@ -11,11 +11,25 @@ const MemorySettings = {
     mixins: [SettingsCommon],
 
     props: {
+        settings: { type: Object, default: () => ({}) },
         mainColor: { type: String, default: 'lightsalmon' }
     },
 
     template: `
     <div>
+        <div class="settings-item">
+            <div class="settings-item-left">
+                <div class="settings-item-icon"><i data-lucide="brain" style="width:16px;height:16px"></i></div>
+                <div class="settings-item-info">
+                    <span class="settings-item-label">记忆注入</span>
+                    <span class="settings-item-desc">{{ enable ? '已开启 · 对话会自动注入核心记忆' : '已关闭 · 对话不再注入核心记忆' }}</span>
+                </div>
+            </div>
+            <div class="settings-item-right">
+                <el-switch v-model="enable" @change="saveMemoryEnable" :disabled="saving.memoryenable"></el-switch>
+            </div>
+        </div>
+
         <div class="settings-item" @click="openManage">
             <div class="settings-item-left">
                 <div class="settings-item-icon"><i data-lucide="list" style="width:16px;height:16px"></i></div>
@@ -98,14 +112,46 @@ const MemorySettings = {
             dialogs: { memorymanage: false, memoryedit: false },
             memoryList: [],
             memoryLoading: false,
-            memoryEditForm: { id: null, content: '' }
+            memoryEditForm: { id: null, content: '' },
+            enable: false
         };
+    },
+
+    watch: {
+        // 父组件刷新设置后同步开关状态
+        settings: {
+            handler(v) {
+                this.enable = !!(v && v.enable);
+            },
+            immediate: true
+        }
     },
 
     methods: {
         openManage() {
             this.dialogs.memorymanage = true;
             this.$nextTick(() => lucide.createIcons());
+        },
+
+        /* ---------- 记忆注入开关 ---------- */
+        async saveMemoryEnable(val) {
+            this.saving.memoryenable = true;
+            try {
+                const r = await API.settings.memorysettings.save({ enable: !!val });
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('保存成功');
+                    this.$emit('saved');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '保存失败');
+                    this.enable = !val;
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                this.enable = !val;
+                console.error(e);
+            } finally {
+                this.saving.memoryenable = false;
+            }
         },
 
         /* ---------- 记忆管理 ---------- */

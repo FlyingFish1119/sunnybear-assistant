@@ -25,6 +25,14 @@ public interface MemoryService {
     MemoryRecord addOrUpdateMemory(Integer id, String content, String mode);
 
     /**
+     * 根据 ID 查询记忆（不修改）
+     *
+     * @param id 记忆 ID
+     * @return 记忆记录，不存在则返回 null
+     */
+    MemoryRecord getMemoryById(Integer id);
+
+    /**
      * 根据 ID 删除记忆
      *
      * @param id 记忆 ID

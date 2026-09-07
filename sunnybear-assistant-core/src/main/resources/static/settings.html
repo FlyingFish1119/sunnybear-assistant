@@ -115,9 +115,9 @@
                 <span>知识库</span>
             </div>
             <div class="settings-card-body">
-                <knowledge-api-settings :settings="knowledgeApiSettings" @saved="fetchAllSettings"></knowledge-api-settings>
                 <knowledge-params-settings :settings="knowledgeSettings" @saved="fetchAllSettings"></knowledge-params-settings>
                 <knowledge-manage-settings :main-color="mainColor"></knowledge-manage-settings>
+                <knowledge-api-settings :settings="knowledgeApiSettings" @saved="fetchAllSettings"></knowledge-api-settings>
             </div>
         </div>
 
@@ -156,7 +156,7 @@
                 <span>记忆</span>
             </div>
             <div class="settings-card-body">
-                <memory-settings :main-color="mainColor"></memory-settings>
+                <memory-settings :settings="memorySettings" :main-color="mainColor" @saved="fetchAllSettings"></memory-settings>
             </div>
         </div>
 
@@ -185,6 +185,7 @@ const app = Vue.createApp({
             extensionScriptSettings: {},
             knowledgeApiSettings: {},
             knowledgeSettings: {},
+            memorySettings: {},
         }
     },
 
@@ -239,6 +240,7 @@ const app = Vue.createApp({
                 { key: 'extensionScriptSettings', url: 'settings/extensionscript/get' },
                 { key: 'knowledgeApiSettings', url: 'settings/knowledgeapi/get' },
                 { key: 'knowledgeSettings', url: 'settings/knowledgesettings/get' },
+                { key: 'memorySettings', url: 'settings/memorysettings/get' },
             ];
 
             const aiTypes = ['chat', 'chat_pro', 'ocr', 'mission', 'task', 'cub'];

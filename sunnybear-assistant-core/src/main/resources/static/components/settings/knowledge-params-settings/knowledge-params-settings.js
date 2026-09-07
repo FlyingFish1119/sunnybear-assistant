@@ -43,8 +43,12 @@ const KnowledgeParamsSettings = {
                 <el-form-item label="启用">
                     <el-switch v-model="knowledgeForm.enable" active-text="开启" inactive-text="关闭"></el-switch>
                 </el-form-item>
-                <el-form-item label="相似度阈值">
+
+                <div class="form-group-title deprecated-zone-title">已弃用</div>
+
+                <el-form-item label="相似度阈值" class="deprecated">
                     <el-slider v-model="knowledgeForm.similarityThreshold" :min="0" :max="1" :step="0.01" show-input :format-tooltip="v => v.toFixed(2)" style="width: calc(100% - 130px)"></el-slider>
+                    <div class="deprecated-hint">阈值属向量检索相关，已弃用，仅作兼容保留。</div>
                 </el-form-item>
             </el-form>
             <template #footer>

@@ -17,6 +17,7 @@ import com.fishsunny.assistant.engine.tool.instance.os.ExtensionScriptTool;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.KnowledgeSettings;
+import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.settings.UserSettings;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
 import com.fishsunny.assistant.utils.image.ScaleImageHelper;
@@ -60,10 +61,12 @@ public class SettingsController {
     private final String aiSettingsPath;
     private final String toolSettingsPath;
     private final String knowledgeSettingsPath;
+    private final String memorySettingsPath;
 
     // ========================= 设置 Bean =========================
     private final UserSettings userSettings;
     private final AssistantSettings assistantSettings;
+    private final MemorySettings memorySettings;
     private final Map<String, AISettings> aiSettingsMap;
     private final Map<String, Object> toolSettingsMap;
     private final Map<String, Object> knowledgeSettingsMap;
@@ -76,8 +79,10 @@ public class SettingsController {
             @Value("${ai-settings.path:settings/ai_settings.json}") String aiSettingsPath,
             @Value("${tool-settings.path:settings/tool_settings.json}") String toolSettingsPath,
             @Value("${knowledge-settings.path:settings/knowledge_settings.json}") String knowledgeSettingsPath,
+            @Value("${memory-settings.path:settings/memory_settings.json}") String memorySettingsPath,
             UserSettings userSettings,
             AssistantSettings assistantSettings,
+            MemorySettings memorySettings,
             @Qualifier(AISettings.CHAT) AISettings chatAISettings,
             @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
             @Qualifier(AISettings.OCR) AISettings ocrAISettings,
@@ -103,8 +108,10 @@ public class SettingsController {
         this.aiSettingsPath = aiSettingsPath;
         this.toolSettingsPath = toolSettingsPath;
         this.knowledgeSettingsPath = knowledgeSettingsPath;
+        this.memorySettingsPath = memorySettingsPath;
         this.userSettings = userSettings;
         this.assistantSettings = assistantSettings;
+        this.memorySettings = memorySettings;
         this.aiSettingsMap = new LinkedHashMap<>();
         this.aiSettingsMap.put(AISettings.CHAT, chatAISettings);
         this.aiSettingsMap.put(AISettings.CHAT_PRO, chatProAISettings);
@@ -604,6 +611,28 @@ public class SettingsController {
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(knowledgeSettingsPath), knowledgeSettingsMap);
         } catch (Exception e) {
+            return new RestResponse().error("保存失败");
+        }
+        return new RestResponse().success("保存成功");
+    }
+
+    // ==================== 记忆设置 ====================
+
+    @RequestMapping("/memorysettings/get")
+    public RestResponse getMemorySettings() {
+        return new RestResponse().success(memorySettings);
+    }
+
+    @PostMapping("/memorysettings/save")
+    public RestResponse saveMemorySettings(@RequestBody(required = false) MemorySettings settings) {
+        if (settings == null) {
+            return new RestResponse().error("Invalid settings");
+        }
+        memorySettings.setEnable(settings.getEnable() != null ? settings.getEnable() : false);
+        try {
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(memorySettingsPath), memorySettings);
+        } catch (Exception e) {
+            log.error("保存记忆设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");

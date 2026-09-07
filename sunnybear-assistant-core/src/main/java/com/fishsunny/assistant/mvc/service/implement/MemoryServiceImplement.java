@@ -57,6 +57,14 @@ public class MemoryServiceImplement implements MemoryService {
     }
 
     @Override
+    public MemoryRecord getMemoryById(Integer id) {
+        if (id == null) {
+            return null;
+        }
+        return memoryRepository.selectById(id);
+    }
+
+    @Override
     public MemoryRecord deleteMemory(Integer id) {
         if (id == null) {
             throw new IllegalArgumentException("id 不能为空");

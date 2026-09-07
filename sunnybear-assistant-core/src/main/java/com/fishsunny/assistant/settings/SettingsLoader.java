@@ -51,6 +51,7 @@ public class SettingsLoader {
     private static final String AI_SETTINGS_JSON = "ai_settings.json";
     private static final String TOOL_SETTINGS_JSON = "tool_settings.json";
     private static final String KNOWLEDGE_SETTINGS_JSON = "knowledge_settings.json";
+    private static final String MEMORY_SETTINGS_JSON = "memory_settings.json";
 
     // ============================== 字段 & 构造 ==============================
 
@@ -63,6 +64,7 @@ public class SettingsLoader {
     private String aiSettingsPath;
     private String toolSettingsPath;
     private String knowledgeSettingsPath;
+    private String memorySettingsPath;
 
     @PostConstruct
     public void init() {
@@ -71,6 +73,7 @@ public class SettingsLoader {
         aiSettingsPath = basePath + "/" + AI_SETTINGS_JSON;
         toolSettingsPath = basePath + "/" + TOOL_SETTINGS_JSON;
         knowledgeSettingsPath = basePath + "/" + KNOWLEDGE_SETTINGS_JSON;
+        memorySettingsPath = basePath + "/" + MEMORY_SETTINGS_JSON;
     }
 
     private final ObjectMapper objectMapper;
@@ -301,6 +304,40 @@ public class SettingsLoader {
     public KnowledgeSettings knowledgeSettings() {
         initKnowledgeSettingsFile();
         return objectMapper.convertValue(knowledgeSettingsCache.get(KnowledgeSettings.SETTINGS), KnowledgeSettings.class);
+    }
+
+    // ============================== 记忆设置 ==============================
+
+    /**
+     * 读取并解析记忆设置文件，装配为 Spring Bean。
+     * 记忆注入默认开启（enable=true），与旧版本“记忆总是注入”行为一致。
+     */
+    @Bean
+    public MemorySettings memorySettings() {
+        File settingsFile = new File(memorySettingsPath);
+
+        if (!settingsFile.exists()) {
+            log.warn("记忆设置文件不存在: {}，将使用默认设置（记忆注入开启）", settingsFile.getAbsolutePath());
+            return new MemorySettings().setEnable(true);
+        }
+        if (!settingsFile.isFile()) {
+            log.warn("记忆设置路径不是一个有效的文件: {}，将使用默认设置（记忆注入开启）", settingsFile.getAbsolutePath());
+            return new MemorySettings().setEnable(true);
+        }
+
+        try {
+            MemorySettings settings = objectMapper.readValue(settingsFile, MemorySettings.class);
+            log.info("记忆设置文件加载成功: {}，内容: enable={}", settingsFile.getAbsolutePath(),
+                    settings == null ? null : settings.getEnable());
+            if (settings == null) {
+                return new MemorySettings().setEnable(true);
+            }
+            return settings;
+        } catch (IOException e) {
+            log.error("读取记忆设置文件失败: {}，原因: {}，将使用默认设置（记忆注入开启）",
+                    settingsFile.getAbsolutePath(), e.getMessage(), e);
+            return new MemorySettings().setEnable(true);
+        }
     }
 
     // ============================== 工具设置 ==============================

@@ -182,6 +182,10 @@ const API = (function () {
                 get: function () { return get('settings/knowledgesettings/get'); },
                 save: function (data) { return post('settings/knowledge/save', data); }
             },
+            memorysettings: {
+                get: function () { return get('settings/memorysettings/get'); },
+                save: function (data) { return post('settings/memorysettings/save', data); }
+            },
             adapters: {
                 list: function () { return get('settings/adapters/list'); }
             }

@@ -29,6 +29,7 @@ import com.fishsunny.assistant.mvc.service.KnowledgeService;
 import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
+import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import com.fishsunny.assistant.utils.ToolExecuteNotifier;
@@ -58,6 +59,7 @@ public class ChatProcessor {
     private final ChatMessageService chatMessageService;
     private final ObjectMapper objectMapper;
     private final AssistantSettings assistantSettings;
+    private final MemorySettings memorySettings;
     private final AISettings aiSettings;
     private final AISettings chatProAISettings;
     private final ChatHttpHandler chatHttpHandler;
@@ -76,6 +78,7 @@ public class ChatProcessor {
     public ChatProcessor(ChatMessageService chatMessageService,
                             ObjectMapper objectMapper,
                             AssistantSettings assistantSettings,
+                            MemorySettings memorySettings,
                             ToolExecutor toolExecutor,
                             KnowledgeService knowledgeService,
                             MemoryService memoryService,
@@ -88,6 +91,7 @@ public class ChatProcessor {
         this.chatMessageService = chatMessageService;
         this.objectMapper = objectMapper;
         this.assistantSettings = assistantSettings;
+        this.memorySettings = memorySettings;
         this.toolExecutor = toolExecutor;
         this.knowledgeService = knowledgeService;
         this.memoryService = memoryService;
@@ -218,6 +222,10 @@ public class ChatProcessor {
     }
 
     private void injectMemoryPrompt(StringBuilder systemPrompt) {
+        // 记忆注入开关：关闭后对话不再注入记忆（不影响记忆 CRUD 与问候语个性化）
+        if (!Boolean.TRUE.equals(memorySettings.getEnable())) {
+            return;
+        }
         try {
             String memorySection = memoryService.buildMemorySection();
             if (StringUtils.hasText(memorySection)) {

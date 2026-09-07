@@ -448,6 +448,66 @@ body {
     flex-shrink: 0;
 }
 
+/* ============================================
+   已弃用 视觉
+   ============================================ */
+
+/* 条目/文字行内的「已弃用」小标签 */
+.deprecated-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #f5f7fa;
+    border: 1px solid #dcdfe6;
+    color: #909399;
+    font-size: 11px;
+    line-height: 1.5;
+    font-weight: 400;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
+}
+
+/* 整行弱化（embedding 配置行等） */
+.settings-item.deprecated {
+    opacity: 0.78;
+}
+
+/* 对话框内的弃用说明条 */
+.deprecated-note {
+    margin: 0 0 14px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #f5f7fa;
+    border: 1px dashed #dcdfe6;
+    color: #909399;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+/* 表单内「已弃用」分组标题 */
+.deprecated-zone-title {
+    margin-top: 8px;
+    color: #b0b3b8;
+}
+
+.deprecated-zone-title::after {
+    content: ' · 将在未来版本移除';
+    font-weight: 400;
+    letter-spacing: 0.2px;
+}
+
+.settings-dialog .el-form-item.deprecated {
+    opacity: 0.72;
+}
+
+.deprecated-hint {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
 /* ---- 对话框底部按钮 ---- */
 .dialog-footer {
     display: flex;
