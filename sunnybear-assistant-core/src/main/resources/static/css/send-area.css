@@ -13,6 +13,10 @@
     justify-content: center;
     padding: 12px 0;
     gap: 8px;
+    /* 两个按钮的宽度基准：移动端在下方 @media 里统一覆盖这两个变量。
+       看板熊直接按 --btn-w 缩放 → 按钮多宽，熊就多宽 */
+    --attach-w: 48px;
+    --btn-w: 100px;
 }
 
 /* ---- 发送行（textarea + button） ---- */
@@ -21,11 +25,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative; /* 看板熊(.send-area-mascot)的定位锚点：切割线=本元素顶边 */
 }
 
 /* ---- 上传按钮（左侧，参考发送按钮但更窄） ---- */
 .send-area-attach-button {
-    width: 48px;
+    width: var(--attach-w, 48px);
     background: var(--main-color);
     color: #fff;
     border: none;
@@ -69,7 +74,7 @@
 /* ---- 发送/停止按钮 ---- */
 .send-area-submit-button {
     height: auto;
-    width: 100px;
+    width: var(--btn-w, 100px);
     background: var(--main-color);
     color: #fff;
     border: none;
@@ -91,7 +96,7 @@
 
 /* ---- 文件 chips 区域（宽度与 textarea+button 一致，确保左对齐） ---- */
 .file-chips-area {
-    width: calc(50% + 100px + 48px); /* textarea + send btn + attach btn */
+    width: calc(50% + var(--btn-w, 100px) + var(--attach-w, 48px)); /* textarea + send btn + attach btn */
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -198,11 +203,84 @@
 .message-attachment-file a:hover { background: rgba(0,0,0,0.08); }
 
 /* ============================================
+   看板熊：趴在“发送按钮”顶沿上的装饰（icon/signboard_bear_2.png + icon/signboard_bear_1.png）
+   两张图从同一原图等比切出，等宽显示即可无缝拼上；
+   宽度都 = 发送按钮宽(--btn-w) − 10px：按钮桌面 100px、小屏 65px，
+   熊跟着自动缩放，任何地方都不用再单独调尺寸
+   切割线 = 输入行(.send-area-input-row)顶边（= 按钮顶边）：
+     · 熊身 垫在输入区后面，从切割线向上探出  z:0
+     · 爪爪 搭在切割线上，垂在按钮前面        z:3
+   ⚠ .send-area-mascot 自身不要设 z-index：设了会创建堆叠
+     上下文，内部爪爪将永远盖不住输入区控件
+   ============================================ */
+.send-area-mascot {
+    /* 熊身/爪爪中心对准“发送按钮”中心：发送行三段居中排列，
+       按钮中心 = 行中点的右移量 = 行宽 × (1+输入框占比)/2 + 附件按钮宽/2
+       桌面（输入框占 50%）: 50% + 25% + 48px/2 = 75% + 24px
+       小屏（输入框占 70%）在下方 @media 里改 */
+    --cx: calc(75% + 24px);
+    position: absolute;
+    inset: 0;
+    pointer-events: none; /* 纯装饰，绝不拦截输入框/按钮的点击 */
+
+    /* 彩蛋默认隐藏：透明 + 沉到按钮下方的待命位；
+       连按 10 次 b 加上 .mascot-visible 弹出趴好，再按 10 次回落消失 */
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+/* 召唤态：先窜出再回落，像探出脑袋“趴”到切割线上 */
+.send-area-mascot.mascot-visible {
+    opacity: 1;
+    transform: translateY(0);
+    animation: mascot-bounce-in 0.65s ease-out;
+}
+
+@keyframes mascot-bounce-in {
+    0%   { opacity: 0; transform: translateY(20px); }
+    50%  { opacity: 1; transform: translateY(-10px); }
+    75%  { transform: translateY(4px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+/* 熊身、爪爪同一宽度：都 = 发送按钮宽 − 10px，等宽即无缝拼上 */
+.send-area-mascot .mascot-body,
+.send-area-mascot .mascot-paws {
+    position: absolute;
+    left: var(--cx);
+    width: calc(var(--btn-w, 100px) - 10px);
+    transform: translateX(-50%);
+}
+
+/* 熊身：垫在输入区后面，底边贴切割线从上面探出 */
+.send-area-mascot .mascot-body {
+    bottom: 100%;
+    z-index: 0;
+}
+
+/* 爪爪：搭在切割线上，垂在按钮前面 */
+.send-area-mascot .mascot-paws {
+    top: 0;
+    z-index: 3;
+}
+
+/* 输入区控件垫到熊身之上（爪爪 z:3 仍盖在最前的按钮沿上） */
+.send-area-attach-button,
+.send-area-textarea,
+.send-area-submit-button,
+.file-chips-area,
+.greeting-banner {
+    position: relative;
+    z-index: 1;
+}
+
+/* ============================================
    移动端适配
    ============================================ */
 @media (max-width: 768px) {
     .send-area-attach-button {
-        width: 34px;
+        width: var(--attach-w, 34px);
         min-width: 34px;
     }
 
@@ -214,17 +292,24 @@
     }
 
     .send-area-submit-button {
-        width: 65px;
+        width: var(--btn-w, 65px);
         min-width: 50px;
     }
 
     .send-area-container {
         width: 92%;
         padding: 8px 0;
+        --attach-w: 34px;
+        --btn-w: 65px; /* 按钮一缩，看板熊跟着缩 */
     }
 
     .file-chips-area {
-        width: calc(70% + 65px + 34px);
+        width: calc(70% + var(--btn-w, 65px) + var(--attach-w, 34px));
+    }
+
+    /* 小屏输入框占 70%，熊中心同步跟到按钮中心：50% + 35% + 34px/2 = 85% + 17px */
+    .send-area-mascot {
+        --cx: calc(85% + 17px);
     }
 
     .drag-overlay-content {

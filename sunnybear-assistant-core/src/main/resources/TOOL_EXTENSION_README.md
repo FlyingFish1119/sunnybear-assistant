@@ -149,5 +149,5 @@ AI 通过 `extension_script_tool` 工具调用脚本：
 | 超时时间 | 10 秒 | 超过后强制终止 |
 | 安全输出大小 | 8 KB | 超过后拦截返回 |
 | 最大输出大小 | 32 KB | 硬限制，不可跳过 |
-
+                                       
 可在 `settings/tool_settings.json` 中调整这些值。

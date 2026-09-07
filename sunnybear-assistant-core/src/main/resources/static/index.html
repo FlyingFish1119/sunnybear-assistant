@@ -332,6 +332,14 @@
                 @drag-over-change="isChange => dragOver = isChange">
             </file-upload>
             <div class="send-area-input-row">
+                <!-- 看板熊彩蛋：趴在“发送按钮”顶沿上，宽度跟随按钮（样式见 css/send-area.css）。
+                     连按 10 次 b 键召唤/送走，显隐状态记入 localStorage，刷新后保持。
+                     img 的 width 属性仅作 CSS 未加载时的兜底 -->
+                <div class="send-area-mascot" aria-hidden="true"
+                     :class="{ 'mascot-visible': mascotVisible }">
+                    <img class="mascot-body" src="icon/signboard_bear/signboard_bear_2.png" alt="" width="100">
+                    <img class="mascot-paws" src="icon/signboard_bear/signboard_bear_1.png" alt="" width="100">
+                </div>
                 <button class="send-area-attach-button" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
                     <i data-lucide="paperclip" style="width:18px;height:18px"></i>
                 </button>
@@ -462,6 +470,8 @@
                 // Agent Log 侧边框
                 agentLogs: [],
                 agentLogVisible: false,
+                // 看板熊彩蛋（连按 10 次 b 切换）显隐：状态持久化到 localStorage
+                mascotVisible: localStorage.getItem('assistant-mascot-visible') === '1',
             }
         },
 
@@ -1631,6 +1641,21 @@
         mounted() {
             lucide.createIcons();
             this.init();
+            // 看板熊彩蛋：连按 10 次 b → 召唤/送走（中间按了别的键就打断重计；长按连发不计）
+            this._mascotBKeyCount = 0;
+            window.addEventListener('keydown', (e) => {
+                if (e.repeat || e.isComposing || e.keyCode === 229) return;
+                if (e.key.toLowerCase() === 'b') {
+                    this._mascotBKeyCount++;
+                    if (this._mascotBKeyCount >= 10) {
+                        this._mascotBKeyCount = 0;
+                        this.mascotVisible = !this.mascotVisible;
+                        localStorage.setItem('assistant-mascot-visible', this.mascotVisible ? '1' : '0');
+                    }
+                } else {
+                    this._mascotBKeyCount = 0;
+                }
+            });
             // 代码块复制按钮（v-html 生成，无法用 Vue @click，走事件委托）
             document.addEventListener('click', (e) => {
                 const btn = e.target.closest('.code-copy-btn');
