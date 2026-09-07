@@ -85,6 +85,11 @@ public class ChatHttpHandler {
         boolean safeStream = stream != null && stream;
         AIAdapter adapter = adapterFactory.getAdapter(adapterName, safeStream);
 
+        // 空闲/无效信息超时只作用于流式 SSE：流式对端靠有效 data 消息/keep-alive 保活，
+        // 静默才判定超时。非流式是普通 HTTP 整包响应，本身没有保活机制，服务端思考较久时
+        // 迟迟不发体属正常现象，不应被误判为"无效信息静默"，故非流式不启用该保护（无限等待）。
+        long idleMillis = safeStream ? idleTimeoutMillis : 0;
+
         // 泵线程把底层流的行按顺序推入有界队列：对端完全静默时主线程仍能按空闲超时醒来
         // 并放弃连接，而不是无限阻塞在流的迭代器上（Stream.iterator().hasNext() 不支持超时）。
         // connect 也放进泵线程，响应头迟迟不返回时主线程同样会被超时释放。
@@ -97,7 +102,6 @@ public class ChatHttpHandler {
         pump.setDaemon(true);
         pump.start();
 
-        long idleMillis = idleTimeoutMillis;
         long deadline = idleMillis > 0 ? System.currentTimeMillis() + idleMillis : 0;
         AIResponse lastRes = null;
         try {
