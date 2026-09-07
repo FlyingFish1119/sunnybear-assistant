@@ -104,6 +104,7 @@ public class AIAdapterFactory {
         AIAdapterOption option = new AIAdapterOption()
                 .setBaseUrl(register.getBaseUrl())
                 .setApiKey(register.getApiKey())
+                .setHeaders(register.getHeaders())
                 .setMasterReqCls(register.getMasterReqCls())
                 .setTargetReqCls(register.getTargetReqCls())
                 .setMasterRespCls(register.getMasterRespCls())

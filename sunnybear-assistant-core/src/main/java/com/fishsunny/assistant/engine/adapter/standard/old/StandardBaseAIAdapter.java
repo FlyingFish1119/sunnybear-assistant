@@ -75,11 +75,11 @@ public abstract class StandardBaseAIAdapter extends AIAdapter {
 
     @Override
     protected Stream<String> establishHttpClient(AIRequest request) throws Exception {
-        HttpRequest httpRequest = HttpRequest.newBuilder()
+        HttpRequest httpRequest = withCustomHeaders(HttpRequest.newBuilder()
                 .uri(URI.create(super.baseUrl))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + super.apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request))))
                 .build();
 
         HttpResponse<Stream<String>> response = super.httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());

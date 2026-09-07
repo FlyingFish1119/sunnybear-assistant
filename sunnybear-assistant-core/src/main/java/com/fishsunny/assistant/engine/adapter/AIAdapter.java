@@ -7,7 +7,9 @@ import lombok.Getter;
 import lombok.experimental.Accessors;
 
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 @Getter
@@ -19,6 +21,9 @@ public abstract class AIAdapter {
     protected String baseUrl;
 
     protected String apiKey;
+
+    /** 自定义请求头，建立连接时随请求带上；Content-Type/Authorization 等基础头由各协议适配器自行添加 */
+    protected Map<String, String> headers;
 
     protected Class<? extends AIRequest> masterReqCls;
 
@@ -63,12 +68,24 @@ public abstract class AIAdapter {
     public AIAdapter(AIAdapterOption option) throws Exception {
         this.baseUrl = option.getBaseUrl();
         this.apiKey = option.getApiKey();
+        this.headers = option.getHeaders();
         this.masterReqCls = option.getMasterReqCls();
         this.targetReqCls = option.getTargetReqCls();
         this.masterRespCls = option.getMasterRespCls();
         this.targetRespCls = option.getTargetRespCls();
         this.httpClient = option.getHttpClient();
         checkCls(masterReqCls, targetReqCls, masterRespCls, targetRespCls);
+    }
+
+    /**
+     * 将配置的自定义 headers 附加到 HttpRequest 构建器（建连处先添加基础头再调用本方法）。
+     * 未配置自定义 header 时直接返回原构建器。
+     */
+    protected final HttpRequest.Builder withCustomHeaders(HttpRequest.Builder builder) {
+        if (this.headers != null) {
+            this.headers.forEach(builder::header);
+        }
+        return builder;
     }
 
     /**

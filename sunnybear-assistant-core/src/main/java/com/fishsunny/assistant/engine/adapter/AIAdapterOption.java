@@ -14,6 +14,7 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 
 import java.net.http.HttpClient;
+import java.util.Map;
 
 @Data
 @Accessors(chain = true)
@@ -22,6 +23,9 @@ public class AIAdapterOption {
     protected String baseUrl;
 
     protected String apiKey;
+
+    /** 自定义请求头，建立连接时随请求带上；Content-Type/Authorization 等基础头由适配器自行添加 */
+    protected Map<String, String> headers;
 
     protected Class<? extends AIRequest> masterReqCls;
 

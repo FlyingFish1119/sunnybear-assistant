@@ -21,7 +21,9 @@ import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class ExternalAdapterConfigLoader {
@@ -47,6 +49,7 @@ public class ExternalAdapterConfigLoader {
                     .setApiName(text(node, "apiName"))
                     .setBaseUrl(resolve(text(node, "baseUrl")))
                     .setApiKey(resolve(text(node, "apiKey")))
+                    .setHeaders(headers(node))
                     .setStream(node.has("stream") ? node.get("stream").asBoolean() : null)
                     .setAdapterCls(loadClass(node, "adapterCls", AIAdapter.class))
                     .setMasterReqCls(loadClass(node, "masterReqCls", AIRequest.class))
@@ -61,6 +64,18 @@ public class ExternalAdapterConfigLoader {
     private String text(JsonNode node, String field) {
         JsonNode value = node.get(field);
         return value == null || value.isNull() ? null : value.asText();
+    }
+
+    /** 解析自定义 headers（对象节点，key/value 均可含 ${ENV} 占位符） */
+    private Map<String, String> headers(JsonNode node) {
+        JsonNode value = node.get("headers");
+        if (value == null || !value.isObject()) {
+            return null;
+        }
+        Map<String, String> headers = new LinkedHashMap<>();
+        value.fields().forEachRemaining(entry ->
+                headers.put(resolve(entry.getKey()), resolve(entry.getValue().isNull() ? null : entry.getValue().asText())));
+        return headers;
     }
 
     /** 解析 ${ENV} 占位符（未定义的保持原样） */
