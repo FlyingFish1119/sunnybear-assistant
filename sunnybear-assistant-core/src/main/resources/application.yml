@@ -99,7 +99,7 @@ engine:
           server-name: Context7 v4.0.3
           timeout-s: 30
   chat:
-    idle-timeout-s: 30
+    idle-timeout-s: 45
   adapter-register:
     register:
       # Kimi（Moonshot）流式
@@ -173,6 +173,8 @@ engine:
         baseUrl: https://opencode.ai/zen/go/v1/chat/completions
         apiKey: ${OPEN_CODE_API_KEY:}
         stream: false
+        headers:
+          x-opencode-session: ses-sunnybear-go
         adapterCls: com.fishsunny.assistant.engine.adapter.standard.multimodal.MultimodalAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
         targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.multimodal.MultimodalAIRequest
@@ -184,6 +186,8 @@ engine:
         baseUrl: https://opencode.ai/zen/go/v1/chat/completions
         apiKey: ${OPEN_CODE_API_KEY:}
         stream: true
+        headers:
+          x-opencode-session: ses-sunnybear-go
         adapterCls: com.fishsunny.assistant.engine.adapter.standard.multimodal.MultimodalStreamAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
         targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.multimodal.MultimodalAIRequest
