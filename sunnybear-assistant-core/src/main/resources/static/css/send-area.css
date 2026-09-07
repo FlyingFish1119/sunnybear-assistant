@@ -210,8 +210,10 @@
    切割线 = 输入行(.send-area-input-row)顶边（= 按钮顶边）：
      · 熊身 垫在输入区后面，从切割线向上探出  z:0
      · 爪爪 搭在切割线上，垂在按钮前面        z:3
-   ⚠ .send-area-mascot 自身不要设 z-index：设了会创建堆叠
-     上下文，内部爪爪将永远盖不住输入区控件
+   ⚠ .send-area-mascot 自身不要设 z-index / opacity / transform：
+     这些都会创建堆叠上下文，把整只熊关进一层，
+     爪爪(z:3)将永远盖不住输入区控件(z:1)——下半截会消失。
+     彩蛋的显隐动画只能做在两张 img 上（见 .mascot-body/.mascot-paws 共用规则）
    ============================================ */
 .send-area-mascot {
     /* 熊身/爪爪中心对准“发送按钮”中心：发送行三段居中排列，
@@ -222,35 +224,38 @@
     position: absolute;
     inset: 0;
     pointer-events: none; /* 纯装饰，绝不拦截输入框/按钮的点击 */
-
-    /* 彩蛋默认隐藏：透明 + 沉到按钮下方的待命位；
-       连按 10 次 b 加上 .mascot-visible 弹出趴好，再按 10 次回落消失 */
-    opacity: 0;
-    transform: translateY(24px);
-    transition: opacity 0.5s ease, transform 0.5s ease;
 }
 
-/* 召唤态：先窜出再回落，像探出脑袋“趴”到切割线上 */
-.send-area-mascot.mascot-visible {
-    opacity: 1;
-    transform: translateY(0);
-    animation: mascot-bounce-in 0.65s ease-out;
-}
-
-@keyframes mascot-bounce-in {
-    0%   { opacity: 0; transform: translateY(20px); }
-    50%  { opacity: 1; transform: translateY(-10px); }
-    75%  { transform: translateY(4px); }
-    100% { opacity: 1; transform: translateY(0); }
-}
-
-/* 熊身、爪爪同一宽度：都 = 发送按钮宽 − 10px，等宽即无缝拼上 */
+/* 熊身、爪爪同一宽度：都 = 发送按钮宽 − 10px，等宽即无缝拼上。
+   彩蛋默认隐藏：透明 + 整体悬在按钮上方的待命位；
+   连按 10 次 b 加 .mascot-visible 落下趴好，再按 10 次抬升离开。
+   ⚠ 显隐位移只能向上走：熊身垫在输入控件后面(z:0)，从下方冒出来时
+     下沿会被控件挡掉一截，两半图片就“脱节”了——所以必须从天而降
+   translateX(-50%) 是对齐按钮中心的，显隐的位移并进同一个 transform */
 .send-area-mascot .mascot-body,
 .send-area-mascot .mascot-paws {
     position: absolute;
     left: var(--cx);
     width: calc(var(--btn-w, 100px) - 10px);
-    transform: translateX(-50%);
+    opacity: 0;
+    transform: translate(-50%, -80px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+/* 召唤态：从上方落下，落在切割线上时轻轻回弹一下趴稳 */
+.send-area-mascot.mascot-visible .mascot-body,
+.send-area-mascot.mascot-visible .mascot-paws {
+    opacity: 1;
+    transform: translate(-50%, 0);
+    animation: mascot-drop-in 0.7s ease-out;
+}
+
+@keyframes mascot-drop-in {
+    0%   { opacity: 0; transform: translate(-50%, -80px); }
+    50%  { opacity: 1; transform: translate(-50%, 0); }
+    66%  { transform: translate(-50%, -9px); }
+    80%  { transform: translate(-50%, 0); }
+    100% { opacity: 1; transform: translate(-50%, 0); }
 }
 
 /* 熊身：垫在输入区后面，底边贴切割线从上面探出 */
