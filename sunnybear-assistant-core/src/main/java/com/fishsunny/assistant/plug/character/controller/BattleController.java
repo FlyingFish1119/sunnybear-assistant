@@ -78,4 +78,11 @@ public class BattleController {
             future.complete(null);
         }
     }
+
+    // ======================== 只读查询（供总线重放等场景判断该回合是否仍待玩家行动） ========================
+
+    /** 该会话是否仍挂着等待玩家提交的回合行动（未被提交 / 未超时 / 未清理） */
+    public static boolean isActionPending(String sessionId) {
+        return sessionId != null && pendingActions.containsKey(sessionId);
+    }
 }

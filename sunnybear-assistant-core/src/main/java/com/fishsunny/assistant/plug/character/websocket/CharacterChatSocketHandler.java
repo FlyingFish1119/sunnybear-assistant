@@ -9,12 +9,15 @@ package com.fishsunny.assistant.plug.character.websocket;
  */
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
+import com.fishsunny.assistant.plug.character.constant.BattleControlSign;
+import com.fishsunny.assistant.plug.character.controller.BattleController;
 import com.fishsunny.assistant.plug.character.db.BattleDbManager;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
@@ -87,6 +90,33 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
     public boolean enableSwitchPro() {
         // 角色会话固定使用角色自己的模型，不允许自动切换 pro
         return false;
+    }
+
+    /**
+     * 扩展基类重放过滤：叠加角色战斗交互帧的判断。
+     * 战斗工具每回合先推 canAct=true（轮到玩家行动）的回合帧，随后阻塞等待玩家提交行动
+     * （BattleController 以 sessionId 为键、最长等待 10 分钟），行动提交后才继续推 canAct=false 的推进帧。
+     * 因此 canAct=true 帧只有在服务端仍等待该会话行动时才应重放；否则重放会把一个已提交/已超时、
+     * 无法再提交的旧行动面板弹给重连/切会话的前端（长时间阻塞下更易踩中）。canAct=false 推进帧与
+     * BATTLE_END 照常重放，用于重建战斗战场叙事。
+     */
+    @Override
+    protected boolean shouldReplay(String sessionId, String eventPayload) {
+        if (!super.shouldReplay(sessionId, eventPayload)) {
+            return false;
+        }
+        if (eventPayload.startsWith(BattleControlSign.SIGN_BATTLE_TURN)) {
+            try {
+                JsonNode node = objectMapper.readTree(eventPayload.substring(BattleControlSign.SIGN_BATTLE_TURN.length()));
+                boolean canAct = node.path("canAct").asBoolean(false);
+                if (canAct && !BattleController.isActionPending(sessionId)) {
+                    return false;
+                }
+            } catch (Exception e) {
+                log.warn("解析战斗回合帧失败，按可重放处理: {}", e.getMessage());
+            }
+        }
+        return true;
     }
 
     /**

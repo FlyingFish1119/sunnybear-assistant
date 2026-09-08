@@ -142,7 +142,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             synchronized (safeSession.delegate()) {
                 safeSession.sendMessage(new TextMessage(ControlSign.SIGN_REPLAY_MESSAGE + sessionId));
                 for (SessionMessageBus.Event event : replayEvents) {
-                    if (!shouldReplay(event.payload())) {
+                    if (!shouldReplay(sessionId, event.payload())) {
                         continue;
                     }
                     safeSession.sendMessage(new TextMessage(event.payload()));
@@ -153,8 +153,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         return false;
     }
 
-    /** 该事件帧是否应重放给重连连接。交互信号按 pending 表过滤；其余一律重放 */
-    private boolean shouldReplay(String eventPayload) {
+    /**
+     * 该事件帧是否应重放给重连连接。交互信号按 pending 表过滤；其余一律重放。
+     * 供子类重写扩展：子类先调用 super，再对插件自己的交互信号（如角色战斗回合）追加过滤，
+     * sessionId 用于按会话键控的 pending 查询（如 BattleController 以 sessionId 为键）。
+     */
+    protected boolean shouldReplay(String sessionId, String eventPayload) {
         String sign = null;
         if (eventPayload.startsWith(ControlSign.SIGN_TOOL_ASK)) {
             sign = ControlSign.SIGN_TOOL_ASK;
