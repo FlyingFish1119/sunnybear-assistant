@@ -8,6 +8,7 @@ package com.fishsunny.assistant.websocket;
  * @Date 2026/6/27
  */
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ChatMessageRequest;
@@ -15,6 +16,7 @@ import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.exception.UserException;
+import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
@@ -130,16 +132,56 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 return true;
             }
             log.info("会话 [{}] 订阅总线，回放 {} 条消息: {}", safeSession.getId(), replayEvents.size(), sessionId);
-            // 回放期间持有连接锁：与总线广播互斥，保证快照完整送达后再接收直播，chunk 不交错乱序
+
+            // 交互信号（TOOL_ASK 工具确认 / TOOL_QUESTION 结构化提问）只重放"仍挂在服务端等用户应答"的那些：
+            // 二者发布后，工具各自阻塞在 ChatController.awaitConfirm / awaitQuestion 直到用户应答，随后才被清理。
+            // 直接以 ChatController 的 pending 表为准判断（id 是否仍在表内 = 是否仍待应答），不依赖缓冲区的
+            // 相对顺序——同一轮并行执行的其它工具无论在其前/其后发布事件都不影响判断，也不怕"已应答但轮次
+            // 还没推进"的快照形态。已被应答/超时/清理的 ask/question 若再重放，会弹出已无实际作用的确认/提问框。
+            // 其余普通事件帧照常重放，用于重建在途消息。
             synchronized (safeSession.delegate()) {
                 safeSession.sendMessage(new TextMessage(ControlSign.SIGN_REPLAY_MESSAGE + sessionId));
                 for (SessionMessageBus.Event event : replayEvents) {
+                    if (!shouldReplay(event.payload())) {
+                        continue;
+                    }
                     safeSession.sendMessage(new TextMessage(event.payload()));
                 }
             }
             return true;
         }
         return false;
+    }
+
+    /** 该事件帧是否应重放给重连连接。交互信号按 pending 表过滤；其余一律重放 */
+    private boolean shouldReplay(String eventPayload) {
+        String sign = null;
+        if (eventPayload.startsWith(ControlSign.SIGN_TOOL_ASK)) {
+            sign = ControlSign.SIGN_TOOL_ASK;
+        } else if (eventPayload.startsWith(ControlSign.SIGN_TOOL_QUESTION)) {
+            sign = ControlSign.SIGN_TOOL_QUESTION;
+        } else {
+            return true;
+        }
+        String id = extractInteractionId(eventPayload, sign);
+        if (id == null || id.isEmpty()) {
+            // 解析不到 id 时兜底按"仍待应答"重放，避免漏掉真实待确认的请求
+            return true;
+        }
+        return ControlSign.SIGN_TOOL_ASK.equals(sign)
+                ? ChatController.isConfirmPending(id)
+                : ChatController.isQuestionPending(id);
+    }
+
+    /** 从交互信号帧（sign + json）中解析出唯一 id（ToolAsk / ToolQuestion 均带 id 字段） */
+    private String extractInteractionId(String eventPayload, String sign) {
+        try {
+            JsonNode node = objectMapper.readTree(eventPayload.substring(sign.length()));
+            return node.hasNonNull("id") ? node.get("id").asText() : null;
+        } catch (Exception e) {
+            log.warn("解析交互信号 {} 的 id 失败，按待重放处理: {}", sign, e.getMessage());
+            return null;
+        }
     }
 
     @Override

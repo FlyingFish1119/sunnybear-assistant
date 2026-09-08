@@ -18,6 +18,8 @@ public class ControlSign {
     public static final String SIGN_REPLACE = "###REPLACE###";
     // 应携带一个 ToolAsk json 对象
     public static final String SIGN_TOOL_ASK = "###TOOL_ASK###";
+    // 应携带一个 ToolQuestion json 对象（结构化提问：分组 + 每题候选）
+    public static final String SIGN_TOOL_QUESTION = "###TOOL_QUESTION###";
     // 应携带一个 session json 对象
     public static final String UPDATE_SESSION = "###UPDATE_SESSION###";
     // 应携带一个 AgentLogEntry json 对象

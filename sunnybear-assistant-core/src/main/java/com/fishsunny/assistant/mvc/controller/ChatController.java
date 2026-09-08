@@ -9,6 +9,7 @@ package com.fishsunny.assistant.mvc.controller;
  */
 
 import com.fishsunny.assistant.dto.ToolConfirm;
+import com.fishsunny.assistant.dto.ToolQuestionAnswer;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,6 +31,9 @@ public class ChatController {
     /** 等待中的工具确认请求 */
     private static final Map<String, CompletableFuture<Boolean>> pendingConfirmations = new ConcurrentHashMap<>();
 
+    /** 等待中的工具结构化提问结果 */
+    private static final Map<String, CompletableFuture<ToolQuestionAnswer>> pendingQuestions = new ConcurrentHashMap<>();
+
     /**
      * 前端回传工具确认结果
      */
@@ -43,6 +47,21 @@ public class ChatController {
         }
         log.warn("收到无效的确认 ID（已超时或不存在）: {}", toolConfirm.getId());
         return Map.of("success", false, "message", "确认 ID 无效或已过期");
+    }
+
+    /**
+     * 前端回传工具结构化提问结果
+     */
+    @PostMapping("/question")
+    public Map<String, Object> answerQuestion(@RequestBody ToolQuestionAnswer toolQuestionAnswer) {
+        CompletableFuture<ToolQuestionAnswer> future = pendingQuestions.remove(toolQuestionAnswer.getId());
+        if (future != null) {
+            future.complete(toolQuestionAnswer);
+            log.debug("工具结构化提问已处理: id={}, cancelled={}", toolQuestionAnswer.getId(), toolQuestionAnswer.getCancelled());
+            return Map.of("success", true);
+        }
+        log.warn("收到无效的提问 ID（已超时或不存在）: {}", toolQuestionAnswer.getId());
+        return Map.of("success", false, "message", "提问 ID 无效或已过期");
     }
 
     /**
@@ -89,5 +108,52 @@ public class ChatController {
         if (future != null && !future.isDone()) {
             future.complete(false);
         }
+    }
+
+    // ======================== 工具侧静态方法（结构化提问） ========================
+
+    /**
+     * 工具调用：注册一个待作答的提问请求并阻塞等待用户回答。
+     *
+     * @param uuid            提问请求的唯一标识
+     * @param timeoutSeconds  超时时间（秒）；为空或 <=0 表示不超时，一直等待用户作答
+     * @return 用户的作答结果（含取消标记）；超时/被中断返回 null
+     */
+    public static ToolQuestionAnswer awaitQuestion(String uuid, Integer timeoutSeconds) {
+        CompletableFuture<ToolQuestionAnswer> future = new CompletableFuture<>();
+        pendingQuestions.put(uuid, future);
+        try {
+            if (timeoutSeconds == null || timeoutSeconds <= 0) {
+                return future.get();
+            }
+            return future.get(timeoutSeconds, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("工具结构化提问等待超时或被中断: uuid={}", uuid);
+            return null;
+        }
+    }
+
+    /**
+     * 工具调用：清理指定提问请求（在 finally 块中调用）。
+     */
+    public static void cleanupQuestion(String uuid) {
+        CompletableFuture<ToolQuestionAnswer> future = pendingQuestions.remove(uuid);
+        if (future != null && !future.isDone()) {
+            // 未作答即中断 → 按"用户未作答"补齐空结果，避免工具永久阻塞
+            ToolQuestionAnswer cancelled = new ToolQuestionAnswer().setId(uuid).setCancelled(true);
+            future.complete(cancelled);
+        }
+    }
+
+    // ======================== 只读查询（供总线重放等场景判断信号是否仍待用户应答） ========================
+
+    /** 该确认请求是否仍挂在服务端等待用户确认（未被应答 / 未超时 / 未清理） */
+    public static boolean isConfirmPending(String uuid) {
+        return uuid != null && pendingConfirmations.containsKey(uuid);
+    }
+
+    /** 该结构化提问是否仍挂在服务端等待用户作答（未被作答 / 未超时 / 未清理） */
+    public static boolean isQuestionPending(String uuid) {
+        return uuid != null && pendingQuestions.containsKey(uuid);
     }
 }

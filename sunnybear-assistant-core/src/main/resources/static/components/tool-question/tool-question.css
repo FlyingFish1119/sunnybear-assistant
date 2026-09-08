@@ -1,0 +1,293 @@
+/* ============================================
+   结构化提问弹窗样式
+   ============================================ */
+
+.tq-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100dvw;
+    height: 100dvh;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: tq-fade-in 0.2s ease;
+}
+
+@keyframes tq-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.tq-dialog {
+    background: #fff;
+    border-radius: 16px;
+    width: 92%;
+    max-width: 640px;
+    max-height: 82dvh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.14);
+    animation: tq-slide-up 0.25s ease;
+    overflow: hidden;
+    outline: none;
+}
+
+@keyframes tq-slide-up {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- 头部 ---- */
+.tq-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 18px 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid #f3f3f3;
+}
+
+.tq-icon-wrap {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: rgba(255, 160, 122, 0.12);
+    color: var(--main-color, lightsalmon);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.tq-icon-wrap i {
+    width: 18px;
+    height: 18px;
+}
+
+.tq-header-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tq-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #333;
+}
+
+.tq-countdown {
+    font-size: 12px;
+    color: #aaa;
+    flex-shrink: 0;
+}
+.tq-countdown.is-danger {
+    color: #e74c3c;
+    font-weight: 600;
+}
+
+.tq-close {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #aaa;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+.tq-close:hover {
+    background: #f5f5f5;
+    color: #555;
+}
+.tq-close i {
+    width: 16px;
+    height: 16px;
+}
+
+/* ---- 引导语 ---- */
+.tq-message {
+    padding: 10px 18px 4px;
+    font-size: 13px;
+    color: #666;
+    flex-shrink: 0;
+    max-height: 30%;
+    overflow-y: auto;
+}
+.tq-message p {
+    margin: 0 0 6px;
+}
+
+/* ---- 题目列表 ---- */
+.tq-body {
+    padding: 6px 18px 4px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.tq-question {
+    padding: 14px 0;
+    border-bottom: 1px solid #f3f3f3;
+}
+.tq-question:last-child {
+    border-bottom: none;
+}
+
+.tq-question-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.tq-question-index {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #f1f1f1;
+    color: #888;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.tq-question-text {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+/* ---- 候选胶囊 ---- */
+.tq-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.tq-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border: 1px solid #e5e5e5;
+    border-radius: 999px;
+    background: #fafafa;
+    color: #555;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    user-select: none;
+}
+
+.tq-option:hover {
+    border-color: var(--main-color, lightsalmon);
+    color: var(--main-color, lightsalmon);
+    background: rgba(255, 160, 122, 0.05);
+}
+
+.tq-option.is-active {
+    border-color: var(--main-color, lightsalmon);
+    background: var(--main-color, lightsalmon);
+    color: #fff;
+    font-weight: 500;
+    box-shadow: 0 2px 8px rgba(255, 160, 122, 0.3);
+}
+
+/* ---- 自由输入 ---- */
+.tq-custom-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 12px;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #444;
+    background: #fff;
+    outline: none;
+    transition: all 0.18s ease;
+}
+
+.tq-custom-input:focus {
+    border-color: var(--main-color, lightsalmon);
+    box-shadow: 0 0 0 3px rgba(255, 160, 122, 0.12);
+}
+
+.tq-custom-input.has-text {
+    border-color: var(--main-color, lightsalmon);
+}
+
+/* ---- 底部 ---- */
+.tq-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px 16px;
+    border-top: 1px solid #f3f3f3;
+    flex-shrink: 0;
+}
+
+.tq-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.tq-btn-cancel {
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    color: #888;
+}
+.tq-btn-cancel:hover {
+    background: #f7f7f7;
+    color: #555;
+}
+
+.tq-btn-submit {
+    background: var(--main-color, lightsalmon);
+    color: #fff;
+    font-weight: 500;
+    box-shadow: 0 2px 10px rgba(255, 160, 122, 0.3);
+}
+.tq-btn-submit:hover:not(:disabled) {
+    filter: brightness(1.05);
+}
+.tq-btn-submit:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* markdown 引导语内部基础排版 */
+.tq-message .markdown-body {
+    background: transparent;
+    padding: 0;
+}

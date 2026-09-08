@@ -242,6 +242,8 @@ const API = (function () {
         chat: {
             /** 回传工具确认结果 */
             confirm: function (data) { return post('chat/confirm', data); },
+            /** 回传结构化提问作答结果 */
+            question: function (data) { return post('chat/question', data); },
             /** 中止流式传输 */
             stop: function (sessionId) { return post('chat/stop?sessionId=' + encodeURIComponent(sessionId)); }
         },

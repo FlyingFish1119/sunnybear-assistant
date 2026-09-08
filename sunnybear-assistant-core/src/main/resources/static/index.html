@@ -29,6 +29,7 @@
     <script src="directives/auto-follow.js"></script>
     <script src="directives/infinite-scroll.js"></script>
     <script src="components/tool-confirm/tool-confirm.js"></script>
+    <script src="components/tool-question/tool-question.js"></script>
     <script src="components/confirm-dialog/confirm-dialog.js"></script>
     <script src="components/session-name/session-name.js"></script>
     <script src="components/chat-sidebar/chat-sidebar.js"></script>
@@ -48,6 +49,7 @@
     <link rel="stylesheet" href="components/file-upload/file-upload.css"/>
     <link rel="stylesheet" href="css/markdown.css"/>
     <link rel="stylesheet" href="components/tool-confirm/tool-confirm.css"/>
+    <link rel="stylesheet" href="components/tool-question/tool-question.css"/>
 <link rel="stylesheet" href="components/confirm-dialog/confirm-dialog.css"/>
     <link rel="stylesheet" href="components/connection-indicator/connection-indicator.css"/>
     <link rel="stylesheet" href="components/auto-resize-textarea/auto-resize-textarea.css"/>
@@ -386,6 +388,11 @@
             ref="toolConfirm"
             :main-color="mainColor">
         </tool-confirm>
+        <!-- 结构化提问对话框（组件） -->
+        <tool-question
+            ref="toolQuestion"
+            :main-color="mainColor">
+        </tool-question>
     </div>
 </div>
 
@@ -997,6 +1004,11 @@
                 if (event.data.startsWith('###TOOL_ASK###')) {
                     let commandConfirm = JSON.parse(event.data.split('###TOOL_ASK###')[1]);
                     this.$refs.toolConfirm.show(commandConfirm);
+                    return;
+                }
+                if (event.data.startsWith('###TOOL_QUESTION###')) {
+                    let toolQuestion = JSON.parse(event.data.split('###TOOL_QUESTION###')[1]);
+                    this.$refs.toolQuestion.show(toolQuestion);
                     return;
                 }
                 if (event.data.startsWith('###AGENT_LOG###')) {
@@ -1768,6 +1780,7 @@
     app.use(AutoFollow);
     // 注册组件库
     app.component('tool-confirm', ToolConfirm);
+    app.component('tool-question', ToolQuestion);
     app.component('confirm-dialog', ConfirmDialog);
     app.component('session-name', SessionName);
     app.component('chat-sidebar', ChatSidebar);
