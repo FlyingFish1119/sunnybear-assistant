@@ -14,6 +14,8 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -35,6 +37,23 @@ public class ChatMessageRequest {
      * 消息模式: create(新建) / append(追加) / replace(替换) / edit(编辑用户消息)
      */
     private String mode;
+    public ChatMessageRequest setMode(String mode) {
+        if (!StringUtils.hasText(mode)) {
+            throw new UserException("请求类型为空");
+        }
+        switch (mode) {
+            case MODE_CREATE:
+            case MODE_APPEND:
+            case MODE_REPLACE:
+            case MODE_EDIT:
+            case MODE_TEMP_WHAT_IS_THIS:
+                break;
+            default:
+                throw new UserException("无效的请求类型[" + mode + "]");
+        }
+        this.mode = mode;
+        return this;
+    }
 
     /** cron 任务 ID，不为空时表示该请求来自 cron 定时触发 */
     private Integer cronId;
@@ -43,20 +62,36 @@ public class ChatMessageRequest {
      * replace 模式专用：要被替换的助手消息 ID
      */
     private String replaceMessageId;
+    public ChatMessageRequest setReplaceMessageId(String replaceMessageId) {
+        this.replaceMessageId = replaceMessageId == null ? "" : replaceMessageId;
+        return this;
+    }
 
     /**
      * edit 模式专用：要被编辑的用户消息 ID
      */
     private String editMessageId;
+    public ChatMessageRequest setEditMessageId(String editMessageId) {
+        this.editMessageId = editMessageId == null ? "" : editMessageId;
+        return this;
+    }
 
     private String content;
 
     private List<FileData> files;
+    public ChatMessageRequest setFiles(List<FileData> files) {
+        this.files = files == null ? new ArrayList<>() : files;
+        return this;
+    }
 
     /**
      * 扩展字段
      */
     private Map<String, Object> extension;
+    public ChatMessageRequest setExtension(Map<String, Object> extension) {
+        this.extension = extension == null ? new HashMap<>() : extension;
+        return this;
+    }
 
     public ChatMessageRequest() {
     }

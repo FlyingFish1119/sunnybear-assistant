@@ -8,14 +8,25 @@ package com.fishsunny.assistant.dto;
  * @Date 2026/7/2 06:30
  */
 
+import com.fishsunny.assistant.exception.UserException;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import org.springframework.util.StringUtils;
 
 @Data
 @Accessors(chain = true)
 public class ToolConfirm {
     /** 确认请求的唯一标识 */
     private String id;
+
+    public ToolConfirm setId(String id) {
+        if (!StringUtils.hasText(id)) {
+            throw new UserException("确认请求的唯一标识不能为空");
+        }
+        this.id = id;
+        return this;
+    }
+
     /** 用户是否确认 */
     private boolean confirm;
 }

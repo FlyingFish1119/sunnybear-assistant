@@ -29,6 +29,14 @@ public class ChatSession {
 
     private String type = "chat";
 
+    public ChatSession setType(String type) {
+        if (!StringUtils.hasText(type)) {
+            throw new IllegalArgumentException("Type must not be empty");
+        }
+        this.type = type;
+        return this;
+    }
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 
@@ -48,6 +56,10 @@ public class ChatSession {
      * 例如角色/世界会话在此存放绑定资源 ID；普通会话与定时任务会话为 null。
      */
     private String extension;
+    public ChatSession setExtension(String extension) {
+        this.extension = extension == null ? "{}" : extension;
+        return this;
+    }
 
     public ChatSession() {
     }
@@ -60,6 +72,6 @@ public class ChatSession {
         if (!StringUtils.hasText(baseUrl)) {
             baseUrl = System.getProperty("user.dir");
         }
-        return Path.of(baseUrl, "session", id, "file");
+        return Path.of(baseUrl, "session", getId(), "file");
     }
 }

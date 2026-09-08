@@ -8,6 +8,7 @@ package com.fishsunny.assistant.engine.protocol.project.entity;
  * @Date 2026/7/3
  */
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
@@ -19,6 +20,8 @@ public class MemoryRecord {
 
     private Integer id;
     private String content;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updateTime;
 }

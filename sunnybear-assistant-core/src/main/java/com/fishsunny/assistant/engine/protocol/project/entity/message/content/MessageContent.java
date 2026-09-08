@@ -18,6 +18,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.te
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.video.VideoContent;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
 import com.fishsunny.assistant.utils.ObjectUtils;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.CollectionUtils;
@@ -41,10 +42,8 @@ import java.util.List;
         @JsonSubTypes.Type(value = AudioContent.class, name = ContentTypeVariable.AUDIO),
         @JsonSubTypes.Type(value = FileContent.class, name = ContentTypeVariable.FILE)
 })
+@Slf4j
 public abstract class MessageContent {
-
-    public static final Logger log = LoggerFactory.getLogger(MessageContent.class);
-
     public static List<MessageContent> files(List<String> filePaths) {
         if (filePaths == null) {
             return new ArrayList<>();

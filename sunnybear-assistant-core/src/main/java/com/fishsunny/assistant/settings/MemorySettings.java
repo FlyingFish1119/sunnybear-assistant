@@ -17,4 +17,11 @@ public class MemorySettings {
 
     /** 是否在对话中自动注入核心记忆；关闭后不再注入（不影响记忆 CRUD 与问候语个性化） */
     private Boolean enable;
+    public MemorySettings setEnable(Boolean enable) {
+        this.enable = Boolean.TRUE.equals(enable);
+        return this;
+    }
+    public Boolean getEnable() {
+        return Boolean.TRUE.equals(this.enable);
+    }
 }

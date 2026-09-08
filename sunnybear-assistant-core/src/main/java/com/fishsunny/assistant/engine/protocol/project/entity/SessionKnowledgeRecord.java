@@ -8,6 +8,7 @@ package com.fishsunny.assistant.engine.protocol.project.entity;
  * @Date 2026/7/20
  */
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
@@ -21,6 +22,8 @@ public class SessionKnowledgeRecord {
     private String sessionId;
     /** 已注入的知识条目 ID 列表（JSON 数组字符串，如 ["id1","id2"]） */
     private String knowledgeIds;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updateTime;
 }

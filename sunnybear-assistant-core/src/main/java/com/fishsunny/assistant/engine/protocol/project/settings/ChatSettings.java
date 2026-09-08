@@ -11,6 +11,7 @@ package com.fishsunny.assistant.engine.protocol.project.settings;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -72,7 +73,7 @@ public class ChatSettings {
         this.temperature = aiSettings.getTemperature();
         this.top_p = aiSettings.getTop_p();
         this.reasoning_effort = aiSettings.getReasoningEffort();
-        if (aiSettings.getResponseFormat() != null) {
+        if (StringUtils.hasText(aiSettings.getResponseFormat())) {
             this.response_format = new ResponseFormat(aiSettings.getResponseFormat());
         }
         if (aiSettings.getCustomFields() != null) {

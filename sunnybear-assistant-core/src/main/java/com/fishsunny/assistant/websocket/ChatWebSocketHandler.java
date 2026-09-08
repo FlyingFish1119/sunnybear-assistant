@@ -206,7 +206,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 }
 
             } catch (UserException e) {
-                log.warn(e.getMessage());
+                log.warn(e.getMessage(), e);
                 sendErrorToFrontend(safeSession, request != null ? request.getSessionId() : null, e.getMessage());
             } catch (Exception e) {
                 log.error("error: {}", e.getMessage(), e);

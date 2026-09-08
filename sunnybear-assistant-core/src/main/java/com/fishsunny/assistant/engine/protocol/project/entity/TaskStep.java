@@ -11,6 +11,7 @@ package com.fishsunny.assistant.engine.protocol.project.entity;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 
@@ -29,6 +30,22 @@ public class TaskStep {
     private String result;
 
     private String status;
+    public TaskStep setStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            throw new IllegalArgumentException("Status cannot be empty");
+        }
+        switch (status) {
+            case Task.STATUS_WAITING:
+            case Task.STATUS_RUNNING:
+            case Task.STATUS_FINISHED:
+            case Task.STATUS_FAILED:
+                break;
+            default:
+                throw new IllegalArgumentException("Invalid status: " + status);
+        }
+        this.status = status;
+        return this;
+    }
 
     private Integer sort;
 
@@ -46,7 +63,7 @@ public class TaskStep {
         this.stepName = stepName;
         this.stepDesc = stepDesc;
         this.result = result;
-        this.status = status;
         this.sort = sort;
+        setStatus(status);
     }
 }

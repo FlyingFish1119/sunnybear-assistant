@@ -19,6 +19,21 @@ public class KnowledgeSettings {
     public static final String SETTINGS = "settings";
 
     private Boolean enable;
+    public KnowledgeSettings setEnable(Boolean enable) {
+        this.enable = Boolean.TRUE.equals(enable);
+        return this;
+    }
+    public Boolean getEnable() {
+        return Boolean.TRUE.equals(this.enable);
+    }
+
     /** 余弦相似度阈值，只有大于等于此值的知识条目才会被匹配 */
     private Float similarityThreshold;
+    public KnowledgeSettings setSimilarityThreshold(Float similarityThreshold) {
+        this.similarityThreshold = similarityThreshold == null ? 0.7f : similarityThreshold;
+        return this;
+    }
+    public Float getSimilarityThreshold() {
+        return similarityThreshold == null ? 0.7f : similarityThreshold;
+    }
 }

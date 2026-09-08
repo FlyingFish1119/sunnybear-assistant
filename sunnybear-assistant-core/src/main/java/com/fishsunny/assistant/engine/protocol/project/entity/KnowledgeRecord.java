@@ -8,10 +8,12 @@ package com.fishsunny.assistant.engine.protocol.project.entity;
  * @Date 2026/7/20
  */
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -25,6 +27,13 @@ public class KnowledgeRecord {
     private String content;
     /** title 的 embedding 向量（JSON 序列化为 TEXT 存储） */
     private List<Float> embedding;
+    public KnowledgeRecord setEmbedding(List<Float> embedding) {
+        this.embedding = embedding == null ? new ArrayList<>() : embedding;
+        return this;
+    }
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updateTime;
 }

@@ -11,6 +11,8 @@ package com.fishsunny.assistant.dto;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
+import java.util.UUID;
+
 @Data
 @Accessors(chain = true)
 public class FileData {
@@ -20,16 +22,24 @@ public class FileData {
      */
     private String name;
 
+    public void setName(String name) {
+        this.name = name == null ? UUID.randomUUID().toString() : name;
+    }
+
     /**
      * base64 data URI（格式: data:{mime};base64,{data}）
      */
     private String data;
 
+    public void setData(String data) {
+        this.data = data == null ? "" : data;
+    }
+
     public FileData() {
     }
 
     public FileData(String name, String data) {
-        this.name = name;
-        this.data = data;
+        setName(name);
+        setData(data);
     }
 }
