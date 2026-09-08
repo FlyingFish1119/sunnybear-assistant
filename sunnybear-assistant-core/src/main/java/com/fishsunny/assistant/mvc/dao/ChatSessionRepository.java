@@ -25,6 +25,17 @@ public interface ChatSessionRepository {
     /** 按 type 筛选会话列表（如 'chat'、'cron'） */
     public List<ChatSession> selectByType(String type);
 
+    /**
+     * keyset 分页查询会话（按 update_time DESC, id DESC 稳定排序）。
+     *
+     * @param type       会话类型（'chat'、'cron'）
+     * @param limit      最多返回条数
+     * @param beforeTime 游标：上一页最旧一条的 update_time（yyyy-MM-dd HH:mm:ss）；null 表示取最新一页
+     * @param beforeId   游标：上一页最旧一条的 id（与 beforeTime 配套，用作同秒内的稳定排序平局裁决）
+     * @return 严格早于游标的会话（最多 limit 条）
+     */
+    public List<ChatSession> selectByTypePage(String type, int limit, String beforeTime, String beforeId);
+
     public ChatSession selectById(String id);
 
     /**

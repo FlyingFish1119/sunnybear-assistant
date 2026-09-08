@@ -160,6 +160,24 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
     }
 
     @Override
+    public List<ChatSession> selectByTypePage(String type, int limit, String beforeTime, String beforeId) {
+        // update_time 以 "yyyy-MM-dd HH:mm:ss" 文本存储，字典序即时间序，可直接字符串比较。
+        // 游标 = (上一页最旧 update_time, 其 id)，id 仅作同秒内的稳定平局裁决，保证翻页不重不漏。
+        String sql;
+        Object[] args;
+        if (beforeTime != null && beforeId != null) {
+            sql = "SELECT * FROM chat_session WHERE type = ?"
+                    + " AND (update_time < ? OR (update_time = ? AND id < ?))"
+                    + " ORDER BY update_time DESC, id DESC LIMIT ?";
+            args = new Object[]{type, beforeTime, beforeTime, beforeId, limit};
+        } else {
+            sql = "SELECT * FROM chat_session WHERE type = ? ORDER BY update_time DESC, id DESC LIMIT ?";
+            args = new Object[]{type, limit};
+        }
+        return jdbcTemplate.query(sql, rowMapper, args);
+    }
+
+    @Override
     public ChatSession selectById(String id) {
         String sql = "SELECT * FROM chat_session WHERE id = ?";
         List<ChatSession> results = jdbcTemplate.query(sql, rowMapper, id);

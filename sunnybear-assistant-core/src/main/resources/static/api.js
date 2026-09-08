@@ -194,6 +194,18 @@ const API = (function () {
         /* ---------- 会话 ---------- */
         session: {
             getAll: function (type) { return get('session/get/all?type=' + encodeURIComponent(type || 'chat')); },
+            /**
+             * keyset 分页获取会话（侧边栏无限滚动用）。
+             * 首屏不传 beforeTime/beforeId；翻页传上一页最旧一条的 updateTime + id。
+             * @returns {Promise<{status:number,data:{list:Array,hasMore:boolean}}>}
+             */
+            page: function (type, size, beforeTime, beforeId) {
+                var qs = 'type=' + encodeURIComponent(type || 'chat') + '&size=' + (size || 50);
+                if (beforeTime != null && beforeId != null) {
+                    qs += '&beforeTime=' + encodeURIComponent(beforeTime) + '&beforeId=' + encodeURIComponent(beforeId);
+                }
+                return get('session/get/page?' + qs);
+            },
             update: function (data) { return post('session/update', data); },
             delete: function (id) { return get('session/delete?id=' + encodeURIComponent(id)); },
             togglePro: function (id) { return post('session/toggle-pro?id=' + encodeURIComponent(id)); },

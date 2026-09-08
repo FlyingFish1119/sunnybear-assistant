@@ -21,6 +21,9 @@ public interface ChatSessionService {
     /** 按 type 筛选会话列表 */
     public List<ChatSession> findByType(String type);
 
+    /** keyset 分页查询会话（按 update_time DESC, id DESC），详见 repository */
+    public List<ChatSession> findByTypePage(String type, int limit, String beforeTime, String beforeId);
+
     public ChatSession save(ChatSession chatSession);
 
     public ChatSession update(ChatSession chatSession);

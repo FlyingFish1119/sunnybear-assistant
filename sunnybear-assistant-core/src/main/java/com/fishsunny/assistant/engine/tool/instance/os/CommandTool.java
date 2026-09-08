@@ -573,8 +573,18 @@ public class CommandTool implements ToolHandler {
         private String mode;
         /** auto 模式下的白名单，命中则跳过危险检测直接执行 */
         private List<String> whiteList;
+        public Settings setWhiteList(List<String> whiteList) {
+            this.whiteList = whiteList == null ? new ArrayList<>() : whiteList;
+            return this;
+        }
+
         /** auto 模式下的黑名单，命中则强制询问用户 */
         private List<String> blackList;
+        public Settings setBlackList(List<String> blackList) {
+            this.blackList = blackList == null ? new ArrayList<>() : blackList;
+            return this;
+        }
+
         /** 命令执行超时时间，单位秒 */
         private Long timeout;
         /** 超过输出字节数则默认拒绝（UTF-8 编码） */

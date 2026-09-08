@@ -57,6 +57,11 @@ public class ChatSessionServiceImplement implements ChatSessionService {
     }
 
     @Override
+    public List<ChatSession> findByTypePage(String type, int limit, String beforeTime, String beforeId) {
+        return chatSessionRepository.selectByTypePage(type, limit, beforeTime, beforeId);
+    }
+
+    @Override
     public ChatSession save(ChatSession chatSession) {
         chatSession.setId(UUID.randomUUID().toString())
                 .setCreateTime(LocalDateTime.now())

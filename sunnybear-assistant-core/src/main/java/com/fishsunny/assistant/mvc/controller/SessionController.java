@@ -17,7 +17,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/session")
@@ -57,6 +59,38 @@ public class SessionController {
         } catch (Exception e) {
             log.error("获取会话列表失败: type={}", type, e);
             return new RestResponse().error("获取会话列表失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * keyset 分页获取会话（侧边栏"无限滚动"用）：按 update_time DESC, id DESC。
+     * 首屏不带 beforeTime/beforeId；翻页带上一页最旧一条的 updateTime + id 作游标。
+     * data: { list: [...], hasMore: boolean }（hasMore 通过多取一条判定）
+     */
+    @RequestMapping("/get/page")
+    public RestResponse getPage(@RequestParam(required = false, defaultValue = "chat") String type,
+                                @RequestParam(required = false, defaultValue = "50") int size,
+                                @RequestParam(required = false) String beforeTime,
+                                @RequestParam(required = false) String beforeId) {
+        try {
+            if (size <= 0) {
+                size = 50;
+            }
+            if (size > 200) {
+                size = 200;
+            }
+            boolean hasCursor = StringUtils.hasText(beforeTime) && StringUtils.hasText(beforeId);
+            List<ChatSession> rows = chatSessionService.findByTypePage(type, size + 1,
+                    hasCursor ? beforeTime : null, hasCursor ? beforeId : null);
+            boolean hasMore = rows.size() > size;
+            List<ChatSession> list = hasMore ? rows.subList(0, size) : rows;
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("list", list);
+            data.put("hasMore", hasMore);
+            return new RestResponse().success(data);
+        } catch (Exception e) {
+            log.error("获取会话分页失败: type={}", type, e);
+            return new RestResponse().error("获取会话分页失败: " + e.getMessage());
         }
     }
 

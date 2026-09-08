@@ -27,6 +27,7 @@
     <script src="utils/mermaid.js"></script>
     <script src="utils/file-url.js"></script>
     <script src="directives/auto-follow.js"></script>
+    <script src="directives/infinite-scroll.js"></script>
     <script src="components/tool-confirm/tool-confirm.js"></script>
     <script src="components/confirm-dialog/confirm-dialog.js"></script>
     <script src="components/session-name/session-name.js"></script>
@@ -354,21 +355,29 @@
                     @cancel="onTextareaCancel"
                     @keydown="onTextareaKeydown"
                 ></auto-resize-textarea>
-                <!-- 这里不要合并两个按钮，否则icon会出现问题 -->
-                <button v-if="isStreaming"
-                    class="send-area-submit-button"
-                    @click="stopStreaming()"
-                    :disabled="isStreaming && !currentSessionId"
-                >
-                    <i style="margin-top: 5px; margin-left: -5px" data-lucide="square"></i>
-                </button>
-                <button v-else
+                <!-- 发送/停止按钮：外包一层 .send-area-submit-wrap 承载“长按 3s 召唤/送走看板熊”的移动端彩蛋手势。
+                     短按 = 照常发送/停止；按下 3s 不抬 = 切换看板熊（不再发送）。
+                     内部按钮 pointer-events:none，命中统一由 wrapper 接管，布局/尺寸与原来一致。 -->
+                <div class="send-area-submit-wrap"
+                     @pointerdown="onSubmitPointerDown"
+                     @pointerup="onSubmitPointerEnd"
+                     @pointercancel="onSubmitPointerEnd"
+                     @pointerleave="onSubmitPointerLeave">
+                    <button v-if="isStreaming"
                         class="send-area-submit-button"
-                        @click="sendMessage()"
-                        :disabled="sending || (!isStreaming && !inputText && uploadedFiles.length === 0)"
-                >
-                    <i style="margin-top: 5px; margin-left: -5px" data-lucide="send"></i>
-                </button>
+                        @click="stopStreaming()"
+                        :disabled="isStreaming && !currentSessionId"
+                    >
+                        <i style="margin-top: 5px; margin-left: -5px" data-lucide="square"></i>
+                    </button>
+                    <button v-else
+                            class="send-area-submit-button"
+                            @click="sendMessage()"
+                            :disabled="sending || (!isStreaming && !inputText && uploadedFiles.length === 0)"
+                    >
+                        <i style="margin-top: 5px; margin-left: -5px" data-lucide="send"></i>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -1636,6 +1645,70 @@
                 }
             },
 
+            /* ---- 看板熊彩蛋：移动端长按发送键 3s 召唤/送走（桌面端保留连按 b×10） ---- */
+
+            /**
+             * 按下发送键：3s 内不抬起判为“长按召唤彩蛋”；抬起前取消则按普通短按处理。
+             */
+            onSubmitPointerDown: function (event) {
+                // 只认主键按下（触屏/笔/鼠标左键）；右键、菜单键的按下不算，抬起自然也不触发
+                const primary = event.pointerType === 'mouse' ? event.button === 0 : true;
+                this._mascotPrimaryPress = primary;
+                this._mascotLongPress = false;
+                if (!primary) return;
+                clearTimeout(this._mascotPressTimer);
+                this._mascotPressTimer = setTimeout(() => {
+                    this._mascotLongPress = true;
+                    this.toggleMascot();
+                }, 3000);
+            },
+
+            /**
+             * 抬起：短按 → 照常发送/停止；长按触发过彩蛋 → 不再发送；右键等非主键直接忽略。
+             */
+            onSubmitPointerEnd: function () {
+                clearTimeout(this._mascotPressTimer);
+                const primary = this._mascotPrimaryPress;
+                const longPressed = this._mascotLongPress;
+                this._mascotPrimaryPress = false;
+                this._mascotLongPress = false;
+                if (!primary) return;
+                if (!longPressed) {
+                    this.onSubmitAction();
+                }
+            },
+
+            /**
+             * 指针滑出发送键（未抬起）：取消彩蛋计时并清掉按下标记（与原生 click 需按下/抬起同元素一致）。
+             */
+            onSubmitPointerLeave: function () {
+                clearTimeout(this._mascotPressTimer);
+                this._mascotPrimaryPress = false;
+                this._mascotLongPress = false;
+            },
+
+            /**
+             * 短按发送/停止的统一入口（等价于原发送按钮 @click + :disabled，供 wrapper 指针路径复用；
+             * 键盘 Tab+Enter 仍走按钮原生 @click，不经过这里）。
+             */
+            onSubmitAction: function () {
+                if (this.isStreaming) {
+                    this.stopStreaming();
+                    return;
+                }
+                if (this.sending) return;
+                if (!this.inputText && this.uploadedFiles.length === 0) return;
+                this.sendMessage();
+            },
+
+            /**
+             * 切换看板熊显隐并持久化（长按 3s / 连按 b×10 共用）。
+             */
+            toggleMascot: function () {
+                this.mascotVisible = !this.mascotVisible;
+                localStorage.setItem('assistant-mascot-visible', this.mascotVisible ? '1' : '0');
+            },
+
         },
 
         mounted() {
@@ -1643,14 +1716,16 @@
             this.init();
             // 看板熊彩蛋：连按 10 次 b → 召唤/送走（中间按了别的键就打断重计；长按连发不计）
             this._mascotBKeyCount = 0;
+            this._mascotPressTimer = null;
+            this._mascotLongPress = false;
+            this._mascotPrimaryPress = false;
             window.addEventListener('keydown', (e) => {
                 if (e.repeat || e.isComposing || e.keyCode === 229) return;
                 if (e.key.toLowerCase() === 'b') {
                     this._mascotBKeyCount++;
                     if (this._mascotBKeyCount >= 10) {
                         this._mascotBKeyCount = 0;
-                        this.mascotVisible = !this.mascotVisible;
-                        localStorage.setItem('assistant-mascot-visible', this.mascotVisible ? '1' : '0');
+                        this.toggleMascot();
                     }
                 } else {
                     this._mascotBKeyCount = 0;
@@ -1703,6 +1778,8 @@
     app.component('agent-log-sidebar', AgentLogSidebar);
 
     app.use(ElementPlus);
+    // 自定义指令（放在 ElementPlus 之后注册，确保同名指令以自定义实现为准）
+    app.use(InfiniteScrollDirective);
     app.mount('#app');
 </script>
 </body>

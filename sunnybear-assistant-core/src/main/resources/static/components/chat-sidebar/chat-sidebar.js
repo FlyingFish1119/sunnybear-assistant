@@ -21,6 +21,24 @@
  *   upsert(session)        — 新增或更新一个会话条目
  *   getSessionById(id)     — 按 id 查找会话对象（返回引用）
  */
+
+/** 会话列表每页条数（与后端 /session/get/page 的 size 默认一致） */
+const SESSION_PAGE_SIZE = 50;
+
+/**
+ * 会话按 (update_time, id) 降序比较 —— 与后端 /session/get/page 的排序一致。
+ * update_time 为 "yyyy-MM-dd HH:mm:ss" 文本，字典序即时间序；id 仅作同秒内的稳定平局裁决。
+ */
+function compareSessionDesc(a, b) {
+    const at = a.updateTime || '';
+    const bt = b.updateTime || '';
+    if (at !== bt) return at < bt ? 1 : -1;
+    const ai = a.id || '';
+    const bi = b.id || '';
+    if (ai === bi) return 0;
+    return ai < bi ? 1 : -1;
+}
+
 const ChatSidebar = {
     name: 'ChatSidebar',
 
@@ -36,7 +54,9 @@ const ChatSidebar = {
             <i data-lucide="square-plus"></i>
             <span style="margin-left: 10px">新对话</span>
         </el-button>
-        <div class="sidebar-session-list">
+        <div class="sidebar-session-list"
+             ref="sessionList"
+             v-infinite-scroll="loadMore">
             <div class="sidebar-session-item"
                  v-for="session in sessions"
                  :key="session.id"
@@ -46,6 +66,8 @@ const ChatSidebar = {
                  @contextmenu.prevent="showContextMenu($event, session)">
                 {{ session.name }}
             </div>
+            <div v-if="loadingMore"
+                 style="color:rgba(255,255,255,.75);font-size:13px;padding:6px 0 16px;">加载中…</div>
         </div>
         <!-- 右键上下文菜单 -->
         <div v-if="contextMenu.visible"
@@ -145,8 +167,12 @@ const ChatSidebar = {
 
     data: function () {
         return {
-            /** 会话列表（组件内部唯一数据源） */
+            /** 会话列表（组件内部唯一数据源：已加载的子集，始终按 update_time 降序） */
             sessions: [],
+            /** 触底加载更早一页是否进行中 */
+            loadingMore: false,
+            /** 是否还有更早的会话可加载（触底翻页后由服务端 hasMore 更新） */
+            hasMore: true,
             /** 当前列表模式：chat / cron */
             listMode: 'chat',
             sidebarOpen: false,
@@ -197,53 +223,107 @@ const ChatSidebar = {
         },
 
         /**
-         * 从服务端重新获取会话列表（根据当前 listMode）。
+         * 刷新会话列表（根据当前 listMode）：拉最新一页用于纠正顶部排序 / 补入新会话，
+         * 并保留此前已加载的更早记录，避免打断正在滚动查看的历史。
          * 由父组件在 WebSocket 事件（###START###）时通过 ref 调用。
          */
         refresh: async function () {
             try {
-                let result = await API.session.getAll(this.listMode);
-                if (result.status === 200) {
-                    this.sessions = result.data;
+                const result = await API.session.page(this.listMode, SESSION_PAGE_SIZE);
+                if (result.status === 200 && result.data) {
+                    const top = result.data.list || [];
+                    const hasMoreTop = !!result.data.hasMore;
+                    // 已在内存、但不在最新一页里的旧记录 = 用户翻到的更早历史，原样保留
+                    const topIds = new Set(top.map(function (s) { return s.id; }));
+                    const tail = this.sessions.filter(function (s) { return !topIds.has(s.id); });
+                    this.sessions = top.concat(tail).sort(compareSessionDesc);
+                    if (hasMoreTop) {
+                        this.hasMore = true;
+                    } else if (tail.length === 0) {
+                        // 首页不满一页且无旧尾部 → 已全部加载完
+                        this.hasMore = false;
+                    }
+                    // hasMoreTop=false 但保留了旧尾部：曾加载过更早记录（多为已翻到底），保持原 hasMore 即可
                 }
             } catch (error) {
                 console.error('获取会话列表失败:', error);
             }
+            this.ensureScrollable();
         },
 
         /**
-         * 切换列表模式：chat ↔ cron
+         * 切换列表模式：chat ↔ cron（清空列表并重置分页状态）
          */
         toggleListMode: function () {
             this.listMode = this.listMode === 'chat' ? 'cron' : 'chat';
+            this.sessions = [];
+            this.hasMore = true;
             this.refresh();
+        },
+
+        /**
+         * 触底加载更早一页（由 v-infinite-scroll 指令触发）：
+         * 以当前最旧一条的 (update_time, id) 作 keyset 游标请求服务端，天然不重不漏、不受排序漂移影响。
+         */
+        loadMore: async function () {
+            if (this.loadingMore || !this.hasMore || this.sessions.length === 0) return;
+            const last = this.sessions[this.sessions.length - 1];
+            if (!last || !last.id || !last.updateTime) return;
+            this.loadingMore = true;
+            try {
+                const result = await API.session.page(this.listMode, SESSION_PAGE_SIZE, last.updateTime, last.id);
+                if (result.status === 200 && result.data) {
+                    const list = result.data.list || [];
+                    const existingIds = new Set(this.sessions.map(function (s) { return s.id; }));
+                    const fresh = list.filter(function (s) { return !existingIds.has(s.id); });
+                    this.sessions = this.sessions.concat(fresh).sort(compareSessionDesc);
+                    this.hasMore = !!result.data.hasMore;
+                }
+            } catch (error) {
+                console.error('加载更多会话失败:', error);
+            } finally {
+                this.loadingMore = false;
+            }
+            this.ensureScrollable();
+        },
+
+        /**
+         * 列表不足一屏（容器还没出现滚动条）时自动续拉，直到填满可滚动或没有更多。
+         */
+        ensureScrollable: function () {
+            const self = this;
+            if (!self.hasMore || self.loadingMore) return;
+            this.$nextTick(function () {
+                const el = self.$refs.sessionList;
+                // 容器不可见/无高度（折叠、抽屉收起）时不自动补页
+                if (!el || !el.clientHeight || self.loadingMore || !self.hasMore) return;
+                if (el.scrollHeight - el.clientHeight < 24) {
+                    self.loadMore();
+                }
+            });
         },
 
         /**
          * 新增或更新一个会话条目。
          * 由父组件在收到 ###UPDATE_SESSION### 时通过 ref 调用。
+         * 更新后按 (update_time, id) 重排（会话被新消息顶到最前时位置随之移动）。
          * @param {object} session — { id, name, ... }
          * @returns {object} 内部数组中的会话对象引用
          */
         upsert: function (session) {
-            let existing = this.sessions.find(function (s) { return s.id === session.id; });
+            const existing = this.sessions.find(function (s) { return s.id === session.id; });
             if (existing) {
                 Object.assign(existing, session);
-                return existing;
             } else {
                 this.sessions.push(session);
-                return this.sessions[this.sessions.length - 1];
             }
+            this.sessions.sort(compareSessionDesc);
+            return existing || session;
         },
 
         get: function (session) {
-            if (! session) return session;
-            let existing = this.sessions.find(function (s) { return s.id === session.id; });
-            if (! existing) {
-                this.sessions.push(session);
-                existing = session;
-            }
-            return existing;
+            if (!session) return session;
+            return this.upsert(session);
         },
 
         /**

@@ -94,6 +94,31 @@
     cursor: not-allowed;
 }
 
+/* ---- 发送键 wrapper：承载“长按 3s 召唤/送走看板熊”的移动端彩蛋手势 ----
+   内部按钮 pointer-events:none → 命中统一落到 wrapper（disabled 按钮本身不发 pointer 事件，必须有外层才能接住长按）；
+   短按（发送/停止）与键盘 Tab+Enter 的行为保持原样。hover/active 改挂在 wrapper 上驱动内部按钮亮度。 */
+.send-area-submit-wrap {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    align-self: stretch;
+    width: var(--btn-w, 100px);
+    cursor: pointer;
+    touch-action: manipulation; /* 去除触屏双击缩放/延迟，长按计时更稳 */
+}
+.send-area-submit-wrap .send-area-submit-button {
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    box-sizing: border-box;
+}
+.send-area-submit-wrap:hover .send-area-submit-button:not(:disabled) {
+    filter: brightness(0.85);
+}
+.send-area-submit-wrap:active .send-area-submit-button:not(:disabled) {
+    filter: brightness(0.72);
+}
+
 /* ---- 文件 chips 区域（宽度与 textarea+button 一致，确保左对齐） ---- */
 .file-chips-area {
     width: calc(50% + var(--btn-w, 100px) + var(--attach-w, 48px)); /* textarea + send btn + attach btn */
@@ -273,6 +298,7 @@
 /* 输入区控件垫到熊身之上（爪爪 z:3 仍盖在最前的按钮沿上） */
 .send-area-attach-button,
 .send-area-textarea,
+.send-area-submit-wrap,
 .send-area-submit-button,
 .file-chips-area,
 .greeting-banner {
