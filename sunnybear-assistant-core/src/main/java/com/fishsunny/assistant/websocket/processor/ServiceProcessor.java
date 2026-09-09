@@ -50,8 +50,10 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -62,6 +64,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class ServiceProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(ServiceProcessor.class);
+
+    /** 会话附件存储文件名的毫秒级时间戳格式 */
+    private static final DateTimeFormatter SESSION_FILE_TIME = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmssSSS");
 
     /** 会话标题生成器系统提示词（由 cub AI 承担该任务，prompt 固化在此） */
     private static final String TITLE_PROMPT = """
@@ -483,7 +488,8 @@ public class ServiceProcessor {
 
     /**
      * 将 base64 编码的文件数据写入会话目录，保留原始文件名
-     * <p>命名规则: {index}_{原始文件名}；若无原始文件名则回退为 {index}.{ext}
+     * <p>命名规则: {原始文件名主干}_{时间戳}.{ext}；毫秒级时间戳保证多次上传同名文件互不覆盖，
+     * 无需再探测磁盘判断编号是否已被占用。同一次上传内出现完全同名的文件时，追加序号区分。
      *
      * @param files       文件数据列表
      * @param chatSession 会话对象
@@ -500,6 +506,7 @@ public class ServiceProcessor {
             log.error("创建目录失败: {}", path.toAbsolutePath());
             return writtenPaths;
         }
+        Set<String> usedNames = new HashSet<>();
         for (int i = 0; i < files.size(); i++) {
             FileData fileData = files.get(i);
             if (fileData == null || !StringUtils.hasText(fileData.getData())) {
@@ -513,14 +520,7 @@ public class ServiceProcessor {
                 continue;
             }
 
-            String fileName;
-            if (StringUtils.hasText(fileData.getName())) {
-                fileName = i + "_" + fileData.getName();
-            } else {
-                String extension = Base64Utils.getExtensionFromDataUri(dataUri);
-                fileName = i + "." + extension;
-            }
-
+            String fileName = buildSessionFileName(fileData, dataUri, usedNames);
             try {
                 Path filePath = path.resolve(fileName);
                 Files.write(filePath, data);
@@ -530,5 +530,49 @@ public class ServiceProcessor {
             }
         }
         return writtenPaths;
+    }
+
+    /**
+     * 构造会话目录内的存储文件名：{原始文件名主干}_{毫秒时间戳}.{ext}
+     *
+     * @param fileData  文件数据（含原始文件名）
+     * @param dataUri   base64 data URI，用于原文件名缺失/无扩展名时兜底推断扩展名
+     * @param usedNames 本次上传内已用过的文件名，撞名时追加序号
+     * @return 仅含文件名（不含目录）的存储名
+     */
+    private String buildSessionFileName(FileData fileData, String dataUri, Set<String> usedNames) {
+        String rawName = fileData.getName();
+        String stem;
+        String ext;
+        if (StringUtils.hasText(rawName)) {
+            int dot = rawName.lastIndexOf('.');
+            if (dot > 0 && dot < rawName.length() - 1) {
+                stem = rawName.substring(0, dot);
+                ext = rawName.substring(dot + 1);
+            } else {
+                stem = rawName;
+                ext = "";
+            }
+        } else {
+            stem = "file";
+            ext = "";
+        }
+        // 清洗路径与非法字符，防止夹带路径穿越或生成非法文件名
+        stem = stem.replaceAll("[\\\\/:*?\"<>|\\r\\n]+", "_");
+        if (!StringUtils.hasText(stem)) {
+            stem = "file";
+        }
+        if (!StringUtils.hasText(ext)) {
+            ext = Base64Utils.getExtensionFromDataUri(dataUri);
+        }
+
+        String ts = LocalDateTime.now().format(SESSION_FILE_TIME);
+        String candidate = stem + "_" + ts + "." + ext;
+        int seq = 2;
+        while (!usedNames.add(candidate)) {
+            candidate = stem + "_" + ts + "_" + seq + "." + ext;
+            seq++;
+        }
+        return candidate;
     }
 }
