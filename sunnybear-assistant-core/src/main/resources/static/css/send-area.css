@@ -64,7 +64,9 @@
     outline: none;
     font-family: inherit;
     background: #fff;
-    transition: all var(--transition-normal, 0.3s ease);
+    /* 高度由 JS 即时写入，不参与过渡 —— 否则每次增高/发送后回缩都会逐帧重排布局。
+       仅保留边框高亮这类非布局属性的轻微过渡。 */
+    transition: border-color 0.2s ease, border-left-color 0.2s ease;
 }
 
 .send-area-textarea::-webkit-scrollbar {
