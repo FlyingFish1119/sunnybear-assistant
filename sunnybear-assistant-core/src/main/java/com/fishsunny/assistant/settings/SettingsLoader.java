@@ -2,8 +2,6 @@ package com.fishsunny.assistant.settings;
 
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.engine.protocol.EmbeddingAPI;
-import com.fishsunny.assistant.engine.protocol.embedding.StandardEmbeddingAPI;
 import com.fishsunny.assistant.engine.tool.instance.file.FileDeleteTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileDownloadTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileEditTool;
@@ -254,56 +252,38 @@ public class SettingsLoader {
         );
     }
 
-    // ============================= Embedding设置 ============================
+    // ============================== 知识库设置 ==============================
 
-    private Map<String, Object> knowledgeSettingsCache = null;
-
-    private void initKnowledgeSettingsFile() {
-        synchronized (this) {
-            if (knowledgeSettingsCache != null) {
-                return;
-            }
-            File settingsFile = new File(knowledgeSettingsPath);
-            if (!settingsFile.exists()) {
-                log.warn("知识库设置文件不存在: {}，将使用默认设置", settingsFile.getAbsolutePath());
-                knowledgeSettingsCache = loadDefaultKnowledgeSettings();
-                return;
-            }
-            if (!settingsFile.isFile()) {
-                log.warn("知识库设置路径不是一个有效的文件: {}，将使用默认设置", settingsFile.getAbsolutePath());
-                knowledgeSettingsCache = loadDefaultKnowledgeSettings();
-                return;
-            }
-            try {
-                JavaType mapType = objectMapper.getTypeFactory().constructMapType(Map.class, String.class, Object.class);
-                knowledgeSettingsCache = objectMapper.readValue(settingsFile, mapType);
-            } catch (IOException e) {
-                log.warn("知识库设置文件读取失败: {}，将使用默认设置", settingsFile.getAbsolutePath());
-                knowledgeSettingsCache = loadDefaultKnowledgeSettings();
-                return;
-            }
-        }
-    }
-
-    private Map<String, Object> loadDefaultKnowledgeSettings() {
-        return Map.of(
-                "api", new StandardEmbeddingAPI(),
-                "settings", new KnowledgeSettings()
-                        .setEnable(false)
-                        .setSimilarityThreshold(0.7f)
-        );
-    }
-
-    @Bean
-    public EmbeddingAPI knowledgeAPI() {
-        initKnowledgeSettingsFile();
-        return objectMapper.convertValue(knowledgeSettingsCache.get(KnowledgeSettings.API), StandardEmbeddingAPI.class);
-    }
-
+    /**
+     * 读取并解析知识库设置文件（扁平结构，仅含 enable 开关），装配为 Spring Bean。
+     * 知识库注入默认关闭（enable=false），与旧版本文件缺失时的语义一致。
+     */
     @Bean
     public KnowledgeSettings knowledgeSettings() {
-        initKnowledgeSettingsFile();
-        return objectMapper.convertValue(knowledgeSettingsCache.get(KnowledgeSettings.SETTINGS), KnowledgeSettings.class);
+        File settingsFile = new File(knowledgeSettingsPath);
+
+        if (!settingsFile.exists()) {
+            log.warn("知识库设置文件不存在: {}，将使用默认设置（注入关闭）", settingsFile.getAbsolutePath());
+            return new KnowledgeSettings().setEnable(false);
+        }
+        if (!settingsFile.isFile()) {
+            log.warn("知识库设置路径不是一个有效的文件: {}，将使用默认设置（注入关闭）", settingsFile.getAbsolutePath());
+            return new KnowledgeSettings().setEnable(false);
+        }
+
+        try {
+            KnowledgeSettings settings = objectMapper.readValue(settingsFile, KnowledgeSettings.class);
+            log.info("知识库设置文件加载成功: {}，内容: enable={}", settingsFile.getAbsolutePath(),
+                    settings == null ? null : settings.getEnable());
+            if (settings == null) {
+                return new KnowledgeSettings().setEnable(false);
+            }
+            return settings;
+        } catch (IOException e) {
+            log.error("读取知识库设置文件失败: {}，原因: {}，将使用默认设置（注入关闭）",
+                    settingsFile.getAbsolutePath(), e.getMessage(), e);
+            return new KnowledgeSettings().setEnable(false);
+        }
     }
 
     // ============================== 记忆设置 ==============================

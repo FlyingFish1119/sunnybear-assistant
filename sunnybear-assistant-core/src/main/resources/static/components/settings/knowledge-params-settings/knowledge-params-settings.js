@@ -1,9 +1,8 @@
 /**
- * 知识库参数设置组件
+ * 知识库参数设置组件（与记忆注入开关同形态）
  *
- * 展示：知识库参数条目（启用状态 / 相似度阈值摘要）
- * 修改：对话框内切换启用、调整相似度阈值
- * 保存成功后 emit('saved')，由父组件刷新全部设置
+ * 展示：知识库注入开关状态（开启后每次对话自动挑选相关知识条目注入）
+ * 修改：开关直接切换，保存成功后 emit('saved')，由父组件刷新全部设置
  */
 const KnowledgeParamsSettings = {
     name: 'KnowledgeParamsSettings',
@@ -18,80 +17,55 @@ const KnowledgeParamsSettings = {
 
     template: `
     <div>
-        <div class="settings-item" @click="openDialog">
+        <div class="settings-item">
             <div class="settings-item-left">
-                <div class="settings-item-icon"><i data-lucide="sliders-horizontal" style="width:16px;height:16px"></i></div>
+                <div class="settings-item-icon"><i data-lucide="database" style="width:16px;height:16px"></i></div>
                 <div class="settings-item-info">
-                    <span class="settings-item-label">知识库 参数</span>
-                    <span class="settings-item-desc">{{ settings.enable ? '已启用' : '已禁用' }} · 阈值: {{ settings.similarityThreshold || '-' }}</span>
+                    <span class="settings-item-label">知识库注入</span>
+                    <span class="settings-item-desc">{{ enable ? '已开启 · 对话会自动挑选知识条目注入' : '已关闭 · 对话不再注入知识条目' }}</span>
                 </div>
             </div>
             <div class="settings-item-right">
-                <span class="settings-item-value">{{ settings.enable ? '开启' : '关闭' }}</span>
-                <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+                <el-switch v-model="enable" @change="saveKnowledgeEnable" :disabled="saving.knowledgeenable"></el-switch>
             </div>
         </div>
-
-        <el-dialog v-model="dialogs.knowledgesettings" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
-            <template #header>
-                <div class="dialog-header-wrap">
-                    <i data-lucide="database" style="width:20px;height:20px"></i>
-                    <span>知识库 设置</span>
-                </div>
-            </template>
-            <el-form :model="knowledgeForm" label-width="130px" label-position="left">
-                <el-form-item label="启用">
-                    <el-switch v-model="knowledgeForm.enable" active-text="开启" inactive-text="关闭"></el-switch>
-                </el-form-item>
-
-                <div class="form-group-title deprecated-zone-title">已弃用</div>
-
-                <el-form-item label="相似度阈值" class="deprecated">
-                    <el-slider v-model="knowledgeForm.similarityThreshold" :min="0" :max="1" :step="0.01" show-input :format-tooltip="v => v.toFixed(2)" style="width: calc(100% - 130px)"></el-slider>
-                    <div class="deprecated-hint">阈值属向量检索相关，已弃用，仅作兼容保留。</div>
-                </el-form-item>
-            </el-form>
-            <template #footer>
-                <div class="dialog-footer">
-                    <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.knowledgesettings = false">取消</button>
-                    <button type="button" class="dialog-btn dialog-btn-save" @click="saveKnowledge" :disabled="saving.knowledgesettings">
-                        <span v-if="saving.knowledgesettings" class="btn-spinner"></span>
-                        <span>{{ saving.knowledgesettings ? '保存中...' : '保存' }}</span>
-                    </button>
-                </div>
-            </template>
-        </el-dialog>
     </div>`,
 
     data() {
         return {
-            dialogs: { knowledgesettings: false },
-            knowledgeForm: { enable: false, similarityThreshold: 0.7 }
+            enable: false
         };
     },
 
-    methods: {
-        openDialog() {
-            this.knowledgeForm = {
-                enable: this.settings.enable != null ? this.settings.enable : false,
-                similarityThreshold: this.settings.similarityThreshold != null ? this.settings.similarityThreshold : 0.7
-            };
-            this.dialogs.knowledgesettings = true;
-            this.$nextTick(() => lucide.createIcons());
-        },
-
-        saveKnowledge() {
-            if (this.knowledgeForm.similarityThreshold == null || this.knowledgeForm.similarityThreshold < 0) {
-                ElementPlus.ElMessage.warning('相似度阈值不能为负数'); return;
-            }
-            this.postSave('settings/knowledge/save', {
-                enable: this.knowledgeForm.enable,
-                similarityThreshold: this.knowledgeForm.similarityThreshold
-            }, 'knowledgesettings');
+    watch: {
+        // 父组件刷新设置后同步开关状态
+        settings: {
+            handler(v) {
+                this.enable = !!(v && v.enable);
+            },
+            immediate: true
         }
     },
 
-    updated() {
-        this.$nextTick(() => lucide.createIcons());
+    methods: {
+        async saveKnowledgeEnable(val) {
+            this.saving.knowledgeenable = true;
+            try {
+                const r = await API.settings.knowledgesettings.save({ enable: !!val });
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('保存成功');
+                    this.$emit('saved');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '保存失败');
+                    this.enable = !val;
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                this.enable = !val;
+                console.error(e);
+            } finally {
+                this.saving.knowledgeenable = false;
+            }
+        }
     }
 };

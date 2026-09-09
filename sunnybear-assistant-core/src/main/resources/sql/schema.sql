@@ -54,13 +54,12 @@ CREATE TABLE IF NOT EXISTS chat_models (
 CREATE INDEX IF NOT EXISTS idx_chat_models_model_name ON chat_models(model_name);
 
 -- KnowledgeEntry 知识库条目表
--- 每个条目为一条 wiki 式的词条（intro 简介 + content），embedding 仅对 intro 编码
--- 索引由 DatabaseMigrationRunner 统一创建（兼容旧库 title 列的迁移），此处不声明
+-- 每个条目为一条 wiki 式的词条（intro 简介 + content），对话时由 LLM 依据 intro 自动挑选注入
+-- 注：旧库如含 embedding 向量列，由 KnowledgeRepositoryImplement 启动时自动迁移删除
 CREATE TABLE IF NOT EXISTS knowledge_entry (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     intro       TEXT NOT NULL,
     content     TEXT NOT NULL,
-    embedding   TEXT NOT NULL,
     create_time TEXT NOT NULL,
     update_time TEXT NOT NULL
 );

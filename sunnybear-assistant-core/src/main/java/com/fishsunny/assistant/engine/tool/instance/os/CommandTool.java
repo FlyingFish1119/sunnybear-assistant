@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.regex.Pattern;
 
 /**
  * 命令行工具
@@ -130,6 +131,19 @@ public class CommandTool implements ToolHandler {
 
     /** 默认最大输出大小限制（字节） */
     private static final long DEFAULT_MAX_OUTPUT_SIZE = 32768L;
+
+    /** 启发式识别：HTML 结构特征 —— 文档头声明与常见标签（含闭合），命中即视为 HTML 输出 */
+    private static final Pattern HTML_TAG_PATTERN = Pattern.compile(
+            "(?is)<!DOCTYPE\\s+html"
+                    + "|<(?:html|head|body|div|span|p|a|img|ul|ol|li|table|tr|td|th|style|script|link|meta|title|form|input|button|textarea|select|option|section|header|footer|nav|main|article|h[1-6])\\b"
+                    + "|</(?:html|head|body|div|style|script|table|title|form|section|header|footer|nav|main|article)\\s*>");
+
+    /** 启发式识别：HTML 属性写法 —— class= / style= / id= / href= / src= 后跟引号 */
+    private static final Pattern HTML_ATTR_PATTERN = Pattern.compile("(?is)\\s(?:class|style|id|href|src)\\s*=\\s*[\"']");
+
+    /** 启发式识别：CSS 规则块 —— 行首为选择器（. / # / 标签 / @ 等），花括号内是“属性: 值;”形态 */
+    private static final Pattern CSS_RULE_PATTERN = Pattern.compile(
+            "(?im)^[\\s]*[.#@\\w*][^{}]*\\{[^{}]*:[^{};]*;?[^{}]*\\}");
 
     /** 当前操作系统是否为 Windows */
     private static final boolean IS_WINDOWS = System.getProperty("os.name").toLowerCase().contains("win");
@@ -255,12 +269,44 @@ public class CommandTool implements ToolHandler {
                 }
             }
 
-            return new ToolExecutor.ToolExecuteResponse(name(), result);
+            return new ToolExecutor.ToolExecuteResponse(name(), wrapHtmlCodeBlockIfNeeded(result));
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }
+    }
+
+    /**
+     * 启发式判断输出内容是否像 HTML/CSS 文本：
+     * 命中 HTML 结构标签、HTML 属性写法，或 CSS 规则块特征即判定为 HTML 片段。
+     */
+    private static boolean looksLikeHtmlOrCss(String text) {
+        if (!StringUtils.hasText(text)) {
+            return false;
+        }
+        return HTML_TAG_PATTERN.matcher(text).find()
+                || HTML_ATTR_PATTERN.matcher(text).find()
+                || CSS_RULE_PATTERN.matcher(text).find();
+    }
+
+    /**
+     * 命令输出的 HTML 代码块包装（启发式）：
+     * 若输出内容具备 HTML/CSS 特征，在返回前为整体套一层 ```html 代码块，
+     * 便于模型阅读与前端按 HTML 高亮展示。
+     * 输出本身已以 ``` 代码块开头时不重复包裹。
+     */
+    private static String wrapHtmlCodeBlockIfNeeded(String result) {
+        if (!StringUtils.hasText(result)) {
+            return result;
+        }
+        if (result.stripLeading().startsWith("```")) {
+            return result;
+        }
+        if (!looksLikeHtmlOrCss(result)) {
+            return result;
+        }
+        return "\n```html\n" + result + "\n```\n";
     }
 
     /**

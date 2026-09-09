@@ -13,24 +13,16 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 @Data
 @Accessors(chain = true)
 public class KnowledgeRecord {
 
     private Integer id;
-    /** 词条简介（约 50 字，比标题内容更丰富，少于完整内容），也是 embedding 编码的目标 */
+    /** 词条简介（约 50 字，比标题内容更丰富），对话时据此自动挑选注入 */
     private String intro;
     /** 词条内容 */
     private String content;
-    /** title 的 embedding 向量（JSON 序列化为 TEXT 存储） */
-    private List<Float> embedding;
-    public KnowledgeRecord setEmbedding(List<Float> embedding) {
-        this.embedding = embedding == null ? new ArrayList<>() : embedding;
-        return this;
-    }
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;

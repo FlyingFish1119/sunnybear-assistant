@@ -24,7 +24,6 @@
     <script src="components/settings/extension-script-settings/extension-script-settings.js"></script>
     <script src="components/settings/image-caption-settings/image-caption-settings.js"></script>
     <script src="components/settings/web-reader-settings/web-reader-settings.js"></script>
-    <script src="components/settings/knowledge-api-settings/knowledge-api-settings.js"></script>
     <script src="components/settings/knowledge-params-settings/knowledge-params-settings.js"></script>
     <script src="components/settings/knowledge-manage-settings/knowledge-manage-settings.js"></script>
     <script src="components/settings/task-prompt-settings/task-prompt-settings.js"></script>
@@ -117,7 +116,6 @@
             <div class="settings-card-body">
                 <knowledge-params-settings :settings="knowledgeSettings" @saved="fetchAllSettings"></knowledge-params-settings>
                 <knowledge-manage-settings :main-color="mainColor"></knowledge-manage-settings>
-                <knowledge-api-settings :settings="knowledgeApiSettings" @saved="fetchAllSettings"></knowledge-api-settings>
             </div>
         </div>
 
@@ -183,7 +181,6 @@ const app = Vue.createApp({
             imageCaptionSettings: {},
             webReaderSettings: {},
             extensionScriptSettings: {},
-            knowledgeApiSettings: {},
             knowledgeSettings: {},
             memorySettings: {},
         }
@@ -238,7 +235,6 @@ const app = Vue.createApp({
                 { key: 'imageCaptionSettings', url: 'settings/imagecaption/get' },
                 { key: 'webReaderSettings', url: 'settings/webreadertool/get' },
                 { key: 'extensionScriptSettings', url: 'settings/extensionscript/get' },
-                { key: 'knowledgeApiSettings', url: 'settings/knowledgeapi/get' },
                 { key: 'knowledgeSettings', url: 'settings/knowledgesettings/get' },
                 { key: 'memorySettings', url: 'settings/memorysettings/get' },
             ];
@@ -308,7 +304,6 @@ app.component('file-download-settings', FileDownloadSettings);
 app.component('extension-script-settings', ExtensionScriptSettings);
 app.component('image-caption-settings', ImageCaptionSettings);
 app.component('web-reader-settings', WebReaderSettings);
-app.component('knowledge-api-settings', KnowledgeApiSettings);
 app.component('knowledge-params-settings', KnowledgeParamsSettings);
 app.component('knowledge-manage-settings', KnowledgeManageSettings);
 app.component('task-prompt-settings', TaskPromptSettings);

@@ -16,7 +16,7 @@ SunnyBear Assistant 是我自己写的个人 AI 助手。一开始只是想有�
 
 - **多模型对话**。适配器模式接入三种协议:Anthropic 原生、OpenAI 兼容、各家 Text 协议,流式输出、思考过程展示、工具调用都支持。不同场景可以配不同模型——普通对话、专业模式、OCR、网页摘要、标题生成各用各的,轻活用不上重模型。默认配置里普通对话用 DeepSeek V4 Flash,专业模式用 V4 Pro。
 - **工具系统**。几十个工具按类目组织:文件读写搜索、命令行、Playwright 浏览器(导航/点击/截图/读正文)、网页搜索与正文提取、图片描述、桌面键鼠、定时任务、知识库、记忆、多步任务、MCP 客户端,以及计算、流程、会话等小工具。每个工具集都有独立开关、超时和安全输出限制。
-- **知识库与长期记忆**。知识库是 Wiki 式词条,对话时自动筛出相关内容注入上下文(会话级去重),词条检索用 Embedding(BGE-M3);长期记忆会沉淀对话中的关键信息,注入系统提示词。
+- **知识库与长期记忆**。知识库是 Wiki 式词条,对话时自动筛出相关内容注入上下文(会话级去重);长期记忆会沉淀对话中的关键信息,注入系统提示词。
 - **任务调度**。AI 把需求拆成多步任务,逐步执行、逐步汇报;支持子 Agent 模式,子任务用独立的 AI 调用,和主对话互不干扰。
 - **扩展脚本**。往 `tool-extension/` 丢一个 YAML 就注册一个新工具,支持 cmd / powershell / python / bash,自动扫描,不用重启。
 - **前端**。Vue 3 单页应用,静态文件内嵌在 `static/`,没有构建步骤。会话管理、模型一键切换、消息分支(在 AI 的不同版本回复之间切换)、文件上传、敏感操作弹窗确认、`/` 命令补全、Agent 运行日志面板(实时展示工具调用链)。
@@ -52,7 +52,7 @@ mvn spring-boot:run
 | `assistant_settings.json` | 助手名称、头像 |
 | `user_settings.json` | 用户信息、背景、主题色、自动切换模型开关 |
 | `tool_settings.json` | 工具开关、命令超时、输出大小限制、搜索 API Key |
-| `knowledge_settings.json` | 知识库 Embedding 配置(模型、URL、相似度阈值) |
+| `knowledge_settings.json` | 知识库注入开关 |
 
 新模型不用写代码:在 `application.yml` 的 `engine.adapter-register.register` 加一条(协议、baseUrl、apiKey、是否流式)即可,运行时会热加载。
 

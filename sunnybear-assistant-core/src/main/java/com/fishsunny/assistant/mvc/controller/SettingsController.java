@@ -3,8 +3,6 @@ package com.fishsunny.assistant.mvc.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.dto.RestResponse;
 import com.fishsunny.assistant.engine.adapter.factory.AIAdapterFactory;
-import com.fishsunny.assistant.engine.protocol.EmbeddingAPI;
-import com.fishsunny.assistant.engine.protocol.embedding.StandardEmbeddingAPI;
 import com.fishsunny.assistant.engine.tool.instance.file.FileDeleteTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileDownloadTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileEditTool;
@@ -67,9 +65,9 @@ public class SettingsController {
     private final UserSettings userSettings;
     private final AssistantSettings assistantSettings;
     private final MemorySettings memorySettings;
+    private final KnowledgeSettings knowledgeSettings;
     private final Map<String, AISettings> aiSettingsMap;
     private final Map<String, Object> toolSettingsMap;
-    private final Map<String, Object> knowledgeSettingsMap;
     public SettingsController(
             ObjectMapper objectMapper,
             AIAdapterFactory adapterFactory,
@@ -98,7 +96,6 @@ public class SettingsController {
             @Qualifier(FileDownloadTool.SETTINGS) FileDownloadTool.Settings fileDownloadToolSettings,
             @Qualifier(ImageCaptionTool.SETTINGS) ImageCaptionTool.Settings imageCaptionToolSettings,
             @Qualifier(WebReaderTool.SETTINGS) WebReaderTool.Settings webReaderToolSettings,
-            EmbeddingAPI knowledgeAPI,
             KnowledgeSettings knowledgeSettings) {
         this.objectMapper = objectMapper;
         this.adapterFactory = adapterFactory;
@@ -112,6 +109,7 @@ public class SettingsController {
         this.userSettings = userSettings;
         this.assistantSettings = assistantSettings;
         this.memorySettings = memorySettings;
+        this.knowledgeSettings = knowledgeSettings;
         this.aiSettingsMap = new LinkedHashMap<>();
         this.aiSettingsMap.put(AISettings.CHAT, chatAISettings);
         this.aiSettingsMap.put(AISettings.CHAT_PRO, chatProAISettings);
@@ -129,9 +127,6 @@ public class SettingsController {
         this.toolSettingsMap.put(FileDownloadTool.SETTINGS, fileDownloadToolSettings);
         this.toolSettingsMap.put(ImageCaptionTool.SETTINGS, imageCaptionToolSettings);
         this.toolSettingsMap.put(WebReaderTool.SETTINGS, webReaderToolSettings);
-        this.knowledgeSettingsMap = new LinkedHashMap<>();
-        this.knowledgeSettingsMap.put(KnowledgeSettings.SETTINGS, knowledgeSettings);
-        this.knowledgeSettingsMap.put(KnowledgeSettings.API, knowledgeAPI);
     }
 
     @RequestMapping("/chat/get")
@@ -560,57 +555,18 @@ public class SettingsController {
 
     @RequestMapping("/knowledgesettings/get")
     public RestResponse getKnowledgeSettings() {
-        KnowledgeSettings knowledgeSettings = (KnowledgeSettings) knowledgeSettingsMap.get(KnowledgeSettings.SETTINGS);
         return new RestResponse().success(knowledgeSettings);
-    }
-    @RequestMapping("/knowledgeapi/get")
-    public RestResponse getKnowledgeAPI() {
-        StandardEmbeddingAPI knowledgeAPI = (StandardEmbeddingAPI) knowledgeSettingsMap.get(KnowledgeSettings.API);
-        return new RestResponse().success(knowledgeAPI);
     }
     @PostMapping("/knowledge/save")
     public RestResponse saveKnowledgeSettings(@RequestBody(required = false) KnowledgeSettings settings) {
         if (settings == null) {
             return new RestResponse().error("Invalid settings");
         }
-        if (settings.getEnable() == null) {
-            settings.setEnable(false);
-        }
-        if (settings.getSimilarityThreshold() == null || settings.getSimilarityThreshold() < 0) {
-            return new RestResponse().error("Invalid settings");
-        }
-        KnowledgeSettings knowledgeSettings = (KnowledgeSettings) knowledgeSettingsMap.get(KnowledgeSettings.SETTINGS);
-        knowledgeSettings.setEnable(settings.getEnable())
-                .setSimilarityThreshold(settings.getSimilarityThreshold());
+        knowledgeSettings.setEnable(settings.getEnable() != null ? settings.getEnable() : false);
         try {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(knowledgeSettingsPath), knowledgeSettingsMap);
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(knowledgeSettingsPath), knowledgeSettings);
         } catch (Exception e) {
-            return new RestResponse().error("保存失败");
-        }
-        return new RestResponse().success("保存成功");
-    }
-    @PostMapping("/knowledgeapi/save")
-    public RestResponse saveKnowledgeAPI(@RequestBody(required = false) StandardEmbeddingAPI settings) {
-        if (settings == null) {
-            return new RestResponse().error("Invalid settings");
-        }
-        if (!StringUtils.hasText(settings.getModel())) {
-            return new RestResponse().error("Invalid settings");
-        }
-        if (!StringUtils.hasText(settings.getUrl())) {
-            return new RestResponse().error("Invalid settings");
-        }
-        if (!StringUtils.hasText(settings.getApiKey())) {
-            return new RestResponse().error("Invalid settings");
-        }
-        EmbeddingAPI knowledgeAPI = (EmbeddingAPI) knowledgeSettingsMap.get(KnowledgeSettings.API);
-        knowledgeAPI.setModel(settings.getModel())
-                .setUrl(settings.getUrl())
-                .setApiKey(settings.getApiKey());
-        knowledgeSettingsMap.put(KnowledgeSettings.API, knowledgeAPI);
-        try {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(knowledgeSettingsPath), knowledgeSettingsMap);
-        } catch (Exception e) {
+            log.error("保存知识库设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");

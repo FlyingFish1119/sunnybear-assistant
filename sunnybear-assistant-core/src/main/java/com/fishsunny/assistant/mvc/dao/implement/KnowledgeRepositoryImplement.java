@@ -8,8 +8,6 @@ package com.fishsunny.assistant.mvc.dao.implement;
  * @Date 2026/7/20
  */
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.KnowledgeRecord;
 import com.fishsunny.assistant.mvc.dao.KnowledgeRepository;
 import org.slf4j.Logger;
@@ -34,11 +32,17 @@ public class KnowledgeRepositoryImplement implements KnowledgeRepository {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final JdbcTemplate jdbcTemplate;
-    private final ObjectMapper objectMapper;
 
-    public KnowledgeRepositoryImplement(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+    public KnowledgeRepositoryImplement(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
-        this.objectMapper = objectMapper;
+        // 自动迁移：旧库删除 embedding 向量列（向量检索已下线）。
+        // 新库由 schema.sql 直接按无 embedding 列建表（此处 DROP 因列不存在被吞，无需处理）。
+        try {
+            jdbcTemplate.execute("ALTER TABLE knowledge_entry DROP COLUMN embedding");
+            log.info("Migration: dropped embedding column from knowledge_entry");
+        } catch (Exception e) {
+            log.debug("Migration: knowledge_entry embedding column may not exist, skipping. {}", e.getMessage());
+        }
     }
 
     private final RowMapper<KnowledgeRecord> rowMapper = new RowMapper<>() {
@@ -48,17 +52,8 @@ public class KnowledgeRepositoryImplement implements KnowledgeRepository {
             record.setId(rs.getInt("id"));
             record.setIntro(rs.getString("intro"));
             record.setContent(rs.getString("content"));
-            try {
-                String embeddingJson = rs.getString("embedding");
-                if (embeddingJson != null && !embeddingJson.isBlank()) {
-                    record.setEmbedding(objectMapper.readValue(embeddingJson, new TypeReference<List<Float>>() {}));
-                }
-                record.setCreateTime(LocalDateTime.parse(rs.getString("create_time"), FORMATTER));
-                record.setUpdateTime(LocalDateTime.parse(rs.getString("update_time"), FORMATTER));
-            } catch (Exception e) {
-                log.error("解析知识条目数据失败: {}", e.getMessage(), e);
-                throw new RuntimeException("解析知识条目数据失败: " + e.getMessage());
-            }
+            record.setCreateTime(LocalDateTime.parse(rs.getString("create_time"), FORMATTER));
+            record.setUpdateTime(LocalDateTime.parse(rs.getString("update_time"), FORMATTER));
             return record;
         }
     };
@@ -66,26 +61,19 @@ public class KnowledgeRepositoryImplement implements KnowledgeRepository {
     @Override
     public KnowledgeRecord insert(KnowledgeRecord record) {
         String sql = """
-                INSERT INTO knowledge_entry (intro, content, embedding, create_time, update_time)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO knowledge_entry (intro, content, create_time, update_time)
+                VALUES (?, ?, ?, ?)
                 """;
 
         String now = LocalDateTime.now().format(FORMATTER);
-        String embeddingJson;
-        try {
-            embeddingJson = objectMapper.writeValueAsString(record.getEmbedding());
-        } catch (Exception e) {
-            throw new RuntimeException("序列化 embedding 失败: " + e.getMessage());
-        }
 
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update((Connection con) -> {
             PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
             ps.setString(1, record.getIntro());
             ps.setString(2, record.getContent());
-            ps.setString(3, embeddingJson);
+            ps.setString(3, now);
             ps.setString(4, now);
-            ps.setString(5, now);
             return ps;
         }, keyHolder);
 
@@ -99,20 +87,12 @@ public class KnowledgeRepositoryImplement implements KnowledgeRepository {
                 UPDATE knowledge_entry
                 SET intro = ?,
                     content = ?,
-                    embedding = ?,
                     update_time = ?
                 WHERE id = ?
                 """;
 
         String now = LocalDateTime.now().format(FORMATTER);
-        String embeddingJson;
-        try {
-            embeddingJson = objectMapper.writeValueAsString(record.getEmbedding());
-        } catch (Exception e) {
-            throw new RuntimeException("序列化 embedding 失败: " + e.getMessage());
-        }
-
-        jdbcTemplate.update(sql, record.getIntro(), record.getContent(), embeddingJson, now, record.getId());
+        jdbcTemplate.update(sql, record.getIntro(), record.getContent(), now, record.getId());
 
         return selectById(record.getId());
     }
@@ -130,14 +110,14 @@ public class KnowledgeRepositoryImplement implements KnowledgeRepository {
 
     @Override
     public KnowledgeRecord selectById(Integer id) {
-        String sql = "SELECT * FROM knowledge_entry WHERE id = ?";
+        String sql = "SELECT id, intro, content, create_time, update_time FROM knowledge_entry WHERE id = ?";
         List<KnowledgeRecord> results = jdbcTemplate.query(sql, rowMapper, id);
         return results.isEmpty() ? null : results.get(0);
     }
 
     @Override
     public List<KnowledgeRecord> selectAll() {
-        String sql = "SELECT * FROM knowledge_entry ORDER BY create_time DESC";
+        String sql = "SELECT id, intro, content, create_time, update_time FROM knowledge_entry ORDER BY create_time DESC";
         return jdbcTemplate.query(sql, rowMapper);
     }
 }

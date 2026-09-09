@@ -199,7 +199,7 @@ public class ChatProcessor {
     }
 
     private void injectKnowledgePrompt(List<ChatMessage> originMessages, ChatSession chatSession, StringBuilder systemPrompt, WebSocketSession session) {
-        // 知识库匹配：用用户最新消息做 embedding 匹配知识条目
+        // 知识库注入：依据用户最新消息自动挑选相关知识条目注入上下文
         try {
             ChatMessage lastUserMsg = ObjectUtils.getLast(originMessages);
             if (lastUserMsg == null) {

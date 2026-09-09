@@ -1,7 +1,7 @@
 package com.fishsunny.assistant.mvc.service.implement;
 
 /*
- * @Usage 知识库服务实现 —— 管理知识条目 CRUD、embedding 编码、语义匹配与 session 注入
+ * @Usage 知识库服务实现 —— 管理知识条目 CRUD、对话自动注入与 session 注入
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
@@ -11,10 +11,6 @@ package com.fishsunny.assistant.mvc.service.implement;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
-import com.fishsunny.assistant.engine.EmbeddingHttpHandler;
-import com.fishsunny.assistant.engine.protocol.EmbeddingAPI;
-import com.fishsunny.assistant.engine.protocol.embedding.StandardEmbeddingRequest;
-import com.fishsunny.assistant.engine.protocol.embedding.StandardEmbeddingResponse;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.KnowledgeRecord;
 import com.fishsunny.assistant.engine.protocol.project.entity.SessionKnowledgeRecord;
@@ -24,7 +20,6 @@ import com.fishsunny.assistant.mvc.dao.SessionKnowledgeRepository;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.KnowledgeSettings;
-import com.fishsunny.assistant.utils.CosineSimilarityUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -45,8 +40,6 @@ public class KnowledgeServiceImplement implements KnowledgeService {
 
     private final KnowledgeRepository knowledgeRepository;
     private final SessionKnowledgeRepository sessionKnowledgeRepository;
-    private final EmbeddingHttpHandler embeddingHttpHandler;
-    private final EmbeddingAPI embeddingAPI;
     private final KnowledgeSettings knowledgeSettings;
     private final ObjectMapper objectMapper;
     private final AISettings cubAISettings;
@@ -54,16 +47,12 @@ public class KnowledgeServiceImplement implements KnowledgeService {
 
     public KnowledgeServiceImplement(KnowledgeRepository knowledgeRepository,
                                      SessionKnowledgeRepository sessionKnowledgeRepository,
-                                     EmbeddingHttpHandler embeddingHttpHandler,
-                                     EmbeddingAPI embeddingAPI,
                                      KnowledgeSettings knowledgeSettings,
                                      ObjectMapper objectMapper,
                                      @Qualifier(AISettings.CUB) AISettings cubAISettings,
                                      ChatHttpHandler chatHttpHandler) {
         this.knowledgeRepository = knowledgeRepository;
         this.sessionKnowledgeRepository = sessionKnowledgeRepository;
-        this.embeddingHttpHandler = embeddingHttpHandler;
-        this.embeddingAPI = embeddingAPI;
         this.knowledgeSettings = knowledgeSettings;
         this.objectMapper = objectMapper;
         this.cubAISettings = cubAISettings;
@@ -90,11 +79,9 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     @Override
     public KnowledgeRecord addOrUpdateKnowledge(Integer id, String intro, String content, String mode) {
         if (MODE_ADD.equalsIgnoreCase(mode)) {
-            List<Float> embedding = encodeIntro(intro);
             KnowledgeRecord record = new KnowledgeRecord()
                     .setIntro(intro)
-                    .setContent(content)
-                    .setEmbedding(embedding);
+                    .setContent(content);
             KnowledgeRecord saved = knowledgeRepository.insert(record);
             log.info("新增知识条目: id={}, intro={}", saved.getId(), saved.getIntro());
             return saved;
@@ -106,13 +93,8 @@ public class KnowledgeServiceImplement implements KnowledgeService {
             if (existing == null) {
                 throw new IllegalArgumentException("知识条目不存在: id=" + id);
             }
-            // intro 变化时重新编码，否则沿用旧向量
-            boolean introChanged = !intro.equals(existing.getIntro());
             existing.setIntro(intro);
             existing.setContent(content);
-            if (introChanged) {
-                existing.setEmbedding(encodeIntro(intro));
-            }
             KnowledgeRecord saved = knowledgeRepository.update(existing);
             log.info("更新知识条目: id={}, intro={}", saved.getId(), saved.getIntro());
             return saved;
@@ -133,64 +115,6 @@ public class KnowledgeServiceImplement implements KnowledgeService {
             log.warn("删除知识条目失败，记录不存在: id={}", id);
         }
         return deleted;
-    }
-
-    @Override
-    public ListKnowledgeResult listKnowledge(String queryText, int offset) {
-        int limit = 10;
-        if (offset < 0) {
-            offset = 0;
-        }
-
-        // 无搜索词：按 create_time 降序分页返回全部
-        if (!StringUtils.hasText(queryText)) {
-            List<KnowledgeRecord> all = knowledgeRepository.selectAll();
-            all.sort(Comparator.comparing(KnowledgeRecord::getCreateTime,
-                    Comparator.nullsLast(Comparator.reverseOrder())));
-
-            int total = all.size();
-            int fromIndex = Math.min(offset, total);
-            int toIndex = Math.min(fromIndex + limit, total);
-            List<KnowledgeRecord> page = new ArrayList<>(all.subList(fromIndex, toIndex));
-
-            return new ListKnowledgeResult(page, total, offset, limit);
-        }
-
-        // 有搜索词：embedding + 余弦相似度匹配
-        List<Float> queryEmbedding = encodeIntro(queryText);
-        if (queryEmbedding == null || queryEmbedding.isEmpty()) {
-            log.warn("查询 embedding 失败，返回空列表");
-            return new ListKnowledgeResult(new ArrayList<>(), 0, offset, limit);
-        }
-
-        List<KnowledgeRecord> allEntries = knowledgeRepository.selectAll();
-
-        // 逐条计算相似度，跳过 embedding 为 null/empty 的条目
-        List<AbstractMap.SimpleEntry<KnowledgeRecord, Float>> scored = new ArrayList<>();
-        for (KnowledgeRecord entry : allEntries) {
-            if (entry.getEmbedding() == null || entry.getEmbedding().isEmpty()) {
-                continue;
-            }
-            try {
-                float similarity = CosineSimilarityUtil.cosine(queryEmbedding, entry.getEmbedding());
-                scored.add(new AbstractMap.SimpleEntry<>(entry, similarity));
-            } catch (Exception e) {
-                log.warn("计算相似度失败: intro={}, error={}", entry.getIntro(), e.getMessage());
-            }
-        }
-
-        // 按相似度降序排列
-        scored.sort((a, b) -> Float.compare(b.getValue(), a.getValue()));
-
-        int total = scored.size();
-        int fromIndex = Math.min(offset, total);
-        int toIndex = Math.min(fromIndex + limit, total);
-        List<KnowledgeRecord> page = new ArrayList<>();
-        for (int i = fromIndex; i < toIndex; i++) {
-            page.add(scored.get(i).getKey());
-        }
-
-        return new ListKnowledgeResult(page, total, offset, limit);
     }
 
     // ========================= 会话知识库管理 =========================
@@ -386,30 +310,6 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     // ========================= 私有辅助方法 =========================
 
     /**
-     * 对文本做 embedding 编码，返回向量。
-     */
-    private List<Float> encodeIntro(String text) {
-        try {
-            StandardEmbeddingRequest request = new StandardEmbeddingRequest()
-                    .setModel(embeddingAPI.getModel())
-                    .setInput(text);
-
-            StandardEmbeddingResponse response = (StandardEmbeddingResponse)
-                    embeddingHttpHandler.embed(request, StandardEmbeddingResponse.class, embeddingAPI, null);
-
-            if (response == null || response.getData() == null || response.getData().isEmpty()) {
-                log.warn("Embedding API 返回空: text={}", text);
-                return null;
-            }
-
-            return response.getData().getFirst().getEmbedding();
-        } catch (Exception e) {
-            log.error("Embedding 编码失败: text={}, error={}", text, e.getMessage(), e);
-            return null;
-        }
-    }
-
-    /**
      * 获取 session 已注入的知识 ID 集合。
      */
     private Set<Integer> getInjectedKnowledgeIds(String sessionId) {
@@ -427,7 +327,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     }
 
     /**
-     * 当查询 embedding 失败时，仅基于已有注入构建知识片段（不匹配新条目）。
+     * 当 cub 挑选失败/无新条目时，仅基于已有注入构建知识片段（不匹配新条目）。
      */
     private String buildFromExistingOnly(String sessionId) {
         Set<Integer> injectedIds = getInjectedKnowledgeIds(sessionId);

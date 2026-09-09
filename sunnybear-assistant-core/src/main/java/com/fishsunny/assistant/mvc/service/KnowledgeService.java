@@ -26,8 +26,7 @@ public interface KnowledgeService {
 
     /**
      * 添加或更新知识条目。
-     * add 模式自动生成 ID 并对 intro 做 embedding 编码；
-     * update 模式更新已有条目，intro 变化时重新编码。
+     * add 模式自动生成 ID；update 模式更新已有条目。
      */
     KnowledgeRecord addOrUpdateKnowledge(Integer id, String intro, String content, String mode);
 
@@ -37,22 +36,13 @@ public interface KnowledgeService {
     KnowledgeRecord deleteKnowledge(Integer id);
 
     /**
-     * 搜索知识条目列表。
-     *
-     * @param queryText 搜索字符串，当为 null 或空字符串时，表示返回全部记录并按时间倒序排列
-     * @param offset 翻页偏移量
-     * @return 分页匹配结果
-     */
-    ListKnowledgeResult listKnowledge(String queryText, int offset);
-
-    /**
      * 构建系统提示词中的知识库片段。
-     * 用 queryText 做 embedding 匹配知识库，
+     * 依据用户最新消息文本挑选相关条目（与记忆注入一致，自动随对话注入），
      * 合并 session 之前已注入的知识 ID，更新映射表，
      * 返回格式化的 [knowledge] 文本。
      *
      * @param sessionId 当前会话 ID
-     * @param queryText 用于匹配的查询文本（用户最新消息）
+     * @param queryText 挑选依据的查询文本（用户最新消息）
      * @return 构建结果：text 为格式化的知识库片段（无匹配时为空字符串），
      *         hasNew 表示本轮去重后是否注入了新条目（仅此时调用方才应推送命中信号）
      */
@@ -81,9 +71,6 @@ public interface KnowledgeService {
      * @param sessionId 会话 ID
      */
     void clearSessionKnowledge(String sessionId);
-
-    public record ListKnowledgeResult(List<KnowledgeRecord> items, int total, int offset, int limit) {
-    }
 
     /**
      * 知识库构建结果。

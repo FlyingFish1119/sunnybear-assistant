@@ -77,7 +77,7 @@ const KnowledgeManageSettings = {
             </template>
             <el-form :model="knowledgeEditForm" label-width="80px" label-position="left">
                 <el-form-item label="简介">
-                    <textarea class="settings-textarea" v-model="knowledgeEditForm.intro" rows="2" placeholder="输入知识简介（约 50 字，比标题内容更丰富，用于匹配检索）" maxlength="200"></textarea>
+                    <textarea class="settings-textarea" v-model="knowledgeEditForm.intro" rows="2" placeholder="输入知识简介（约 50 字，比标题内容更丰富，对话时据此挑选注入）" maxlength="200"></textarea>
                 </el-form-item>
                 <el-form-item label="内容">
                     <textarea class="settings-textarea" v-model="knowledgeEditForm.content" rows="6" placeholder="输入知识内容"></textarea>
