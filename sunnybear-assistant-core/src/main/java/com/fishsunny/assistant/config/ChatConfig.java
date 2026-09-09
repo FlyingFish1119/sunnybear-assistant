@@ -10,6 +10,8 @@ package com.fishsunny.assistant.config;
 
 import com.fishsunny.assistant.engine.adapter.AIAdapterProperties;
 import com.fishsunny.assistant.engine.adapter.factory.AIAdapterFactory;
+import com.fishsunny.assistant.engine.tts.TTSClient;
+import com.fishsunny.assistant.engine.tts.TTSSettings;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -47,7 +49,8 @@ public class ChatConfig {
     }
 
     @Bean
-    public AIAdapterFactory aiAdapterFactory(AIAdapterProperties properties, @Qualifier("aiHttpClient") HttpClient httpClient) {
-        return new AIAdapterFactory(properties, httpClient);
+    public AIAdapterFactory aiAdapterFactory(AIAdapterProperties properties, @Qualifier("aiHttpClient") HttpClient httpClient,
+                                             TTSClient ttsClient, TTSSettings ttsSettings) {
+        return new AIAdapterFactory(properties, httpClient, ttsClient, ttsSettings);
     }
 }

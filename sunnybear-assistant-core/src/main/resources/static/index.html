@@ -232,6 +232,12 @@
                                       title="复制消息">
                                     <i style="width: 14px; height: 14px" data-lucide="copy"></i>
                                 </span>
+                                <span v-if="msg.role === 'assistant' && msg.extension && msg.extension.ttsAudio"
+                                      class="branch-switch-arrow"
+                                      @click.stop="playMessageAudio(msg)"
+                                      title="播放语音回复">
+                                    <i style="width: 14px; height: 14px" data-lucide="volume-2"></i>
+                                </span>
                                 <span v-if="msg.role === 'assistant'" class="branch-switch-arrow"
                                       @click.stop="startAssistantEdit(msg)"
                                       title="编辑消息">
@@ -343,6 +349,12 @@
                     <img class="mascot-body" src="icon/signboard_bear/signboard_bear_2.png" alt="" width="100">
                     <img class="mascot-paws" src="icon/signboard_bear/signboard_bear_1.png" alt="" width="100">
                 </div>
+                <button class="send-area-attach-button tts-toggle-button" :class="{ 'tts-on': ttsEnabled }"
+                        @click="toggleTts()"
+                        :title="ttsEnabled ? '本条消息语音朗读已开启（点击关闭）' : '开启本条消息的语音朗读'">
+                    <i v-show="ttsEnabled" data-lucide="volume-2" style="width:18px;height:18px"></i>
+                    <i v-show="!ttsEnabled" data-lucide="volume-x" style="width:18px;height:18px"></i>
+                </button>
                 <button class="send-area-attach-button" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
                     <i data-lucide="paperclip" style="width:18px;height:18px"></i>
                 </button>
@@ -462,6 +474,13 @@
                 streamingMap: {},
                 // 当前正在处理的 tool call id
                 currentToolCallId: null,
+
+                // 语音朗读：发送框 🔊 开关（localStorage 记忆）。逐句音频经 ###TTS_AUDIO### 帧
+                // 实时入队顺序播放（ttsQueue/ttsPlaying + 常驻单 Audio 元素）；整轮完整音频在
+                // assistant 消息 extension.ttsAudio，供历史回放。
+                ttsEnabled: localStorage.getItem('sunnybear.tts') === '1',
+                ttsQueue: [],
+                ttsPlaying: false,
 
                 // 用户是否手动上滑离开了底部（用于流式传输时自动跟随/停止跟随）
                 // 消息编辑状态
@@ -768,8 +787,9 @@
             selectSession(session) {
                 this.closeSidebar();
                 this.$md.clearCache();
-                // 切换会话时清空 Agent Log
+                // 切换会话：清空 Agent Log 与上一会话的朗读队列
                 this.agentLogs = [];
+                this.clearTtsQueue();
                 this.sessionSelectLoading = true;
                 this.currentSession = session;
                 // isStreaming 为计算属性，切会话后自动读新会话自己的标记，无需复位
@@ -905,11 +925,14 @@
                     return; // 等待服务端 init_user 确认期间禁止重复发送
                 }
                 this.sending = true;
+                // 发新消息：清掉上一轮残留的朗读队列
+                this.clearTtsQueue();
                 let mode = this.currentSessionId ? 'append' : 'create';
                 let request = {
                     mode: mode,
                     sessionId: this.currentSessionId,
-                    content: this.inputText
+                    content: this.inputText,
+                    tts: this.ttsEnabled
                 };
                 if (this.uploadedFiles.length > 0) {
                     request.files = this.uploadedFiles;
@@ -937,8 +960,94 @@
             stopStreaming() {
                 console.log('Abort streaming')
                 if (!this.isStreaming || !this.currentSessionId) return;
+                // 中止朗读：清空播放队列并停掉当前音频
+                this.clearTtsQueue();
                 API.chat.stop(this.currentSessionId)
                     .catch(err => console.error('中止请求发送失败:', err));
+            },
+
+            /* ========== TTS 语音朗读 ========== */
+
+            /** 发送框 🔊 开关（localStorage 记忆）；关闭时同步清掉队列 */
+            toggleTts() {
+                this.ttsEnabled = !this.ttsEnabled;
+                localStorage.setItem('sunnybear.tts', this.ttsEnabled ? '1' : '0');
+                if (!this.ttsEnabled) {
+                    this.clearTtsQueue();
+                }
+            },
+
+            /** 常驻单 Audio 元素（非响应式），onended 驱动队列 FIFO */
+            ensureTtsAudio() {
+                if (!this._ttsAudio) {
+                    this._ttsAudio = new Audio();
+                    this._ttsAudio.onended = () => {
+                        this.ttsQueue.shift();
+                        this.ttsPlaying = false;
+                        this.playNextTts();
+                    };
+                    this._ttsRetryPending = false;
+                }
+                return this._ttsAudio;
+            },
+
+            /** 清空播放队列并停掉当前音频（停止/切会话/新轮/发新消息/关开关时调用） */
+            clearTtsQueue() {
+                this.ttsQueue = [];
+                this.ttsPlaying = false;
+                if (this._ttsAudio) {
+                    this._ttsAudio.pause();
+                    this._ttsAudio.removeAttribute('src');
+                }
+            },
+
+            /** 逐句音频入队（###TTS_AUDIO### 帧到达）；未在播放时立即起播 */
+            enqueueTtsAudio(audioBase64) {
+                if (!audioBase64) {
+                    return;
+                }
+                this.ttsQueue.push(audioBase64);
+                this.playNextTts();
+            },
+
+            /** 播放队头；队空 / 已在播放 / 开关已关时不动 */
+            playNextTts() {
+                if (this.ttsPlaying || this.ttsQueue.length === 0 || !this.ttsEnabled) {
+                    return;
+                }
+                this.ttsPlaying = true;
+                this.playAudioData(this.ttsQueue[0], 'audio/mpeg');
+            },
+
+            /** 底层播放：base64 → data URI；被自动播放策略拦截时挂起，等下一次用户手势重试 */
+            playAudioData(audioBase64, mime) {
+                const el = this.ensureTtsAudio();
+                el.src = 'data:' + mime + ';base64,' + audioBase64;
+                const p = el.play();
+                if (p && p.catch) {
+                    p.catch(() => {
+                        el.removeAttribute('src');
+                        this.ttsPlaying = false;
+                        if (!this._ttsRetryPending) {
+                            this._ttsRetryPending = true;
+                            document.addEventListener('pointerdown', () => {
+                                this._ttsRetryPending = false;
+                                this.playNextTts();
+                            }, { once: true });
+                        }
+                    });
+                }
+            },
+
+            /** 消息气泡 🔊：重播整轮完整音频（extension.ttsAudio，历史/刷新后可用） */
+            playMessageAudio(msg) {
+                const tts = msg.extension && msg.extension.ttsAudio;
+                if (!tts || !tts.audio) {
+                    return;
+                }
+                this.clearTtsQueue();
+                const mime = tts.format === 'wav' ? 'audio/wav' : 'audio/mpeg';
+                this.playAudioData(tts.audio, mime);
             },
 
             /**
@@ -981,6 +1090,8 @@
                     return;
                 }
                 if (event.data.startsWith('###START###')) {
+                    // 新一轮开始：清掉上一轮残留的朗读队列/音频
+                    this.clearTtsQueue();
                     let sessionId = event.data.split('###START###')[1];
                     this.streamingMap[sessionId] = true;
                     // 新一轮开始：清掉该会话残留的流式占位（异常中断后重开的情况）
@@ -1054,6 +1165,30 @@
                         this.currentMessages.push(assistantMessage);
                         this.currentToolCallId = null;
                     }
+                    return;
+                }
+                if (event.data.startsWith('###TTS_AUDIO###')) {
+                    // TTS 逐句音频帧：{sessionId, audio(mp3 base64)}。
+                    // 按 sessionId 过滤后注入当前 streaming assistant 消息的 extension（保序），并实时播放
+                    let ttsFrame;
+                    try {
+                        ttsFrame = JSON.parse(event.data.substring('###TTS_AUDIO###'.length));
+                    } catch (e) {
+                        return;
+                    }
+                    if (!ttsFrame || ttsFrame.sessionId !== this.currentSessionId || !this.ttsEnabled) {
+                        return;
+                    }
+                    let ttsStreamingMessage = this.currentMessages.findLast(m => m.sessionId === ttsFrame.sessionId
+                        && m.role === 'assistant' && m.id && m.id.startsWith('streaming_'));
+                    if (ttsStreamingMessage) {
+                        ttsStreamingMessage.extension = ttsStreamingMessage.extension || {};
+                        if (!ttsStreamingMessage.extension.audios) {
+                            ttsStreamingMessage.extension.audios = [];
+                        }
+                        ttsStreamingMessage.extension.audios.push(ttsFrame.audio);
+                    }
+                    this.enqueueTtsAudio(ttsFrame.audio);
                     return;
                 }
                 if (event.data.startsWith('###')) {
@@ -1208,6 +1343,10 @@
                         if (serverMsg.createTime) streamingMessage.createTime = serverMsg.createTime;
                         if (serverMsg.siblingCount != null) streamingMessage.siblingCount = serverMsg.siblingCount;
                         if (serverMsg.siblingIndex != null) streamingMessage.siblingIndex = serverMsg.siblingIndex;
+                        // 同步落库消息的 extension（如 TTS 整轮完整音频 ttsAudio，供 🔊 重播）
+                        if (serverMsg.extension) {
+                            streamingMessage.extension = Object.assign({}, streamingMessage.extension || {}, serverMsg.extension);
+                        }
                         // 斜杠指令等场景：没有 chunk 流，文字直接附在 init_assistant 里
                         if (response.text) {
                             let lastContent = Utils.getLast(streamingMessage.contents);
@@ -1345,12 +1484,13 @@
                     ElementPlus.ElMessage.error('用户消息内容为空');
                     return;
                 }
-                // 通过 WebSocket 发送 replace 请求
+                // 通过 WebSocket 发送 replace 请求（重新生成的回复跟随当前朗读开关）
                 const request = {
                     mode: 'replace',
                     sessionId: this.currentSessionId,
                     replaceMessageId: msg.id,
-                    content: userText
+                    content: userText,
+                    tts: this.ttsEnabled
                 };
                 this.ws.send(JSON.stringify(request));
             },
@@ -1393,12 +1533,13 @@
                     ElementPlus.ElMessage.error('消息内容不能为空');
                     return;
                 }
-                // 通过 WebSocket 发送 edit 请求
+                // 通过 WebSocket 发送 edit 请求（重新生成的回复跟随当前朗读开关）
                 const request = {
                     mode: 'edit',
                     sessionId: this.currentSessionId,
                     editMessageId: msg.id,
-                    content: this.editDraft
+                    content: this.editDraft,
+                    tts: this.ttsEnabled
                 };
                 this.ws.send(JSON.stringify(request));
                 // 清除编辑状态

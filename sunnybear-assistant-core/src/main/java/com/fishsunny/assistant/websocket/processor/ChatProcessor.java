@@ -13,6 +13,7 @@ import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.constants.PromptReplaceVariable;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
+import com.fishsunny.assistant.engine.protocol.AIResponse;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
@@ -21,6 +22,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.engine.tts.TTSSettings;
 import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.exception.UserException;
@@ -67,6 +69,7 @@ public class ChatProcessor {
     private final KnowledgeService knowledgeService;
     private final MemoryService memoryService;
     private final SlashCommandExecutor slashCommandExecutor;
+    private final TTSSettings ttsSettings;
 
     /**
      * 主 Agent 不直接调用的工具集合：由 agent_tool 路由的子 Agent 工具（如 net_explore_tool），
@@ -86,6 +89,7 @@ public class ChatProcessor {
                             @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
                             SlashCommandExecutor slashCommandExecutor,
                             ChatHttpHandler chatHttpHandler,
+                            TTSSettings ttsSettings,
                             List<SubAgentToolHandler> subAgentTools
                          ) {
         this.chatMessageService = chatMessageService;
@@ -99,17 +103,22 @@ public class ChatProcessor {
         this.chatProAISettings = chatProAISettings;
         this.slashCommandExecutor = slashCommandExecutor;
         this.chatHttpHandler = chatHttpHandler;
+        this.ttsSettings = ttsSettings;
 
         EXCLUDE_TOOLS.addAll(subAgentTools.stream().map(SubAgentToolHandler::name).toList());
         log.info("Exclude tools: {}", EXCLUDE_TOOLS);
     }
     /**
      * 核心对话处理逻辑
+     *
+     * @param enableTts 本消息请求 AI 回复朗读：逐句音频随文本推 WS 帧（###TTS_AUDIO###），
+     *                  整轮完整音频随 assistant 消息 extension 落库（需 engine.tts.enable）
      */
     public List<ChatMessage> chatToAi(List<ChatMessage> originMessages,
                                       ChatSession chatSession,
                                       WebSocketSession session,
-                                      ChatProvider chatProvider
+                                      ChatProvider chatProvider,
+                                      boolean enableTts
                                       ) throws Exception {
         if (chatProvider == null) {
             throw new UserException("无效的 ChatProvider");
@@ -178,7 +187,7 @@ public class ChatProcessor {
         }
 
         List<ChatMessage> collector = new ArrayList<>();
-        toolCallCycle(collector, effectiveAISettings, request, chatSession, session, chatProvider, activeAssistantSettings.getAssistantName());
+        toolCallCycle(collector, effectiveAISettings, request, chatSession, session, chatProvider, activeAssistantSettings.getAssistantName(), enableTts);
         return collector;
     }
 
@@ -245,7 +254,8 @@ public class ChatProcessor {
                                ChatSession chatSession,
                                WebSocketSession session,
                                ChatProvider chatProvider,
-                               String activeAssistantName
+                               String activeAssistantName,
+                               boolean enableTts
     ) throws Exception {
         // 注入工具（排除被子 Agent 及其原子工具）
         List<StandardToolRegister> toolRegisters = StandardToolRegister.buildToolRegisterExcluding(
@@ -257,18 +267,37 @@ public class ChatProcessor {
         request.setTools(toolRegisters);
 
         // 定义响应处理
-        ChatHttpHandler.InTranslateCallback translate = response -> {
-            ChatResponse chatResponse = (ChatResponse) response;
-            try {
-                chatResponse.setSessionId(chatSession.getId());
-                for (ChatMessage message : chatResponse.getMessages()) {
-                    ChatMessage last = ObjectUtils.getLast(request.getMessages());
-                    String parentId = last == null ? null : last.getId();
-                    message.makeInsertable(chatSession.getId(), parentId, activeAssistantName);
+        ChatHttpHandler.InTranslateCallback translate = new ChatHttpHandler.InTranslateCallback() {
+            @Override
+            public void onTranslate(AIResponse response) {
+                ChatResponse chatResponse = (ChatResponse) response;
+                try {
+                    chatResponse.setSessionId(chatSession.getId());
+                    for (ChatMessage message : chatResponse.getMessages()) {
+                        ChatMessage last = ObjectUtils.getLast(request.getMessages());
+                        String parentId = last == null ? null : last.getId();
+                        message.makeInsertable(chatSession.getId(), parentId, activeAssistantName);
+                    }
+                    session.sendMessage(new TextMessage(objectMapper.writeValueAsString(chatResponse)));
+                } catch (Exception e) {
+                    log.error("发送消息失败: {}", e.getMessage());
                 }
-                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(chatResponse)));
-            } catch (Exception e) {
-                log.error("发送消息失败: {}", e.getMessage());
+            }
+
+            /**
+             * TTS 逐句音频：包成带 sessionId 的帧走同一 WS（总线），与文本帧同序。
+             * 前端拦截 ###TTS_AUDIO### 写入当前 streaming assistant 消息的 extension 并播放；
+             * 帧不参与断线重放（shouldReplay 排除）。
+             */
+            @Override
+            public void onTTSAudio(String audioBase64) {
+                try {
+                    String frame = ControlSign.SIGN_TTS_AUDIO + objectMapper.writeValueAsString(
+                            Map.of("sessionId", chatSession.getId(), "audio", audioBase64));
+                    session.sendMessage(new TextMessage(frame));
+                } catch (Exception e) {
+                    log.error("发送 TTS 音频帧失败: {}", e.getMessage());
+                }
             }
         };
 
@@ -293,6 +322,14 @@ public class ChatProcessor {
 
                 if (chatProvider.getBeforeSaveAssistantProvider() != null) {
                     readyToSaveChatMessage = chatProvider.getBeforeSaveAssistantProvider().apply(readyToSaveChatMessage);
+                }
+
+                // TTS 整轮完整音频入库：塞进 assistant 消息 extension（前端播放/历史回放用；
+                // 逐句帧只是实时通道，不持久化）
+                String fullAudio = result.audioBase64();
+                if (StringUtils.hasText(fullAudio)) {
+                    readyToSaveChatMessage.getExtension().put("ttsAudio",
+                            Map.of("audio", fullAudio, "format", ttsSettings.getFormat()));
                 }
 
                 ChatMessage assistantMessage = appendAssistantMessage(readyToSaveChatMessage);
@@ -364,7 +401,7 @@ public class ChatProcessor {
                 }
                 // 递归调用
                 try {
-                    toolCallCycle(collector, effectiveAISettings, request, chatSession, session, chatProvider, activeAssistantName);
+                    toolCallCycle(collector, effectiveAISettings, request, chatSession, session, chatProvider, activeAssistantName, enableTts);
                 } catch (Exception e) {
                     log.error("工具调用失败: {}", e.getMessage());
                     throw new RuntimeException("工具调用失败: " + e.getMessage());
@@ -377,8 +414,10 @@ public class ChatProcessor {
 
         ChatHttpHandler.TranslateData data = new ChatHttpHandler.TranslateData(
                 chatSession.getId(), effectiveAISettings.getAdapterName(), request);
+
         ChatHttpHandler.TranslateOption option = new ChatHttpHandler.TranslateOption()
-                .setStream(request.getSettings().getStream());
+                .setStream(request.getSettings().getStream())
+                .setEnableTTS(enableTts);
         ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler(translate, complete);
 
         chatHttpHandler.translate(data, translateHandler, option);

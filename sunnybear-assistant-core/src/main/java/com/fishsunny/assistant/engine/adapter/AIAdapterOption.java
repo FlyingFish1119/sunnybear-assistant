@@ -10,6 +10,7 @@ package com.fishsunny.assistant.engine.adapter;
 
 import com.fishsunny.assistant.engine.protocol.AIRequest;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.tts.TTSClient;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
@@ -37,6 +38,9 @@ public class AIAdapterOption {
 
     /** 共享 HttpClient，复用连接，避免每次 newHttpClient() */
     protected HttpClient httpClient;
+
+    /** TTS 客户端（engine.tts.enable=true 时由工厂注入；null = 本适配器不参与朗读） */
+    protected TTSClient ttsClient;
 
     public AIAdapterOption() {
     }

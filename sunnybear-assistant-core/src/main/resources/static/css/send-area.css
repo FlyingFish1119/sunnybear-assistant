@@ -43,6 +43,20 @@
 .send-area-attach-button:hover {
     filter: brightness(0.85);
 }
+/* 语音朗读钮 + 上传钮成组：左侧圆角只保留给第一个（朗读钮），第二个去掉左圆角 */
+.send-area-attach-button + .send-area-attach-button {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+/* 语音朗读开关：关闭 = 灰底；开启 = 主色底（.tts-on 覆盖） */
+.tts-toggle-button {
+    background: var(--border-color, #cfcfcf);
+    color: #555;
+}
+.tts-toggle-button.tts-on {
+    background: var(--main-color);
+    color: #fff;
+}
 
 /* ---- 消息输入框 ---- */
 .send-area-textarea {
@@ -123,7 +137,7 @@
 
 /* ---- 文件 chips 区域（宽度与 textarea+button 一致，确保左对齐） ---- */
 .file-chips-area {
-    width: calc(50% + var(--btn-w, 100px) + var(--attach-w, 48px)); /* textarea + send btn + attach btn */
+    width: calc(50% + var(--btn-w, 100px) + var(--attach-w, 48px) * 2); /* textarea + send btn + 朗读/上传两个左侧钮 */
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -245,9 +259,9 @@
 .send-area-mascot {
     /* 熊身/爪爪中心对准“发送按钮”中心：发送行三段居中排列，
        按钮中心 = 行中点的右移量 = 行宽 × (1+输入框占比)/2 + 附件按钮宽/2
-       桌面（输入框占 50%）: 50% + 25% + 48px/2 = 75% + 24px
+       桌面（输入框占 50%，左侧两个等宽钮共 96px）: 50% + 25% + 96px/2 = 75% + 48px
        小屏（输入框占 70%）在下方 @media 里改 */
-    --cx: calc(75% + 24px);
+    --cx: calc(75% + 48px);
     position: absolute;
     inset: 0;
     pointer-events: none; /* 纯装饰，绝不拦截输入框/按钮的点击 */
@@ -337,12 +351,12 @@
     }
 
     .file-chips-area {
-        width: calc(70% + var(--btn-w, 65px) + var(--attach-w, 34px));
+        width: calc(70% + var(--btn-w, 65px) + var(--attach-w, 34px) * 2);
     }
 
-    /* 小屏输入框占 70%，熊中心同步跟到按钮中心：50% + 35% + 34px/2 = 85% + 17px */
+    /* 小屏输入框占 70%，左侧两个钮共 68px，熊中心：50% + 35% + 68px/2 = 85% + 34px */
     .send-area-mascot {
-        --cx: calc(85% + 17px);
+        --cx: calc(85% + 34px);
     }
 
     .drag-overlay-content {

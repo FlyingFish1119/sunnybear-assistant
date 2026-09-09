@@ -10,6 +10,7 @@ package com.fishsunny.assistant.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
+import com.fishsunny.assistant.engine.adapter.HandleTTSAble;
 import com.fishsunny.assistant.engine.adapter.factory.AIAdapterFactory;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
@@ -25,10 +26,7 @@ import org.springframework.util.StringUtils;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -82,6 +80,11 @@ public class ChatHttpHandler {
     @Accessors(chain = true)
     public static class TranslateOption {
         private Boolean stream = false;
+        /**
+         * 朗读开关：开启且 adapter 实现 HandleTTSAble（TTSClient 由工厂在 enable 时注入）才朗读。
+         * 句音频经 InTranslateCallback.onTTSAudio 逐句交还调用方；整轮完整音频在
+         * complete 回调的 TranslateResult.audioBase64 里。
+         */
         private Boolean enableTTS = false;
     }
 
@@ -96,6 +99,8 @@ public class ChatHttpHandler {
 
         boolean safeStream = stream != null && stream;
         AIAdapter adapter = adapterFactory.getAdapter(adapterName, safeStream);
+
+        HandleTTSAble ttsAble = Boolean.TRUE.equals(option.getEnableTTS()) && adapter instanceof HandleTTSAble handle ? handle : null;
 
         // 空闲/无效信息超时只作用于流式 SSE：流式对端靠有效 data 消息/keep-alive 保活，
         // 静默才判定超时。非流式是普通 HTTP 整包响应，本身没有保活机制，服务端思考较久时
@@ -116,11 +121,14 @@ public class ChatHttpHandler {
 
         long deadline = idleMillis > 0 ? System.currentTimeMillis() + idleMillis : 0;
         AIResponse lastRes = null;
+        // 流正常走完（最后一个 chunk finished=true）才合成整轮完整音频；
+        // 中断/流早断/出错时不做（避免把半截回复的语音塞进消息）
+        boolean streamCompleted = false;
         try {
             while (true){
                 // 如果 ID 存在，则认为被中断
                 if (!PASS_SIGN.contains(passId)) {
-                    break;
+                    break; // 用户中断：TTS 收尾统一走 finally 的 cancelTTS
                 }
 
                 StreamEvent event = waitEvent(queue, idleMillis, deadline, adapterName);
@@ -160,29 +168,52 @@ public class ChatHttpHandler {
                 // 处理可能的工具调用
                 adapter.collectChunk(response);
 
+                // 文本先行推给调用方，之后才轮到 TTS（同步合成会短暂阻塞收流循环）
+                AIResponse converted = adapter.convertToMaster(response);
                 if (inTranslate != null) {
-                    inTranslate.onTranslate(adapter.convertToMaster(response));
+                    inTranslate.onTranslate(converted);
                 }
-                if (adapter.finished(response)) {
+
+                boolean finished = adapter.finished(response);
+
+                if (ttsAble != null) {
+                    String audio = ttsAble.onTTSChunk(response, finished);
+                    if (audio != null && inTranslate != null) {
+                        inTranslate.onTTSAudio(audio);
+                    }
+                }
+                if (finished) {
+                    streamCompleted = true;
                     break;
                 }
             }
             // 流意外结束或中断，回传已收集的内容
             if (onComplete != null) {
                 AIResponse lastConverted = lastRes != null ? adapter.convertToMaster(lastRes) : null;
+
+                // 整轮完整音频（供调用方入库，如塞进 assistant 消息 extension）
+                String fullAudio = ttsAble != null && streamCompleted ? ttsAble.fullAudioBase64() : null;
                 TranslateResult result = new TranslateResult(
-                        adapter.getReasoning(), adapter.getContent(),
-                        adapter.getToolCalls(), adapter.getReasoningSignature());
+                        adapter.getReasoning(),
+                        adapter.getContent(),
+                        adapter.getToolCalls(),
+                        adapter.getReasoningSignature(),
+                        fullAudio
+                );
                 onComplete.onComplete(result, lastConverted);
             }
         } finally {
             // 结束/中断/超时都通知泵线程停止并尽力关闭底层流，Stream.close() 会取消订阅
             // 释放连接与 JDK HttpClient 的 Direct ByteBuffer
             stopPump(cancelled, streamRef, pump);
+            // TTS 兜底收尾：正常收流已在最后一个 chunk（finished=true）冲刷过缓冲；
+            // 中断/异常/流早断路径靠它丢弃残留缓冲。幂等，无副作用
+            if (ttsAble != null) {
+                ttsAble.cancelTTS();
+            }
             PASS_SIGN.remove(passId);
         }
     }
-
 
     /**
      * 从队列取下一个事件。启用空闲超时时等待不会超过剩余时限，超时抛出
@@ -239,8 +270,7 @@ public class ChatHttpHandler {
      * 通知泵线程停止并尽力关闭底层流。泵线程是守护线程：即使对端静默到连中断都无法唤醒它
      * （极端情况，如 connect 阶段就挂死），最多泄漏一个线程，不会拖住聊天线程池。
      */
-    private static void stopPump(AtomicBoolean cancelled, AtomicReference<Stream<String>> streamRef,
-                                 Thread pump) {
+    private static void stopPump(AtomicBoolean cancelled, AtomicReference<Stream<String>> streamRef, Thread pump) {
         cancelled.set(true);
         Stream<String> lines = streamRef.get();
         if (lines != null) {
@@ -305,15 +335,27 @@ public class ChatHttpHandler {
     /**
      * 翻译完成后承载所有结果的记录，避免接口膨胀。
      * 新增字段时只需加在这里，调用方零改动。
+     *
+     * @param audioBase64 整轮完整音频（mp3 base64，enableTTS 且合成成功时非空；
+     *                    供调用方入库，如塞进 assistant 消息的 extension）
      */
     public record TranslateResult(
         String reasoning,
         String content,
         List<AIAdapter.ToolCall> toolCalls,
-        String reasoningSignature
+        String reasoningSignature,
+        String audioBase64
     ) {}
 
     public interface InTranslateCallback {
         void onTranslate(AIResponse response);
+
+        /**
+         * 朗读音频回调，与 {@link #onTranslate} 同节奏逐句触发（配合 enableTTS 使用）。
+         * 参数为一句可朗读文本合成出的音频 mp3 base64（格式见 engine.tts.format）。
+         * 默认 no-op；由持有输出通道（如 WebSocket 会话）的调用方覆写决定怎么推。
+         */
+        default void onTTSAudio(String audioBase64) {
+        }
     }
 }

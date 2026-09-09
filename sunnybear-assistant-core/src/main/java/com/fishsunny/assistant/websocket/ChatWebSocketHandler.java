@@ -159,6 +159,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      * sessionId 用于按会话键控的 pending 查询（如 BattleController 以 sessionId 为键）。
      */
     protected boolean shouldReplay(String sessionId, String eventPayload) {
+        // TTS 音频帧是实时通道，不参与断线重放（旧音频注入新轮次只会错乱）
+        if (eventPayload.startsWith(ControlSign.SIGN_TTS_AUDIO)) {
+            return false;
+        }
         String sign = null;
         if (eventPayload.startsWith(ControlSign.SIGN_TOOL_ASK)) {
             sign = ControlSign.SIGN_TOOL_ASK;
@@ -234,7 +238,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
                     WebSocketSession busSession = sessionMessageBus.wrap(safeSession, chatSession.getId());
 
-                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, busSession, chatToAiProvider(chatSession));
+                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, busSession, chatToAiProvider(chatSession),
+                            Boolean.TRUE.equals(request.getTts()));
 
                     // 如果是新的会话并且不是定时任务，则生成标题
                     if (parseResult.isNewChat() && request.getCronId() == null) {

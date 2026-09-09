@@ -12,6 +12,8 @@ import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.adapter.AIAdapterProperties;
 import com.fishsunny.assistant.engine.adapter.AIAdapterRegister;
+import com.fishsunny.assistant.engine.tts.TTSClient;
+import com.fishsunny.assistant.engine.tts.TTSSettings;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,9 +35,16 @@ public class AIAdapterFactory {
 
     private final HttpClient httpClient;
 
+    /** TTS 客户端：enable 时随每个 adapter 实例注入（工厂是唯一拿得到 bean 的创建点） */
+    private final TTSClient ttsClient;
+    private final TTSSettings ttsSettings;
+
     @Autowired
-    public AIAdapterFactory(AIAdapterProperties properties, HttpClient httpClient) {
+    public AIAdapterFactory(AIAdapterProperties properties, HttpClient httpClient,
+                            TTSClient ttsClient, TTSSettings ttsSettings) {
         this.httpClient = httpClient;
+        this.ttsClient = ttsClient;
+        this.ttsSettings = ttsSettings;
         List<AIAdapterRegister> registers = properties.getRegister();
         if (CollectionUtils.isEmpty(registers)) {
             throw new IllegalStateException("No adapter registered. Please configure 'adapter-register.register' in application.yml");
@@ -109,7 +118,8 @@ public class AIAdapterFactory {
                 .setTargetReqCls(register.getTargetReqCls())
                 .setMasterRespCls(register.getMasterRespCls())
                 .setTargetRespCls(register.getTargetRespCls())
-                .setHttpClient(httpClient);
+                .setHttpClient(httpClient)
+                .setTtsClient(Boolean.TRUE.equals(ttsSettings.getEnable()) ? ttsClient : null);
 
         try {
             return register.getAdapterCls().getConstructor(AIAdapterOption.class).newInstance(option);

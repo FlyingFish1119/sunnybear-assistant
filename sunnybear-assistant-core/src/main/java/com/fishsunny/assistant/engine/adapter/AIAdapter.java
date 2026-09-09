@@ -2,6 +2,7 @@ package com.fishsunny.assistant.engine.adapter;
 
 import com.fishsunny.assistant.engine.protocol.AIRequest;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.tts.TTSClient;
 import com.fishsunny.assistant.utils.EnvResolver;
 import lombok.Data;
 import lombok.Getter;
@@ -25,6 +26,9 @@ public abstract class AIAdapter {
 
     /** 自定义请求头，建立连接时随请求带上；Content-Type/Authorization 等基础头由各协议适配器自行添加 */
     protected Map<String, String> headers;
+
+    /** 工厂注入的 TTS 客户端（engine.tts.enable 关闭时为 null）；实现 HandleTTSAble 的适配器判空后使用 */
+    protected final TTSClient ttsClient;
 
     protected Class<? extends AIRequest> masterReqCls;
 
@@ -75,6 +79,7 @@ public abstract class AIAdapter {
         this.masterRespCls = option.getMasterRespCls();
         this.targetRespCls = option.getTargetRespCls();
         this.httpClient = option.getHttpClient();
+        this.ttsClient = option.getTtsClient();
         checkCls(masterReqCls, targetReqCls, masterRespCls, targetRespCls);
     }
 

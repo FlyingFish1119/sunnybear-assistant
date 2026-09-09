@@ -184,8 +184,8 @@ public class WorldGroupChatService {
             }
             // 通知前端本轮发言者，群聊页据此开启新气泡并显示角色名
             session.sendMessage(new TextMessage(WorldControlSign.WORLD_ROUND + chatSession.getId() + "|" + chosen));
-            // 被选角色看完整会话历史（sessionMessageProvider 折叠成单条 user 消息）
-            chatProcessor.chatToAi(history, chatSession, session, provider);
+            // 被选角色看完整会话历史（sessionMessageProvider 折叠成单条 user 消息）；群聊暂不开朗读
+            chatProcessor.chatToAi(history, chatSession, session, provider, false);
         }
     }
 

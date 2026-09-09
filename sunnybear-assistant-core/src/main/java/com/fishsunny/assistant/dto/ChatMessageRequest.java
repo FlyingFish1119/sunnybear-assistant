@@ -93,6 +93,12 @@ public class ChatMessageRequest {
         return this;
     }
 
+    /**
+     * 本消息请求 AI 回复朗读（TTS）：true 时逐句音频经 ###TTS_AUDIO### 帧随文本推送，
+     * 整轮完整音频随 assistant 消息 extension 落库；false / null 不朗读
+     */
+    private Boolean tts = false;
+
     public ChatMessageRequest() {
     }
 
