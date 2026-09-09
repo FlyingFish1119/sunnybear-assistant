@@ -18,6 +18,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -47,7 +49,35 @@ public class ChatMessageServiceImplement implements ChatMessageService {
                 .setCreateTime(LocalDateTime.now());
         ChatMessage saved = chatMessageRepository.insert(chatMessage);
         fillSiblingInfo(saved);
+        updateKidIndexPointer(chatMessage, saved);
         return saved;
+    }
+
+    /**
+     * 新增子消息后，把父的“分支记忆箭头”指向最新子（Rule A）。
+     * <p>例外（不写箭头，保持父 kid_index 为 NULL → 该层整层全亮）：
+     * <ul>
+     *   <li>插入的是工具结果（tool）——工具扇出不是互斥分支；</li>
+     *   <li>助手子挂在“仍带工具调用”的助手父下（工具轮没走完被用户插入时的占位空助手）。</li>
+     * </ul>
+     */
+    private void updateKidIndexPointer(ChatMessage inserted, ChatMessage saved) {
+        String parentId = inserted.getParentId();
+        if (!StringUtils.hasText(parentId)) {
+            return;
+        }
+        String role = saved.getRole();
+        if (ChatMessage.ROLE_TOOL.equals(role)) {
+            return;
+        }
+        if (ChatMessage.ROLE_ASSISTANT.equals(role)) {
+            ChatMessage parent = chatMessageRepository.selectById(parentId);
+            if (parent != null && ChatMessage.ROLE_ASSISTANT.equals(parent.getRole())
+                    && !CollectionUtils.isEmpty(parent.getToolCalls())) {
+                return;
+            }
+        }
+        chatMessageRepository.updateKidIndex(parentId, saved.getId());
     }
 
     /**
@@ -122,6 +152,10 @@ public class ChatMessageServiceImplement implements ChatMessageService {
         if (current == null) {
             throw new IllegalArgumentException("消息不存在: " + messageId);
         }
+        // 工具行是同一助手的扇出结果，不是可切换的分支
+        if (ChatMessage.ROLE_TOOL.equals(current.getRole())) {
+            return 0;
+        }
 
         String parentId = current.getParentId();
 
@@ -138,6 +172,9 @@ public class ChatMessageServiceImplement implements ChatMessageService {
                 break;
             }
         }
+        if (currentIndex == -1) {
+            return 0;
+        }
 
         // 根据方向计算目标索引
         int targetIndex;
@@ -153,21 +190,46 @@ public class ChatMessageServiceImplement implements ChatMessageService {
 
         ChatMessage target = siblings.get(targetIndex);
 
-        // 收集当前分支和目标分支的所有子孙消息 ID
-        // 被启用的列表下面的树只启用一条，而被关闭的则全部关闭
-        List<String> currentBranchIds = new ArrayList<>();
-        currentBranchIds.add(messageId);
-        collectDescendantIds(messageId, currentBranchIds);
+        // 关掉离开的分支（含全部子孙）
+        List<String> leaveIds = new ArrayList<>();
+        leaveIds.add(messageId);
+        collectDescendantIds(messageId, leaveIds);
+        int affected = chatMessageRepository.batchUpdateActive(leaveIds, false);
 
-        List<String> targetBranchIds = new ArrayList<>();
-        targetBranchIds.add(target.getId());
-        collectDescendantIdsSingleBranch(target.getId(), targetBranchIds);
+        // 父箭头指向被选中的目标兄弟（根级父为 null：选根只靠 active，与现状一致）
+        if (StringUtils.hasText(parentId)) {
+            chatMessageRepository.updateKidIndex(parentId, target.getId());
+        }
 
-        // 禁用当前分支，启用目标分支
-        int affected = 0;
-        affected += chatMessageRepository.batchUpdateActive(currentBranchIds, false);
-        affected += chatMessageRepository.batchUpdateActive(targetBranchIds, true);
+        // 沿记忆重亮目标子树：kid_index 非空只续该孩子，为空则整层全亮（工具扇出/线性链）；悬空指针则停
+        affected += activateBranch(target);
 
+        return affected;
+    }
+
+    /**
+     * 按“记忆箭头”重亮某子树：命中目标后递归，当前节点 kid_index 非空 → 只续指向的孩子；
+     * kid_index 为空 → 续全部孩子（覆盖工具扇出、单子线性链）。返回被点亮的行数。
+     */
+    private int activateBranch(ChatMessage node) {
+        int affected = chatMessageRepository.updateActive(node.getId(), true);
+        List<ChatMessage> children = chatMessageRepository.selectSiblingsByParentId(node.getId(), node.getSessionId());
+        if (children.isEmpty()) {
+            return affected;
+        }
+        String kidIndex = node.getKidIndex();
+        if (StringUtils.hasText(kidIndex)) {
+            for (ChatMessage child : children) {
+                if (kidIndex.equals(child.getId())) {
+                    affected += activateBranch(child);
+                    break;
+                }
+            }
+        } else {
+            for (ChatMessage child : children) {
+                affected += activateBranch(child);
+            }
+        }
         return affected;
     }
 
@@ -194,15 +256,6 @@ public class ChatMessageServiceImplement implements ChatMessageService {
         for (ChatMessage child : children) {
             collector.add(child.getId());
             collectDescendantIds(child.getId(), collector);
-        }
-    }
-
-    private void collectDescendantIdsSingleBranch(String parentId, List<String> collector) {
-        List<ChatMessage> children = chatMessageRepository.selectSiblingsByParentId(parentId, null);
-        if(!children.isEmpty()) {
-            String childId = children.get(0).getId();
-            collector.add(childId);
-            collectDescendantIdsSingleBranch(childId, collector);
         }
     }
 

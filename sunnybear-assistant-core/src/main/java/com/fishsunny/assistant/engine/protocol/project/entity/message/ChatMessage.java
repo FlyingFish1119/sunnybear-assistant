@@ -79,6 +79,9 @@ public class ChatMessage {
 
     private Boolean active;
 
+    /** 分支记忆箭头：指向当前选中的孩子 id；null = 该层全亮（线性链 / 工具扇出 / 无选择） */
+    private String kidIndex;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 

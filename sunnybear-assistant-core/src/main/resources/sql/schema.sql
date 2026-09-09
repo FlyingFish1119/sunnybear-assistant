@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS chat_message (
     tool_calls  TEXT NULL,
     extension  TEXT NULL,
     active      INTEGER NOT NULL DEFAULT TRUE,
+    -- 分支记忆箭头：指向当前选中的孩子 id；NULL = 该层全亮（线性链 / 工具扇出 / 无选择）
+    kid_index  TEXT NULL,
     create_time TEXT NOT NULL
 );
 -- 索引：按会话 ID 加速查询

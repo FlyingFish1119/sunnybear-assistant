@@ -39,4 +39,9 @@ public interface ChatMessageRepository {
     public int batchUpdateActive(List<String> ids, boolean active);
 
     public void deleteByIds(List<String> ids);
+
+    /**
+     * 更新某条消息的“分支记忆箭头”（kid_index），指向其当前选中的孩子 id；null = 该层全亮。
+     */
+    public void updateKidIndex(String id, String kidIndex);
 }
