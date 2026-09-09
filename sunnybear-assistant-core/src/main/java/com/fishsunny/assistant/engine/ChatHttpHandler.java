@@ -13,7 +13,9 @@ import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.factory.AIAdapterFactory;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import lombok.Data;
 import lombok.Getter;
+import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -62,7 +64,6 @@ public class ChatHttpHandler {
     public record TranslateData(
             String passId,
             String adapterName,
-            Boolean stream,
             AIRequest request
     ) {
     }
@@ -73,10 +74,21 @@ public class ChatHttpHandler {
     ) {
     }
 
-    public void translate(TranslateData data, TranslateHandler handler) throws Exception {
+    /**
+     * 翻译的可选参数。stream 原先是 TranslateData 的字段，为保持 data 语义纯净（只描述
+     * "译什么/给谁译"）而拆到这里：option 描述"怎么译"。
+     */
+    @Data
+    @Accessors(chain = true)
+    public static class TranslateOption {
+        private Boolean stream = false;
+        private Boolean enableTTS = false;
+    }
+
+    public void translate(TranslateData data, TranslateHandler handler, TranslateOption option) throws Exception {
         String passId = data.passId();
         String adapterName = data.adapterName();
-        Boolean stream = data.stream();
+        Boolean stream = option.getStream();
         AIRequest request = data.request();
         InTranslateCallback inTranslate = handler.inTranslate();
         CompleteCallback onComplete = handler.complete();
@@ -170,6 +182,7 @@ public class ChatHttpHandler {
             PASS_SIGN.remove(passId);
         }
     }
+
 
     /**
      * 从队列取下一个事件。启用空闲超时时等待不会超过剩余时限，超时抛出
@@ -266,17 +279,23 @@ public class ChatHttpHandler {
      * @param inTranslate 翻译过程，参数为翻译后的数据
      * @param onComplete 传输完成，参数是工具调用列表
      */
+    @Deprecated
     public void translate(String stopId, String adapterName, AIRequest request,
                           Boolean stream,
                           InTranslateCallback inTranslate,
                           CompleteCallback onComplete) throws Exception {
-        translate(new TranslateData(stopId, adapterName, stream, request), new TranslateHandler(inTranslate, onComplete));
+        translate(new TranslateData(stopId, adapterName, request),
+                new TranslateHandler(inTranslate, onComplete),
+                new TranslateOption().setStream(stream));
     }
 
+    @Deprecated
     public void translate(String adapterName, AIRequest request, Boolean stream,
                           InTranslateCallback inTranslate,
                           CompleteCallback onComplete) throws Exception {
-        translate(new TranslateData("", adapterName, stream, request), new TranslateHandler(inTranslate, onComplete));
+        translate(new TranslateData("", adapterName, request),
+                new TranslateHandler(inTranslate, onComplete),
+                new TranslateOption().setStream(stream));
     }
 
     public interface CompleteCallback {

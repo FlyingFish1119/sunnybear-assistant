@@ -124,13 +124,14 @@ public class PostKnowledgeTool implements ToolHandler {
         ChatHttpHandler.TranslateData translateData = new ChatHttpHandler.TranslateData(
                 UUID.randomUUID().toString(),
                 aiSettings.getAdapterName(),
-                aiSettings.getStream(),
                 chatRequest
         );
         ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler(null,
                 ((result, lastRes) -> intro.set(result.content())));
+        ChatHttpHandler.TranslateOption translateOption = new ChatHttpHandler.TranslateOption()
+                .setStream(aiSettings.getStream());
         try {
-            chatHttpHandler.translate(translateData, translateHandler);
+            chatHttpHandler.translate(translateData, translateHandler, translateOption);
         } catch (Exception e) {
             log.warn("Failed to generate intro: {}", e.getMessage());
             intro.set(content);

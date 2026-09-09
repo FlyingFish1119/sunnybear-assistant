@@ -181,7 +181,9 @@ public class LookSlashCommandHandler extends SlashCommandHandler {
         // 构建请求
         ChatRequest request = new ChatRequest().quickBuild(userPrompt, systemPrompt, chatAiSettings);
         // 构建数据
-        ChatHttpHandler.TranslateData data = new ChatHttpHandler.TranslateData(chatSession.getId(), aiSettings.getAdapterName(), chatAiSettings.getStream(), request);
+        ChatHttpHandler.TranslateData data = new ChatHttpHandler.TranslateData(chatSession.getId(), aiSettings.getAdapterName(), request);
+        ChatHttpHandler.TranslateOption option = new ChatHttpHandler.TranslateOption()
+                .setStream(chatAiSettings.getStream());
         // 构建处理器
         ChatHttpHandler.TranslateHandler handler = new ChatHttpHandler.TranslateHandler(
                 tr -> {
@@ -207,7 +209,7 @@ public class LookSlashCommandHandler extends SlashCommandHandler {
         );
 
 
-        chatHttpHandler.translate(data, handler);
+        chatHttpHandler.translate(data, handler, option);
     }
 
     private void handleMessage(String content, String reasoning) {

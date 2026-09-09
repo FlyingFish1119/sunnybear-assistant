@@ -376,10 +376,12 @@ public class ChatProcessor {
         request.setMessages(ChatMessage.fillAllFile(request.getMessages()));
 
         ChatHttpHandler.TranslateData data = new ChatHttpHandler.TranslateData(
-                chatSession.getId(), effectiveAISettings.getAdapterName(), request.getSettings().getStream(), request);
+                chatSession.getId(), effectiveAISettings.getAdapterName(), request);
+        ChatHttpHandler.TranslateOption option = new ChatHttpHandler.TranslateOption()
+                .setStream(request.getSettings().getStream());
         ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler(translate, complete);
 
-        chatHttpHandler.translate(data, translateHandler);
+        chatHttpHandler.translate(data, translateHandler, option);
     }
 
     private ChatMessage appendAssistantMessage(ChatMessage chatMessage) throws Exception {
