@@ -448,6 +448,60 @@ body {
     flex-shrink: 0;
 }
 
+/* ---- 高级参数：单项标题 + 清空 / 恢复按钮 ---- */
+/* el-form-item 内容区是 40px 行高且垂直居中，清空后由本行提示文字撑开高度 */
+.ai-param-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ai-param-clear-btn {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    border: 1px dashed #dcdfe6;
+    border-radius: 4px;
+    background: transparent;
+    color: #a8abb2;
+    font-size: 11px;
+    font-family: inherit;
+    line-height: 1.5;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.ai-param-clear-btn:hover {
+    border-color: #f56c6c;
+    color: #f56c6c;
+    background: #fef0f0;
+}
+
+.ai-param-unset {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ai-param-unset-text {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+/* ---- 推理深度滑块的刻度标签 ----
+   1) 每个 marks-text 由组件内联 left:百分比 定位，而库默认给 marks 容器只有 18px 宽
+      （width:18px; left:12px），百分比于是按 18px 换算，三个刻度全挤在滑块左端，
+      这里把容器撑满 runway，让百分比落在真实刻度上；
+   2) 标签在 runway 下方（margin-top:15px）渲染，行内没有额外高度会被顶出可视区，
+      故给该行补足底部空间 */
+.settings-dialog .el-slider__marks {
+    width: 100%;
+    left: 0;
+}
+
+.ai-param-with-marks {
+    padding-bottom: 22px;
+}
+
 /* ============================================
    已弃用 视觉
    ============================================ */

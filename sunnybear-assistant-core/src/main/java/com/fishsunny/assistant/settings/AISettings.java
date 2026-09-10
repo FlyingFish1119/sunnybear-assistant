@@ -59,12 +59,12 @@ public class AISettings {
         return this;
     }
 
-    // low / high / max
+    // low / high / max；null / 空 = 未配置，不写入请求体（由 API 使用默认值）
     private String reasoningEffort;
 
     public AISettings setReasoningEffort(String reasoningEffort) {
         if (!StringUtils.hasText(reasoningEffort)) {
-            this.reasoningEffort = "high";
+            this.reasoningEffort = null;
             return this;
         }
         switch (reasoningEffort) {

@@ -1,3 +1,48 @@
+/** 高级参数展开 / 恢复时使用的编辑器默认值（reasoningEffort 存的是滑块下标） */
+const AI_ADVANCED_DEFAULTS = {
+    temperature: 1,
+    top_p: 1,
+    maxTokens: 4096,
+    frequencyPenalty: 0,
+    presencePenalty: 0,
+    reasoningEffort: 1
+};
+
+/**
+ * 高级参数行
+ *
+ * 标题右侧常驻「清空」按钮，把该项置为 null；值为 null 时控件替换为「未设置」占位 + 「恢复」按钮。
+ * 对应约定：null = 未设置，保存时不写入请求体，由 API 使用默认值。
+ */
+const AiParamRow = {
+    name: 'AiParamRow',
+
+    props: {
+        label: { type: String, required: true },
+        // true = 当前值为 null（未设置）；此时不渲染默认插槽里的控件
+        unset: { type: Boolean, default: false }
+    },
+
+    emits: ['clear', 'restore'],
+
+    template: `
+    <el-form-item label-width="200px">
+        <template #label>
+            <span class="ai-param-label">
+                <span>{{ label }}</span>
+                <button v-if="!unset" type="button" class="ai-param-clear-btn"
+                        title="清空该项，保存后使用 API 默认值" @click.stop="$emit('clear')">清空</button>
+            </span>
+        </template>
+        <div v-if="unset" class="ai-param-unset">
+            <span class="ai-param-unset-text">未设置 · 保存后使用 API 默认值</span>
+            <button type="button" class="ai-param-clear-btn" title="恢复为默认值"
+                    @click.stop="$emit('restore')">恢复</button>
+        </div>
+        <slot v-else></slot>
+    </el-form-item>`
+};
+
 /**
  * AI 模型设置组件
  *
@@ -135,24 +180,30 @@ const AiSettings = {
                 </div>
                 <div class="advanced-params" :class="{ expanded: showAiAdvanced }">
                     <div class="advanced-params-inner">
-                        <el-form-item label="温度 (Temperature)">
+                        <ai-param-row label="温度 (Temperature)" :unset="aiForm.temperature == null"
+                                      @clear="aiForm.temperature = null" @restore="aiForm.temperature = 1">
                             <el-slider v-model="aiForm.temperature" :min="0" :max="2" :step="0.1" show-input :format-tooltip="v => v.toFixed(1)" style="width: calc(100% - 110px)"></el-slider>
-                        </el-form-item>
-                        <el-form-item label="Top P">
+                        </ai-param-row>
+                        <ai-param-row label="Top P" :unset="aiForm.top_p == null"
+                                      @clear="aiForm.top_p = null" @restore="aiForm.top_p = 1">
                             <el-slider v-model="aiForm.top_p" :min="0" :max="1" :step="0.05" show-input :format-tooltip="v => v.toFixed(2)" style="width: calc(100% - 110px)"></el-slider>
-                        </el-form-item>
-                        <el-form-item label="最大 Token 数">
+                        </ai-param-row>
+                        <ai-param-row label="最大 Token 数" :unset="aiForm.maxTokens == null"
+                                      @clear="aiForm.maxTokens = null" @restore="aiForm.maxTokens = 4096">
                             <input class="settings-input-number" type="number" v-model.number="aiForm.maxTokens" min="1" max="8192" step="256">
-                        </el-form-item>
-                        <el-form-item label="频率惩罚">
+                        </ai-param-row>
+                        <ai-param-row label="频率惩罚" :unset="aiForm.frequencyPenalty == null"
+                                      @clear="aiForm.frequencyPenalty = null" @restore="aiForm.frequencyPenalty = 0">
                             <el-slider v-model="aiForm.frequencyPenalty" :min="-2" :max="2" :step="0.1" show-input :format-tooltip="v => v.toFixed(1)" style="width: calc(100% - 110px)"></el-slider>
-                        </el-form-item>
-                        <el-form-item label="存在惩罚">
+                        </ai-param-row>
+                        <ai-param-row label="存在惩罚" :unset="aiForm.presencePenalty == null"
+                                      @clear="aiForm.presencePenalty = null" @restore="aiForm.presencePenalty = 0">
                             <el-slider v-model="aiForm.presencePenalty" :min="-2" :max="2" :step="0.1" show-input :format-tooltip="v => v.toFixed(1)" style="width: calc(100% - 110px)"></el-slider>
-                        </el-form-item>
-                        <el-form-item label="推理深度">
+                        </ai-param-row>
+                        <ai-param-row class="ai-param-with-marks" label="推理深度" :unset="aiForm.reasoningEffort == null"
+                                      @clear="aiForm.reasoningEffort = null" @restore="aiForm.reasoningEffort = 1">
                             <el-slider v-model="aiForm.reasoningEffort" :min="0" :max="2" :step="1" show-stops :marks="{0:'低',1:'高',2:'最深'}" :format-tooltip="v => ['低 (low)','高 (high)','最深 (max)'][v]" style="width: calc(100% - 110px)"></el-slider>
-                        </el-form-item>
+                        </ai-param-row>
                     </div>
                 </div>
 
@@ -197,6 +248,11 @@ const AiSettings = {
     computed: {
         aiDialogTitle() {
             return AI_TYPE_NAMES[this.aiDialogType] || 'AI 模型';
+        },
+
+        /** 高级参数是否已配置（任一非 null）；全 null 即「未配置」，打开对话框时默认收起 */
+        hasAiAdvanced() {
+            return Object.keys(AI_ADVANCED_DEFAULTS).some(key => this.aiForm[key] != null);
         }
     },
 
@@ -227,18 +283,8 @@ const AiSettings = {
                 presencePenalty: ai.presencePenalty != null ? ai.presencePenalty : null,
                 customFieldsText: (ai.customFields && Object.keys(ai.customFields).length) ? JSON.stringify(ai.customFields, null, 2) : ''
             };
-            // 已有高级参数值则自动展开并填充默认值
-            const hasAdvanced = ai.temperature != null || ai.top_p != null || ai.maxTokens != null || ai.frequencyPenalty != null || ai.presencePenalty != null || ai.reasoningEffort != null;
-            this.showAiAdvanced = hasAdvanced;
-            if (hasAdvanced) {
-                const f = this.aiForm;
-                if (f.temperature == null) f.temperature = 1;
-                if (f.top_p == null) f.top_p = 1;
-                if (f.maxTokens == null) f.maxTokens = 4096;
-                if (f.frequencyPenalty == null) f.frequencyPenalty = 0;
-                if (f.presencePenalty == null) f.presencePenalty = 0;
-                if (f.reasoningEffort == null) f.reasoningEffort = 1;
-            }
+            // 全部为 null 表示「未配置」，默认收起；有任意一项已配置则以展开态展示
+            this.showAiAdvanced = this.hasAiAdvanced;
             this.dialogs.ai = true;
             this.$nextTick(() => lucide.createIcons());
         },
@@ -288,20 +334,23 @@ const AiSettings = {
             this.postSave('settings/' + this.aiDialogType + '/save', body, 'ai');
         },
 
+        /** 展开高级参数；已清空的项恢复为默认值，避免滑块 / 数字框拿到 null */
         toggleAiAdvanced() {
             if (!this.showAiAdvanced) {
-                // 展开时，null 值填充默认值
-                const f = this.aiForm;
-                if (f.temperature == null) f.temperature = 1;
-                if (f.top_p == null) f.top_p = 1;
-                if (f.maxTokens == null) f.maxTokens = 4096;
-                if (f.frequencyPenalty == null) f.frequencyPenalty = 0;
-                if (f.presencePenalty == null) f.presencePenalty = 0;
-                if (f.reasoningEffort == null) f.reasoningEffort = 1;
+                this.restoreAiAdvanced();
             }
             this.showAiAdvanced = !this.showAiAdvanced;
         },
 
+        /** 把所有为 null 的高级参数恢复为默认值 */
+        restoreAiAdvanced() {
+            const f = this.aiForm;
+            Object.keys(AI_ADVANCED_DEFAULTS).forEach(key => {
+                if (f[key] == null) f[key] = AI_ADVANCED_DEFAULTS[key];
+            });
+        },
+
+        /** 清空全部高级参数：收起折叠区，保存时全部置 null */
         clearAiAdvanced() {
             this.aiForm.temperature = null;
             this.aiForm.top_p = null;
@@ -310,7 +359,7 @@ const AiSettings = {
             this.aiForm.presencePenalty = null;
             this.aiForm.reasoningEffort = null;
             this.showAiAdvanced = false;
-            ElementPlus.ElMessage.success('高级参数已清除，保存后将使用 API 默认值');
+            ElementPlus.ElMessage.success('高级参数已清空，保存后将使用 API 默认值');
         },
 
         /* ---------- 适配器列表 ---------- */
