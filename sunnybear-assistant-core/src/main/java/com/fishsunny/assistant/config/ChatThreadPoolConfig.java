@@ -1,29 +1,21 @@
 package com.fishsunny.assistant.config;
 
-/*
- * @Usage 异步聊天线程池配置 —— 将 AI 调用从 WebSocket 消息处理线程剥离，避免阻塞同一连接上的其他逻辑会话
- *
- * @Project Assistant
- * @Author FlyingFish-SunnyBear
- * @Date 2026/6/30
- */
 
-import com.fishsunny.assistant.engine.adapter.AIAdapterProperties;
-import com.fishsunny.assistant.engine.adapter.factory.AIAdapterFactory;
-import com.fishsunny.assistant.engine.tts.TTSClient;
-import com.fishsunny.assistant.engine.tts.TTSSettings;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import java.net.http.HttpClient;
+/**
+ * ChatThreadPoolConfig
+ *
+ * @author FlyingFish-SunnyBear
+ * @since 2026/9/10 17:04
+ */
 
 @Configuration
-public class ChatConfig {
-
+public class ChatThreadPoolConfig {
     @Value("${assistant.chat.async.core-pool-size:4}")
     private int corePoolSize;
 
@@ -46,11 +38,5 @@ public class ChatConfig {
         executor.setRejectedExecutionHandler(new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
         executor.initialize();
         return executor;
-    }
-
-    @Bean
-    public AIAdapterFactory aiAdapterFactory(AIAdapterProperties properties, @Qualifier("aiHttpClient") HttpClient httpClient,
-                                             TTSClient ttsClient, TTSSettings ttsSettings) {
-        return new AIAdapterFactory(properties, httpClient, ttsClient, ttsSettings);
     }
 }

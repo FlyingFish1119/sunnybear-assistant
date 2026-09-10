@@ -17,19 +17,6 @@ import java.time.Duration;
 @Configuration
 public class HttpClientConfig {
 
-
-    /**
-     * 共享 HttpClient 实例，供所有 AI 适配器复用。
-     * 使用 HTTP/1.1 避免 HTTP/2 连接复用
-     */
-    @Bean("aiHttpClient")
-    public HttpClient aiHttpClient() {
-        return HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(30))
-                .build();
-    }
-
     @Bean
     @Primary
     public HttpClient httpClient() {

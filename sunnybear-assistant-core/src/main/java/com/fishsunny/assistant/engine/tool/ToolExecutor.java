@@ -37,6 +37,13 @@ public class ToolExecutor {
 
     Map<String, ToolHandler> toolMap = new HashMap<>();
     Map<Class<? extends ToolKit>, ToolKit> toolKitMap = new HashMap<>();
+
+    /**
+     * 运行时覆盖层：工具名 → 顶替本机实现的处理器（引擎代理接入时写入）。
+     * 与 toolMap 并存而非直接改写，是为了执行端断开后能无痕还原本机实现。
+     */
+    private final Map<String, ToolHandler> overrides = new ConcurrentHashMap<>();
+
     private final ExecutorService executorService;
     private final ObjectMapper objectMapper;
 
@@ -59,6 +66,49 @@ public class ToolExecutor {
     }
 
     public record ToolProvider(Consumer<ToolRequest> beforeExec, Consumer<ToolExecuteResponse> afterExec) {}
+
+    // ======================== 运行时覆盖层 ========================
+
+    /** 用外部处理器顶替本机同名工具。传入空集合即无操作。 */
+    public void overrideTools(Map<String, ToolHandler> handlers) {
+        if (handlers == null || handlers.isEmpty()) {
+            return;
+        }
+        overrides.putAll(handlers);
+    }
+
+    /** 撤销覆盖，本机实现随即恢复生效 */
+    public void clearOverrides(Set<String> toolNames) {
+        if (toolNames == null || toolNames.isEmpty()) {
+            return;
+        }
+        toolNames.forEach(overrides::remove);
+    }
+
+    /** 某个工具当前由谁提供（覆盖层优先），不存在返回 null */
+    public ToolHandler resolve(String toolName) {
+        ToolHandler override = overrides.get(toolName);
+        return override != null ? override : toolMap.get(toolName);
+    }
+
+    /**
+     * 本机内置的工具（不含运行时覆盖），只读。
+     * 供代理层据此决定"要接管哪些工具"——必须看本机实现而非 resolve 的结果，
+     * 否则反复应用覆盖会把自己的包装器再包一层。
+     */
+    public Map<String, ToolHandler> localTools() {
+        return Collections.unmodifiableMap(toolMap);
+    }
+
+    /** 本机最终生效的工具视图。无覆盖时直接复用 toolMap，避免每次调用都复制 */
+    private Map<String, ToolHandler> resolvedTools() {
+        if (overrides.isEmpty()) {
+            return toolMap;
+        }
+        Map<String, ToolHandler> merged = new LinkedHashMap<>(toolMap);
+        merged.putAll(overrides);
+        return merged;
+    }
 
     public List<ToolExecuteResponse> executeAdapter(List<AIAdapter.ToolCall> toolCalls, Map<String, Object> context) {
         List<ToolRequest> requests = ToolRequest.convert(toolCalls);
@@ -107,7 +157,7 @@ public class ToolExecutor {
         String arguments = toolRequest.getArguments();
 
         ToolExecuteResponse response;
-        ToolHandler handler = toolMap.get(toolName);
+        ToolHandler handler = resolve(toolName);
         if (handler == null) {
             response = new ToolExecuteResponse(toolName, "工具[" + toolName + "]不存在").setSucceed(false);
         } else {
@@ -248,7 +298,7 @@ public class ToolExecutor {
 
     public <T> List<T> buildTool(Function<ToolRegister, T> function) {
         List<T> tools = new ArrayList<>();
-        for (ToolHandler tool : toolMap.values()) {
+        for (ToolHandler tool : resolvedTools().values()) {
             tools.add(function.apply(tool.getRegister()));
         }
         return tools;
@@ -272,7 +322,8 @@ public class ToolExecutor {
                 continue;
             }
             for (ToolHandler tool : entry.getValue().getTools()) {
-                tools.add(function.apply(tool.getRegister()));
+                // 走 resolve：工具被代理顶替时，广告给模型的必须是执行端那份注册信息
+                tools.add(function.apply(resolve(tool.name()).getRegister()));
             }
         }
         return tools;
@@ -288,7 +339,7 @@ public class ToolExecutor {
      */
     public <T> List<T> buildToolExcluding(Function<ToolRegister, T> function, Set<String> excludeHandlers) {
         List<T> tools = new ArrayList<>();
-        for (ToolHandler tool : toolMap.values()) {
+        for (ToolHandler tool : resolvedTools().values()) {
             if (excludeHandlers != null && excludeHandlers.contains(tool.name())) {
                 continue;
             }
@@ -310,7 +361,7 @@ public class ToolExecutor {
         if (CollectionUtils.isEmpty(includeHandlers)) {
             return tools;
         }
-        for (ToolHandler tool : toolMap.values()) {
+        for (ToolHandler tool : resolvedTools().values()) {
             if (!includeHandlers.contains(tool.name())) {
                 continue;
             }

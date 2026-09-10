@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
@@ -25,6 +26,7 @@ import java.net.http.HttpClient;
 import java.util.*;
 
 @Slf4j
+@Component
 public class AIAdapterFactory {
 
     /** 非流式适配器配方表；volatile 支持热替换（reload 后新请求即按新配方制造适配器） */
@@ -40,7 +42,7 @@ public class AIAdapterFactory {
     private final TTSSettings ttsSettings;
 
     @Autowired
-    public AIAdapterFactory(AIAdapterProperties properties, HttpClient httpClient,
+    public AIAdapterFactory(AIAdapterProperties properties, @Qualifier("aiHttpClient") HttpClient httpClient,
                             TTSClient ttsClient, TTSSettings ttsSettings) {
         this.httpClient = httpClient;
         this.ttsClient = ttsClient;
