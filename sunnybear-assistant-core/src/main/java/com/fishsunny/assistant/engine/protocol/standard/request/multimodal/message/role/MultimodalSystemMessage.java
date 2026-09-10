@@ -10,8 +10,10 @@ package com.fishsunny.assistant.engine.protocol.standard.request.multimodal.mess
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fishsunny.assistant.engine.protocol.standard.request.multimodal.message.MultimodalMessage;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
+@EqualsAndHashCode(callSuper = true)
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)

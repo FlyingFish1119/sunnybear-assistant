@@ -5,11 +5,13 @@ import com.fishsunny.assistant.engine.protocol.standard.request.old.message.Stan
 import com.fishsunny.assistant.engine.protocol.standard.content.StandardContent;
 import com.fishsunny.assistant.engine.protocol.standard.content.text.StandardTextContent;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
 import java.util.ArrayList;
 import java.util.List;
 
+@EqualsAndHashCode(callSuper = true)
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)

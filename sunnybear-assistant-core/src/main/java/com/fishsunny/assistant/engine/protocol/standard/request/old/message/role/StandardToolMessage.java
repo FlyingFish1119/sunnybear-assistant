@@ -3,8 +3,10 @@ package com.fishsunny.assistant.engine.protocol.standard.request.old.message.rol
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fishsunny.assistant.engine.protocol.standard.request.old.message.StandardMessage;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
+@EqualsAndHashCode(callSuper = true)
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)

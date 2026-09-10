@@ -2,8 +2,10 @@ package com.fishsunny.assistant.engine.protocol.anthropic.message.content;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
+@EqualsAndHashCode(callSuper = true)
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)

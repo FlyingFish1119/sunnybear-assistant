@@ -4,11 +4,13 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fishsunny.assistant.engine.protocol.standard.request.old.message.StandardMessage;
 import com.fishsunny.assistant.engine.protocol.standard.tools.request.StandardToolRequest;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
 import java.util.ArrayList;
 import java.util.List;
 
+@EqualsAndHashCode(callSuper = true)
 @Data
 @Accessors
 @JsonInclude(JsonInclude.Include.NON_NULL)

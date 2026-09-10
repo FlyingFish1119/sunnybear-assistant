@@ -13,11 +13,13 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fishsunny.assistant.engine.protocol.standard.request.multimodal.message.MultimodalMessage;
 import com.fishsunny.assistant.engine.protocol.standard.content.StandardContent;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
 import java.util.ArrayList;
 import java.util.List;
 
+@EqualsAndHashCode(callSuper = true)
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)

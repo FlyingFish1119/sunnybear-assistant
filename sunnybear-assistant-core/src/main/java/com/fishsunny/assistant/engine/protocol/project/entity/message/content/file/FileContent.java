@@ -11,8 +11,10 @@ package com.fishsunny.assistant.engine.protocol.project.entity.message.content.f
 import com.fishsunny.assistant.constants.ContentTypeVariable;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
+@EqualsAndHashCode(callSuper = true)
 @Data
 @Accessors(chain = true)
 public class FileContent extends MessageContent {
