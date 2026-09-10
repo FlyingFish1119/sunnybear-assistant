@@ -195,20 +195,22 @@ public class MultimodalStreamAIAdapter extends MultimodalBaseAIAdapter implement
                 if (assistantMessage.getContent() != null) {
                     content.append(assistantMessage.getContent());
                 }
-                for (StandardToolRequest toolCall : assistantMessage.getTool_calls()) {
-                    if (toolCall.getId() != null) {
-                        if (toolCall.getFunction().getArguments() == null) {
-                            toolCall.getFunction().setArguments("");
+                if (assistantMessage.getTool_calls() != null) {
+                    for (StandardToolRequest toolCall : assistantMessage.getTool_calls()) {
+                        if (toolCall.getId() != null) {
+                            if (toolCall.getFunction().getArguments() == null) {
+                                toolCall.getFunction().setArguments("");
+                            }
+                            toolCallMap.put(toolCall.getId(), toolCall);
+                            currentToolCallId = toolCall.getId();
+                        } else {
+                            if (toolCall.getFunction().getArguments() == null) {
+                                continue;
+                            }
+                            StandardToolRequest storageToolCall = toolCallMap.get(currentToolCallId);
+                            storageToolCall.getFunction().setArguments(
+                                    storageToolCall.getFunction().getArguments() + toolCall.getFunction().getArguments());
                         }
-                        toolCallMap.put(toolCall.getId(), toolCall);
-                        currentToolCallId = toolCall.getId();
-                    } else {
-                        if (toolCall.getFunction().getArguments() == null) {
-                            continue;
-                        }
-                        StandardToolRequest storageToolCall = toolCallMap.get(currentToolCallId);
-                        storageToolCall.getFunction().setArguments(
-                                storageToolCall.getFunction().getArguments() + toolCall.getFunction().getArguments());
                     }
                 }
                 return !CollectionUtils.isEmpty(assistantMessage.getTool_calls());

@@ -158,16 +158,18 @@ public abstract class MultimodalBaseAIAdapter extends AIAdapter {
                         .setReasoningContent(standardAssistantMessage.getReasoning_content());
 
                 List<ChatToolRequest> toolCalls = new ArrayList<>();
-                for (StandardToolRequest toolCallRequest : standardAssistantMessage.getTool_calls()) {
-                    ChatToolRequest masterToolCallRequest = new ChatToolRequest();
-                    masterToolCallRequest.setId(toolCallRequest.getId());
-                    masterToolCallRequest.setName(toolCallRequest.getFunction().getName());
-                    if (toolCallRequest.getFunction().getArguments() != null) {
-                        masterToolCallRequest.setArguments(
-                                (masterToolCallRequest.getArguments() == null ? "" : masterToolCallRequest.getArguments())
-                                        + toolCallRequest.getFunction().getArguments());
+                if (standardAssistantMessage.getTool_calls() != null) {
+                    for (StandardToolRequest toolCallRequest : standardAssistantMessage.getTool_calls()) {
+                        ChatToolRequest masterToolCallRequest = new ChatToolRequest();
+                        masterToolCallRequest.setId(toolCallRequest.getId());
+                        masterToolCallRequest.setName(toolCallRequest.getFunction().getName());
+                        if (toolCallRequest.getFunction().getArguments() != null) {
+                            masterToolCallRequest.setArguments(
+                                    (masterToolCallRequest.getArguments() == null ? "" : masterToolCallRequest.getArguments())
+                                            + toolCallRequest.getFunction().getArguments());
+                        }
+                        toolCalls.add(masterToolCallRequest);
                     }
-                    toolCalls.add(masterToolCallRequest);
                 }
                 message.setToolCalls(toolCalls);
                 messages.add(message);

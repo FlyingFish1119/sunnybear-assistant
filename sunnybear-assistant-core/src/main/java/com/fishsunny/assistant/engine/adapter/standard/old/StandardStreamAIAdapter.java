@@ -131,22 +131,24 @@ public class StandardStreamAIAdapter extends StandardBaseAIAdapter {
                 if (assistantMessage.getContent() != null) {
                     content.append(assistantMessage.getContent());
                 }
-                for (StandardToolRequest toolCall : assistantMessage.getTool_calls()) {
-                    if (toolCall.getId() != null) {
-                        // 归一化：首个 chunk 的 arguments 若为 null 则设为空串，避免后续拼接出现 "null" + xxx
-                        if (toolCall.getFunction().getArguments() == null) {
-                            toolCall.getFunction().setArguments("");
+                if (assistantMessage.getTool_calls() != null) {
+                    for (StandardToolRequest toolCall : assistantMessage.getTool_calls()) {
+                        if (toolCall.getId() != null) {
+                            // 归一化：首个 chunk 的 arguments 若为 null 则设为空串，避免后续拼接出现 "null" + xxx
+                            if (toolCall.getFunction().getArguments() == null) {
+                                toolCall.getFunction().setArguments("");
+                            }
+                            toolCallMap.put(toolCall.getId(), toolCall);
+                            currentToolCallId = toolCall.getId();
+                        } else {
+                            if (toolCall.getFunction().getArguments() == null) {
+                                continue;
+                            }
+                            StandardToolRequest storageToolCall = toolCallMap.get(currentToolCallId);
+                            String arguments = storageToolCall.getFunction().getArguments() +
+                                    toolCall.getFunction().getArguments();
+                            storageToolCall.getFunction().setArguments(arguments);
                         }
-                        toolCallMap.put(toolCall.getId(), toolCall);
-                        currentToolCallId = toolCall.getId();
-                    } else {
-                        if (toolCall.getFunction().getArguments() == null) {
-                            continue;
-                        }
-                        StandardToolRequest storageToolCall = toolCallMap.get(currentToolCallId);
-                        String arguments = storageToolCall.getFunction().getArguments() +
-                                toolCall.getFunction().getArguments();
-                        storageToolCall.getFunction().setArguments(arguments);
                     }
                 }
                 return !CollectionUtils.isEmpty(assistantMessage.getTool_calls());

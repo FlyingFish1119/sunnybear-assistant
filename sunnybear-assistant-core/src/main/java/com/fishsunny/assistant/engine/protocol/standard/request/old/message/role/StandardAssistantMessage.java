@@ -20,12 +20,12 @@ public class StandardAssistantMessage extends StandardMessage {
 
     private String reasoning_content;
 
+    /**
+     * 默认空列表：响应反序列化时若报文无 tool_calls 字段，保持判空安全。
+     * 请求侧显式传 null 时透传不兜底，序列化由 NON_NULL 省略该字段，
+     * 避免向只接受"无该字段"的端点发送 {@code "tool_calls": []}。
+     */
     private List<StandardToolRequest> tool_calls = new ArrayList<>();
-
-    public StandardAssistantMessage setTool_calls(List<StandardToolRequest> tool_calls) {
-        this.tool_calls = tool_calls == null ? new ArrayList<>() : tool_calls;
-        return this;
-    }
 
     public StandardAssistantMessage() {
     }
