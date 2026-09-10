@@ -1,0 +1,99 @@
+name: Build & Deploy (core)
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'sunnybear-assistant-core/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+# 同一分支同时只允许一个跑，避免连续 push 时两个部署互相踩
+concurrency:
+  group: build-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # 必须和服务器上 deploy.sh 认的 jar 文件名完全一致，不一致脚本会找不到包
+  JAR_NAME: sunnybear-assistant-core-1.0.jar
+  # 服务器上的部署目录
+  DEPLOY_PATH: /opt/sunnybear-assistant
+
+jobs:
+  build:
+    name: 构建打包
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      # 想跑单元测试就把 -DskipTests 去掉
+      - name: Maven 打包
+        working-directory: sunnybear-assistant-core
+        run: mvn -B -DskipTests clean package
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-jar
+          path: sunnybear-assistant-core/target/${{ env.JAR_NAME }}
+          retention-days: 7
+
+  deploy:
+    name: 部署到服务器
+    needs: build
+    # 只在 main 部署；dev 跑到 build 就结束
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: core-jar
+
+      - name: 配置 SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      # 只把这一个 jar 推过去，data/ settings/ tool-extension/ 一律不碰
+      # LogLevel=ERROR 压掉 ssh 自己的提示，别让主机名在公开日志里露脸
+      - name: 上传 jar
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          scp -P "$SSH_PORT" \
+              -o StrictHostKeyChecking=accept-new \
+              -o LogLevel=ERROR \
+              -o ServerAliveInterval=30 \
+              -i ~/.ssh/id_ed25519 \
+              "$JAR_NAME" \
+              "$SSH_USER@$SSH_HOST:$DEPLOY_PATH/"
+
+      - name: 执行服务器部署脚本
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          ssh -p "$SSH_PORT" \
+              -o LogLevel=ERROR \
+              -i ~/.ssh/id_ed25519 \
+              "$SSH_USER@$SSH_HOST" \
+              "cd $DEPLOY_PATH && ./deploy.sh"
+
+      - name: 清理私钥
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
