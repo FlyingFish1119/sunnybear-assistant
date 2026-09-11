@@ -357,7 +357,7 @@ public class ChatProcessor {
 
                 // 并行执行
                 // 构建上下文：session 用总线包装器，工具发送的消息（确认/执行状态等）走总线广播，重连客户端也能收到
-                Map<String, Object> context = ToolContextUtils.minimumBuild(session, chatSession);
+                Map<String, Object> context = ToolContextUtils.minimumBuild(session, chatSession, request);
                 if (chatProvider.getContextProvider() != null) {
                     context = chatProvider.getContextProvider().apply(context);
                 }

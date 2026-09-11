@@ -8,6 +8,7 @@ package com.fishsunny.assistant.utils;
  * @Date 2026/8/6 20:59
  */
 
+import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -36,10 +37,11 @@ public class ToolContextUtils {
         return context;
     }
 
-    public static Map<String, Object> minimumBuild(WebSocketSession session, ChatSession chatSession) {
+    public static Map<String, Object> minimumBuild(WebSocketSession session, ChatSession chatSession, ChatRequest chatRequest) {
         HashMap<String, Object> context = new HashMap<>();
         context.put("session", session);
         context.put("chatSession", chatSession);
+        context.put("chatRequest", chatRequest);
         return context;
     }
 }

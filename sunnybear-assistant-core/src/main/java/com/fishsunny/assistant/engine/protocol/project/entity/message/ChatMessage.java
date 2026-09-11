@@ -9,6 +9,7 @@ package com.fishsunny.assistant.engine.protocol.project.entity.message;
  */
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
@@ -31,6 +32,10 @@ import java.util.Map;
 
 @Data
 @Accessors(chain = true)
+// canInsert 只有 getter（@Setter(NONE) + transient），序列化得出、反序列化读不回，
+// 会让 write→read 的往返直接抛 UnrecognizedPropertyException。这里对未知字段一律宽容：
+// 克隆助手的消息树要经 JSON 往返落盘（ObjectUtils.cloneList 这类序列化工具同理）。
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ChatMessage {
 
     public static final String ROLE_USER = "user";

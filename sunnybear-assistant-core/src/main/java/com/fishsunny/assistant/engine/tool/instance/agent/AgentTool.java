@@ -35,6 +35,9 @@ public class AgentTool implements ToolHandler {
 
     public static final String NAME = "agent_tool";
 
+    /** 子 Agent 类型参数名。克隆体裁剪 agent_tool 描述时也要按这个名字找参数 */
+    public static final String PARAM_AGENT = "agent";
+
     /** 子 Agent 路由表：key = 子 Agent 工具名（name()），value = 子 Agent 工具 */
     private final Map<String, ToolHandler> registry;
     private final ToolRegister register;
@@ -48,24 +51,10 @@ public class AgentTool implements ToolHandler {
             registry.put(subAgent.name(), subAgent);
         }
 
-        // 动态生成描述：枚举可用子 Agent 类型及其能力
-        StringBuilder description = new StringBuilder("召唤子 Agent 执行任务。子 Agent 拥有各自的领域工具集与执行策略，会自主完成目标并返回结构化结果。");
-        if (registry.isEmpty()) {
-            description.append("\n\n当前没有可用的子 Agent 类型。");
-        } else {
-            description.append("\n\n可用子 Agent 类型：\n");
-            for (ToolHandler subAgent : registry.values()) {
-                description.append("- **").append(subAgent.name()).append("**：")
-                        .append(subAgent.getRegister().getDescription()).append("\n");
-            }
-        }
-
-        String agentValues = registry.isEmpty() ? "（无）" : String.join(", ", registry.keySet());
-
         ToolRegister.Parameters agentParam = new ToolRegister.Parameters()
-                .setParameterName("agent")
+                .setParameterName(PARAM_AGENT)
                 .setType("string")
-                .setDescription("子 Agent 类型，可选：" + agentValues);
+                .setDescription(AgentToolKit.getAgentParamDescription(registry));
 
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
                 .setParameterName("target")
@@ -74,8 +63,8 @@ public class AgentTool implements ToolHandler {
 
         this.register = new ToolRegister()
                 .setName(NAME)
-                .setDescription(description.toString())
-                .setRequired(List.of("agent", "target"))
+                .setDescription(AgentToolKit.getSubDescription(registry))
+                .setRequired(List.of(PARAM_AGENT, "target"))
                 .setParameters(List.of(agentParam, targetParam));
     }
 

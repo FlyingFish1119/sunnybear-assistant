@@ -156,7 +156,7 @@ public class TaskRunTool implements ToolHandler {
     private static final Pattern TASK_FAILURE_PATTERN = Pattern.compile("\\$\\[TASK_FAILURE:\\s*(.+?)]\\$", Pattern.DOTALL);
 
     private static final List<Class<? extends ToolKit>> includeKits = List.of(
-            FileToolKit.class, NetToolKit.class, ImageToolKit.class, OSToolKit.class);
+            FileToolKit.class, NetToolKit.class, ImageToolKit.class, OSToolKit.class, AgentToolKit.class);
 
     /**
      * 异步执行任务的所有步骤

@@ -168,6 +168,12 @@ public class ToolCallLoop {
 
         Consumer<AgentLogEntry> logCallback = hook != null ? hook.getLogback() : null;
 
+        // 发出去之前先把消息里的文件路径展开成 data URI（图片/音视频/文件）。
+        // 放在每轮开头而不是"谁产生谁负责"，是为了让展开成为 translate 的先决条件：
+        // 循环自己新产生的 tool 结果会被下一轮覆盖，调用方塞进来的消息（如克隆体的消息树）同样覆盖，
+        // 不会出现"第一轮把本地路径当图片发给模型"。与 ChatProcessor.toolCallCycle 的做法一致。
+        ChatMessage.fillAllFile(request.getMessages());
+
         chatHttpHandler.translate(
                 UUID.randomUUID().toString(),
                 settings.getAdapterName(),
@@ -252,9 +258,10 @@ public class ToolCallLoop {
                     // 追加 tool 结果消息 + 日志回调：工具结果
                     for (int i = 0; i < toolCalls.size(); i++) {
                         ToolExecutor.ToolExecuteResponse toolResponse = toolResults.get(i);
+                        // 这里只放路径（多模态内容已由 executeNow 落盘），展开交给下一轮开头的 fillAllFile
+                        List<MessageContent> contents = MessageContent.toMessageContents(toolResponse.getMultimodalContents());
                         messages.add(new ChatMessage()
-                                .tool(toolCalls.get(i).getId(), toolResponse.getResult(),
-                                        MessageContent.toMessageContents(toolResponse.getMultimodalContents()))
+                                .tool(toolCalls.get(i).getId(), toolResponse.getResult(), contents)
                                 .setName(toolCalls.get(i).getFunction().getName())
                         );
                         if (logCallback != null) {
