@@ -6,7 +6,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,14 +24,11 @@ public class StandardToolRegister {
     }
 
     private static final Function<ToolRegister, StandardToolRegister> TOOL_REGISTER_CONVERTER = register -> {
-        Map<String, StandardToolRegisterProperty> properties = new HashMap<>();
+        Map<String, StandardToolRegisterProperty> properties = new LinkedHashMap<>();
         List<ToolRegister.Parameters> params = register.getParameters();
         if (params != null) {
             for (ToolRegister.Parameters parameter : params) {
-                StandardToolRegisterProperty property = new StandardToolRegisterProperty()
-                        .setType(parameter.getType())
-                        .setDescription(parameter.getDescription());
-                properties.put(parameter.getParameterName(), property);
+                properties.put(parameter.getParameterName(), toProperty(parameter));
             }
         }
         StandardToolRegisterParameter parameter = new StandardToolRegisterParameter()
@@ -42,6 +39,26 @@ public class StandardToolRegister {
                         .setDescription(register.getDescription())
                         .setParameters(parameter));
     };
+
+    /** 递归转换参数 schema：对象字段与数组元素都要带上（严格实现如 Gemini 要求 array 必须给出 items） */
+    private static StandardToolRegisterProperty toProperty(ToolRegister.Parameters parameter) {
+        StandardToolRegisterProperty property = new StandardToolRegisterProperty()
+                .setType(parameter.getType())
+                .setDescription(parameter.getDescription());
+
+        if (parameter.getItems() != null) {
+            property.setItems(toProperty(parameter.getItems()));
+        }
+        if (parameter.getProperties() != null) {
+            Map<String, StandardToolRegisterProperty> nested = new LinkedHashMap<>();
+            for (ToolRegister.Parameters child : parameter.getProperties()) {
+                nested.put(child.getParameterName(), toProperty(child));
+            }
+            property.setProperties(nested);
+        }
+        property.setRequired(parameter.getRequired());
+        return property;
+    }
 
     public static List<StandardToolRegister> buildToolRegister(ToolExecutor toolExecutor) {
         return toolExecutor.buildTool(TOOL_REGISTER_CONVERTER);

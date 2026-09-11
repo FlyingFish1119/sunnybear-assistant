@@ -56,7 +56,14 @@ public class FileReadTool implements ToolHandler {
                 .setRequired(List.of("paths"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("paths", "array",
-                                "文件描述数组。每项为对象：{path (string, 必填), startLine (integer, 可选, 从1开始), endLine (integer, 可选, 包含)}。不指定行范围则读全文。")
+                                "文件描述数组，每项一个文件，不指定行范围则读全文。")
+                                .setItems(ToolRegister.Parameters.object(
+                                        "单个文件的读取描述",
+                                        List.of(
+                                                new ToolRegister.Parameters("path", "string", "文件路径"),
+                                                new ToolRegister.Parameters("startLine", "integer", "起始行，从 1 开始，不填则从头读"),
+                                                new ToolRegister.Parameters("endLine", "integer", "结束行，包含该行，不填则读到结尾")),
+                                        List.of("path")))
                 ));
     }
 

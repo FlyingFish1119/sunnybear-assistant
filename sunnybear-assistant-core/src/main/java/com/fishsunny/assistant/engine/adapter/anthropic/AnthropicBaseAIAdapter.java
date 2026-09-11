@@ -19,6 +19,7 @@ import com.fishsunny.assistant.utils.Base64Utils;
 import com.fishsunny.assistant.utils.ObjectMapperFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.util.StringUtils;
 
 import java.net.URI;
 import java.net.http.HttpRequest;
@@ -139,11 +140,15 @@ public abstract class AnthropicBaseAIAdapter extends AIAdapter {
                     AnthropicAssistantMessage assistantMessage = new AnthropicAssistantMessage();
                     List<AnthropicContentBlock> blocks = new ArrayList<>();
                     // reasoning / thinking text
-                    if (message.getReasoningContent() != null && !message.getReasoningContent().isEmpty()) {
-                        String sig = message.getReasoningSignature();
+                    // 签名回退到 extension 里落库的副本：chat_message 没有该列，会话重载后字段是空的。
+                    // 拿不到签名的思考块一律不回传——空签名会被 Anthropic 判为签名无效，
+                    // 整轮请求跟着挂掉；少一段思考上下文比请求失败划算（与 Gemini 适配器同一口径）
+                    String sig = message.resolveReasoningSignature();
+                    if (message.getReasoningContent() != null && !message.getReasoningContent().isEmpty()
+                            && StringUtils.hasText(sig)) {
                         blocks.add(new AnthropicThinkingContent()
                                 .setThinking(message.getReasoningContent())
-                                .setSignature(sig != null ? sig : ""));
+                                .setSignature(sig));
                     }
                     // text content
                     String text = message.resolveText();

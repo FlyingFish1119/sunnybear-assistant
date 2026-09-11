@@ -43,6 +43,13 @@ public class ChatMessage {
     public static final String ROLE_SYSTEM = "system";
     public static final String ROLE_TOOL = "tool";
 
+    /**
+     * extension 键：推理签名（Anthropic extended thinking / Gemini thought signature）。
+     * chat_message 表没有 reasoning_signature 列，签名随 extension 这个 JSON 列一起落库，
+     * 会话重载后适配器仍能取到并原样回传给模型。
+     */
+    public static final String EXTENSION_REASONING_SIGNATURE = "reasoningSignature";
+
     private String sessionId;
 
     private String id;
@@ -194,6 +201,21 @@ public class ChatMessage {
             }
         }
         return text.toString();
+    }
+
+    /**
+     * 取推理签名（Anthropic extended thinking / Gemini thought signature）供适配器回传：
+     * 字段优先，回退到 extension 里落库的那份——chat_message 表没有 reasoning_signature 列，
+     * 会话重载后字段是空的，只有 extension 里的副本能把签名带回来（写入见 ChatProcessor）。
+     *
+     * @return 签名；两处都没有时返回 null
+     */
+    public String resolveReasoningSignature() {
+        if (StringUtils.hasText(reasoningSignature)) {
+            return reasoningSignature;
+        }
+        Object stored = getExtension().get(EXTENSION_REASONING_SIGNATURE);
+        return stored instanceof String text && StringUtils.hasText(text) ? text : null;
     }
 
     public ChatMessage makeInsertable(String chatSessionId, @Nullable String parentId, @Nullable String name) {

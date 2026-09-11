@@ -106,6 +106,16 @@ public class AnthropicStreamAIAdapter extends AnthropicBaseAIAdapter {
                                     .setRole("assistant")
                                     .text(textDelta.getText());
                             chatResponse.setMessages(List.of(msg));
+                        } else if (delta instanceof AnthropicThinkingDelta thinkingDelta
+                                && thinkingDelta.getThinking() != null) {
+                            // 思考增量必须随帧下发：前端只在 chunk/done 上累加 reasoningContent，
+                            // 最终落库的 assistant 消息（init_assistant）只同步元数据、不覆盖正文，
+                            // 少了下发这一路，思考过程要等刷新页面才看得见
+                            chatResponse.setStatus(ChatResponse.STATUS_CHUNK);
+                            ChatMessage msg = new ChatMessage()
+                                    .setRole("assistant")
+                                    .setReasoningContent(thinkingDelta.getThinking());
+                            chatResponse.setMessages(List.of(msg));
                         } else if (delta instanceof AnthropicInputJsonDelta) {
                             // Tool call streaming: include partial tool call info (like OpenAI adapter)
                             ToolUseMeta meta = idx != null ? contentBlockToolUse.get(idx) : null;

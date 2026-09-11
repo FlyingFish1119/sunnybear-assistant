@@ -223,3 +223,26 @@ engine:
         targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
         targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextStreamAIResponse
+
+      # Gemini 非流式
+      # 模型名拼在 URL 路径上，baseUrl 配到 /v1beta/models 为止，具体模型由模型设置里的 model 决定
+      - apiName: gemini
+        baseUrl: https://generativelanguage.googleapis.com/v1beta/models
+        apiKey: ${GEMINI_API_KEY:}
+        stream: false
+        adapterCls: com.fishsunny.assistant.engine.adapter.gemini.GeminiAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.gemini.GeminiAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.gemini.GeminiAIResponse
+
+      # Gemini 流式
+      - apiName: gemini
+        baseUrl: https://generativelanguage.googleapis.com/v1beta/models
+        apiKey: ${GEMINI_API_KEY:}
+        stream: true
+        adapterCls: com.fishsunny.assistant.engine.adapter.gemini.GeminiStreamAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.gemini.GeminiAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.gemini.stream.GeminiStreamResponse

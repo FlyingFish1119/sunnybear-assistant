@@ -122,7 +122,13 @@ public class TaskCreateTool implements ToolHandler {
                 .setParameters(List.of(
                         new ToolRegister.Parameters("name", "string", "任务名称，简洁概括任务目标。例如：「实现用户登录模块」「重构数据库访问层」「部署项目到服务器」"),
                         new ToolRegister.Parameters("desc", "string", "任务详细描述，说明最终产出、验收标准和预期效果。越具体越好，这会影响 AI 对整体目标的理解"),
-                        new ToolRegister.Parameters("steps", "array", "任务步骤列表。每个元素为一个对象，包含：name（步骤简短标题，如「设计数据库表结构」）和 desc（步骤详细描述，即该步骤 AI 需要完成的具体工作，越具体执行效果越好）。步骤按数组顺序依次执行")
+                        new ToolRegister.Parameters("steps", "array", "任务步骤列表，按数组顺序依次执行。")
+                                .setItems(ToolRegister.Parameters.object(
+                                        "单个任务步骤",
+                                        List.of(
+                                                new ToolRegister.Parameters("name", "string", "步骤简短标题，如「设计数据库表结构」"),
+                                                new ToolRegister.Parameters("desc", "string", "步骤详细描述，即该步骤 AI 需要完成的具体工作，越具体执行效果越好")),
+                                        List.of("name", "desc")))
                 ));
     }
 

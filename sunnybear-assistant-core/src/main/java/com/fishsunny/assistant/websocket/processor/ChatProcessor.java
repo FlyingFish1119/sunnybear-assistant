@@ -336,10 +336,18 @@ public class ChatProcessor {
                             Map.of("audio", fullAudio, "format", ttsSettings.getFormat()));
                 }
 
-                ChatMessage assistantMessage = appendAssistantMessage(readyToSaveChatMessage);
-                // A\专用的
+                // 推理签名（Anthropic extended thinking / Gemini thought signature）入库：
+                // chat_message 没有该列，塞进 extension 这个 JSON 列，会话重载后仍能原样回传给模型。
+                // 必须赶在 appendAssistantMessage 落库之前写，且放在 beforeSave 钩子之后（钩子可能换掉对象）
                 String reasoningSignature = result.reasoningSignature();
-                if (reasoningSignature != null && !reasoningSignature.isEmpty()) {
+                if (StringUtils.hasText(reasoningSignature)) {
+                    readyToSaveChatMessage.getExtension()
+                            .put(ChatMessage.EXTENSION_REASONING_SIGNATURE, reasoningSignature);
+                }
+
+                ChatMessage assistantMessage = appendAssistantMessage(readyToSaveChatMessage);
+                // 内存链路同时留在字段上，本轮后续（工具调用循环）直接用
+                if (StringUtils.hasText(reasoningSignature)) {
                     assistantMessage.setReasoningSignature(reasoningSignature);
                 }
                 // 添加助手消息

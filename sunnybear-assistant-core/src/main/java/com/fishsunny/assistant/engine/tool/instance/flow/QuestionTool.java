@@ -69,7 +69,15 @@ public class QuestionTool implements ToolHandler {
                         new ToolRegister.Parameters("message", "string",
                                 "全局引导语（可选），展示在问题列表上方，说明为什么问这些。例如「为了给你更合适的建议，先确认几点」。"),
                         new ToolRegister.Parameters("questions", "array",
-                                "问题数组，一次不要超过 " + MAX_QUESTIONS + " 个。每个元素为对象：{q (string, 问题文本), options (array<string>, 候选答案，用户可直接点选，可省略；省略则只能自由输入)}。每题候选不超过 " + MAX_OPTIONS + " 个。")
+                                "问题数组，一次不要超过 " + MAX_QUESTIONS + " 个。")
+                                .setItems(ToolRegister.Parameters.object(
+                                        "单个问题",
+                                        List.of(
+                                                new ToolRegister.Parameters("q", "string", "问题文本"),
+                                                new ToolRegister.Parameters("options", "array",
+                                                        "候选答案，用户可直接点选；省略则只能自由输入。每题候选不超过 " + MAX_OPTIONS + " 个")
+                                                        .setItems(ToolRegister.Parameters.item("string", "候选答案"))),
+                                        List.of("q")))
                 ));
     }
 
