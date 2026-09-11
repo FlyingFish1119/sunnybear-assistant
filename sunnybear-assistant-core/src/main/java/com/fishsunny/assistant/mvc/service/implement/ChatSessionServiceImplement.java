@@ -11,17 +11,12 @@ package com.fishsunny.assistant.mvc.service.implement;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.mvc.dao.ChatSessionRepository;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -31,14 +26,14 @@ public class ChatSessionServiceImplement implements ChatSessionService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatSessionServiceImplement.class);
 
-    @Value("${assistant.file.base-path:}")
-    private String basePath;
-
     private final ChatSessionRepository chatSessionRepository;
+    private final SessionFileManager sessionFileManager;
 
     @Autowired
-    public ChatSessionServiceImplement(ChatSessionRepository chatSessionRepository) {
+    public ChatSessionServiceImplement(ChatSessionRepository chatSessionRepository,
+                                       SessionFileManager sessionFileManager) {
         this.chatSessionRepository = chatSessionRepository;
+        this.sessionFileManager = sessionFileManager;
     }
 
     @Override
@@ -88,53 +83,14 @@ public class ChatSessionServiceImplement implements ChatSessionService {
         return deleted;
     }
 
-       /**
-     * 删除会话对应的文件目录
+    /**
+     * 删除会话对应的文件目录（{basePath}/session/{sessionId}）
      */
     private void deleteSessionFileDir(String sessionId) {
         try {
-            if (!StringUtils.hasText(basePath)) {
-                basePath = System.getProperty("user.dir") + "/session";
-            }
-            Path dirPath = Paths.get(basePath, sessionId);
-            if (Files.exists(dirPath) && Files.isDirectory(dirPath)) {
-                // 递归删除目录
-                deleteDirectoryRecursively(dirPath.toFile());
-                log.info("已删除会话文件目录: {}", dirPath);
-            }
+            sessionFileManager.deleteSessionDir(sessionId);
         } catch (Exception e) {
             log.warn("删除会话文件目录失败 [{}]: {}", sessionId, e.getMessage());
-        }
-    }
-
-    /**
-     * 递归删除目录及其所有内容
-     *
-     * @param directory 要删除的目录
-     */
-    private void deleteDirectoryRecursively(File directory) {
-        if (directory == null || !directory.exists()) {
-            return;
-        }
-
-        File[] files = directory.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isDirectory()) {
-                    // 递归删除子目录
-                    deleteDirectoryRecursively(file);
-                } else {
-                    // 删除文件
-                    if (!file.delete()) {
-                        log.warn("删除文件失败: {}", file.getAbsolutePath());
-                    }
-                }
-            }
-        }
-
-        // 删除目录本身
-        if (!directory.delete()) {
-            log.warn("删除目录失败: {}", directory.getAbsolutePath());
         }
     }
 }

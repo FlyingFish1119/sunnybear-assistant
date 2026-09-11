@@ -12,7 +12,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.SessionToolKit;
-import org.springframework.beans.factory.annotation.Value;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
@@ -32,7 +32,7 @@ import java.util.stream.Stream;
 
 /**
  * Session 文件列表工具
- * 列出当前会话文件目录（{basePath}/{sessionId}/file）下所有文件的元信息，
+ * 列出当前会话文件目录（{basePath}/session/{sessionId}/file）下所有文件的元信息，
  * 包括文件名、大小、修改时间等。
  */
 @ToolKitComponent(SessionToolKit.class)
@@ -45,12 +45,11 @@ public class SessionFileTool implements ToolHandler {
             .ofPattern("yyyy-MM-dd HH:mm:ss")
             .withZone(ZoneId.systemDefault());
 
-    @Value("${assistant.file.base-path:}")
-    private String basePath;
-
+    private final SessionFileManager sessionFileManager;
     private final ToolRegister register;
 
-    public SessionFileTool() {
+    public SessionFileTool(SessionFileManager sessionFileManager) {
+        this.sessionFileManager = sessionFileManager;
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("列出当前会话文件目录下的所有文件（含文件名、大小、修改时间）。")
@@ -70,7 +69,7 @@ public class SessionFileTool implements ToolHandler {
         }
 
         // 构建会话文件目录路径
-        Path sessionFileDir = chatSession.buildSessionFilePath(basePath);
+        Path sessionFileDir = sessionFileManager.buildSessionDirPath(sessionId);
 
         if (!Files.exists(sessionFileDir)) {
             throw new ToolExecutor.ToolExecuteException("会话文件目录不存在: " + sessionFileDir + "\n该会话尚未上传过文件。");

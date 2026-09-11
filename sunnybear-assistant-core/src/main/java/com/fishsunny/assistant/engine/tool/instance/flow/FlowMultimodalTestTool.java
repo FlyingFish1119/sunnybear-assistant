@@ -23,13 +23,11 @@ import com.fishsunny.assistant.engine.tool.instance.FlowToolKit;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
 import com.fishsunny.assistant.utils.image.ScaleImageHelper;
 import lombok.Data;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
 import java.io.File;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -39,9 +37,6 @@ import java.util.UUID;
 @ToolKitComponent(FlowToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.multimodal-test.enable:true}")
 public class FlowMultimodalTestTool implements ToolHandler, MultimodalResultAble {
-
-    @Value("${assistant.file.base-path:data/}")
-    private String basePath;
 
     public static final String NAME = "flow_multimodal_test_tool";
 
@@ -74,9 +69,6 @@ public class FlowMultimodalTestTool implements ToolHandler, MultimodalResultAble
     @ToolIncludeContext(key = "chatSession", type = ChatSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
-            // action 已声明 chatSession 依赖（@ToolIncludeContext），此处直接取用
-            ChatSession chatSession = (ChatSession) context.get("chatSession");
-
             LocalDateTime startTime = LocalDateTime.now();
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
             String url = arguments.getUrl();
@@ -84,7 +76,8 @@ public class FlowMultimodalTestTool implements ToolHandler, MultimodalResultAble
                 throw new ToolExecutor.ToolExecuteException("参数 url 不能为空");
             }
 
-            Path imagePath = chatSession.buildSessionFilePath(basePath).resolve(UUID.randomUUID() + ".png");
+            // 只给出会话内文件名，落盘与引用回写由 MultimodalResultAble 统一处理
+            String fileName = UUID.randomUUID() + ".png";
 
             // 读取图片字节
             byte[] imageBytes = readImage(url);
@@ -98,15 +91,15 @@ public class FlowMultimodalTestTool implements ToolHandler, MultimodalResultAble
                     [开始时间]：${startTime}
                     [图片地址]：${url}
                     [图片大小]：${size} 字节
-                    [保存地址]：${imagePath}
+                    [保存文件名]：${imagePath}
                     [说明]：已把图片作为 image 多模态内容放入回复消息多模态数组，后续轮次中 AI 应能读取到该图片信息。
                     ```
                     """.replace("${startTime}", startTime.format(DATE_TIME_FORMATTER))
                     .replace("${url}", url)
                     .replace("${size}", String.valueOf(imageBytes.length))
-                    .replace("${imagePath}", imagePath.toString());
+                    .replace("${imagePath}", fileName);
             return new ToolExecutor.ToolExecuteResponse(name(), result)
-                    .modalContent(imagePath.toString(), ContentTypeVariable.IMAGE, base64);
+                    .modalContent(fileName, ContentTypeVariable.IMAGE, base64);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
         } catch (Exception e) {

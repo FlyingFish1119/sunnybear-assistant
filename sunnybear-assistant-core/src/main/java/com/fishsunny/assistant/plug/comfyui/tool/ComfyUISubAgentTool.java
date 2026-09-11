@@ -15,19 +15,18 @@ import com.fishsunny.assistant.plug.comfyui.dto.HistoryEntry;
 import com.fishsunny.assistant.plug.comfyui.dto.ViewImageResult;
 import com.fishsunny.assistant.plug.comfyui.service.ComfyUIBridgeService;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.util.StringUtils;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @ToolKitComponent(AgentToolKit.class)
@@ -51,20 +50,20 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler {
     private final ToolCallLoop toolCallLoop;
     private final ToolExecutor toolExecutor;
     private final ComfyUIBridgeService bridgeService;
-
-    @Value("${assistant.file.base-path:data/}")
-    private String basePath;
+    private final SessionFileManager sessionFileManager;
 
     public ComfyUISubAgentTool(ObjectMapper objectMapper,
                                 @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                                 ToolCallLoop toolCallLoop,
                                 @Lazy ToolExecutor toolExecutor,
-                                ComfyUIBridgeService bridgeService) {
+                                ComfyUIBridgeService bridgeService,
+                                SessionFileManager sessionFileManager) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
         this.toolCallLoop = toolCallLoop;
         this.toolExecutor = toolExecutor;
         this.bridgeService = bridgeService;
+        this.sessionFileManager = sessionFileManager;
 
         register = new ToolRegister()
                 .setName(NAME)
@@ -163,14 +162,6 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler {
         List<String> markdowns = new ArrayList<>();
         if (filenames.isEmpty() || sessionId == null) return markdowns;
 
-        Path sessionDir = Paths.get(basePath, sessionId, "file");
-        try {
-            Files.createDirectories(sessionDir);
-        } catch (Exception e) {
-            log.warn("无法创建 session 目录: {}", sessionDir);
-            return markdowns;
-        }
-
         for (String fname : filenames) {
             try {
                 String paramsJson = objectMapper.writeValueAsString(
@@ -182,13 +173,12 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler {
                 if (!StringUtils.hasText(base64)) continue;
 
                 byte[] bytes = Base64.getDecoder().decode(base64);
-                Path target = sessionDir.resolve(fname);
-                Files.write(target, bytes);
+                String ref = sessionFileManager.writeSessionFile(sessionId, fname, bytes);
 
-                // Markdown 图片引用，走 /file/proxy 代理
-                String proxyUrl = "/file/proxy?path=" + target.toAbsolutePath().toString();
+                // Markdown 图片引用，走 /file/proxy 代理（由代理端按当前 basePath 解析引用）
+                String proxyUrl = "/file/proxy?path=" + URLEncoder.encode(ref, StandardCharsets.UTF_8);
                 markdowns.add("![生成图 - " + fname + "](" + proxyUrl + ")");
-                log.info("图片已保存: {}", target);
+                log.info("图片已保存: {}", ref);
             } catch (Exception e) {
                 log.warn("拉取图片失败 [{}]: {}", fname, e.getMessage());
             }

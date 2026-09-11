@@ -30,23 +30,19 @@ import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.UserSettings;
 import com.fishsunny.assistant.utils.Base64Utils;
 import com.fishsunny.assistant.utils.ObjectUtils;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import com.fishsunny.assistant.websocket.SessionMessageBus;
 import com.fishsunny.assistant.websocket.SynchronizedWebSocketSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -80,9 +76,6 @@ public class ServiceProcessor {
             - 只输出一个 JSON 对象，格式为 {"title": "标题"}，不要包含 markdown 代码块标记或任何其他文字。
             """;
 
-    @Value("${assistant.file.base-path:}")
-    private String basePath;
-
     private final ChatMessageService chatMessageService;
     private final ChatSessionService chatSessionService;
     private final CronJobService cronJobService;
@@ -92,6 +85,7 @@ public class ServiceProcessor {
     private final ChatHttpHandler chatHttpHandler;
     private final AISettings cubAISettings;
     private final SessionMessageBus sessionMessageBus;
+    private final SessionFileManager sessionFileManager;
     public ServiceProcessor(ChatMessageService chatMessageService,
                             ChatSessionService chatSessionService,
                             CronJobService cronJobService,
@@ -100,7 +94,8 @@ public class ServiceProcessor {
                             AssistantSettings assistantSettings,
                             ChatHttpHandler chatHttpHandler,
                             @Qualifier(AISettings.CUB) AISettings cubAISettings,
-                            SessionMessageBus sessionMessageBus
+                            SessionMessageBus sessionMessageBus,
+                            SessionFileManager sessionFileManager
                             ) {
         this.chatMessageService = chatMessageService;
         this.chatSessionService = chatSessionService;
@@ -111,6 +106,7 @@ public class ServiceProcessor {
         this.chatHttpHandler = chatHttpHandler;
         this.cubAISettings = cubAISettings;
         this.sessionMessageBus = sessionMessageBus;
+        this.sessionFileManager = sessionFileManager;
     }
 
     /**
@@ -446,7 +442,7 @@ public class ServiceProcessor {
      * @param sessionId 会话 ID
      * @param parentId  父消息 ID
      * @param prompt    用户输入的文本
-     * @param fileUrls  文件引用路径列表（绝对路径），用于前端通过 /file/proxy 获取
+     * @param fileUrls  文件引用列表（形如 "sessionId:fileName"），用于前端通过 /file/proxy 获取
      */
     private ChatMessage appendUserMessage(String sessionId, String parentId, String prompt,
                                           List<String> fileUrls) throws Exception {
@@ -493,19 +489,14 @@ public class ServiceProcessor {
      *
      * @param files       文件数据列表
      * @param chatSession 会话对象
-     * @return 写入成功的文件绝对路径列表，用于前端 /file/proxy 代理获取
+     * @return 写入成功的文件引用列表（形如 "sessionId:fileName"），用于前端 /file/proxy 代理获取
      */
     private List<String> writeSessionFile(List<FileData> files, ChatSession chatSession) {
         List<String> writtenPaths = new ArrayList<>();
         if (files == null || files.isEmpty()) {
             return writtenPaths;
         }
-        Path path = chatSession.buildSessionFilePath(basePath);
-        File dir = path.toFile();
-        if (!dir.exists() && !dir.mkdirs()) {
-            log.error("创建目录失败: {}", path.toAbsolutePath());
-            return writtenPaths;
-        }
+        String sessionId = chatSession.getId();
         Set<String> usedNames = new HashSet<>();
         for (int i = 0; i < files.size(); i++) {
             FileData fileData = files.get(i);
@@ -522,9 +513,7 @@ public class ServiceProcessor {
 
             String fileName = buildSessionFileName(fileData, dataUri, usedNames);
             try {
-                Path filePath = path.resolve(fileName);
-                Files.write(filePath, data);
-                writtenPaths.add(filePath.toAbsolutePath().toString());
+                writtenPaths.add(sessionFileManager.writeSessionFile(sessionId, fileName, data));
             } catch (IOException e) {
                 log.error("写入文件失败 [{}]: {}", i, e.getMessage());
             }

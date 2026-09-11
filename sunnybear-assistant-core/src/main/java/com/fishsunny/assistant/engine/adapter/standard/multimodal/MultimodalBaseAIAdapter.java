@@ -125,16 +125,16 @@ public abstract class MultimodalBaseAIAdapter extends AIAdapter {
 
     /**
      * tool 消息转换：content 始终渲染为数组（纯文本也是 text part）。
-     * 转换前先经 {@link MessageContent#fillFiles} 归一化——同轮内存中的多模态工具结果是文件路径，
-     * 需转成 data URI 才能被 OpenAI image_url 识别；跨轮重载的已是 data URI，fillFiles 会透传。
+     * <p>这里不再做文件加载——多模态工具结果的 base64 落盘、以及会话文件引用到 data URI 的展开，
+     * 都由 SessionFileManager 在上游（ChatProcessor / ToolCallLoop 每轮 translate 前）完成，
+     * 适配器只负责协议转换。详见 ToolCallLoop.loop 开头 loadSessionFile 处注释。
      */
     protected MultimodalToolMessage convertToMultimodalToolMessage(ChatMessage message) {
         List<MessageContent> contents = message.getContents();
         if (contents == null || contents.isEmpty()) {
             return new MultimodalToolMessage(message.getToolCallId(), List.of());
         }
-        List<MessageContent> normalized = MessageContent.fillFiles(contents);
-        return new MultimodalToolMessage(message.getToolCallId(), convertToStandardContent(normalized));
+        return new MultimodalToolMessage(message.getToolCallId(), convertToStandardContent(contents));
     }
 
     // ==================== 响应侧：Standard 响应 → ChatMessage ====================

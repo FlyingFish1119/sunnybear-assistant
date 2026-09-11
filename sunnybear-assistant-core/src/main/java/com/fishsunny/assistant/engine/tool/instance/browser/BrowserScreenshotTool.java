@@ -28,11 +28,9 @@ import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -47,10 +45,6 @@ public class BrowserScreenshotTool implements ToolHandler, MultimodalResultAble 
     /** capture_type 常量：analyze = 现有行为（截屏后交给内部 AI 识别返回文本）；raw = 直接以多模态 content 数组返回截屏图片 */
     private static final String CAPTURE_TYPE_ANALYZE = "analyze";
     private static final String CAPTURE_TYPE_RAW = "raw";
-
-    /** 会话文件落盘根路径 */
-    @Value("${assistant.file.base-path:data/}")
-    private String basePath;
 
     private final AISettings aiSettings;
     private final ChatHttpHandler chatHttpHandler;
@@ -102,7 +96,7 @@ public class BrowserScreenshotTool implements ToolHandler, MultimodalResultAble 
             String imageBase64 = browserService.screenshot(sessionId);
 
             if (CAPTURE_TYPE_RAW.equals(captureType)) {
-                return executeRawMode(context, imageBase64, pageTitle, currentUrl);
+                return executeRawMode(imageBase64, pageTitle, currentUrl);
             }
             return executeAnalyzeMode(arguments, imageBase64, pageTitle, currentUrl);
         } catch (ToolExecutor.ToolExecuteException e) {
@@ -116,23 +110,21 @@ public class BrowserScreenshotTool implements ToolHandler, MultimodalResultAble 
      * raw 模式：截屏后不调用内部 AI，直接把页面截图以多模态 tool 消息的 content 数组返回，
      * 供外层模型直接查看截图自行分析。图片按约定落盘到会话文件目录，路径记录在返回文本中。
      *
-     * @param context      工具执行上下文，需包含 chatSession 以构建会话文件路径
      * @param imageBase64  截屏图片的 Base64 数据
      * @param pageTitle    当前页面标题
      * @param currentUrl   当前页面 URL
      * @return 携带截屏图片多模态内容的工具回复
      */
-    private ToolExecutor.ToolExecuteResponse executeRawMode(Map<String, Object> context, String imageBase64,
+    private ToolExecutor.ToolExecuteResponse executeRawMode(String imageBase64,
                                                             String pageTitle, String currentUrl) throws Exception {
-        // action 已声明 chatSession 依赖（@ToolIncludeContext），此处直接取用
-        ChatSession chatSession = (ChatSession) context.get("chatSession");
-        Path imagePath = chatSession.buildSessionFilePath(basePath).resolve(UUID.randomUUID() + ".png");
+        // 只给出会话内文件名，落盘与引用回写由 MultimodalResultAble 统一处理
+        String fileName = UUID.randomUUID() + ".png";
         String result = "已截取当前浏览器页面。\n"
                 + "当前页面标题: " + pageTitle + "\n"
                 + "当前URL: " + currentUrl + "\n"
-                + "图片已保存至：" + imagePath;
+                + "图片已保存至会话文件目录：" + fileName;
         return new ToolExecutor.ToolExecuteResponse(name(), result)
-                .modalContent(imagePath.toString(), ContentTypeVariable.IMAGE, imageBase64);
+                .modalContent(fileName, ContentTypeVariable.IMAGE, imageBase64);
     }
 
     /**

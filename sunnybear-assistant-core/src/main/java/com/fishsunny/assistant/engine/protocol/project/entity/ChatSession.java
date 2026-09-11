@@ -9,12 +9,10 @@ package com.fishsunny.assistant.engine.protocol.project.entity;
  */
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fishsunny.assistant.config.AssistantPathConfig;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.util.StringUtils;
 
-import java.nio.file.Path;
 import java.time.LocalDateTime;
 
 @Data
@@ -67,22 +65,5 @@ public class ChatSession {
 
     public ChatSession(String name) {
         this.name = name;
-    }
-
-    public Path buildSessionFilePath(String baseUrl) {
-        if (!StringUtils.hasText(baseUrl)) {
-            baseUrl = System.getProperty("user.dir");
-        }
-        return Path.of(baseUrl, "session", getId(), "file");
-    }
-
-    public Path buildSessionFilePath(AssistantPathConfig pathConfig) {
-        String path;
-        if (pathConfig == null || !StringUtils.hasText(pathConfig.getFileBasePath())) {
-            path = System.getProperty("user.dir");
-        } else {
-            path = pathConfig.getFileBasePath();
-        }
-        return Path.of(path, "session", getId(), "file");
     }
 }

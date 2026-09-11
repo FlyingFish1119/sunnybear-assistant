@@ -13,7 +13,6 @@ package com.fishsunny.assistant.engine.tool.instance.agent;
 
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.config.AssistantPathConfig;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
@@ -23,6 +22,7 @@ import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -55,14 +55,14 @@ public class CloneAssistantTool implements SubAgentToolHandler {
     private final AISettings chatAISettings;
     private final ToolCallLoop toolCallLoop;
     private final ToolExecutor toolExecutor;
-    private final AssistantPathConfig assistantPathConfig;
+    private final SessionFileManager sessionFileManager;
     private final ToolRegister register;
     private final Map<String, ToolHandler> registry;
 
     public CloneAssistantTool(ObjectMapper objectMapper,
                               @Lazy ToolExecutor toolExecutor,
                               ToolCallLoop toolCallLoop,
-                              AssistantPathConfig assistantPathConfig,
+                              SessionFileManager sessionFileManager,
                               @Qualifier(AISettings.CHAT) AISettings chatAISettings,
                               List<SubAgentToolHandler> subAgents
     ) {
@@ -77,7 +77,7 @@ public class CloneAssistantTool implements SubAgentToolHandler {
         this.objectMapper = objectMapper;
         this.toolExecutor = toolExecutor;
         this.toolCallLoop = toolCallLoop;
-        this.assistantPathConfig = assistantPathConfig;
+        this.sessionFileManager = sessionFileManager;
         this.chatAISettings = chatAISettings;
 
         this.register = new ToolRegister()
@@ -114,10 +114,10 @@ public class CloneAssistantTool implements SubAgentToolHandler {
 
         ChatSession chatSession = (ChatSession) context.get("chatSession");
         ChatRequest callerRequest = (ChatRequest) context.get("chatRequest");
-        Path treeFile = chatSession.buildSessionFilePath(assistantPathConfig).resolve(MESSAGE_TREE_FILE);
 
         try {
             // 1. 读树：首次召唤时文件还不存在，视为空树
+            Path treeFile = sessionFileManager.prepareSessionFile(chatSession.getId(), MESSAGE_TREE_FILE);
             List<ChatMessage> tree = readMessageTree(treeFile);
 
             // 2. 本轮问题追加进树，成为克隆体看到的最后一条 user
@@ -125,7 +125,7 @@ public class CloneAssistantTool implements SubAgentToolHandler {
             int treeSize = tree.size();
 
             // 3. 组装请求：system + 整棵树。
-            //    不需要 fillAllFile——ToolCallLoop 每轮 translate 前会统一展开一遍，
+            //    不需要在此展开文件引用——ToolCallLoop 每轮 translate 前会统一展开一遍，
             //    而树里的消息和 request 里的是同一批对象，展开结果会随第 5 步一起落盘。
             List<ChatMessage> sendMessages = new ArrayList<>();
             sendMessages.add(new ChatMessage().system(buildSystemPrompt(callerRequest)));
@@ -141,7 +141,7 @@ public class CloneAssistantTool implements SubAgentToolHandler {
             String finalText = toolCallLoop.execute(settings, request, context);
 
             // 5. 把本轮新增的消息（克隆体的答复、它自己的工具调用与结果）接回树并落盘。
-            //    tree 与 sendMessages 里的消息是同一批对象，第 3 步的 fillAllFile 与循环内的展开都已在其中生效
+            //    tree 与 sendMessages 里的消息是同一批对象，循环内每轮开头的展开都已在其中生效
             tree.addAll(sendMessages.subList(1 + treeSize, sendMessages.size()));
             writeMessageTree(tree, treeFile);
 
@@ -275,9 +275,8 @@ public class CloneAssistantTool implements SubAgentToolHandler {
      * 写消息树。先写临时文件再原子替换，避免写到一半崩了把整棵树写坏。
      */
     private void writeMessageTree(List<ChatMessage> messages, Path treeFile) throws Exception {
-        Path dir = treeFile.getParent();
-        Files.createDirectories(dir);
-        Path tmp = dir.resolve(treeFile.getFileName() + ".tmp");
+        // 目录已由 SessionFileManager.prepareSessionFile 建好
+        Path tmp = treeFile.resolveSibling(treeFile.getFileName() + ".tmp");
         Files.writeString(tmp, objectMapper.writeValueAsString(messages), StandardCharsets.UTF_8);
         Files.move(tmp, treeFile, StandardCopyOption.REPLACE_EXISTING);
     }

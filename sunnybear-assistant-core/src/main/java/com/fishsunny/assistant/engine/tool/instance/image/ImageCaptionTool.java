@@ -29,7 +29,6 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
@@ -41,7 +40,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -61,10 +59,6 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
 
     private static final Long MAX_TIMEOUT = 15L;
     private static final Integer DEFAULT_IMAGE_LENGTH = 1024;
-
-    /** 会话文件落盘根路径 */
-    @Value("${assistant.file.base-path:data/}")
-    private String basePath;
 
     private final ToolRegister register;
 
@@ -125,7 +119,7 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
             }
 
             if (CAPTURE_TYPE_RAW.equals(captureType)) {
-                return executeRawImageMode(arguments, context);
+                return executeRawImageMode(arguments);
             }
             return executeImageMode(arguments);
         } catch (Exception e) {
@@ -137,20 +131,17 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
      * raw 模式：不调用内部 AI，按内部 OCR 同一套解析（网络 data URI / 本地文件缩放）
      * 拿到图片后落盘为会话目录下的图片文件，并以多模态 tool content 数组返回，供外层模型直接查看原图。
      */
-    private ToolExecutor.ToolExecuteResponse executeRawImageMode(Arguments arguments, Map<String, Object> context) throws Exception {
-        // action 已声明 chatSession 依赖（@ToolIncludeContext），此处直接取用
-        ChatSession chatSession = (ChatSession) context.get("chatSession");
+    private ToolExecutor.ToolExecuteResponse executeRawImageMode(Arguments arguments) throws Exception {
         String dataUri = findImage(arguments);
         byte[] bytes = ScaleImageHelper.base64ToByteArray(dataUri);
         if (bytes.length == 0) {
             throw new ToolExecutor.ToolExecuteException("图片数据为空，无法执行 raw 图片返回模式");
         }
-        String ext = extractImageSubtype(dataUri);
-        Path imagePath = chatSession.buildSessionFilePath(basePath).resolve(UUID.randomUUID() + "." + ext);
+        String fileName = UUID.randomUUID() + "." + extractImageSubtype(dataUri);
         String result = "已获取图片。\n"
-                + "图片已保存至：" + imagePath;
+                + "图片已保存至会话文件目录：" + fileName;
         return new ToolExecutor.ToolExecuteResponse(name(), result)
-                .modalContent(imagePath.toString(), ContentTypeVariable.IMAGE, ScaleImageHelper.byteArrayToBase64(bytes));
+                .modalContent(fileName, ContentTypeVariable.IMAGE, ScaleImageHelper.byteArrayToBase64(bytes));
     }
 
     /**

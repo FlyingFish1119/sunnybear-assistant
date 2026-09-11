@@ -20,6 +20,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
@@ -52,8 +53,13 @@ public class ToolCallLoop {
     private final ChatHttpHandler chatHttpHandler;
     private final ToolExecutor toolExecutor;
     private final ObjectMapper objectMapper;
+    private final SessionFileManager sessionFileManager;
 
-    public ToolCallLoop(ChatHttpHandler chatHttpHandler, @Lazy ToolExecutor toolExecutor, ObjectMapper objectMapper) {
+    public ToolCallLoop(ChatHttpHandler chatHttpHandler,
+                        @Lazy ToolExecutor toolExecutor,
+                        ObjectMapper objectMapper,
+                        SessionFileManager sessionFileManager) {
+        this.sessionFileManager = sessionFileManager;
         this.chatHttpHandler = chatHttpHandler;
         this.toolExecutor = toolExecutor;
         this.objectMapper = objectMapper;
@@ -168,11 +174,11 @@ public class ToolCallLoop {
 
         Consumer<AgentLogEntry> logCallback = hook != null ? hook.getLogback() : null;
 
-        // 发出去之前先把消息里的文件路径展开成 data URI（图片/音视频/文件）。
+        // 发出去之前先把消息里的文件引用展开成 data URI（图片/音视频/文件）。
         // 放在每轮开头而不是"谁产生谁负责"，是为了让展开成为 translate 的先决条件：
         // 循环自己新产生的 tool 结果会被下一轮覆盖，调用方塞进来的消息（如克隆体的消息树）同样覆盖，
         // 不会出现"第一轮把本地路径当图片发给模型"。与 ChatProcessor.toolCallCycle 的做法一致。
-        ChatMessage.fillAllFile(request.getMessages());
+        sessionFileManager.loadSessionFile(request.getMessages());
 
         chatHttpHandler.translate(
                 UUID.randomUUID().toString(),
@@ -258,7 +264,7 @@ public class ToolCallLoop {
                     // 追加 tool 结果消息 + 日志回调：工具结果
                     for (int i = 0; i < toolCalls.size(); i++) {
                         ToolExecutor.ToolExecuteResponse toolResponse = toolResults.get(i);
-                        // 这里只放路径（多模态内容已由 executeNow 落盘），展开交给下一轮开头的 fillAllFile
+                        // 这里只放引用（多模态内容已由 executeNow 落盘），展开交给下一轮开头的 loadSessionFile
                         List<MessageContent> contents = MessageContent.toMessageContents(toolResponse.getMultimodalContents());
                         messages.add(new ChatMessage()
                                 .tool(toolCalls.get(i).getId(), toolResponse.getResult(), contents)

@@ -1,5 +1,6 @@
 package com.fishsunny.assistant.mvc.controller;
 
+import com.fishsunny.assistant.utils.SessionFileManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -13,7 +14,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 /**
  * 本地文件代理控制器
@@ -32,10 +32,20 @@ public class FileProxyController {
     /** 代理文件缓存最大存活时间（秒） */
     private static final int PROXY_CACHE_MAX_AGE = 3600;
 
+    private final SessionFileManager sessionFileManager;
+
+    public FileProxyController(SessionFileManager sessionFileManager) {
+        this.sessionFileManager = sessionFileManager;
+    }
+
+    /**
+     * @param path 会话文件引用（形如 "sessionId:fileName"）或历史数据里的文件系统路径。
+     *             引用由 SessionFileManager 按当前 basePath 现算真实位置，因此项目目录搬迁后旧链接依然有效。
+     */
     @GetMapping("/proxy")
     public ResponseEntity<byte[]> proxyLocalFile(@RequestParam("path") String path) {
         try {
-            Path filePath = Paths.get(path).normalize();
+            Path filePath = sessionFileManager.resolveRef(path).normalize();
             // 防路径遍历
             if (filePath.toString().contains("..")) {
                 return ResponseEntity.badRequest().build();

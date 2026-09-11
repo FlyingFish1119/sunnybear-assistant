@@ -226,16 +226,6 @@ public class ChatMessage {
         return this;
     }
 
-    public static List<ChatMessage> fillAllFile(List<ChatMessage> messages) {
-        List<ChatMessage> resultMessages = new ArrayList<>();
-        for (ChatMessage message : messages) {
-            List<MessageContent> contents = MessageContent.fillFiles(message.getContents());
-            message.setContents(contents);
-            resultMessages.add(message);
-        }
-        return resultMessages;
-    }
-
     public static String getParentId(List<ChatMessage> originMessages) {
         ChatMessage last = ObjectUtils.getLast(originMessages);
         return last != null ? last.getId() : null;

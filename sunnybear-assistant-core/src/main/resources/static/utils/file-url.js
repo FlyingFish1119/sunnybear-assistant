@@ -13,6 +13,10 @@ const FileUrlUtils = {
     fileName: function (url) {
         if (!url) return 'file';
         var name = url.split(/[\\/]/).pop();
+        // 会话文件引用形态 {sessionId}:{fileName}，展示时只取文件名部分。
+        // 限定 sessionId 为无点号的长标识（UUID），避免误伤文件名里自带冒号的路径
+        var refMatch = name.match(/^[0-9a-zA-Z_-]{8,}:(.+)$/);
+        if (refMatch) name = refMatch[1];
         return name.replace(/^\d+_/, '');
     },
 

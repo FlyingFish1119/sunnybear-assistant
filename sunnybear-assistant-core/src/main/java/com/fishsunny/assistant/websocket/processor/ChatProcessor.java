@@ -33,6 +33,7 @@ import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.websocket.ChatProvider;
@@ -70,6 +71,7 @@ public class ChatProcessor {
     private final MemoryService memoryService;
     private final SlashCommandExecutor slashCommandExecutor;
     private final TTSSettings ttsSettings;
+    private final SessionFileManager sessionFileManager;
 
     /**
      * 主 Agent 不直接调用的工具集合：由 agent_tool 路由的子 Agent 工具（如 net_explore_tool），
@@ -90,6 +92,7 @@ public class ChatProcessor {
                             SlashCommandExecutor slashCommandExecutor,
                             ChatHttpHandler chatHttpHandler,
                             TTSSettings ttsSettings,
+                            SessionFileManager sessionFileManager,
                             List<SubAgentToolHandler> subAgentTools
                          ) {
         this.chatMessageService = chatMessageService;
@@ -104,6 +107,7 @@ public class ChatProcessor {
         this.slashCommandExecutor = slashCommandExecutor;
         this.chatHttpHandler = chatHttpHandler;
         this.ttsSettings = ttsSettings;
+        this.sessionFileManager = sessionFileManager;
 
         EXCLUDE_TOOLS.addAll(subAgentTools.stream().map(SubAgentToolHandler::name).toList());
         log.info("Exclude tools: {}", EXCLUDE_TOOLS);
@@ -410,7 +414,8 @@ public class ChatProcessor {
         };
 
 
-        request.setMessages(ChatMessage.fillAllFile(request.getMessages()));
+        // 把会话文件引用展开为 data URI（图片/音视频）或文本（可读文件），再发给模型
+        request.setMessages(sessionFileManager.loadSessionFile(request.getMessages()));
 
         ChatHttpHandler.TranslateData data = new ChatHttpHandler.TranslateData(
                 chatSession.getId(), effectiveAISettings.getAdapterName(), request);

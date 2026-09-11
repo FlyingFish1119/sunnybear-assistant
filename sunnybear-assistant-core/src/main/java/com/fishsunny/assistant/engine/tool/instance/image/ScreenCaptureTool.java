@@ -29,7 +29,6 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
@@ -37,7 +36,6 @@ import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -56,10 +54,6 @@ public class ScreenCaptureTool implements ToolHandler, MultimodalResultAble {
     /** capture_type 常量：analyze = 现有行为（截屏后交给内部 AI 识别返回文本）；raw = 直接以多模态 content 数组返回截屏图片 */
     private static final String CAPTURE_TYPE_ANALYZE = "analyze";
     private static final String CAPTURE_TYPE_RAW = "raw";
-
-    /** 会话文件落盘根路径 */
-    @Value("${assistant.file.base-path:data/}")
-    private String basePath;
 
     private final ToolRegister register;
 
@@ -111,7 +105,7 @@ public class ScreenCaptureTool implements ToolHandler, MultimodalResultAble {
             String imageBase64 = captureAndScaleScreen();
 
             if (CAPTURE_TYPE_RAW.equals(captureType)) {
-                return executeRawMode(context, imageBase64);
+                return executeRawMode(imageBase64);
             }
 
             String mode = StringUtils.hasText(arguments.getMode()) ? arguments.getMode() : MODE_LOCATION;
@@ -127,21 +121,19 @@ public class ScreenCaptureTool implements ToolHandler, MultimodalResultAble {
 
     /**
      * raw 模式：截取屏幕后不调用内部 AI，直接把截屏图片以多模态 tool 消息的 content 数组返回，
-     * 供外层模型直接查看截屏图片自行分析。图片按约定落盘到会话文件目录，路径记录在返回文本中。
+     * 供外层模型直接查看截屏图片自行分析。图片由 MultimodalResultAble 落盘到会话文件目录，
+     * 这里只负责给出会话内的文件名。
      *
-     * @param context     工具执行上下文，需包含 chatSession 以构建会话文件路径
      * @param imageBase64 截屏压缩后的 Base64 图片数据
      * @return 携带截屏图片多模态内容的工具回复
-     * @throws Exception 上下文缺失或构建路径失败
+     * @throws Exception 落盘失败
      */
-    private ToolExecutor.ToolExecuteResponse executeRawMode(Map<String, Object> context, String imageBase64) throws Exception {
-        // action 已声明 chatSession 依赖（@ToolIncludeContext），此处直接取用
-        ChatSession chatSession = (ChatSession) context.get("chatSession");
-        Path imagePath = chatSession.buildSessionFilePath(basePath).resolve(UUID.randomUUID() + ".png");
+    private ToolExecutor.ToolExecuteResponse executeRawMode(String imageBase64) throws Exception {
+        String fileName = UUID.randomUUID() + ".png";
         String result = "已截取屏幕。\n"
-                + "图片已保存至：" + imagePath;
+                + "图片已保存至会话文件目录：" + fileName;
         return new ToolExecutor.ToolExecuteResponse(name(), result)
-                .modalContent(imagePath.toString(), ContentTypeVariable.IMAGE, imageBase64);
+                .modalContent(fileName, ContentTypeVariable.IMAGE, imageBase64);
     }
 
     /**

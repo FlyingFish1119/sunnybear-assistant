@@ -16,10 +16,10 @@ import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
@@ -29,7 +29,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -157,17 +156,17 @@ public class CommandTool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final Settings settings;
     private final SecurityService securityService;
-
-    @Value("${assistant.file.base-path:}")
-    private String basePath;
+    private final SessionFileManager sessionFileManager;
 
     public CommandTool(ObjectMapper objectMapper,
                        @Qualifier(SETTINGS) Settings settings,
-                       SecurityService securityService
+                       SecurityService securityService,
+                       SessionFileManager sessionFileManager
                        ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
         this.securityService = securityService;
+        this.sessionFileManager = sessionFileManager;
     }
 
     @Override
@@ -477,13 +476,11 @@ public class CommandTool implements ToolHandler {
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String fileName = "command_" + timestamp + ".log";
-        Path logDir = Paths.get(basePath, "session", sessionId, "file");
-        Path logFile = logDir.resolve(fileName);
-
+        Path logFile;
         try {
-            Files.createDirectories(logDir);
+            logFile = sessionFileManager.prepareSessionFile(sessionId, fileName);
         } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("无法创建后台输出目录 [" + logDir + "]: " + e.getMessage());
+            throw new ToolExecutor.ToolExecuteException("无法创建后台输出目录: " + e.getMessage());
         }
 
         String shellName = getShellName();

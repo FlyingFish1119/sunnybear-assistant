@@ -10,6 +10,7 @@ package com.fishsunny.assistant.engine.tool.service.extension;
 
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,7 +23,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -48,9 +48,11 @@ public class ExtensionScriptService {
     @Value("${engine.tool.extension.dir:tool-extension/}")
     private String extensionDir;
 
-    /** 会话文件基目录（后台日志输出用），与 CommandTool 保持一致 */
-    @Value("${assistant.file.base-path:}")
-    private String basePath;
+    private final SessionFileManager sessionFileManager;
+
+    public ExtensionScriptService(SessionFileManager sessionFileManager) {
+        this.sessionFileManager = sessionFileManager;
+    }
 
     public String runScript(String name, Map<String, Object> arguments, long timeout) throws Exception {
         PreparedScript prepared = prepareScript(name, arguments);
@@ -113,13 +115,11 @@ public class ExtensionScriptService {
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String fileName = "script_" + timestamp + ".log";
-        Path logDir = Paths.get(basePath, "session", sessionId, "file");
-        Path logFile = logDir.resolve(fileName);
-
+        Path logFile;
         try {
-            Files.createDirectories(logDir);
+            logFile = sessionFileManager.prepareSessionFile(sessionId, fileName);
         } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("无法创建后台输出目录 [" + logDir + "]: " + e.getMessage());
+            throw new ToolExecutor.ToolExecuteException("无法创建后台输出目录: " + e.getMessage());
         }
 
         // 2. 写入日志文件头（同步）

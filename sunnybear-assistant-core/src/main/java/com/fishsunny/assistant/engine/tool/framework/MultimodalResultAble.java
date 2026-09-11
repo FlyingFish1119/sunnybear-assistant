@@ -2,40 +2,48 @@ package com.fishsunny.assistant.engine.tool.framework;
 
 /*
  * @Usage 多模态工具结果处理接口。工具执行完毕后，若 ToolHandler 实现了本接口，
- *        ToolExecutor 会把工具的多模态内容（base64）交给工具自行落盘，
- *        并把 data 由 base64 替换为文件路径，供外层读取 contents 中的路径后复用 fillFiles 转换。
+ *        ToolExecutor 会把工具的多模态内容（base64）交给本接口落盘。
+ *        工具只需在 MultimodalContent 里给出会话内的文件名，落盘后这里会把
+ *        path 回写为可移植引用（形如 "sessionId:fileName"），供外层读取 contents 后
+ *        经 SessionFileManager.loadSessionFile 展开为 data URI。
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
  */
 
+import com.fishsunny.assistant.utils.SessionFileManager;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
 
 
 public interface MultimodalResultAble {
 
-    default void writeFile(List<MultimodalContent> contents) throws IOException {
+    /**
+     * 把多模态内容落盘到会话文件目录。
+     *
+     * @param contents           多模态内容，其 path 为会话内文件名，落盘后被回写为引用
+     * @param sessionFileManager 会话文件管理器
+     * @param sessionId          当前会话 ID
+     */
+    default void writeFile(List<MultimodalContent> contents,
+                           SessionFileManager sessionFileManager,
+                           String sessionId) throws IOException {
         if (CollectionUtils.isEmpty(contents)) {
             return;
+        }
+        if (!StringUtils.hasText(sessionId)) {
+            throw new IOException("无法确定当前会话，多模态结果无法落盘");
         }
         for (MultimodalContent content : contents) {
             byte[] bytes = decodeBase64(content.getData());
             if (bytes == null) {
                 continue;
             }
-            Path path = Path.of(content.getPath());
-            File file = path.toFile();
-            if (!file.getParentFile().exists() && !file.getParentFile().mkdirs()) {
-                throw new IOException("Failed to create directory: " + file.getParentFile().getAbsolutePath());
-            }
-            Files.write(path, bytes);
+            content.setPath(sessionFileManager.writeSessionFile(sessionId, content.getPath(), bytes));
         }
     }
 

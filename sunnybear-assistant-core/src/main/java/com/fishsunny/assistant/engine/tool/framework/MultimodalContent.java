@@ -3,7 +3,8 @@ package com.fishsunny.assistant.engine.tool.framework;
 /*
  * @Usage 多模态工具结果内容块。工具把 base64 数据填进 data，
  *        实现 {@link MultimodalResultHandler} 后由工具自行落盘，
- *        落盘后 data 会被 replace 替换为文件路径，供外层读取后复用 fillFiles 转 data URI。
+ *        落盘后 path 由 MultimodalResultAble 回写为可移植引用（"sessionId:fileName"），
+ *        供外层读取后经 SessionFileManager.loadSessionFile 转 data URI。
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
@@ -29,7 +30,7 @@ import java.util.List;
 @Data
 public class MultimodalContent {
 
-    /** 文件路径 */
+    /** 文件引用：工具产出时为会话内文件名，落盘后被回写为 "sessionId:fileName" */
     private String path;
 
     /** 内容类型常量，见 {@link ContentTypeVariable}：image / audio / video / text / file */

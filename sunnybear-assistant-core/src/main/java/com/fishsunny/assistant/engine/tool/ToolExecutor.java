@@ -11,11 +11,13 @@ package com.fishsunny.assistant.engine.tool;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import jakarta.annotation.PreDestroy;
 import lombok.Data;
 import lombok.Getter;
@@ -46,9 +48,11 @@ public class ToolExecutor {
 
     private final ExecutorService executorService;
     private final ObjectMapper objectMapper;
+    private final SessionFileManager sessionFileManager;
 
-    public ToolExecutor(List<ToolKit> toolKits, ObjectMapper objectMapper) {
+    public ToolExecutor(List<ToolKit> toolKits, ObjectMapper objectMapper, SessionFileManager sessionFileManager) {
         this.objectMapper = objectMapper;
+        this.sessionFileManager = sessionFileManager;
         for (ToolKit toolKit : toolKits) {
             toolKitMap.put(toolKit.getClass(), toolKit);
             for (ToolHandler tool : toolKit.getTools()) {
@@ -195,10 +199,13 @@ public class ToolExecutor {
         try {
             String safeArguments = repairJson(arguments);
             ToolExecuteResponse response = handler.action(safeArguments, context).setSucceed(true);
-            // 多模态结果落盘：工具实现了 MultimodalResultHandler 时，由工具把 base64 写入文件。
+            // 多模态结果落盘：工具实现了 MultimodalResultAble 时，由工具把 base64 写入会话文件目录，
+            // 并把内容里的文件名回写为可移植引用（形如 "sessionId:fileName"）。
             if (handler instanceof MultimodalResultAble multimodalHandler) {
                 try {
-                    multimodalHandler.writeFile(response.getMultimodalContents());
+                    ChatSession chatSession = (ChatSession) context.get("chatSession");
+                    String sessionId = chatSession == null ? null : chatSession.getId();
+                    multimodalHandler.writeFile(response.getMultimodalContents(), sessionFileManager, sessionId);
                 } catch (Exception e) {
                     throw new ToolExecuteException("工具[" + toolName + "]执行成功，但文件结果落盘失败，请确认执行状态避免冲突: " + e.getMessage());
                 }
