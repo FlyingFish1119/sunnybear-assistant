@@ -21,8 +21,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.security.enable", havingValue = "true", matchIfMissing = true)
 public class SecurityToolKit extends ToolKit {
 
-    public SecurityToolKit(List<ToolHandler> tools, @Value("${engine.tool.security.enable:true}") boolean enable) {
-        super(tools, enable);
+    public SecurityToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

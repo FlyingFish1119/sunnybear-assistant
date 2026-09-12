@@ -12,9 +12,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "plug.android.tool.enable", havingValue = "true", matchIfMissing = true)
 public class AndroidToolKit extends ToolKit {
 
-    public AndroidToolKit(List<ToolHandler> tools,
-                          @Value("${plug.android.tool.enable:true}") boolean enable) {
-        super(tools, enable);
+    public AndroidToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

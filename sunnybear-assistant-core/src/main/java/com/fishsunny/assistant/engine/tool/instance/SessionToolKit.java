@@ -20,8 +20,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.session.enable", havingValue = "true", matchIfMissing = true)
 public class SessionToolKit extends ToolKit {
 
-    public SessionToolKit(List<ToolHandler> tools, @Value("${engine.tool.session.enable:true}") boolean enable) {
-        super(tools, enable);
+    public SessionToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

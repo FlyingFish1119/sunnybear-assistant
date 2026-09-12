@@ -15,10 +15,7 @@ import java.util.Map;
 
 public abstract class ToolKit {
 
-    protected final boolean enable;
-
-    public ToolKit(List<ToolHandler> tools, boolean enable) {
-        this.enable = enable;
+    public ToolKit(List<ToolHandler> tools) {
         register(tools);
     }
 
@@ -31,9 +28,6 @@ public abstract class ToolKit {
     }
 
     public List<ToolHandler> getTools() {
-        if (!enable) {
-            return List.of();
-        }
         return List.of(instanceMap.values().toArray(new ToolHandler[0]));
     }
 

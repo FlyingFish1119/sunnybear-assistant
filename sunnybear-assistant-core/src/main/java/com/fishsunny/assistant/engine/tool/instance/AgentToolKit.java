@@ -11,6 +11,7 @@ package com.fishsunny.assistant.engine.tool.instance;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
+import com.fishsunny.assistant.engine.tool.service.ToolVisibilityPolicy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -22,8 +23,9 @@ import java.util.Map;
 @ConditionalOnProperty(name = "engine.tool.agent.enable", havingValue = "true", matchIfMissing = true)
 public class AgentToolKit extends ToolKit {
 
-    public AgentToolKit(List<ToolHandler> tools, @Value("${engine.tool.agent.enable:true}") boolean enable) {
-        super(tools, enable);
+    public AgentToolKit(List<ToolHandler> tools, ToolVisibilityPolicy toolVisibilityPolicy) {
+        super(tools);
+        tools.forEach(toolVisibilityPolicy::addExcludedHandler);
     }
 
     @Override

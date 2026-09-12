@@ -20,8 +20,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.task.enable", havingValue = "true", matchIfMissing = true)
 public class TaskToolKit extends ToolKit {
 
-    public TaskToolKit(List<ToolHandler> tools, @Value("${engine.tool.task.enable:true}") boolean enable) {
-        super(tools, enable);
+    public TaskToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

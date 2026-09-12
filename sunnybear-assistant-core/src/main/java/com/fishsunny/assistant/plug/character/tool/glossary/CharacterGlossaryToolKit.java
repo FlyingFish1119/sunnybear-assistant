@@ -23,8 +23,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "plug.character.tool.glossary.enable", havingValue = "true", matchIfMissing = true)
 public class CharacterGlossaryToolKit extends ToolKit {
 
-    public CharacterGlossaryToolKit(List<ToolHandler> tools, @Value("${plug.character.tool.glossary.enable:true}") boolean enable) {
-        super(tools, enable);
+    public CharacterGlossaryToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

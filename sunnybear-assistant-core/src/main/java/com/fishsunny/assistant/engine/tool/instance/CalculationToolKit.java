@@ -20,8 +20,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.calc.enable", havingValue = "true", matchIfMissing = true)
 public class CalculationToolKit extends ToolKit {
 
-    public CalculationToolKit(List<ToolHandler> tools, @Value("${engine.tool.calc.enable:true}") boolean enable) {
-        super(tools, enable);
+    public CalculationToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

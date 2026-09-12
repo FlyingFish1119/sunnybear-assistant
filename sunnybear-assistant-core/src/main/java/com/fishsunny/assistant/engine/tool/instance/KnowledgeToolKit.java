@@ -20,8 +20,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.knowledge.enable", havingValue = "true", matchIfMissing = true)
 public class KnowledgeToolKit extends ToolKit {
 
-    public KnowledgeToolKit(List<ToolHandler> tools, @Value("${engine.tool.knowledge.enable:true}") boolean enable) {
-        super(tools, enable);
+    public KnowledgeToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

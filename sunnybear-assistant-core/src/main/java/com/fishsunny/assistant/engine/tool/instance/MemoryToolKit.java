@@ -20,8 +20,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.memory.enable", havingValue = "true", matchIfMissing = true)
 public class MemoryToolKit extends ToolKit {
 
-    public MemoryToolKit(List<ToolHandler> tools, @Value("${engine.tool.memory.enable:true}") boolean enable) {
-        super(tools, enable);
+    public MemoryToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

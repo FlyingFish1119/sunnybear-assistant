@@ -20,8 +20,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.browser.enable", havingValue = "true", matchIfMissing = true)
 public class BrowserToolKit extends ToolKit {
 
-    public BrowserToolKit(List<ToolHandler> tools, @Value("${engine.tool.browser.enable:true}") boolean enable) {
-        super(tools, enable);
+    public BrowserToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

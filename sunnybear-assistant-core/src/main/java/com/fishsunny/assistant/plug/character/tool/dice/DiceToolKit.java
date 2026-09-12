@@ -28,8 +28,8 @@ import java.util.Map;
 @ConditionalOnProperty(name = "plug.character.tool.dice.enable", havingValue = "true", matchIfMissing = true)
 public class DiceToolKit extends ToolKit {
 
-    public DiceToolKit(List<ToolHandler> tools, @Value("${plug.character.tool.dice.enable:true}") boolean enable) {
-        super(tools, enable);
+    public DiceToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

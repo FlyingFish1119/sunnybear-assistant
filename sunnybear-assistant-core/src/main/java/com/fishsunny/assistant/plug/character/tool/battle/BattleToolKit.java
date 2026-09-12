@@ -25,8 +25,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "plug.character.tool.battle.enable", havingValue = "true", matchIfMissing = true)
 public class BattleToolKit extends ToolKit {
 
-    public BattleToolKit(List<ToolHandler> tools, @Value("${plug.character.tool.battle.enable:true}") boolean enable) {
-        super(tools, enable);
+    public BattleToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

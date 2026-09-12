@@ -24,8 +24,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "plug.character.tool.sql.enable", havingValue = "true", matchIfMissing = true)
 public class CharacterSqlToolKit extends ToolKit {
 
-    public CharacterSqlToolKit(List<ToolHandler> tools, @Value("${plug.character.tool.sql.enable:true}") boolean enable) {
-        super(tools, enable);
+    public CharacterSqlToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

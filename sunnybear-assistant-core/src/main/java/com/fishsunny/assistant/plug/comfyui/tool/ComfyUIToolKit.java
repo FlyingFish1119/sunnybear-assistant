@@ -12,9 +12,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "plug.comfyui.tool.enable", havingValue = "true", matchIfMissing = true)
 public class ComfyUIToolKit extends ToolKit {
 
-    public ComfyUIToolKit(List<ToolHandler> tools,
-                          @Value("${plug.comfyui.tool.enable:true}") boolean enable) {
-        super(tools, enable);
+    public ComfyUIToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

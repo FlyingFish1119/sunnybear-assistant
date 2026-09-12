@@ -27,7 +27,7 @@ import java.util.List;
 public class OSToolKit extends ToolKit {
 
     public OSToolKit(List<ToolHandler> tools, @Value("${engine.tool.os.enable:true}") boolean enable) {
-        super(tools, enable);
+        super(tools);
     }
 
     @Override

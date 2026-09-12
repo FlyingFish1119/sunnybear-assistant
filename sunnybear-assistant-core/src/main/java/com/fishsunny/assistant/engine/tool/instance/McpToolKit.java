@@ -21,8 +21,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.mcp.enable", havingValue = "true", matchIfMissing = true)
 public class McpToolKit extends ToolKit {
 
-    public McpToolKit(List<ToolHandler> tools, @Value("${engine.tool.mcp.enable:true}") boolean enable) {
-        super(tools, enable);
+    public McpToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

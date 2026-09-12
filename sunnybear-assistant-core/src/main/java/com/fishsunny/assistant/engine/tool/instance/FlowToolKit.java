@@ -20,8 +20,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.flow.enable", havingValue = "true", matchIfMissing = true)
 public class FlowToolKit extends ToolKit {
 
-    public FlowToolKit(List<ToolHandler> tools, @Value("${engine.tool.flow.enable:true}") boolean enable) {
-        super(tools, enable);
+    public FlowToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

@@ -14,41 +14,33 @@ package com.fishsunny.assistant.engine.tool.service;
  */
 
 import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.settings.ToolKitSettings;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Component
 public class ToolVisibilityPolicy {
 
-    /**
-     * 两个集合都用 ObjectProvider 而非直接注入，是刻意的 —— 这里有两个必须绕开的构造环：
-     * <ol>
-     *   <li>工具集：CloneAssistantTool 既是 ToolHandler（在 AgentToolKit 的构造入参里）又要用本策略，
-     *       直接注入会形成 policy → List&lt;ToolKit&gt; → AgentToolKit → List&lt;ToolHandler&gt; → CloneAssistantTool → policy；</li>
-     *   <li>子 Agent 名单：CloneAssistantTool 本身就在 List&lt;SubAgentToolHandler&gt; 里，构造期取这份名单，
-     *       Spring 会把「正在创建中」的自己跳过 → 名单里丢掉 clone_assistant_tool，
-     *       主对话就会直接看到它。</li>
-     * </ol>
-     * 改成每次调用才解析（都是请求期调用，那时单例早已建完），两个环一起避开。
-     */
-    private final ObjectProvider<List<ToolKit>> toolKits;
-
-    /** 只能经 agent_tool 路由调用的子 Agent 本体 */
-    private final ObjectProvider<List<SubAgentToolHandler>> subAgentTools;
+    private final List<ToolKit> toolKits;
 
     private final ToolKitSettings settings;
 
-    public ToolVisibilityPolicy(ObjectProvider<List<ToolKit>> toolKits,
-                                ObjectProvider<List<SubAgentToolHandler>> subAgentTools,
+    private final Set<ToolHandler> excludedHandlers = ConcurrentHashMap.newKeySet();
+    public void addExcludedHandler(ToolHandler handler) {
+        excludedHandlers.add(handler);
+    }
+
+    public ToolVisibilityPolicy(@Lazy List<ToolKit> toolKits,
                                 ToolKitSettings settings) {
         this.toolKits = toolKits;
-        this.subAgentTools = subAgentTools;
         this.settings = settings;
     }
 
@@ -63,16 +55,16 @@ public class ToolVisibilityPolicy {
 
     /** 主对话需要排除的 kit 类型。每次调用现算，保存设置后立即生效，无需重启 */
     public List<Class<? extends ToolKit>> excludedKits() {
-        return toolKits.getObject().stream()
+        return toolKits.stream()
                 .filter(kit -> !isVisible(kit))
                 .map(ToolVisibilityPolicy::typeOf)
-                .toList();
+                .collect(Collectors.toUnmodifiableList());
     }
 
     /** 主对话需要排除的 handler 名（子 Agent 本体，只能经 agent_tool 路由调用） */
     public Set<String> excludedHandlers() {
-        return subAgentTools.getObject().stream()
-                .map(SubAgentToolHandler::name)
+        return excludedHandlers.stream()
+                .map(ToolHandler::name)
                 .collect(Collectors.toUnmodifiableSet());
     }
 

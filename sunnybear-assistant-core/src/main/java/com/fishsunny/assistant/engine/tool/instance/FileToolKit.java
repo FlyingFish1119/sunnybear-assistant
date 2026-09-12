@@ -24,8 +24,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.file.enable", havingValue = "true", matchIfMissing = true)
 public class FileToolKit extends ToolKit {
 
-    public FileToolKit(List<ToolHandler> tools, @Value("${engine.tool.file.enable:true}") boolean enable) {
-        super(tools, enable);
+    public FileToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

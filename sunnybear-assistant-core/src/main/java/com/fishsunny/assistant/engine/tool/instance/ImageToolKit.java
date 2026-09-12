@@ -20,8 +20,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.image.enable", havingValue = "true", matchIfMissing = true)
 public class ImageToolKit extends ToolKit {
 
-    public ImageToolKit(List<ToolHandler> tools, @Value("${engine.tool.image.enable:true}") boolean enable) {
-        super(tools, enable);
+    public ImageToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

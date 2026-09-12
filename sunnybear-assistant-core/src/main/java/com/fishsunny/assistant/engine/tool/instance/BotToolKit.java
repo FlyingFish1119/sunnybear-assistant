@@ -20,8 +20,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.bot.enable", havingValue = "true", matchIfMissing = true)
 public class BotToolKit extends ToolKit {
 
-    public BotToolKit(List<ToolHandler> tools, @Value("${engine.tool.bot.enable:true}") boolean enable) {
-        super(tools, enable);
+    public BotToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

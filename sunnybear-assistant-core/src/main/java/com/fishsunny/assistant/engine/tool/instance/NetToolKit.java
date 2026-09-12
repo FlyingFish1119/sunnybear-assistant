@@ -20,8 +20,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.net.enable", havingValue = "true", matchIfMissing = true)
 public class NetToolKit extends ToolKit {
 
-    public NetToolKit(List<ToolHandler> tools, @Value("${engine.tool.net.enable:true}") boolean enable) {
-        super(tools, enable);
+    public NetToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override

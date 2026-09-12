@@ -20,8 +20,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "engine.tool.cron.enable", havingValue = "true", matchIfMissing = true)
 public class CronToolKit extends ToolKit {
 
-    public CronToolKit(List<ToolHandler> tools, @Value("${engine.tool.cron.enable:true}") boolean enable) {
-        super(tools, enable);
+    public CronToolKit(List<ToolHandler> tools) {
+        super(tools);
     }
 
     @Override
