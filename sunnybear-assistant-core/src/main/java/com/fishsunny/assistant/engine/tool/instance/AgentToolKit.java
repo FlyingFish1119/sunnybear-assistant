@@ -24,9 +24,11 @@ import java.util.Map;
 @ConditionalOnProperty(name = "engine.tool.agent.enable", havingValue = "true", matchIfMissing = true)
 public class AgentToolKit extends ToolKit {
 
-    public AgentToolKit(List<SubAgentToolHandler> tools, ToolVisibilityPolicy toolVisibilityPolicy) {
+    public AgentToolKit(List<ToolHandler> tools, ToolVisibilityPolicy toolVisibilityPolicy) {
         super(tools);
-        tools.forEach(toolVisibilityPolicy::addExcludedHandler);
+        tools.stream()
+                .filter(tool -> tool instanceof SubAgentToolHandler)
+                .forEach(toolVisibilityPolicy::addExcludedHandler);
     }
 
     @Override
