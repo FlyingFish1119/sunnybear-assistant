@@ -23,4 +23,14 @@ public class SessionToolKit extends ToolKit {
     public SessionToolKit(List<ToolHandler> tools, @Value("${engine.tool.session.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "会话文件";
+    }
+
+    @Override
+    public String description() {
+        return "管理当前会话目录下的文件";
+    }
 }

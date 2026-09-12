@@ -30,6 +30,16 @@ public class OSToolKit extends ToolKit {
         super(tools, enable);
     }
 
+    @Override
+    public String displayName() {
+        return "系统命令";
+    }
+
+    @Override
+    public String description() {
+        return "执行命令行与扩展脚本";
+    }
+
     public static void writeLog(Path logFile, Process process) throws IOException, InterruptedException {
         try (InputStream inputStream = process.getInputStream();
              OutputStream outputStream = Files.newOutputStream(logFile,

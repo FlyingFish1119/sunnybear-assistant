@@ -42,10 +42,10 @@ class BootSmokeTest {
         assertEquals(CloneAssistantTool.NAME, cloneAssistantTool.name());
 
         // 克隆体必须能从路由表里取到
-        assertSame(cloneAssistantTool, toolExecutor.resolve(CloneAssistantTool.NAME));
+        assertSame(cloneAssistantTool, toolExecutor.getTool(CloneAssistantTool.NAME));
 
         // agent_tool 的描述里应该已经带上了克隆体这一项（AgentTool 构造时遍历路由表拼出来的）
-        AgentTool agentTool = (AgentTool) toolExecutor.resolve(AgentTool.NAME);
+        AgentTool agentTool = (AgentTool) toolExecutor.getTool(AgentTool.NAME);
         assertNotNull(agentTool);
         assertTrue(agentTool.getRegister().getDescription().contains(CloneAssistantTool.NAME),
                 "agent_tool 描述里缺少克隆体：\n" + agentTool.getRegister().getDescription());

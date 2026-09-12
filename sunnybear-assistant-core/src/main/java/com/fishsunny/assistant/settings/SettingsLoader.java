@@ -50,6 +50,7 @@ public class SettingsLoader {
     private static final String TOOL_SETTINGS_JSON = "tool_settings.json";
     private static final String KNOWLEDGE_SETTINGS_JSON = "knowledge_settings.json";
     private static final String MEMORY_SETTINGS_JSON = "memory_settings.json";
+    private static final String TOOLKIT_SETTINGS_JSON = "toolkit_settings.json";
 
     // ============================== 字段 & 构造 ==============================
 
@@ -63,6 +64,7 @@ public class SettingsLoader {
     private String toolSettingsPath;
     private String knowledgeSettingsPath;
     private String memorySettingsPath;
+    private String toolKitSettingsPath;
 
     @PostConstruct
     public void init() {
@@ -72,6 +74,7 @@ public class SettingsLoader {
         toolSettingsPath = basePath + "/" + TOOL_SETTINGS_JSON;
         knowledgeSettingsPath = basePath + "/" + KNOWLEDGE_SETTINGS_JSON;
         memorySettingsPath = basePath + "/" + MEMORY_SETTINGS_JSON;
+        toolKitSettingsPath = basePath + "/" + TOOLKIT_SETTINGS_JSON;
     }
 
     private final ObjectMapper objectMapper;
@@ -317,6 +320,41 @@ public class SettingsLoader {
             log.error("读取记忆设置文件失败: {}，原因: {}，将使用默认设置（记忆注入开启）",
                     settingsFile.getAbsolutePath(), e.getMessage(), e);
             return new MemorySettings().setEnable(true);
+        }
+    }
+
+    // ============================== 工具集可见性设置 ==============================
+
+    /**
+     * 读取并解析工具集可见性设置文件，装配为 Spring Bean。
+     * <p>
+     * 文件缺失或解析失败时返回空 map —— 全部按 { ToolKit#excludeFromMainAgent()} 的代码声明生效，
+     * 与引入本设置之前的行为完全一致。
+     */
+    @Bean
+    public ToolKitSettings toolKitSettings() {
+        File settingsFile = new File(toolKitSettingsPath);
+
+        if (!settingsFile.exists()) {
+            log.warn("工具集可见性设置文件不存在: {}，将使用默认设置（全部按代码声明）",
+                    settingsFile.getAbsolutePath());
+            return new ToolKitSettings();
+        }
+        if (!settingsFile.isFile()) {
+            log.warn("工具集可见性设置路径不是一个有效的文件: {}，将使用默认设置（全部按代码声明）",
+                    settingsFile.getAbsolutePath());
+            return new ToolKitSettings();
+        }
+
+        try {
+            ToolKitSettings settings = objectMapper.readValue(settingsFile, ToolKitSettings.class);
+            log.info("工具集可见性设置文件加载成功: {}，内容: visibility={}",
+                    settingsFile.getAbsolutePath(), settings == null ? null : settings.getVisibility());
+            return settings == null ? new ToolKitSettings() : settings;
+        } catch (IOException e) {
+            log.error("读取工具集可见性设置文件失败: {}，原因: {}，将使用默认设置（全部按代码声明）",
+                    settingsFile.getAbsolutePath(), e.getMessage(), e);
+            return new ToolKitSettings();
         }
     }
 

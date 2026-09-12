@@ -208,7 +208,7 @@ engine:
         apiKey: ${OPEN_CODE_API_KEY:}
         stream: false
         headers:
-          x-opencode-session: ses-sunnybear-zen
+          x-opencode-session: ses-sunnybear-go
         adapterCls: com.fishsunny.assistant.engine.adapter.responses.ResponsesAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
         targetReqCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIRequest
@@ -221,7 +221,7 @@ engine:
         apiKey: ${OPEN_CODE_API_KEY:}
         stream: true
         headers:
-          x-opencode-session: ses-sunnybear-zen
+          x-opencode-session: ses-sunnybear-go
         adapterCls: com.fishsunny.assistant.engine.adapter.responses.ResponsesStreamAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
         targetReqCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIRequest

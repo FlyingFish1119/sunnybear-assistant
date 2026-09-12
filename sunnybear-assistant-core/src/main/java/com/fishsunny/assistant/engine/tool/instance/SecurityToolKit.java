@@ -11,8 +11,6 @@ package com.fishsunny.assistant.engine.tool.instance;
 
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
-import com.fishsunny.assistant.engine.tool.instance.security.DecodeTool;
-import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -25,6 +23,21 @@ public class SecurityToolKit extends ToolKit {
 
     public SecurityToolKit(List<ToolHandler> tools, @Value("${engine.tool.security.enable:true}") boolean enable) {
         super(tools, enable);
-        ChatProcessor.getEXCLUDE_TOOLS().add(DecodeTool.NAME);
+    }
+
+    @Override
+    public String displayName() {
+        return "安全审查";
+    }
+
+    @Override
+    public String description() {
+        return "解码被编码或混淆的内容，供危险性判断";
+    }
+
+    /** 类注释写的“也允许主 Agent”与现状不符：decode_tool 一直是排除的，这里照实声明 */
+    @Override
+    public boolean excludeFromMainAgent() {
+        return true;
     }
 }

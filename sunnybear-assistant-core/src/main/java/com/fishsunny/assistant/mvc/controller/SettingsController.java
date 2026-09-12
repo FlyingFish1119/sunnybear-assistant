@@ -10,12 +10,15 @@ import com.fishsunny.assistant.engine.tool.instance.file.FileWriteTool;
 import com.fishsunny.assistant.engine.tool.instance.image.ImageCaptionTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
+import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.instance.os.CommandTool;
 import com.fishsunny.assistant.engine.tool.instance.os.ExtensionScriptTool;
+import com.fishsunny.assistant.engine.tool.service.ToolVisibilityPolicy;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.KnowledgeSettings;
 import com.fishsunny.assistant.settings.MemorySettings;
+import com.fishsunny.assistant.settings.ToolKitSettings;
 import com.fishsunny.assistant.settings.UserSettings;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
 import com.fishsunny.assistant.utils.image.ScaleImageHelper;
@@ -31,8 +34,13 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 综合设置控制器
@@ -60,12 +68,16 @@ public class SettingsController {
     private final String toolSettingsPath;
     private final String knowledgeSettingsPath;
     private final String memorySettingsPath;
+    private final String toolKitSettingsPath;
 
     // ========================= 设置 Bean =========================
     private final UserSettings userSettings;
     private final AssistantSettings assistantSettings;
     private final MemorySettings memorySettings;
     private final KnowledgeSettings knowledgeSettings;
+    private final ToolKitSettings toolKitSettings;
+    private final List<ToolKit> toolKits;
+    private final ToolVisibilityPolicy toolVisibilityPolicy;
     private final Map<String, AISettings> aiSettingsMap;
     private final Map<String, Object> toolSettingsMap;
     public SettingsController(
@@ -78,9 +90,13 @@ public class SettingsController {
             @Value("${tool-settings.path:settings/tool_settings.json}") String toolSettingsPath,
             @Value("${knowledge-settings.path:settings/knowledge_settings.json}") String knowledgeSettingsPath,
             @Value("${memory-settings.path:settings/memory_settings.json}") String memorySettingsPath,
+            @Value("${toolkit-settings.path:settings/toolkit_settings.json}") String toolKitSettingsPath,
             UserSettings userSettings,
             AssistantSettings assistantSettings,
             MemorySettings memorySettings,
+            ToolKitSettings toolKitSettings,
+            List<ToolKit> toolKits,
+            ToolVisibilityPolicy toolVisibilityPolicy,
             @Qualifier(AISettings.CHAT) AISettings chatAISettings,
             @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
             @Qualifier(AISettings.OCR) AISettings ocrAISettings,
@@ -106,10 +122,14 @@ public class SettingsController {
         this.toolSettingsPath = toolSettingsPath;
         this.knowledgeSettingsPath = knowledgeSettingsPath;
         this.memorySettingsPath = memorySettingsPath;
+        this.toolKitSettingsPath = toolKitSettingsPath;
         this.userSettings = userSettings;
         this.assistantSettings = assistantSettings;
         this.memorySettings = memorySettings;
         this.knowledgeSettings = knowledgeSettings;
+        this.toolKitSettings = toolKitSettings;
+        this.toolKits = toolKits;
+        this.toolVisibilityPolicy = toolVisibilityPolicy;
         this.aiSettingsMap = new LinkedHashMap<>();
         this.aiSettingsMap.put(AISettings.CHAT, chatAISettings);
         this.aiSettingsMap.put(AISettings.CHAT_PRO, chatProAISettings);
@@ -553,6 +573,87 @@ public class SettingsController {
         return new RestResponse().success("保存成功");
     }
 
+    // ==================== 工具集（Kit）可见性 ====================
+
+    /**
+     * 列出所有已注册的工具集及其工具，供设置页做 kit 粒度的可见性配置。
+     * <p>
+     * 只反映「主对话全量注入」这条路径的可见性；子 Agent 与角色对话走 include 语义，不受影响。
+     */
+    @RequestMapping("/tools/kits")
+    public RestResponse getToolKits() {
+        List<ToolKitView> views = toolKits.stream()
+                .map(kit -> new ToolKitView(
+                        kit.getClass().getName(),
+                        kit.displayName(),
+                        kit.description(),
+                        !kit.excludeFromMainAgent(),
+                        toolVisibilityPolicy.isVisible(kit),
+                        kit.getTools().stream()
+                                .map(tool -> new ToolView(tool.name(), tool.getRegister().getDescription()))
+                                .sorted(Comparator.comparing(ToolView::name))
+                                .toList()))
+                // 常规工具集在前，默认不对主对话开放的排在后面
+                .sorted(Comparator.comparing(ToolKitView::defaultVisible).reversed()
+                        .thenComparing(ToolKitView::name))
+                .toList();
+        return new RestResponse().success(views);
+    }
+
+    /**
+     * 保存工具集可见性设置。
+     * <p>
+     * 未知的 kit id 直接忽略并记日志：插件被移除后，不该因为一条历史配置就让整页存不上。
+     */
+    @PostMapping("/toolkit/save")
+    public RestResponse saveToolKitSettings(@RequestBody(required = false) ToolKitSettings settings) {
+        if (settings == null) {
+            return new RestResponse().error("Invalid settings");
+        }
+        Set<String> knownIds = toolKits.stream()
+                .map(kit -> kit.getClass().getName())
+                .collect(Collectors.toSet());
+        Map<String, Boolean> sanitized = new LinkedHashMap<>();
+        List<String> unknown = new ArrayList<>();
+        settings.getVisibility().forEach((kitId, visible) -> {
+            if (knownIds.contains(kitId)) {
+                sanitized.put(kitId, visible);
+            } else {
+                unknown.add(kitId);
+            }
+        });
+        if (!unknown.isEmpty()) {
+            log.warn("工具集可见性设置里出现未知 kit，已忽略: {}", unknown);
+        }
+        toolKitSettings.setVisibility(sanitized);
+        File settingsFile = new File(toolKitSettingsPath);
+        // 首次保存时 settings/ 目录可能还不存在（全新安装），writeValue 不会自己建
+        File parent = settingsFile.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            log.error("创建工具集可见性设置目录失败: {}", parent.getAbsolutePath());
+            return new RestResponse().error("保存失败");
+        }
+        try {
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(settingsFile, toolKitSettings);
+        } catch (Exception e) {
+            log.error("保存工具集可见性设置失败: {}", e.getMessage());
+            return new RestResponse().error("保存失败");
+        }
+        return new RestResponse().success("保存成功");
+    }
+
+    /** 设置页用的工具集视图：id 是 kit 全限定类名，也是保存时的键 */
+    public record ToolKitView(String id,
+                              String name,
+                              String description,
+                              boolean defaultVisible,
+                              boolean visible,
+                              List<ToolView> tools) {
+    }
+
+    public record ToolView(String name, String description) {
+    }
+
     @RequestMapping("/knowledgesettings/get")
     public RestResponse getKnowledgeSettings() {
         return new RestResponse().success(knowledgeSettings);
@@ -562,7 +663,7 @@ public class SettingsController {
         if (settings == null) {
             return new RestResponse().error("Invalid settings");
         }
-        knowledgeSettings.setEnable(settings.getEnable() != null ? settings.getEnable() : false);
+        knowledgeSettings.setEnable(Boolean.TRUE.equals(settings.getEnable()));
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(knowledgeSettingsPath), knowledgeSettings);
         } catch (Exception e) {
@@ -584,7 +685,7 @@ public class SettingsController {
         if (settings == null) {
             return new RestResponse().error("Invalid settings");
         }
-        memorySettings.setEnable(settings.getEnable() != null ? settings.getEnable() : false);
+        memorySettings.setEnable(Boolean.TRUE.equals(settings.getEnable()));
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(memorySettingsPath), memorySettings);
         } catch (Exception e) {
@@ -616,7 +717,7 @@ public class SettingsController {
         userSettings.setOpacity(settings.getOpacity());
         userSettings.setMainColor(settings.getMainColor());
         userSettings.setEnableAutoSwitchModel(
-                settings.getEnableAutoSwitchModel() != null ? settings.getEnableAutoSwitchModel() : false);
+                Boolean.TRUE.equals(settings.getEnableAutoSwitchModel()));
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(userSettingsPath), userSettings);
         } catch (Exception e) {
@@ -638,7 +739,9 @@ public class SettingsController {
         }
         try {
             String userDir = fileBasePath + "user/";
-            new File(userDir).mkdirs();
+            if (!new File(userDir).mkdirs()) {
+                log.warn("创建用户目录失败: {}", userDir);
+            }
             String ext = originalFilename.substring(originalFilename.lastIndexOf("."));
             byte[] scaled = new MultipartScaleImageHelper(file).scaleImage(256);
             String filename = "avatar" + ext;
@@ -688,7 +791,9 @@ public class SettingsController {
         }
         try {
             String userDir = fileBasePath + "user/";
-            new File(userDir).mkdirs();
+            if (!new File(userDir).mkdirs()) {
+                log.warn("创建用户目录失败: {}", userDir);
+            }
             String ext = originalFilename.substring(originalFilename.lastIndexOf("."));
             byte[] scaled = new MultipartScaleImageHelper(file).scaleImage(256);
             String filename = "assistant_avatar" + ext;
@@ -738,7 +843,9 @@ public class SettingsController {
         }
         try {
             String userDir = fileBasePath + "user/";
-            new File(userDir).mkdirs();
+            if (!new File(userDir).mkdirs()) {
+                log.warn("创建用户目录失败: {}", userDir);
+            }
             String ext = originalFilename.substring(originalFilename.lastIndexOf("."));
             byte[] scaled = new MultipartScaleImageHelper(file).scaleImage(1920);
             String filename = "background" + ext;

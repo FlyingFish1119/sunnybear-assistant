@@ -80,6 +80,20 @@ public class StandardToolRegister {
     }
 
     /**
+     * 构建所有工具注册信息，同时按 ToolKit 类型与 Handler 名称排除 —— 主对话的全量注入走这条。
+     *
+     * @param toolExecutor    工具执行器
+     * @param excludeKits     需要排除的 ToolKit 类型列表
+     * @param excludeHandlers 需要排除的 Handler 名称集合
+     * @return 转换后的 StandardToolRegister 列表
+     */
+    public static List<StandardToolRegister> buildToolRegisterExcluding(ToolExecutor toolExecutor,
+                                                                       List<Class<? extends ToolKit>> excludeKits,
+                                                                       Set<String> excludeHandlers) {
+        return toolExecutor.buildToolExcluding(TOOL_REGISTER_CONVERTER, excludeKits, excludeHandlers);
+    }
+
+    /**
      * 根据指定的 Handler 名称过滤并构建工具注册信息
      *
      * @param toolExecutor    工具执行器

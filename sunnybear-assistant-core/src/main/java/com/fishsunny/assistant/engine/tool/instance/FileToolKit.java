@@ -27,4 +27,14 @@ public class FileToolKit extends ToolKit {
     public FileToolKit(List<ToolHandler> tools, @Value("${engine.tool.file.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "文件";
+    }
+
+    @Override
+    public String description() {
+        return "读写、编辑、删除、检索与下载会话目录下的文件";
+    }
 }

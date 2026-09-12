@@ -26,6 +26,16 @@ public class AgentToolKit extends ToolKit {
         super(tools, enable);
     }
 
+    @Override
+    public String displayName() {
+        return "子 Agent";
+    }
+
+    @Override
+    public String description() {
+        return "agent_tool 与各类子 Agent 的入口；子 Agent 本体只能经 agent_tool 路由调用，不会作为顶层工具出现";
+    }
+
     /**
      * agent_tool 的 agent 参数描述——同样按给定路由表列一遍名字。
      * <p>

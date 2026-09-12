@@ -23,4 +23,14 @@ public class KnowledgeToolKit extends ToolKit {
     public KnowledgeToolKit(List<ToolHandler> tools, @Value("${engine.tool.knowledge.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "知识库";
+    }
+
+    @Override
+    public String description() {
+        return "向知识库写入条目、删除条目";
+    }
 }

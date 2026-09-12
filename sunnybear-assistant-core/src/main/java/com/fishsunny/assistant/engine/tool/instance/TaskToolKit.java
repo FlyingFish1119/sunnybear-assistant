@@ -23,4 +23,14 @@ public class TaskToolKit extends ToolKit {
     public TaskToolKit(List<ToolHandler> tools, @Value("${engine.tool.task.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "任务";
+    }
+
+    @Override
+    public String description() {
+        return "拆解并执行多步骤任务，维护步骤状态";
+    }
 }

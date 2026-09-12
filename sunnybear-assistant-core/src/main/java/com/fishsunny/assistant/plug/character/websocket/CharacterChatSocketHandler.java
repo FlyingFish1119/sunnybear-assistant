@@ -170,8 +170,9 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
         };
 
         // 2. 工具：清空通用候选，直接按该角色 character_info.tools 允许表从全量池重建。
-        //    角色工具已由各自 ToolKit 加进 EXCLUDE_TOOLS（普通对话不暴露）；buildToolRegisterByHandlers
-        //    无视 EXCLUDE、缺失的名字静默跳过 —— 因此角色对话能拿到被 EXCLUDE 的角色工具，也不会带出其它被排除工具。
+        //    角色工具由各自 ToolKit 声明 excludeFromMainAgent()（普通对话默认不暴露）；buildToolRegisterByHandlers
+        //    走 include 语义、不看 kit 可见性、缺失的名字静默跳过 —— 因此角色对话照样拿得到这些角色工具，
+        //    也不会带出其它被排除工具。
         Function<ChatProvider.ToolProviderContext, List<StandardToolRegister>> toolProvider = ctx -> {
             Map<String, Boolean> toolsMap = toolsEnabledMap(character);
             List<String> allowed = new ArrayList<>();

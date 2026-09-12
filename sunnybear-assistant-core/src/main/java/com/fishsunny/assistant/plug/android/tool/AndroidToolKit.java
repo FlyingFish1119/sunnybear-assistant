@@ -16,4 +16,14 @@ public class AndroidToolKit extends ToolKit {
                           @Value("${plug.android.tool.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "安卓设备";
+    }
+
+    @Override
+    public String description() {
+        return "操作安卓设备：点击、滑动、输入、按键、启动应用、截图与读取 UI 树";
+    }
 }

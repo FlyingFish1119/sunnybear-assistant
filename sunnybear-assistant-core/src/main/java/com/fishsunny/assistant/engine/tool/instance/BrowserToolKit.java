@@ -23,4 +23,14 @@ public class BrowserToolKit extends ToolKit {
     public BrowserToolKit(List<ToolHandler> tools, @Value("${engine.tool.browser.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "浏览器";
+    }
+
+    @Override
+    public String description() {
+        return "无头浏览器自动化：导航、点击、输入、拖拽、滚动、截图与读取正文";
+    }
 }

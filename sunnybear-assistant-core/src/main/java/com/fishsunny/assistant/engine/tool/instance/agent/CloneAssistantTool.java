@@ -21,9 +21,9 @@ import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardT
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
+import com.fishsunny.assistant.engine.tool.service.ToolVisibilityPolicy;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.SessionFileManager;
-import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;
@@ -56,6 +56,7 @@ public class CloneAssistantTool implements SubAgentToolHandler {
     private final ToolCallLoop toolCallLoop;
     private final ToolExecutor toolExecutor;
     private final SessionFileManager sessionFileManager;
+    private final ToolVisibilityPolicy toolVisibilityPolicy;
     private final ToolRegister register;
     private final Map<String, ToolHandler> registry;
 
@@ -64,6 +65,7 @@ public class CloneAssistantTool implements SubAgentToolHandler {
                               ToolCallLoop toolCallLoop,
                               SessionFileManager sessionFileManager,
                               @Qualifier(AISettings.CHAT) AISettings chatAISettings,
+                              ToolVisibilityPolicy toolVisibilityPolicy,
                               List<SubAgentToolHandler> subAgents
     ) {
         this.registry = new HashMap<>();
@@ -79,6 +81,7 @@ public class CloneAssistantTool implements SubAgentToolHandler {
         this.toolCallLoop = toolCallLoop;
         this.sessionFileManager = sessionFileManager;
         this.chatAISettings = chatAISettings;
+        this.toolVisibilityPolicy = toolVisibilityPolicy;
 
         this.register = new ToolRegister()
                 .setName(NAME)
@@ -155,7 +158,7 @@ public class CloneAssistantTool implements SubAgentToolHandler {
     }
 
     /**
-     * 克隆体这次能用的工具表：主 Agent 那套（全量减 ChatProcessor.EXCLUDE_TOOLS），
+     * 克隆体这次能用的工具表：主 Agent 那套（全量减 ToolVisibilityPolicy 判定的排除项），
      * 再把 agent_tool 里"能召唤哪些子 Agent"的说明换成去掉克隆体自己的版本。
      * <p>
      * 为什么要换：AgentTool 那份说明是它构造时按全部子 Agent 拼的、全局就一份，里面带着
@@ -168,8 +171,8 @@ public class CloneAssistantTool implements SubAgentToolHandler {
      * StandardToolRegister（连同 parameters.properties 里那些对象），不是共享的注册对象。
      */
     List<StandardToolRegister> buildToolRegisters() throws ToolExecutor.ToolExecuteException {
-        List<StandardToolRegister> toolRegisters = StandardToolRegister
-                .buildToolRegisterExcluding(toolExecutor, ChatProcessor.getEXCLUDE_TOOLS());
+        List<StandardToolRegister> toolRegisters = StandardToolRegister.buildToolRegisterExcluding(
+                toolExecutor, toolVisibilityPolicy.excludedKits(), toolVisibilityPolicy.excludedHandlers());
         StandardToolRegister agentToolRegister = toolRegisters.stream()
                 .filter(tool -> tool.getFunction().getName().equals(AgentTool.NAME))
                 .findFirst()

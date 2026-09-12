@@ -2,7 +2,8 @@ package com.fishsunny.assistant.engine.tool.instance.agent;
 
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.websocket.processor.ChatProcessor;
+import com.fishsunny.assistant.plug.character.tool.battle.BattleSqlQueryTool;
+import com.fishsunny.assistant.plug.character.tool.dice.D20Tool;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -63,12 +64,21 @@ class CloneAssistantToolSetTest {
         // 有 agent_tool：克隆体可以召唤别的子 Agent
         assertTrue(names.contains(AgentTool.NAME), "克隆体工具表里缺少 " + AgentTool.NAME);
 
-        // 没有自己：clone_assistant_tool 在 ChatProcessor.EXCLUDE_TOOLS 里，本来就不该出现
+        // 没有自己：clone_assistant_tool 是子 Agent 本体，只能经 agent_tool 路由，本来就不该出现
         assertFalse(names.contains(CloneAssistantTool.NAME),
                 "克隆体工具表里出现了它自己：" + CloneAssistantTool.NAME);
 
         // 子 Agent 工具本身是被 EXCLUDE 的（只能经 agent_tool 路由），不该以顶层工具身份出现
         assertFalse(names.contains(FileExploreTool.NAME));
         assertFalse(names.contains(NetExploreTool.NAME));
+
+        // 声明排除的工具集（角色战斗/骰子类）整体不出现在主对话工具表里，
+        // 但角色对话走 include 语义，仍拿得到 —— 这条覆盖 kit 维度的排除。
+        // 先确认工具本身确实注册着，否则「不在表里」可能只是因为压根没有这个工具，
+        // 断言就变成了空过
+        assertNotNull(toolExecutor.getTool(BattleSqlQueryTool.NAME), "战斗工具没有注册，下面的排除断言会空过");
+        assertNotNull(toolExecutor.getTool(D20Tool.NAME), "骰子工具没有注册，下面的排除断言会空过");
+        assertFalse(names.contains(BattleSqlQueryTool.NAME), "声明排除的工具集漏进了克隆体工具表");
+        assertFalse(names.contains(D20Tool.NAME), "声明排除的工具集漏进了克隆体工具表");
     }
 }

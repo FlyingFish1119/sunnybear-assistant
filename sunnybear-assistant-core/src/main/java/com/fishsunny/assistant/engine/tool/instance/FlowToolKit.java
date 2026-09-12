@@ -23,4 +23,14 @@ public class FlowToolKit extends ToolKit {
     public FlowToolKit(List<ToolHandler> tools, @Value("${engine.tool.flow.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "流程控制";
+    }
+
+    @Override
+    public String description() {
+        return "向用户提问、等待流程，以及多模态与流程连通性测试";
+    }
 }

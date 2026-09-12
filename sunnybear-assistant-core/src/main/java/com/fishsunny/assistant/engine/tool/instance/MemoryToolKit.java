@@ -23,4 +23,14 @@ public class MemoryToolKit extends ToolKit {
     public MemoryToolKit(List<ToolHandler> tools, @Value("${engine.tool.memory.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "核心记忆";
+    }
+
+    @Override
+    public String description() {
+        return "记录与删除跨对话保留的长期记忆";
+    }
 }

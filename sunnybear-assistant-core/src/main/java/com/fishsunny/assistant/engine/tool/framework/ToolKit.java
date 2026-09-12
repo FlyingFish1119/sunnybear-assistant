@@ -37,6 +37,37 @@ public abstract class ToolKit {
         return List.of(instanceMap.values().toArray(new ToolHandler[0]));
     }
 
+    // ==================== 元信息 & 可见性声明 ====================
+
+    /**
+     * 工具集展示名（设置页用），默认取类名去掉 ToolKit 后缀。
+     * 内置工具集都覆写成中文名；插件自带的工具集不覆写也能正常显示，不会空着。
+     */
+    public String displayName() {
+        String simpleName = this.getClass().getSimpleName();
+        return simpleName.endsWith("ToolKit")
+                ? simpleName.substring(0, simpleName.length() - "ToolKit".length())
+                : simpleName;
+    }
+
+    /** 工具集描述（设置页用），默认空串 */
+    public String description() {
+        return "";
+    }
+
+    /**
+     * 代码层面的默认值：本工具集是否默认不对主对话开放。
+     * <p>
+     * 用于那些只该由子 Agent 路由或角色对话使用的工具集（角色骰子/战斗/词条/SQL、
+     * ComfyUI 原子工具、decode 等）。这只是<b>默认值</b>——用户在设置页显式配置后以用户配置为准，
+     * 即「设置了就开」，这里不做风险拦截。
+     *
+     * @return true 表示默认排除；用户未配置过该工具集时按此生效
+     */
+    public boolean excludeFromMainAgent() {
+        return false;
+    }
+
     protected void register(List<ToolHandler> tools) {
         for (ToolHandler tool : tools) {
             ToolKitComponent annotation = AnnotationUtils.findAnnotation(tool.getClass(), ToolKitComponent.class);

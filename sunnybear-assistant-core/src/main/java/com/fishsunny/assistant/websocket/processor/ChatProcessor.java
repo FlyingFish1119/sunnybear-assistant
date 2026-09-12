@@ -23,7 +23,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.Me
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tts.TTSSettings;
-import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
+import com.fishsunny.assistant.engine.tool.service.ToolVisibilityPolicy;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
@@ -39,7 +39,6 @@ import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.websocket.ChatProvider;
 import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandExecutor;
 import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandHandler;
-import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -72,13 +71,7 @@ public class ChatProcessor {
     private final SlashCommandExecutor slashCommandExecutor;
     private final TTSSettings ttsSettings;
     private final SessionFileManager sessionFileManager;
-
-    /**
-     * 主 Agent 不直接调用的工具集合：由 agent_tool 路由的子 Agent 工具（如 net_explore_tool），
-     * 以及各子 Agent 的原子工具（ComfyUI 原子工具由 ComfyUIToolKit 在此登记）。
-     */
-    @Getter
-    private static final Set<String> EXCLUDE_TOOLS = new HashSet<>();
+    private final ToolVisibilityPolicy toolVisibilityPolicy;
 
     public ChatProcessor(ChatMessageService chatMessageService,
                             ObjectMapper objectMapper,
@@ -93,7 +86,7 @@ public class ChatProcessor {
                             ChatHttpHandler chatHttpHandler,
                             TTSSettings ttsSettings,
                             SessionFileManager sessionFileManager,
-                            List<SubAgentToolHandler> subAgentTools
+                            ToolVisibilityPolicy toolVisibilityPolicy
                          ) {
         this.chatMessageService = chatMessageService;
         this.objectMapper = objectMapper;
@@ -108,9 +101,7 @@ public class ChatProcessor {
         this.chatHttpHandler = chatHttpHandler;
         this.ttsSettings = ttsSettings;
         this.sessionFileManager = sessionFileManager;
-
-        EXCLUDE_TOOLS.addAll(subAgentTools.stream().map(SubAgentToolHandler::name).toList());
-        log.info("Exclude tools: {}", EXCLUDE_TOOLS);
+        this.toolVisibilityPolicy = toolVisibilityPolicy;
     }
     /**
      * 核心对话处理逻辑
@@ -261,9 +252,9 @@ public class ChatProcessor {
                                String activeAssistantName,
                                boolean enableTts
     ) throws Exception {
-        // 注入工具（排除被子 Agent 及其原子工具）
+        // 注入工具：按 kit 排除用户关掉的工具集与声明不开放的工具集，再按名字排除子 Agent 本体
         List<StandardToolRegister> toolRegisters = StandardToolRegister.buildToolRegisterExcluding(
-                toolExecutor, EXCLUDE_TOOLS);
+                toolExecutor, toolVisibilityPolicy.excludedKits(), toolVisibilityPolicy.excludedHandlers());
         if (chatProvider.getToolProvider() != null) {
             ChatProvider.ToolProviderContext toolCtx = new ChatProvider.ToolProviderContext(chatSession, toolRegisters);
             toolRegisters = chatProvider.getToolProvider().apply(toolCtx);

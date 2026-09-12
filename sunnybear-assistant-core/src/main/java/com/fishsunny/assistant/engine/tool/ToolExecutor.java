@@ -71,37 +71,10 @@ public class ToolExecutor {
 
     public record ToolProvider(Consumer<ToolRequest> beforeExec, Consumer<ToolExecuteResponse> afterExec) {}
 
-    // ======================== 运行时覆盖层 ========================
 
-    /** 用外部处理器顶替本机同名工具。传入空集合即无操作。 */
-    public void overrideTools(Map<String, ToolHandler> handlers) {
-        if (handlers == null || handlers.isEmpty()) {
-            return;
-        }
-        overrides.putAll(handlers);
-    }
-
-    /** 撤销覆盖，本机实现随即恢复生效 */
-    public void clearOverrides(Set<String> toolNames) {
-        if (toolNames == null || toolNames.isEmpty()) {
-            return;
-        }
-        toolNames.forEach(overrides::remove);
-    }
-
-    /** 某个工具当前由谁提供（覆盖层优先），不存在返回 null */
-    public ToolHandler resolve(String toolName) {
-        ToolHandler override = overrides.get(toolName);
-        return override != null ? override : toolMap.get(toolName);
-    }
-
-    /**
-     * 本机内置的工具（不含运行时覆盖），只读。
-     * 供代理层据此决定"要接管哪些工具"——必须看本机实现而非 resolve 的结果，
-     * 否则反复应用覆盖会把自己的包装器再包一层。
-     */
-    public Map<String, ToolHandler> localTools() {
-        return Collections.unmodifiableMap(toolMap);
+    /** 按名字取本机工具处理器，不存在返回 null。只读查询用，不走任何过滤/覆盖 */
+    public ToolHandler getTool(String toolName) {
+        return toolMap.get(toolName);
     }
 
     /** 本机最终生效的工具视图。无覆盖时直接复用 toolMap，避免每次调用都复制 */
@@ -161,7 +134,7 @@ public class ToolExecutor {
         String arguments = toolRequest.getArguments();
 
         ToolExecuteResponse response;
-        ToolHandler handler = resolve(toolName);
+        ToolHandler handler = toolMap.get(toolName);
         if (handler == null) {
             response = new ToolExecuteResponse(toolName, "工具[" + toolName + "]不存在").setSucceed(false);
         } else {
@@ -329,8 +302,7 @@ public class ToolExecutor {
                 continue;
             }
             for (ToolHandler tool : entry.getValue().getTools()) {
-                // 走 resolve：工具被代理顶替时，广告给模型的必须是执行端那份注册信息
-                tools.add(function.apply(resolve(tool.name()).getRegister()));
+                tools.add(function.apply(tool.getRegister()));
             }
         }
         return tools;
@@ -345,15 +317,46 @@ public class ToolExecutor {
      * @return 转换后的工具注册列表
      */
     public <T> List<T> buildToolExcluding(Function<ToolRegister, T> function, Set<String> excludeHandlers) {
+        return buildToolExcluding(function, List.of(), excludeHandlers);
+    }
+
+    /**
+     * 构建所有工具注册信息，同时按 ToolKit 类型与 Handler 名称排除。
+     * <p>
+     * 先按 kit 排除整个工具集，再按名字剔除个别工具（如只能经 agent_tool 路由的子 Agent 本体）。
+     * 两个入参都为空时不排除任何工具、返回全量 —— 与 {@link #buildToolByHandlers} 的 include 语义相反。
+     *
+     * @param function        转换函数，将 ToolRegister 转为目标类型
+     * @param excludeKits     需要排除的 ToolKit 类型列表，为 null 或空时不按 kit 排除
+     * @param excludeHandlers 需要排除的 Handler 名称集合，为 null 或空时不按名字排除
+     * @param <T>             目标类型
+     * @return 转换后的工具注册列表
+     */
+    public <T> List<T> buildToolExcluding(Function<ToolRegister, T> function,
+                                          List<Class<? extends ToolKit>> excludeKits,
+                                          Set<String> excludeHandlers) {
         List<T> tools = new ArrayList<>();
-        for (ToolHandler tool : resolvedTools().values()) {
-            if (excludeHandlers != null && excludeHandlers.contains(tool.name())) {
+        boolean noExcludeKits = CollectionUtils.isEmpty(excludeKits);
+        boolean noExcludeHandlers = CollectionUtils.isEmpty(excludeHandlers);
+        // 按名字去重：@ToolKitComponent 的值是数组，一个工具可以同时挂在多个 kit 上，
+        // 按 kit 遍历会把它广告多份。当前没有这种工具，但插件以后可能有。
+        Set<String> added = new HashSet<>();
+        for (Map.Entry<Class<? extends ToolKit>, ToolKit> entry : toolKitMap.entrySet()) {
+            if (!noExcludeKits && excludeKits.contains(entry.getKey())) {
                 continue;
             }
-            tools.add(function.apply(tool.getRegister()));
+            for (ToolHandler tool : entry.getValue().getTools()) {
+                if (!noExcludeHandlers && excludeHandlers.contains(tool.name())) {
+                    continue;
+                }
+                if (added.add(tool.name())) {
+                    tools.add(function.apply(tool.getRegister()));
+                }
+            }
         }
         return tools;
     }
+
 
     /**
      * 根据指定的 Handler 名称过滤并构建工具注册信息
@@ -376,6 +379,7 @@ public class ToolExecutor {
         }
         return tools;
     }
+
 
     @Data
     @Accessors(chain = true)

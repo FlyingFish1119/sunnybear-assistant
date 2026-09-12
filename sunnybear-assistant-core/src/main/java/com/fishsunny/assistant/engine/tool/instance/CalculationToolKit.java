@@ -23,4 +23,14 @@ public class CalculationToolKit extends ToolKit {
     public CalculationToolKit(List<ToolHandler> tools, @Value("${engine.tool.calc.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "计算";
+    }
+
+    @Override
+    public String description() {
+        return "数学表达式计算";
+    }
 }

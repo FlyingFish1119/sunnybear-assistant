@@ -23,4 +23,14 @@ public class ImageToolKit extends ToolKit {
     public ImageToolKit(List<ToolHandler> tools, @Value("${engine.tool.image.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "图像";
+    }
+
+    @Override
+    public String description() {
+        return "图片内容识别与屏幕截图";
+    }
 }

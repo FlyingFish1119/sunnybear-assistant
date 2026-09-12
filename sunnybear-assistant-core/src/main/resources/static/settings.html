@@ -22,6 +22,7 @@
     <script src="components/settings/file-delete-settings/file-delete-settings.js"></script>
     <script src="components/settings/file-download-settings/file-download-settings.js"></script>
     <script src="components/settings/extension-script-settings/extension-script-settings.js"></script>
+    <script src="components/settings/tool-kit-settings/tool-kit-settings.js"></script>
     <script src="components/settings/image-caption-settings/image-caption-settings.js"></script>
     <script src="components/settings/web-reader-settings/web-reader-settings.js"></script>
     <script src="components/settings/knowledge-params-settings/knowledge-params-settings.js"></script>
@@ -105,6 +106,16 @@
             </div>
         </div>
 
+        <div class="settings-card">
+            <div class="settings-card-header">
+                <i data-lucide="boxes" style="width:18px;height:18px"></i>
+                <span>工具集可见性</span>
+            </div>
+            <div class="settings-card-body">
+                <tool-kit-settings :kits="toolKits" @saved="fetchAllSettings"></tool-kit-settings>
+            </div>
+        </div>
+
         <!-- ==================== 知识库 ==================== -->
         <div class="settings-section-title">知识库</div>
 
@@ -183,6 +194,7 @@ const app = Vue.createApp({
             extensionScriptSettings: {},
             knowledgeSettings: {},
             memorySettings: {},
+            toolKits: [],
         }
     },
 
@@ -237,6 +249,7 @@ const app = Vue.createApp({
                 { key: 'extensionScriptSettings', url: 'settings/extensionscript/get' },
                 { key: 'knowledgeSettings', url: 'settings/knowledgesettings/get' },
                 { key: 'memorySettings', url: 'settings/memorysettings/get' },
+                { key: 'toolKits', url: 'settings/tools/kits' },
             ];
 
             const aiTypes = ['chat', 'chat_pro', 'ocr', 'mission', 'task', 'cub'];
@@ -303,6 +316,7 @@ app.component('file-edit-settings', FileEditSettings);
 app.component('file-delete-settings', FileDeleteSettings);
 app.component('file-download-settings', FileDownloadSettings);
 app.component('extension-script-settings', ExtensionScriptSettings);
+app.component('tool-kit-settings', ToolKitSettings);
 app.component('image-caption-settings', ImageCaptionSettings);
 app.component('web-reader-settings', WebReaderSettings);
 app.component('knowledge-params-settings', KnowledgeParamsSettings);

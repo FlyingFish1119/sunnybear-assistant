@@ -23,4 +23,14 @@ public class NetToolKit extends ToolKit {
     public NetToolKit(List<ToolHandler> tools, @Value("${engine.tool.net.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "网络";
+    }
+
+    @Override
+    public String description() {
+        return "联网搜索与网页正文抓取";
+    }
 }

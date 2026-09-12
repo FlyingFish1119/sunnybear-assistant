@@ -24,4 +24,14 @@ public class McpToolKit extends ToolKit {
     public McpToolKit(List<ToolHandler> tools, @Value("${engine.tool.mcp.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "MCP";
+    }
+
+    @Override
+    public String description() {
+        return "查询与调用 MCP Server 提供的远程工具";
+    }
 }

@@ -23,4 +23,14 @@ public class BotToolKit extends ToolKit {
     public BotToolKit(List<ToolHandler> tools, @Value("${engine.tool.bot.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "桌面操控";
+    }
+
+    @Override
+    public String description() {
+        return "模拟鼠标与键盘，直接操作本机桌面";
+    }
 }

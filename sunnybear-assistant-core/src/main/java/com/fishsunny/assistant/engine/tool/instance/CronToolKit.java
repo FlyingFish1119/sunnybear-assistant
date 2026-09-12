@@ -23,4 +23,14 @@ public class CronToolKit extends ToolKit {
     public CronToolKit(List<ToolHandler> tools, @Value("${engine.tool.cron.enable:true}") boolean enable) {
         super(tools, enable);
     }
+
+    @Override
+    public String displayName() {
+        return "定时任务";
+    }
+
+    @Override
+    public String description() {
+        return "按 cron 表达式创建与管理定时任务";
+    }
 }
