@@ -409,6 +409,63 @@ class ResponsesAdapterJsonDumpTest {
         assertEquals("只有 item 没有增量", adapter.getContent());
     }
 
+    /**
+     * 流式侧不受 {@code "error":null} 影响：判别器是事件的 {@code type}，不是 error 字段——
+     * 内嵌 response 里带 NullNode 的 error 也照样按 completed 正常收尾（与非流式的陷阱对照）。
+     */
+    @Test
+    void streamCompletedWithNullErrorStillCompletes() throws Exception {
+        ResponsesStreamAIAdapter adapter = new ResponsesStreamAIAdapter(option(ResponsesStreamEvent.class));
+
+        List<String> deltas = List.of(
+                "{\"type\":\"response.created\",\"sequence_number\":0,"
+                        + "\"response\":{\"id\":\"resp_11\",\"status\":\"in_progress\",\"error\":null}}",
+                "{\"type\":\"response.output_text.delta\",\"sequence_number\":1,\"output_index\":0,"
+                        + "\"item_id\":\"msg_5\",\"delta\":\"流式没事。\"}",
+                "{\"type\":\"response.completed\",\"sequence_number\":2,"
+                        + "\"response\":{\"id\":\"resp_11\",\"object\":\"response\",\"status\":\"completed\","
+                        + "\"error\":null,\"incomplete_details\":null}}"
+        );
+
+        System.out.println("\n===== 流式 error=null =====");
+        ChatResponse last = null;
+        for (String line : deltas) {
+            ResponsesStreamEvent event = MAPPER.readValue(line, ResponsesStreamEvent.class);
+            adapter.collectChunk(event);
+            last = (ChatResponse) adapter.convertToMaster(event);
+            System.out.println("[事件] " + event.getType() + " → " + last.getStatus()
+                    + " / finished=" + adapter.finished(event));
+            if (adapter.finished(event)) {
+                break;
+            }
+        }
+
+        assertEquals(ChatResponse.STATUS_DONE, last.getStatus(), "completed 不该被内嵌的 error=null 判成失败");
+        assertEquals("流式没事。", adapter.getContent());
+    }
+
+    /**
+     * 但流式有自己的一个坑：{@code response.failed} / {@code response.incomplete} <b>是按事件类型判失败</b>的，
+     * 内嵌 response 没给 error 详情时，兜底文案会说成「未返回任何 output」——措辞不对，但确实是失败。
+     */
+    @Test
+    void streamFailedWithNullErrorReportsMisleadingText() throws Exception {
+        ResponsesStreamAIAdapter adapter = new ResponsesStreamAIAdapter(option(ResponsesStreamEvent.class));
+
+        String failed = "{\"type\":\"response.failed\",\"sequence_number\":1,"
+                + "\"response\":{\"id\":\"resp_12\",\"object\":\"response\",\"status\":\"failed\",\"error\":null}}";
+        ResponsesStreamEvent event = MAPPER.readValue(failed, ResponsesStreamEvent.class);
+        adapter.collectChunk(event);
+        ChatResponse converted = (ChatResponse) adapter.convertToMaster(event);
+
+        System.out.println("\n===== 流式 response.failed + error=null =====");
+        System.out.println(MAPPER.writeValueAsString(converted));
+
+        // 失败判定本身正确（事件类型就是 failed），只是文案会误导
+        assertEquals(ChatResponse.STATUS_ERROR, converted.getStatus());
+        assertTrue(converted.getText().contains("status=failed"), "文案里至少带上了真实状态");
+    }
+
     /** response.failed 是终止事件，且要转成 error 状态的帧 */
     @Test
     void streamFailedEndsStreamWithError() throws Exception {
@@ -491,6 +548,34 @@ class ResponsesAdapterJsonDumpTest {
         System.out.println("\n===== 非流式失败 =====");
         System.out.println("[异常] " + error.getMessage());
         assertTrue(error.getMessage().contains("upstream exploded"));
+    }
+
+    /**
+     * 网关在响应体里显式写 {@code "error":null}（Python 侧 model_dump 之类的常见产物）时不是失败：
+     * Jackson 把 JSON null 读成 {@code NullNode} 这个<b>非 Java null</b> 的对象，
+     * 只看引用非空的判断会误判成失败，抛「未返回任何 output（status=completed）」并把整份 output 丢掉。
+     */
+    @Test
+    void nonStreamNullErrorIsNotAFailure() throws Exception {
+        ResponsesAIAdapter adapter = new ResponsesAIAdapter(option(ResponsesAIResponse.class));
+
+        String body = "{\"id\":\"resp_10\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"gpt-5\","
+                + "\"error\":null,\"incomplete_details\":null,"
+                + "\"output\":[{\"id\":\"msg_4\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\","
+                + "\"content\":[{\"type\":\"output_text\",\"text\":\"我也在这里。\"}]}]"
+                + ",\"usage\":{\"input_tokens\":11,\"output_tokens\":6}}";
+        ResponsesAIResponse response = MAPPER.readValue(body, ResponsesAIResponse.class);
+
+        System.out.println("\n===== 非流式 error=null =====");
+        assertNotNull(response.getError(), "JSON null 读出来是 NullNode，引用并不为 null");
+        assertTrue(response.getError().isNull(), "NullNode.isNull() 才是「没有错误」的判据");
+
+        adapter.collectChunk(response);
+        ChatResponse converted = (ChatResponse) adapter.convertToMaster(response);
+        System.out.println("[转 master] " + MAPPER.writeValueAsString(converted));
+
+        assertEquals(ChatResponse.STATUS_DONE, converted.getStatus());
+        assertEquals("我也在这里。", adapter.getContent());
     }
 
     @Test

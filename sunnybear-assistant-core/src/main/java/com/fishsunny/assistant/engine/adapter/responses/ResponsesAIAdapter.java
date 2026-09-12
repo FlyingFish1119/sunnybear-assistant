@@ -42,8 +42,9 @@ public class ResponsesAIAdapter extends ResponsesBaseAIAdapter {
         }
         ResponsesAIResponse responsesResponse = (ResponsesAIResponse) response;
 
+        // hasError() 而非 getError() != null：网关显式给 "error":null 时拿到的是 NullNode
         if (ResponsesAIResponse.STATUS_FAILED.equals(responsesResponse.getStatus())
-                || responsesResponse.getError() != null) {
+                || responsesResponse.hasError()) {
             throw readableFailure(responsesResponse);
         }
         if (ResponsesAIResponse.STATUS_INCOMPLETE.equals(responsesResponse.getStatus())) {

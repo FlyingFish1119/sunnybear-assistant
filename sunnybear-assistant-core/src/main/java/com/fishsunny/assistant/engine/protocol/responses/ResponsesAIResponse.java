@@ -47,6 +47,15 @@ public class ResponsesAIResponse implements AIResponse {
     public ResponsesAIResponse() {
     }
 
+    /**
+     * 是否真的带了错误。
+     * <p>不能写 {@code getError() != null}：网关显式给 {@code "error":null} 时 Jackson 读出来的是
+     * {@code NullNode} 这个非 Java null 的对象，只看引用非空会把「没有错误」判成「有错误」。
+     */
+    public boolean hasError() {
+        return error != null && !error.isNull();
+    }
+
     public static final String STATUS_COMPLETED = "completed";
     public static final String STATUS_FAILED = "failed";
     public static final String STATUS_INCOMPLETE = "incomplete";

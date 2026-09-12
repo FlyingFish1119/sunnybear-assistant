@@ -460,9 +460,8 @@ public abstract class ResponsesBaseAIAdapter extends AIAdapter {
         if (response == null) {
             return "Responses API 未返回响应体";
         }
-        JsonNode error = response.getError();
-        if (error != null && !error.isNull()) {
-            return "Responses API 返回错误: " + nodeMessage(error);
+        if (response.hasError()) {
+            return "Responses API 返回错误: " + nodeMessage(response.getError());
         }
         JsonNode incomplete = response.getIncomplete_details();
         if (incomplete != null && !incomplete.isNull()) {
