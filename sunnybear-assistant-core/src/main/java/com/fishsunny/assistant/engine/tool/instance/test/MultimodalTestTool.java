@@ -20,6 +20,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FlowToolKit;
+import com.fishsunny.assistant.engine.tool.instance.TestToolKit;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
 import com.fishsunny.assistant.utils.image.ScaleImageHelper;
 import lombok.Data;
@@ -34,7 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-@ToolKitComponent(FlowToolKit.class)
+@ToolKitComponent(TestToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.multimodal-test.enable:true}")
 public class MultimodalTestTool implements ToolHandler, MultimodalResultAble {
 

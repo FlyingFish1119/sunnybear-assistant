@@ -37,7 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-@ToolKitComponent(TestToolKit.class)
+@ToolKitComponent(FlowToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.question.enable:true}")
 public class QuestionTool implements ToolHandler {
 

@@ -23,7 +23,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
-@ToolKitComponent(TestToolKit.class)
+@ToolKitComponent(FlowToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.wait-flow.enable:true}")
 public class WaitFlowTool implements ToolHandler {
 

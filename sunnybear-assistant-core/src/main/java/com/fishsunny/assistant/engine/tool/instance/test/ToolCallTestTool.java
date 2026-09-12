@@ -14,6 +14,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FlowToolKit;
+import com.fishsunny.assistant.engine.tool.instance.TestToolKit;
 import lombok.Data;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
@@ -23,7 +24,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
-@ToolKitComponent(FlowToolKit.class)
+@ToolKitComponent(TestToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.flow-test.enable:true}")
 public class ToolCallTestTool implements ToolHandler {
 
