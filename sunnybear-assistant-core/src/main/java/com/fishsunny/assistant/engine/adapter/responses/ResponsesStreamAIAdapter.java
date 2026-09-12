@@ -29,6 +29,8 @@ import java.util.Map;
  *       内容整份重复一遍，再累加就每个 token 都翻倍；它只作为终止信号。</li>
  *   <li>{@code function_call_arguments.done} 要<b>覆盖</b>而不是追加——它给的是完整 JSON，
  *       追加会和前面的增量碎片叠在一起。</li>
+ *   <li>下发给前端的是<b>增量片段</b>而不是累积快照：前端对 toolCalls.arguments 做累加，
+ *       每帧发累积值会拼成「ABC + ABCDEFG」。</li>
  *   <li>{@link #convertToMaster} 必须是纯函数：收流循环对终止事件会调它两次
  *       （循环内一次 + 收尾对 lastRes 再一次）。</li>
  * </ul>
@@ -67,6 +69,8 @@ public class ResponsesStreamAIAdapter extends ResponsesBaseAIAdapter {
         private String callId;
         private String name;
         private final StringBuilder arguments = new StringBuilder();
+        /** 已向前端下发过参数增量帧；参数增量只发增量片段，done 帧据此判断要不要兜底补发整份 */
+        private boolean argumentsStreamed;
 
         ToolCallMeta(Integer outputIndex) {
             this.outputIndex = outputIndex;
@@ -308,13 +312,37 @@ public class ResponsesStreamAIAdapter extends ResponsesBaseAIAdapter {
                                 .setReasoningContent(delta)));
             }
 
-            case ResponsesStreamEvent.TYPE_FUNCTION_CALL_ARGUMENTS_DELTA:
+            case ResponsesStreamEvent.TYPE_FUNCTION_CALL_ARGUMENTS_DELTA: {
+                ToolCallMeta meta = resolveMeta(event);
+                String delta = deltaText(event);
+                if (meta == null || delta == null) {
+                    return chatResponse.setStatus(ChatResponse.STATUS_CHUNK);
+                }
+                // 只下发本帧的增量片段：前端对 toolCalls.arguments 是累加的（index.html 的
+                // `toolCall.arguments += ...`），这里再发累积快照就会拼成 ABC + ABCDEFG
+                meta.argumentsStreamed = true;
+                ChatToolRequest toolRequest = new ChatToolRequest()
+                        .setId(meta.callId)
+                        .setName(meta.name)
+                        .setArguments(delta);
+                return chatResponse
+                        .setStatus(ChatResponse.STATUS_CHUNK)
+                        .setMessages(List.of(new ChatMessage()
+                                .setRole("assistant")
+                                .setToolCalls(List.of(toolRequest))));
+            }
+
             case ResponsesStreamEvent.TYPE_FUNCTION_CALL_ARGUMENTS_DONE: {
                 ToolCallMeta meta = resolveMeta(event);
                 if (meta == null) {
                     return chatResponse.setStatus(ChatResponse.STATUS_CHUNK);
                 }
-                // 下发累积到当前的完整参数（与 Anthropic input_json_delta 分支同一口径）
+                // done 给的是完整 JSON，不是增量。正常路径下增量已逐帧下发完，再发一遍前端就翻倍；
+                // 只有「只发 done 不发增量」的网关才需要这一次兜底
+                if (meta.argumentsStreamed) {
+                    return chatResponse.setStatus(ChatResponse.STATUS_CHUNK);
+                }
+                meta.argumentsStreamed = true;
                 ChatToolRequest toolRequest = new ChatToolRequest()
                         .setId(meta.callId)
                         .setName(meta.name)

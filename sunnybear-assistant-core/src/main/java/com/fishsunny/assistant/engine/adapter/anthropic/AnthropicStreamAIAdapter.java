@@ -116,10 +116,10 @@ public class AnthropicStreamAIAdapter extends AnthropicBaseAIAdapter {
                                     .setRole("assistant")
                                     .setReasoningContent(thinkingDelta.getThinking());
                             chatResponse.setMessages(List.of(msg));
-                        } else if (delta instanceof AnthropicInputJsonDelta) {
+                        } else if (delta instanceof AnthropicInputJsonDelta inputJsonDelta) {
                             // Tool call streaming: include partial tool call info (like OpenAI adapter)
                             ToolUseMeta meta = idx != null ? contentBlockToolUse.get(idx) : null;
-                            if (meta != null) {
+                            if (meta != null && inputJsonDelta.getPartial_json() != null) {
                                 chatResponse.setStatus(ChatResponse.STATUS_CHUNK);
                                 ChatMessage msg = new ChatMessage()
                                         .setRole("assistant");
@@ -127,7 +127,11 @@ public class AnthropicStreamAIAdapter extends AnthropicBaseAIAdapter {
                                         new com.fishsunny.assistant.engine.protocol.project.ChatToolRequest();
                                 toolReq.setId(meta.id);
                                 toolReq.setName(meta.name);
-                                toolReq.setArguments(meta.inputJson.toString());
+                                // 只发本帧的 partial_json：前端对 toolCalls.arguments 是累加的
+                                // （index.html 的 `toolCall.arguments += ...`），发累积值会拼成
+                                // ABC + ABCDEFG。这里 delta 已经是 AnthropicInputJsonDelta，
+                                // 直接用其 partial_json 即可
+                                toolReq.setArguments(inputJsonDelta.getPartial_json());
                                 msg.setToolCalls(List.of(toolReq));
                                 chatResponse.setMessages(List.of(msg));
                             } else {

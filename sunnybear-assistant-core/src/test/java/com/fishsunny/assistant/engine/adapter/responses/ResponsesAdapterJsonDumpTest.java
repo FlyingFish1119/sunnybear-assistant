@@ -264,6 +264,86 @@ class ResponsesAdapterJsonDumpTest {
         assertEquals("{\"display\":0}", toolCall.getFunction().getArguments());
     }
 
+    /**
+     * 下发给前端的参数帧必须是<b>增量片段</b>：前端对 toolCalls.arguments 做累加，
+     * 发累积快照会拼成 {"disp{"display":0}——这正是「重复推送」的现场。
+     */
+    @Test
+    void streamToolCallArgumentsAreDeltasNotSnapshots() throws Exception {
+        ResponsesStreamAIAdapter adapter = new ResponsesStreamAIAdapter(option(ResponsesStreamEvent.class));
+
+        List<String> deltas = List.of(
+                "{\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_8\"}}",
+                "{\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_index\":0,"
+                        + "\"item\":{\"id\":\"fc_8\",\"type\":\"function_call\",\"call_id\":\"call_8\","
+                        + "\"name\":\"screen_shot\",\"arguments\":\"\"}}",
+                "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":2,\"output_index\":0,"
+                        + "\"item_id\":\"fc_8\",\"delta\":\"{\\\"disp\"}",
+                "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":3,\"output_index\":0,"
+                        + "\"item_id\":\"fc_8\",\"delta\":\"lay\\\":0}\"}",
+                "{\"type\":\"response.function_call_arguments.done\",\"sequence_number\":4,\"output_index\":0,"
+                        + "\"item_id\":\"fc_8\",\"arguments\":\"{\\\"display\\\":0}\"}",
+                "{\"type\":\"response.completed\",\"sequence_number\":5,\"response\":{\"id\":\"resp_8\"}}"
+        );
+
+        System.out.println("\n===== 流式回放：工具调用参数只发增量 =====");
+        // 前端 index.html 的累加动作，逐帧复刻一遍
+        StringBuilder frontend = new StringBuilder();
+        for (String line : deltas) {
+            ResponsesStreamEvent event = MAPPER.readValue(line, ResponsesStreamEvent.class);
+            adapter.collectChunk(event);
+            ChatResponse converted = (ChatResponse) adapter.convertToMaster(event);
+            for (ChatMessage message : converted.getMessages()) {
+                if (message.getToolCalls() == null) {
+                    continue;
+                }
+                for (ChatToolRequest request : message.getToolCalls()) {
+                    frontend.append(request.getArguments());
+                    System.out.println("[下发片段] " + request.getArguments());
+                }
+            }
+        }
+
+        // 两帧增量各发各的片段，done 帧不重复下发整份
+        assertEquals("{\"display\":0}", frontend.toString(), "累加后的参数不能有重复片段");
+        // 执行侧仍拿到完整 JSON
+        assertEquals("{\"display\":0}", adapter.getToolCalls().get(0).getFunction().getArguments());
+    }
+
+    /** 只发 done 不发增量的网关：兜底补发一次完整参数，前端也能拿到 */
+    @Test
+    void streamToolCallFallsBackWhenOnlyDoneIsSent() throws Exception {
+        ResponsesStreamAIAdapter adapter = new ResponsesStreamAIAdapter(option(ResponsesStreamEvent.class));
+
+        List<String> deltas = List.of(
+                "{\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_9\"}}",
+                "{\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_index\":0,"
+                        + "\"item\":{\"id\":\"fc_9\",\"type\":\"function_call\",\"call_id\":\"call_9\","
+                        + "\"name\":\"screen_shot\",\"arguments\":\"\"}}",
+                "{\"type\":\"response.function_call_arguments.done\",\"sequence_number\":2,\"output_index\":0,"
+                        + "\"item_id\":\"fc_9\",\"arguments\":\"{\\\"display\\\":1}\"}"
+        );
+
+        System.out.println("\n===== 流式回放：只发 done 的网关 =====");
+        StringBuilder frontend = new StringBuilder();
+        for (String line : deltas) {
+            ResponsesStreamEvent event = MAPPER.readValue(line, ResponsesStreamEvent.class);
+            adapter.collectChunk(event);
+            ChatResponse converted = (ChatResponse) adapter.convertToMaster(event);
+            for (ChatMessage message : converted.getMessages()) {
+                if (message.getToolCalls() == null) {
+                    continue;
+                }
+                for (ChatToolRequest request : message.getToolCalls()) {
+                    frontend.append(request.getArguments());
+                }
+            }
+        }
+
+        assertEquals("{\"display\":1}", frontend.toString());
+        assertEquals("{\"display\":1}", adapter.getToolCalls().get(0).getFunction().getArguments());
+    }
+
     /** 纯文本一轮，且思考摘要只出现在 output_item.done（不给增量的网关）时的兜底 */
     @Test
     void streamReplayTextOnly() throws Exception {
