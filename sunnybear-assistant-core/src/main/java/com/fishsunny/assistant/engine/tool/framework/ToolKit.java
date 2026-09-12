@@ -15,7 +15,7 @@ import java.util.Map;
 
 public abstract class ToolKit {
 
-    public ToolKit(List<ToolHandler> tools) {
+    public ToolKit(List<? extends ToolHandler> tools) {
         register(tools);
     }
 
@@ -62,7 +62,7 @@ public abstract class ToolKit {
         return false;
     }
 
-    protected void register(List<ToolHandler> tools) {
+    protected void register(List<? extends ToolHandler> tools) {
         for (ToolHandler tool : tools) {
             ToolKitComponent annotation = AnnotationUtils.findAnnotation(tool.getClass(), ToolKitComponent.class);
             if (annotation == null) {

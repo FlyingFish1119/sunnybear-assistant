@@ -9,6 +9,7 @@ package com.fishsunny.assistant.engine.tool.instance;
  */
 
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.service.ToolVisibilityPolicy;
@@ -23,7 +24,7 @@ import java.util.Map;
 @ConditionalOnProperty(name = "engine.tool.agent.enable", havingValue = "true", matchIfMissing = true)
 public class AgentToolKit extends ToolKit {
 
-    public AgentToolKit(List<ToolHandler> tools, ToolVisibilityPolicy toolVisibilityPolicy) {
+    public AgentToolKit(List<SubAgentToolHandler> tools, ToolVisibilityPolicy toolVisibilityPolicy) {
         super(tools);
         tools.forEach(toolVisibilityPolicy::addExcludedHandler);
     }
