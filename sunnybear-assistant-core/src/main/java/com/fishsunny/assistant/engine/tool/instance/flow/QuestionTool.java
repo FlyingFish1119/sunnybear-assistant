@@ -21,6 +21,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FlowToolKit;
+import com.fishsunny.assistant.engine.tool.instance.TestToolKit;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -36,7 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-@ToolKitComponent(FlowToolKit.class)
+@ToolKitComponent(TestToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.question.enable:true}")
 public class QuestionTool implements ToolHandler {
 

@@ -2,6 +2,7 @@ package com.fishsunny.assistant.engine.tool.instance;
 
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 
@@ -11,6 +12,7 @@ import java.util.List;
 * @author FlyingFish-SunnyBear
 * @since 2026/9/12 14:42
 */
+@Component
 public class TestToolKit extends ToolKit {
 
     public TestToolKit(List<? extends ToolHandler> tools) {

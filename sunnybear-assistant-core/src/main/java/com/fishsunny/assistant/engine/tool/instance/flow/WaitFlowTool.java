@@ -14,6 +14,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FlowToolKit;
+import com.fishsunny.assistant.engine.tool.instance.TestToolKit;
 import lombok.Data;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 
@@ -22,7 +23,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
-@ToolKitComponent(FlowToolKit.class)
+@ToolKitComponent(TestToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.wait-flow.enable:true}")
 public class WaitFlowTool implements ToolHandler {
 
