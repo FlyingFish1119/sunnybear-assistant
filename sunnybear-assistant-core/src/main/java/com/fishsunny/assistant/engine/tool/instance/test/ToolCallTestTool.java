@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 @ToolKitComponent(TestToolKit.class)
-@ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.flow-test.enable:true}")
+@ConditionalOnExpression("${engine.tool.test.enable:true} && ${engine.tool.test.tool-call-test.enable:true}")
 public class ToolCallTestTool implements ToolHandler {
 
     public static final String NAME = "flow_test_tool";

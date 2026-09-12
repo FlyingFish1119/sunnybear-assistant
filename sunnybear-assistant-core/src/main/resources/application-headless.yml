@@ -1,0 +1,5 @@
+engine:
+  tool:
+    image:
+      screen-capture:
+        enable: false

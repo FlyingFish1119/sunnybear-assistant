@@ -36,7 +36,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @ToolKitComponent(TestToolKit.class)
-@ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.multimodal-test.enable:true}")
+@ConditionalOnExpression("${engine.tool.test.enable:true} && ${engine.tool.test.multimodal-test.enable:true}")
 public class MultimodalTestTool implements ToolHandler, MultimodalResultAble {
 
     public static final String NAME = "flow_multimodal_test_tool";

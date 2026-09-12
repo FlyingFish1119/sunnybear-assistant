@@ -64,36 +64,7 @@ engine:
   tool:
     extension:
       dir: tool-extension/
-    agent:
-      enable: true
-    os:
-      enable: true
-    net:
-      enable: true
-    file:
-      enable: true
-    image:
-      enable: true
-    calc:
-      enable: true
-    bot:
-      enable: true
-    browser:
-      enable: true
-    memory:
-      enable: true
-    knowledge:
-      enable: true
-    task:
-      enable: true
-    flow:
-      enable: true
-    session:
-      enable: true
-    cron:
-      enable: true
     mcp:
-      enable: true
       clients:
         - url: https://mcp.context7.com/mcp
           server-name: Context7 v4.0.3
