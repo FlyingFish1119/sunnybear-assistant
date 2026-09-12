@@ -202,6 +202,32 @@ engine:
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
         targetRespCls: com.fishsunny.assistant.engine.protocol.standard.StandardStreamAIResponse
 
+      # opencode-go Responses API 非流式
+      - apiName: opencode-go-responses
+        baseUrl: https://opencode.ai/zen/go/v1/responses
+        apiKey: ${OPEN_CODE_API_KEY:}
+        stream: false
+        headers:
+          x-opencode-session: ses-sunnybear-zen
+        adapterCls: com.fishsunny.assistant.engine.adapter.responses.ResponsesAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIResponse
+
+      # opencode-go Responses API 流式
+      - apiName: opencode-go-responses
+        baseUrl: https://opencode.ai/zen/go/v1/responses
+        apiKey: ${OPEN_CODE_API_KEY:}
+        stream: true
+        headers:
+          x-opencode-session: ses-sunnybear-zen
+        adapterCls: com.fishsunny.assistant.engine.adapter.responses.ResponsesStreamAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesStreamEvent
+
       # opencode-zen 非流式
       - apiName: opencode-zen
         baseUrl: https://opencode.ai/zen/v1/chat/completions
@@ -255,7 +281,7 @@ engine:
         targetRespCls: com.fishsunny.assistant.engine.protocol.gemini.stream.GeminiStreamResponse
 
 
-      # opencode Responses API 非流式
+      # opencode-zen Responses API 非流式
       - apiName: opencode-zen-responses
         baseUrl: https://opencode.ai/zen/v1/responses
         apiKey: ${OPEN_CODE_API_KEY:}
@@ -268,7 +294,7 @@ engine:
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
         targetRespCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIResponse
 
-      # opencode Responses API 流式
+      # opencode-zen Responses API 流式
       - apiName: opencode-zen-responses
         baseUrl: https://opencode.ai/zen/v1/responses
         apiKey: ${OPEN_CODE_API_KEY:}
