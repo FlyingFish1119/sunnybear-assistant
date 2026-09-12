@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.tool.instance.flow;
+package com.fishsunny.assistant.engine.tool.instance.test;
 
 /*
  * @Usage 流程测试工具 - 接受一个字符串，工具流程成功后拼接返回
@@ -25,7 +25,7 @@ import java.util.Map;
 
 @ToolKitComponent(FlowToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.flow-test.enable:true}")
-public class FlowTestTool implements ToolHandler {
+public class ToolCallTestTool implements ToolHandler {
 
     public static final String NAME = "flow_test_tool";
 
@@ -34,7 +34,7 @@ public class FlowTestTool implements ToolHandler {
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
 
-    public FlowTestTool(ObjectMapper objectMapper) {
+    public ToolCallTestTool(ObjectMapper objectMapper) {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("测试工具：接受一个字符串并拼接返回。用于调试工具流程。")

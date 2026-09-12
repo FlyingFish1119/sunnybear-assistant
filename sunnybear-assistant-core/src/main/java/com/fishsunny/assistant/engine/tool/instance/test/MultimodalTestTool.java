@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.tool.instance.flow;
+package com.fishsunny.assistant.engine.tool.instance.test;
 
 /*
  * @Usage 多模态流程测试工具 - 读取一张图片（本地路径或 http(s) URL），
@@ -36,7 +36,7 @@ import java.util.UUID;
 
 @ToolKitComponent(FlowToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.multimodal-test.enable:true}")
-public class FlowMultimodalTestTool implements ToolHandler, MultimodalResultAble {
+public class MultimodalTestTool implements ToolHandler, MultimodalResultAble {
 
     public static final String NAME = "flow_multimodal_test_tool";
 
@@ -45,7 +45,7 @@ public class FlowMultimodalTestTool implements ToolHandler, MultimodalResultAble
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
 
-    public FlowMultimodalTestTool(ObjectMapper objectMapper) {
+    public MultimodalTestTool(ObjectMapper objectMapper) {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""

@@ -31,6 +31,6 @@ public class FlowToolKit extends ToolKit {
 
     @Override
     public String description() {
-        return "向用户提问、等待流程，以及多模态与流程连通性测试";
+        return "向用户提问、等待流程用于控制";
     }
 }
