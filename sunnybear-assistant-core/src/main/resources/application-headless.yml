@@ -3,3 +3,5 @@ engine:
     image:
       screen-capture:
         enable: false
+    bot:
+      enable: false
