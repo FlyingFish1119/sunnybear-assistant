@@ -4,6 +4,7 @@ import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardT
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.plug.character.tool.battle.BattleSqlQueryTool;
 import com.fishsunny.assistant.plug.character.tool.dice.D20Tool;
+import com.fishsunny.assistant.engine.tool.instance.flow.QuestionTool;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -80,5 +81,9 @@ class CloneAssistantToolSetTest {
         assertNotNull(toolExecutor.getTool(D20Tool.NAME), "骰子工具没有注册，下面的排除断言会空过");
         assertFalse(names.contains(BattleSqlQueryTool.NAME), "声明排除的工具集漏进了克隆体工具表");
         assertFalse(names.contains(D20Tool.NAME), "声明排除的工具集漏进了克隆体工具表");
+
+        // 执行型不向用户采集答案：question_tool 必须被剔除（同样先确认工具确实注册着）
+        assertNotNull(toolExecutor.getTool(QuestionTool.NAME), "提问工具没有注册，下面的排除断言会空过");
+        assertFalse(names.contains(QuestionTool.NAME), "question_tool 漏进了执行体工具表");
     }
 }
