@@ -146,15 +146,22 @@ public class ChatHttpHandler {
                 if (line.startsWith(":")) {
                     continue;
                 }
-                // Anthropic SSE 使用 event: 行标记事件类型，实际数据在 data: 行中
-                if (line.startsWith("event: ")) {
+                // Anthropic SSE 使用 event: 行标记事件类型，实际数据在 data: 行中。
+                // 冒号后的空格按 SSE 规范可省略，所以两种写法都认；只认带空格的写法时，
+                // 无空格网关的 data:{...} 会带着前缀交给 Jackson 并在下面解析失败
+                if (line.startsWith("event:")) {
                     continue;
                 }
-                if (line.startsWith("data: ")) {
-                    line = line.substring("data: ".length());
+                if (line.startsWith("data:")) {
+                    line = line.substring("data:".length()).stripLeading();
                 }
                 // 去前缀后为空（如空 keepalive），跳过
                 if (!StringUtils.hasText(line)) {
+                    continue;
+                }
+                // Chat Completions 形状的流末哨兵，不是 JSON。不跳过会在下一行解析时抛异常，
+                // 而异常逃出本方法后，已经收集到的内容会连同整轮一起丢掉
+                if ("[DONE]".equals(line)) {
                     continue;
                 }
                 AIResponse response = objectMapper.readValue(line, adapter.getTargetRespCls());

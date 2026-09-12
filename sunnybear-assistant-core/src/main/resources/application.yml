@@ -207,22 +207,79 @@ engine:
         baseUrl: https://opencode.ai/zen/v1/chat/completions
         apiKey: ${OPEN_CODE_API_KEY:}
         stream: false
-        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextAIAdapter
+        headers:
+          x-opencode-session: ses-sunnybear-zen
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.multimodal.MultimodalAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
-        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.multimodal.MultimodalAIRequest
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
-        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextAIResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.StandardAIResponse
 
       # opencode-zen 流式
       - apiName: opencode-zen
         baseUrl: https://opencode.ai/zen/v1/chat/completions
         apiKey: ${OPEN_CODE_API_KEY:}
         stream: true
-        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextStreamAIAdapter
+        headers:
+          x-opencode-session: ses-sunnybear-zen
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.multimodal.MultimodalStreamAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
-        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.multimodal.MultimodalAIRequest
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
-        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextStreamAIResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.StandardStreamAIResponse
+
+      # opencode-zen-Gemini 非流式
+      - apiName: opencode-zen-gemini
+        baseUrl: https://opencode.ai/zen/v1/models
+        apiKey: ${OPEN_CODE_API_KEY:}
+        stream: false
+        headers:
+          x-opencode-session: ses-sunnybear-zen
+        adapterCls: com.fishsunny.assistant.engine.adapter.gemini.GeminiAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.gemini.GeminiAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.gemini.GeminiAIResponse
+
+      # opencode-zen-Gemini 流式
+      - apiName: opencode-zen-gemini
+        baseUrl: https://opencode.ai/zen/v1/models
+        apiKey: ${OPEN_CODE_API_KEY:}
+        stream: true
+        headers:
+          x-opencode-session: ses-sunnybear-zen
+        adapterCls: com.fishsunny.assistant.engine.adapter.gemini.GeminiStreamAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.gemini.GeminiAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.gemini.stream.GeminiStreamResponse
+
+
+      # opencode Responses API 非流式
+      - apiName: opencode-zen-responses
+        baseUrl: https://opencode.ai/zen/v1/responses
+        apiKey: ${OPEN_CODE_API_KEY:}
+        stream: false
+        headers:
+          x-opencode-session: ses-sunnybear-zen
+        adapterCls: com.fishsunny.assistant.engine.adapter.responses.ResponsesAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIResponse
+
+      # opencode Responses API 流式
+      - apiName: opencode-zen-responses
+        baseUrl: https://opencode.ai/zen/v1/responses
+        apiKey: ${OPEN_CODE_API_KEY:}
+        stream: true
+        headers:
+          x-opencode-session: ses-sunnybear-zen
+        adapterCls: com.fishsunny.assistant.engine.adapter.responses.ResponsesStreamAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesStreamEvent
 
       # Gemini 非流式
       # 模型名拼在 URL 路径上，baseUrl 配到 /v1beta/models 为止，具体模型由模型设置里的 model 决定
@@ -237,6 +294,7 @@ engine:
         targetRespCls: com.fishsunny.assistant.engine.protocol.gemini.GeminiAIResponse
 
       # Gemini 流式
+      # 模型名拼在 URL 路径上，baseUrl 配到 /v1beta/models 为止，具体模型由模型设置里的 model 决定
       - apiName: gemini
         baseUrl: https://generativelanguage.googleapis.com/v1beta/models
         apiKey: ${GEMINI_API_KEY:}
