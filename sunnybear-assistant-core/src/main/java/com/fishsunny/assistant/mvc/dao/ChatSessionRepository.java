@@ -11,12 +11,24 @@ package com.fishsunny.assistant.mvc.dao;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 
 import java.util.List;
+import java.util.Map;
 
 public interface ChatSessionRepository {
 
     public ChatSession insert(ChatSession chatSession);
 
     public ChatSession update(ChatSession chatSession);
+
+    /**
+     * 以 append-only 方式合并 extension：先读当前值，只覆盖传入的键，再整列写回。
+     * <p>这是修改 extension 的唯一入口——不提供整段覆盖方法，避免调用方把别人的字段清掉。
+     * 同时不动 name / update_time，不会把会话顶到列表最前。
+     *
+     * @param id     会话 id
+     * @param fields 要写入的键值对（值可为对象/数组，会按 JSON 序列化）
+     * @return 合并后的 extension JSON 字符串
+     */
+    public String mergeExtension(String id, Map<String, Object> fields);
 
     public ChatSession deleteById(String id);
 

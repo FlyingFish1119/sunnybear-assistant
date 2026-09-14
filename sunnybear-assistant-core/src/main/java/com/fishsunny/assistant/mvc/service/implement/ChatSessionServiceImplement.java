@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -68,6 +69,11 @@ public class ChatSessionServiceImplement implements ChatSessionService {
     public ChatSession update(ChatSession chatSession) {
         chatSession.setUpdateTime(LocalDateTime.now());
         return chatSessionRepository.update(chatSession);
+    }
+
+    @Override
+    public String mergeExtension(String id, Map<String, Object> fields) {
+        return chatSessionRepository.mergeExtension(id, fields);
     }
 
     @Override

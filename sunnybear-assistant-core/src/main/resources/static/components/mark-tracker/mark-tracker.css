@@ -1,0 +1,204 @@
+/* ============================================
+   Mark Tracker — 步骤清单跟踪（发送区工具行内）
+   收起态：图标 + 当前聚焦步骤 + 进度；展开态：上浮的完整清单面板
+   图标为内联 SVG（见 mark-tracker.js），不使用 lucide
+   ============================================ */
+
+.mark-tracker {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* ---- 收起态按钮（与发送区图标按钮同高） ---- */
+.mark-tracker-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    max-width: 280px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.mark-tracker-toggle:hover {
+    background: #f2f3f5;
+    color: #333;
+}
+
+.mark-tracker-toggle.is-open {
+    color: var(--main-color, lightsalmon);
+    background: color-mix(in srgb, var(--main-color, lightsalmon) 16%, #fff);
+}
+
+/* ---- 内联 SVG 图标尺寸 ---- */
+.mark-tracker-icon {
+    display: inline-flex;
+    flex: none;
+}
+
+.mark-tracker-icon .mk-svg {
+    width: 17px;
+    height: 17px;
+}
+
+.mark-tracker-item-icon .mk-svg {
+    width: 15px;
+    height: 15px;
+}
+
+.mark-tracker-caret .mk-svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* in_progress 的 loader 旋转 */
+.mk-svg.mk-spin {
+    animation: mark-spin 2.4s linear infinite;
+}
+
+@keyframes mark-spin {
+    to { transform: rotate(360deg); }
+}
+
+.mark-tracker-label {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+.mark-tracker-progress {
+    flex: none;
+    font-size: 12px;
+    color: #999;
+    font-variant-numeric: tabular-nums;
+}
+
+.mark-tracker-caret {
+    display: inline-flex;
+    flex: none;
+    transition: transform 0.2s ease;
+}
+
+.mark-tracker-caret.rotated {
+    transform: rotate(180deg);
+}
+
+/* ---- 展开面板：浮在按钮上方 ---- */
+.mark-tracker-panel {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    z-index: 60;
+    width: 300px;
+    max-width: 72vw;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    animation: mark-panel-in 0.16s ease;
+}
+
+@keyframes mark-panel-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.mark-tracker-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: #999;
+}
+
+.mark-tracker-head-progress {
+    font-variant-numeric: tabular-nums;
+}
+
+.mark-tracker-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.mark-tracker-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 13px;
+    color: #333;
+}
+
+.mark-tracker-item-icon {
+    display: inline-flex;
+    flex: none;
+    margin-top: 2px;
+    color: #bbb;
+}
+
+.mark-tracker-item-text {
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+}
+
+/* 当前聚焦：主色加粗 */
+.mark-tracker-item.is-in_progress {
+    color: var(--main-color, lightsalmon);
+    font-weight: 600;
+}
+
+.mark-tracker-item.is-in_progress .mark-tracker-item-icon {
+    color: var(--main-color, lightsalmon);
+}
+
+/* 已完成：绿色勾 + 删除线 */
+.mark-tracker-item.is-completed {
+    color: #999;
+}
+
+.mark-tracker-item.is-completed .mark-tracker-item-icon {
+    color: #52c41a;
+}
+
+.mark-tracker-item.is-completed .mark-tracker-item-text {
+    text-decoration: line-through;
+}
+
+/* 已取消：灰 + 删除线 */
+.mark-tracker-item.is-cancelled {
+    color: #bbb;
+}
+
+.mark-tracker-item.is-cancelled .mark-tracker-item-text {
+    text-decoration: line-through;
+}
+
+@media (max-width: 768px) {
+    .mark-tracker-toggle {
+        max-width: 160px;
+        padding: 0 6px;
+    }
+
+    .mark-tracker-label {
+        max-width: 90px;
+    }
+
+    .mark-tracker-panel {
+        width: 260px;
+    }
+}

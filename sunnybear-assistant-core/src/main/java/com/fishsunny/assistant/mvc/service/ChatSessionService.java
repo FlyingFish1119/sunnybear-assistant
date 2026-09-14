@@ -11,6 +11,7 @@ package com.fishsunny.assistant.mvc.service;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 
 import java.util.List;
+import java.util.Map;
 
 public interface ChatSessionService {
 
@@ -27,6 +28,14 @@ public interface ChatSessionService {
     public ChatSession save(ChatSession chatSession);
 
     public ChatSession update(ChatSession chatSession);
+
+    /**
+     * append-only 合并会话 extension：只覆盖传入的键，保留其它消费方的字段；
+     * 不动 name / update_time。这是修改 extension 的唯一入口，不提供整段覆盖。
+     *
+     * @return 合并后的 extension JSON 字符串
+     */
+    public String mergeExtension(String id, Map<String, Object> fields);
 
     /** 按 type + extension 内 JSON 字段值查询会话，jsonKey/value 语义由插件约定 */
     public List<ChatSession> findByTypeAndExtensionValue(String type, String jsonKey, String value);

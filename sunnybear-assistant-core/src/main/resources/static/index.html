@@ -42,6 +42,7 @@
     <script src="components/agent-log-sidebar/agent-log-sidebar.js"></script>
     <script src="components/message-topbar/message-topbar.js"></script>
     <script src="components/send-area/send-area.js"></script>
+    <script src="components/mark-tracker/mark-tracker.js"></script>
     <script src="components/message-area/message-area.js"></script>
     <!-- 样式 -->
     <link rel="stylesheet" href="css/scrollbar.css"/>
@@ -53,6 +54,7 @@
     <link rel="stylesheet" href="components/chat-session-name/chat-session-name.css"/>
     <link rel="stylesheet" href="css/send-area.css"/>
     <link rel="stylesheet" href="components/send-area/send-area.css"/>
+    <link rel="stylesheet" href="components/mark-tracker/mark-tracker.css"/>
     <link rel="stylesheet" href="components/file-upload/file-upload.css"/>
     <link rel="stylesheet" href="css/markdown.css"/>
     <link rel="stylesheet" href="components/tool-confirm/tool-confirm.css"/>
@@ -310,6 +312,7 @@
     app.component('message-topbar', MessageTopbar);
     app.component('message-area', MessageArea);
     app.component('send-area', SendArea);
+    app.component('mark-tracker', MarkTracker);
 
     app.use(ElementPlus);
     // 自定义指令（放在 ElementPlus 之后注册，确保同名指令以自定义实现为准）
