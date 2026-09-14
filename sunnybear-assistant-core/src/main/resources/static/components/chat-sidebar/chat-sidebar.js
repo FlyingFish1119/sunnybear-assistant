@@ -39,14 +39,19 @@ const ChatSidebar = {
              ref="sessionList"
              v-infinite-scroll="loadMore">
             <div v-if="sessions.length === 0" class="sidebar-empty">暂无对话</div>
-            <div class="sidebar-session-item"
-                 v-for="session in sessions"
-                 :key="session.id"
-                 :class="{ pro: session.enablePro, unreviewed: session.unreviewed, active: currentSession.id === session.id }"
-                 @click="selectSession(session)"
-                 @contextmenu.prevent="showContextMenu($event, session)">
-                <span class="sidebar-session-name">{{ session.name }}</span>
-            </div>
+            <template v-for="group in sessionGroups" :key="group.key">
+                <div class="sidebar-session-divider">
+                    <span class="sidebar-session-divider-label">{{ group.label }}</span>
+                </div>
+                <div class="sidebar-session-item"
+                     v-for="session in group.sessions"
+                     :key="session.id"
+                     :class="{ pro: session.enablePro, unreviewed: session.unreviewed, active: currentSession.id === session.id }"
+                     @click="selectSession(session)"
+                     @contextmenu.prevent="showContextMenu($event, session)">
+                    <span class="sidebar-session-name">{{ session.name }}</span>
+                </div>
+            </template>
             <div v-if="sessionsLoadingMore" class="sidebar-loading-more">加载中…</div>
         </div>
         <!-- 右键上下文菜单 -->
@@ -366,6 +371,28 @@ const ChatSidebar = {
         },
 
         /**
+         * 把分组键 yyyy-MM-dd 转成展示文案：今天 / 昨天 / 前天 / M月D日 / YYYY年M月D日
+         */
+        formatDayLabel: function (key) {
+            if (!key || key === 'unknown') return '更早';
+            var parts = key.split('-');
+            if (parts.length !== 3) return key;
+            var year = Number(parts[0]);
+            var month = Number(parts[1]);
+            var day = Number(parts[2]);
+            var target = new Date(year, month - 1, day);
+            if (isNaN(target.getTime())) return key;
+            var now = new Date();
+            var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            var diffDays = Math.round((today - target) / 86400000);
+            if (diffDays === 0) return '今天';
+            if (diffDays === 1) return '昨天';
+            if (diffDays === 2) return '前天';
+            if (year === now.getFullYear()) return month + '月' + day + '日';
+            return year + '年' + month + '月' + day + '日';
+        },
+
+        /**
          * 切换会话的 Pro 模式（普通 ↔ 高级），直接切换无需确认（委托 store）
          */
         toggleProMode: function (session) {
@@ -474,6 +501,22 @@ const ChatSidebar = {
         // 以下均来自 SessionStore（未注入时降级为空/默认，保证插件页不报错）
         sessions: function () {
             return this.sessionStore ? this.sessionStore.sessions : [];
+        },
+        // 按天分组（updateTime 为 "yyyy-MM-dd HH:mm:ss"，列表已按时间倒序）
+        sessionGroups: function () {
+            var list = this.sessions || [];
+            var groups = [];
+            var current = null;
+            for (var i = 0; i < list.length; i++) {
+                var session = list[i];
+                var key = (session.updateTime || '').slice(0, 10) || 'unknown';
+                if (!current || current.key !== key) {
+                    current = { key: key, label: this.formatDayLabel(key), sessions: [] };
+                    groups.push(current);
+                }
+                current.sessions.push(session);
+            }
+            return groups;
         },
         sessionsHasMore: function () {
             return this.sessionStore ? this.sessionStore.sessionsHasMore : false;
