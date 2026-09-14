@@ -14,7 +14,7 @@
  * 之后 Vue 每次 patch 动态属性（:class / :style / :data-lucide 等）都会重新
  * 写到宿主上，渲染时与基线合并；静态 class/style 即使图标名变了也不会丢。
  *
- * ⚠ 唯一的例外是 display，它必须留在宿主上，绝不复制到 svg：
+ * ⚠ 例外一：display 必须留在宿主上，绝不复制到 svg。
  *  v-show 直接操作宿主 <i> 的 el.style.display，若把它一起搬到 svg，
  *  就会出现「宿主 / svg 双写」的两个后果——
  *   1) svg 上那份 display 会随基线被冻结，此后 v-show 只改宿主、再也改不到
@@ -22,6 +22,14 @@
  *   2) 宿主被摘掉 display 后不再隐藏，会以「隐藏图标」的身份继续占位，
  *      把同一个按钮里真正要显示的图标挤出中线（图标看着歪了）。
  *  所以：display 声明留在宿主，svg 只继承其余声明（尺寸、颜色等）。
+ *
+ * ⚠ 例外二：宿主需要一份「等大容器」的基础样式（见 injectBaseStyles）。
+ *  svg 在宿主内部是行内盒、坐在文字基线上，宿主盒子会比图标本身高出
+ *  字体下沉部那一截（实测 21px 里装 18px 的图标），于是图标在按钮、文字行里
+ *  总是偏高 1.5px 左右。基础样式把宿主变成「和图标等大」的行内 flex 容器，
+ *  居中由宿主自己负责；实测按钮与文字行的中心差全部归零。
+ *  这里故意不写 vertical-align：行内文字里的图标依旧「底边贴基线」，
+ *  与打补丁之前完全一致，避免把一个方向的偏差换成反方向的偏差。
  *
  * 必须在 lib/lucide.min.js 之后、任何组件脚本之前引入。
  */
@@ -31,6 +39,26 @@
     }
 
     var RENDERED_ATTR = 'data-lucide-rendered';
+    var BASE_STYLE_ID = 'lucide-safe-base-style';
+
+    /**
+     * 注入宿主基础样式（只注入一次）。
+     * 选择器权重是最低的一档（单个属性选择器），组件自己的 .xxx i 规则
+     * （权重更高）仍然可以覆盖它；v-show 写在宿主上的行内 display 更是
+     * 永远优先，所以这里不会影响 v-show 的显隐。
+     */
+    function injectBaseStyles() {
+        if (document.getElementById(BASE_STYLE_ID)) {
+            return;
+        }
+        var style = document.createElement('style');
+        style.id = BASE_STYLE_ID;
+        style.textContent =
+            '/* lucide 图标宿主：与图标等大的容器，居中由宿主负责，避免 svg 坐在基线上把图标顶高 */\n' +
+            '[data-lucide]{display:inline-flex;align-items:center;justify-content:center;}\n' +
+            '[data-lucide]>svg{display:block;flex:none;}\n';
+        (document.head || document.documentElement).appendChild(style);
+    }
 
     /** kebab-case -> PascalCase，与 lucide 内部的名称归一化保持一致 */
     function toPascalCase(name) {
@@ -161,6 +189,8 @@
         }
         host.setAttribute(RENDERED_ATTR, signature);
     }
+
+    injectBaseStyles();
 
     lucide.createIcons = function (options) {
         var root = (options && options.root) || document;
