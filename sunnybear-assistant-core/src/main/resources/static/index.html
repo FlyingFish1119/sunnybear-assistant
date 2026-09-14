@@ -27,6 +27,7 @@
     <script src="utils/mermaid.js"></script>
     <script src="utils/file-url.js"></script>
     <script src="utils/ws-bus.js"></script>
+    <script src="stores/session-store.js"></script>
     <script src="directives/auto-follow.js"></script>
     <script src="directives/infinite-scroll.js"></script>
     <script src="components/tool-confirm/tool-confirm.js"></script>
@@ -68,7 +69,6 @@
 </div>
 <div id="app" :style="{'--main-color': mainColor, '--bg-user': userBubbleBg}">
     <chat-sidebar ref="sidebar"
-        :current-session="currentSession"
         :main-color="mainColor"
         :collapsed="sidebarCollapsed"
         @select-session="selectSession"
@@ -87,18 +87,12 @@
         <div class="message-area-background" :style="backgroundStyle"></div>
         <message-topbar
             ref="topbar"
-            :current-session="currentSession"
             :main-color="mainColor"
             :display-model="displayModel"
             :ws-url="wsUrl"
-            :pending-tool-count="pendingToolCount"
-            :pending-question-count="pendingQuestionCount"
             :agent-log-visible="agentLogVisible"
             @toggle-sidebar="toggleSidebar"
             @toggle-agent-log="toggleAgentLog"
-            @expand-tool-confirm="$refs.toolConfirm.expand()"
-            @expand-tool-question="$refs.toolQuestion.expand()"
-            @update-session-name="n => currentSession.name = n"
             @connected="onWsConnect"
             @disconnected="onWsDisconnect"
         ></message-topbar>
@@ -316,55 +310,21 @@
         <send-area
             ref="sendArea"
             :main-color="mainColor"
-            :is-streaming="isStreaming"
-            :sending="sending"
-            :session-id="currentSessionId"
             :get-sessions="getSidebarSessions"
             v-model:input-text="inputText"
-            @send="onSendAreaSend"
-            @stop="stopStreaming"
             @drag-over-change="isChange => dragOver = isChange"
         ></send-area>
-
-        <!-- 工具确认对话框（组件） -->
-        <tool-confirm
-            ref="toolConfirm"
-            :main-color="mainColor"
-            @pending-change="onToolPendingChange">
-        </tool-confirm>
-        <!-- 结构化提问对话框（组件） -->
-        <tool-question
-            ref="toolQuestion"
-            :main-color="mainColor"
-            @pending-change="onQuestionPendingChange">
-        </tool-question>
     </div>
 </div>
 
 <script>
+    /** 小工具：取数组最后一项（模板侧判断"思考中"用） */
     const Utils = {
         getLast(arr) {
-            if (arr === null || arr.length === 0) {
-                return null;
-            }
+            if (arr === null || arr.length === 0) return null;
             return arr[arr.length - 1];
-        },
-
-        getDefaultAssistantMessage(sessionId) {
-            return  {
-                id: 'streaming_' + Date.now(),
-                sessionId: sessionId,
-                parentId: "",
-                role: 'assistant',
-                reasoningContent: "",
-                contents: [{
-                type: 'text',
-                content: ""
-            }],
-                toolCalls: []
-            }
         }
-    }
+    };
 
     const app = Vue.createApp({
         data() {
@@ -377,24 +337,12 @@
                 // 标记 app 是否已完成加载并可见，避免在 #app display:none 期间
                 // 设置 background-image 导致浏览器跳过图片请求
                 loaded: false,
-                sessionSelectLoading: false,
                 ws: null,
                 chatModel: null,
                 chatProModel: null,
 
-                // 输入框内容
+                // 输入框内容（发送区通过 v-model:input-text 双向绑定）
                 inputText: '',
-                // 已发送但尚未收到服务端 init_user 确认 —— 防止窗口期内重复点击发送重复消息
-                sending: false,
-                // 当前正在处理的 session，对象应该直接引用 sessions 里的对象
-                currentSession: {},
-                // 当前正在展示的 messages
-                currentMessages: [],
-                // 流式标记表：key = sessionId，各会话只看自己的标记，互不影响
-                // （在途占位消息以 streaming_ 前缀标识，直接驻留在 currentMessages）
-                streamingMap: {},
-                // 当前正在处理的 tool call id
-                currentToolCallId: null,
 
                 // 用户是否手动上滑离开了底部（用于流式传输时自动跟随/停止跟随）
                 // 消息编辑状态
@@ -412,25 +360,38 @@
                 // Agent Log 侧边框
                 agentLogs: [],
                 agentLogVisible: false,
-                // 顶部入口角标：待确认工具请求数 / 待回答提问数
-                pendingToolCount: 0,
-                pendingQuestionCount: 0,
             }
         },
 
         computed : {
+            // ===== 会话/消息状态：统一来自 SessionStore（inject），此处透传给模板 =====
+            store() {
+                return this.sessionStore;
+            },
             wsUrl: function () {
                 return API.ws.url
             },
-            isNewSession() {
-                return this.currentSessionId === undefined;
+            currentSession() {
+                return this.store.state.currentSession;
             },
-            currentSessionId () {
-                return this.currentSession.id;
+            currentMessages() {
+                return this.store.state.currentMessages;
+            },
+            currentSessionId() {
+                return this.store.currentSessionId;
+            },
+            isNewSession() {
+                return this.store.isNewSession;
             },
             // 当前会话是否正在流式：只查当前会话自己的标记，其他会话的 START/END 不会互相影响
             isStreaming() {
-                return !!this.streamingMap[this.currentSessionId];
+                return this.store.isStreaming;
+            },
+            sessionSelectLoading() {
+                return this.store.sessionSelectLoading;
+            },
+            sending() {
+                return this.store.sending;
             },
             greetingIcon() {
                 const hour = new Date().getHours();
@@ -459,15 +420,18 @@
                 };
             },
             displayModel() {
-                if (!this.currentSession || !this.currentSession.id) {
+                const session = this.store.state.currentSession;
+                if (!session || !session.id) {
                     return (this.chatModel || '?') + ' / ' + (this.chatProModel || '?');
                 }
-                if (this.currentSession.enablePro) {
+                if (session.enablePro) {
                     return this.chatProModel || '?';
                 }
                 return this.chatModel || '?';
             },
         },
+
+        inject: ['sessionStore'],
 
         methods: {
 
@@ -676,60 +640,18 @@
                 }
             },
 
+            /* ================= 会话操作（委托 SessionStore） ================= */
+
             selectSession(session) {
-                this.closeSidebar();
-                this.$md.clearCache();
-                // 切换会话：清空 Agent Log 与上一会话的朗读队列
-                this.agentLogs = [];
-                this.clearTtsQueue();
-                this.sessionSelectLoading = true;
-                this.currentSession = session;
-                // isStreaming 为计算属性，切会话后自动读新会话自己的标记，无需复位
-                API.message.getHistory(session.id).then(result => {
-                    if (result.status === 200) {
-                        this.currentMessages = result.data;
-                        this.scrollToBottom(true);
-                        // 请求该会话的总线续传：若当前有一轮在进行中，服务端回放缓冲事件重建在途消息
-                        if (this.ws && this.ws.readyState === 1) {
-                            this.ws.send("###REQUIRE_REPLAY_MESSAGE###" + session.id);
-                        }
-                    } else {
-                        ElementPlus.ElMessage.error(result.message || '获取会话历史消息失败');
-                    }
-                    this.$nextTick(() => {
-                        MermaidUtils.renderAll();
-                    });
-                }).catch(error => {
-                    ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
-                    console.error('获取会话历史消息失败:', error);
-                }).finally(() => {
-                    this.sessionSelectLoading = false;
-                });
+                return this.sessionStore.selectSession(session);
             },
 
-            /**
-             * 发送区发来发送请求（内容、附件、朗读开关由发送区组装）
-             */
-            onSendAreaSend(payload) {
-                if (this.sending) {
-                    return; // 等待服务端 init_user 确认期间禁止重复发送
-                }
-                this.sending = true;
-                // 发新消息：清掉上一轮残留的朗读队列
-                this.clearTtsQueue();
-                let mode = this.currentSessionId ? 'append' : 'create';
-                let request = {
-                    mode: mode,
-                    sessionId: this.currentSessionId,
-                    content: payload.content,
-                    tts: payload.tts
-                };
-                if (payload.files && payload.files.length > 0) {
-                    request.files = payload.files;
-                }
-                this.ws.send(JSON.stringify(request));
-                // 不在这里清空输入框/附件，改为在收到服务端 init_user 确认后由发送区 clear()
-                // 避免移动端 WebSocket 假连接导致消息丢失
+            createSession() {
+                this.sessionStore.createSession();
+            },
+
+            onDeleteSession(session) {
+                this.sessionStore.onDeleteSession(session);
             },
 
             onWsConnect(ws) {
@@ -743,28 +665,15 @@
                 if (this.currentSessionId) {
                     // 断线重连：清空全部流式标记并清掉残留占位（轮次可能已结束、缓冲已清空）。
                     // 若轮次仍在进行，###REPLAY_MESSAGE### 重放会重建并重新置 true
-                    this.streamingMap = {};
-                    this.currentMessages = this.currentMessages.filter(m => !(m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
+                    this.sessionStore.resetStreamingOnReconnect();
                     this.ws.send("###REQUIRE_REPLAY_MESSAGE###" + this.currentSessionId);
                 }
             },
 
             onWsDisconnect() {
-                this.sending = false;
+                this.sessionStore.clearSending();
                 this.ws = null;
                 WsBus.clearSocket();
-            },
-
-            /**
-             * 中止当前流式传输
-             */
-            stopStreaming() {
-                console.log('Abort streaming')
-                if (!this.isStreaming || !this.currentSessionId) return;
-                // 中止朗读：清空播放队列并停掉当前音频
-                this.clearTtsQueue();
-                API.chat.stop(this.currentSessionId)
-                    .catch(err => console.error('中止请求发送失败:', err));
             },
 
             /* ========== TTS 语音朗读（实际播放逻辑在发送区组件内） ========== */
@@ -781,13 +690,6 @@
                 }
             },
 
-            /** 逐句音频入队（###TTS_AUDIO### 帧到达） */
-            enqueueTtsAudio(audioBase64) {
-                if (this.$refs.sendArea) {
-                    this.$refs.sendArea.enqueueTtsAudio(audioBase64);
-                }
-            },
-
             /** 消息气泡 🔊：重播整轮完整音频（extension.ttsAudio，历史/刷新后可用） */
             playMessageAudio(msg) {
                 if (this.$refs.sendArea) {
@@ -796,25 +698,7 @@
             },
 
             /**
-             * 用真实工具结果替换对应的"执行中"占位消息（占位与结果共用同一个假 toolCallId，按 toolCallId 精确匹配）。
-             * 找不到占位时（如页面刷新后）直接追加。
-             */
-            replaceToolPlaceholder(resultMsg) {
-                if (!resultMsg || !resultMsg.toolCallId) return;
-                let idx = this.currentMessages.findIndex(m =>
-                    m.role === 'tool'
-                    && m.extension && m.extension.status === 'executing'
-                    && m.toolCallId === resultMsg.toolCallId);
-                if (idx !== -1) {
-                    this.currentMessages.splice(idx, 1, resultMsg);
-                } else {
-                    this.currentMessages.push(resultMsg);
-                }
-                this.scrollToBottom();
-            },
-
-            /**
-             * 处理服务端流式推送的每一个 chunk
+             * 处理服务端流式推送的每一个 chunk（未被 WsBus 精确订阅的帧统一走这里）
              * 通过 sessionId 匹配到对应 session 的消息列表后进行处理
              */
             async handleStreamChunk(event) {
@@ -823,38 +707,17 @@
                 }
                 if (event.data.startsWith("###REPLAY_MESSAGE###")) {
                     let sessionId = event.data.split('###REPLAY_MESSAGE###')[1];
-                    if (this.currentSessionId !== sessionId) {
-                        return;
-                    }
-                    // 截断到最后一条 user 消息（连同残留的流式占位），之后的重放帧按正常路径重建本轮
-                    this.streamingMap[sessionId] = false;
-                    const lastUserIndex = this.currentMessages.findLastIndex(m => m.role === 'user');
-                    if (lastUserIndex !== -1) {
-                        this.currentMessages.splice(lastUserIndex);
-                    }
+                    this.sessionStore.handleReplay(sessionId);
                     return;
                 }
                 if (event.data.startsWith('###START###')) {
-                    // 新一轮开始：清掉上一轮残留的朗读队列/音频
-                    this.clearTtsQueue();
                     let sessionId = event.data.split('###START###')[1];
-                    this.streamingMap[sessionId] = true;
-                    // 新一轮开始：清掉该会话残留的流式占位（异常中断后重开的情况）
-                    this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
-                    // 生成临时 ID，避免 :key 为 undefined
-                    let assistantMessage = Utils.getDefaultAssistantMessage(sessionId);
-                    if (!this.currentSessionId || sessionId === this.currentSessionId) {
-                        this.currentMessages.push(assistantMessage);
-                    }
+                    this.sessionStore.handleStart(sessionId);
                     return;
                 }
                 if (event.data.startsWith('###REPLACE###')) {
                     let messageId = event.data.split('###REPLACE###')[1];
-                    let index = this.currentMessages.findIndex(m => m.id === messageId)
-                    console.log('replace:', index)
-                    if (index !== -1) {
-                        this.currentMessages.splice(index);
-                    }
+                    this.sessionStore.handleReplace(messageId);
                     return;
                 }
                 // ###TOOL_ASK### / ###TOOL_QUESTION### 由 tool-confirm / tool-question 组件
@@ -868,23 +731,15 @@
                     return;
                 }
                 if (event.data.startsWith('###END###')) {
-                    // 结束流式传输：清掉该会话残留的流式占位（正常情况已由 init_assistant 赋予真实 id，无需处理）
                     let sessionId = event.data.split('###END###')[1];
-                    this.streamingMap[sessionId] = false;
-                    this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
-                    this.$nextTick(() => {
-                        MermaidUtils.renderAll();
-                    });
+                    this.sessionStore.handleEnd(sessionId);
                     return;
                 }
                 if (event.data.startsWith('###UPDATE_SESSION###')) {
                     let sessionJson = event.data.split('###UPDATE_SESSION###')[1];
                     console.log('update session', sessionJson)
                     let session = JSON.parse(sessionJson);
-                    let ref = this.$refs.sidebar.upsert(session);
-                    if (session.id === this.currentSessionId) {
-                        this.currentSession = ref;
-                    }
+                    this.sessionStore.upsertSession(session);
                     return;
                 }
                 if (event.data.startsWith('###KNOWLEDGE_HIT###')) {
@@ -894,39 +749,18 @@
                 }
                 if (event.data.startsWith('###TOOL_CALL_FINISH###')) {
                     let sessionId = event.data.split('###TOOL_CALL_FINISH###')[1];
-                    // 本轮全部工具执行完毕（空 messages 的轮次边界）→ 推进流式占位到下一轮 AI 回复
-                    // 先清掉残留的流式占位（正常情况上一轮已由 init_assistant 赋予真实 id）
-                    this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
-                    let assistantMessage = Utils.getDefaultAssistantMessage(sessionId);
-                    if (sessionId === this.currentSessionId) {
-                        this.currentMessages.push(assistantMessage);
-                        this.currentToolCallId = null;
-                    }
+                    this.sessionStore.handleToolCallFinish(sessionId);
                     return;
                 }
                 if (event.data.startsWith('###TTS_AUDIO###')) {
-                    // TTS 逐句音频帧：{sessionId, audio(mp3 base64)}。
-                    // 按 sessionId 过滤后注入当前 streaming assistant 消息的 extension（保序），并实时播放
+                    // TTS 逐句音频帧：{sessionId, audio(mp3 base64)}
                     let ttsFrame;
                     try {
                         ttsFrame = JSON.parse(event.data.substring('###TTS_AUDIO###'.length));
                     } catch (e) {
                         return;
                     }
-                    if (!ttsFrame || ttsFrame.sessionId !== this.currentSessionId
-                            || !this.$refs.sendArea || !this.$refs.sendArea.isTtsEnabled()) {
-                        return;
-                    }
-                    let ttsStreamingMessage = this.currentMessages.findLast(m => m.sessionId === ttsFrame.sessionId
-                        && m.role === 'assistant' && m.id && m.id.startsWith('streaming_'));
-                    if (ttsStreamingMessage) {
-                        ttsStreamingMessage.extension = ttsStreamingMessage.extension || {};
-                        if (!ttsStreamingMessage.extension.audios) {
-                            ttsStreamingMessage.extension.audios = [];
-                        }
-                        ttsStreamingMessage.extension.audios.push(ttsFrame.audio);
-                    }
-                    this.enqueueTtsAudio(ttsFrame.audio);
+                    this.sessionStore.handleTtsAudio(ttsFrame);
                     return;
                 }
                 if (event.data.startsWith('###')) {
@@ -935,85 +769,27 @@
                 }
 
                 let response = JSON.parse(event.data);
-
-                let streamingMessage = this.currentMessages.findLast(m => m.sessionId === response.sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_'));
+                let streamingMessage = this.sessionStore.findStreamingMessage(response.sessionId);
 
                 switch (response.status) {
                     case 'init_user': {
                         console.log('init_user', response)
-                        this.sending = false; // 服务端已确认收到消息，恢复可发送
-
-                        // 编辑/重发场景：后端用同一 parentId 重新确认用户消息（旧 B 与新 B' 的 parentId 相同），
-                        // 按 parentId 定位旧消息并掐掉它及之后的所有内容；正常发送时消息不在列表中，无需处理
-                        let cutIndex = -1;
-                        for (const message of response.messages) {
-                            let idx = this.currentMessages.findLastIndex(m => m.role === 'user' && m.parentId === message.parentId);
-                            if (idx !== -1) {
-                                cutIndex = idx;
-                                break;
-                            }
-                        }
-                        if (cutIndex !== -1) {
-                            this.currentMessages.splice(cutIndex);
-                        }
-                        this.currentMessages.push(...response.messages);
-
-                        await this.$refs.sidebar.refresh();
-                        if (!this.currentSessionId) {
-                            let session = {id: response.sessionId}
-                            this.currentSession = this.$refs.sidebar.get(session);
-                        }
-
-                        // 服务端已确认收到消息，此时清空输入框和已上传文件
-                        if (this.$refs.sendArea) {
-                            this.$refs.sendArea.clear();
-                        }
-
-                        this.scrollToBottom(true);
-                        // 用户消息中可能包含 mermaid 图表，收到确认后立即渲染（无需等流结束）
-                        this.$nextTick(() => {
-                            MermaidUtils.renderAll();
-                        });
+                        await this.sessionStore.handleInitUser(response);
                         break;
                     }
                     case 'tool_execution': {
                         // 工具开始执行：插入黄色"执行中"占位消息，工具结果到达后按工具名替换
-                        if (response.sessionId === this.currentSessionId
-                                && response.messages && response.messages.length > 0) {
-                            let placeholder = response.messages[0];
-                            // 兜底标记：确保渲染层能识别为"执行中"
-                            placeholder.extension = placeholder.extension || {};
-                            placeholder.extension.status = 'executing';
-                            this.currentMessages.push(placeholder);
-                            this.scrollToBottom();
-                        }
+                        this.sessionStore.handleToolExecution(response);
                         break;
                     }
                     case 'tool_response': {
                         // 单个工具执行完成 → 用真实结果替换同名"执行中"占位
-                        if (response.sessionId === this.currentSessionId) {
-                            for (let m of response.messages) {
-                                this.replaceToolPlaceholder(m);
-                            }
-                        }
+                        this.sessionStore.handleToolResponse(response);
                         break;
                     }
                     case 'init_tool': {
-                        // 工具消息已落库，携带真实 DB id：校准占位/结果消息的假 id，
-                        // 保证 replace 时能按 parentId 找到父工具消息（刷新后从 DB 拉取则为真 id，无需校准）
-                        if (response.sessionId === this.currentSessionId && response.messages) {
-                            for (let m of response.messages) {
-                                let idx = this.currentMessages.findIndex(x =>
-                                    x.role === 'tool' && x.toolCallId === m.toolCallId);
-                                if (idx !== -1) {
-                                    // 只同步元数据，保留已显示的工具结果内容
-                                    let localMsg = this.currentMessages[idx];
-                                    if (m.id) localMsg.id = m.id;
-                                    if (m.parentId) localMsg.parentId = m.parentId;
-                                    if (m.createTime) localMsg.createTime = m.createTime;
-                                }
-                            }
-                        }
+                        // 工具消息已落库，携带真实 DB id：校准占位/结果消息的假 id
+                        this.sessionStore.handleInitTool(response);
                         break;
                     }
                     case 'done':
@@ -1022,95 +798,19 @@
                             console.warn('未找到对应的 streamingMessage, sessionId:', response.sessionId);
                             return;
                         }
-
-                        // 追加思维过程（修复 null/undefined 拼接为 "null"/"undefined" 的问题）
-                        if (response.reasoningContent) {
-                            streamingMessage.reasoningContent += response.reasoningContent;
-                        }
-                        // 追加内容（修复 null 拼接为 "null" 的问题）
-                        if (response.text) {
-                            let lastContent = Utils.getLast(streamingMessage.contents);
-                            if (lastContent) {
-                                lastContent.content += response.text;
-                            }
-                        }
-                        // 追加工具调用（修复 for 循环条件：.length 缺失）
-                        if (response.messages && response.messages.length > 0) {
-                            for (let index = 0; index < response.messages.length; index++) {
-                                let message = response.messages[index];
-                                if (message.sessionId) streamingMessage.sessionId = message.sessionId;
-                                if (message.parentId) streamingMessage.parentId = message.parentId;
-                                if (message.name) streamingMessage.name = message.name;
-                                if (message.role) streamingMessage.role = message.role;
-
-                                if (message.toolCalls && message.toolCalls.length > 0) {
-                                    for (let i = 0; i < message.toolCalls.length; i++) {
-                                        let eventToolCall = message.toolCalls[i];
-                                        if (eventToolCall.id) {
-                                            this.currentToolCallId = eventToolCall.id;
-                                        }
-                                        let toolCall = streamingMessage.toolCalls.find(tc => tc.id === this.currentToolCallId);
-                                        if (!toolCall) {
-                                            toolCall = {id: this.currentToolCallId, name: '', arguments: ''};
-                                            streamingMessage.toolCalls.push(toolCall);
-                                        }
-                                        if (eventToolCall.name) {
-                                            toolCall.name = eventToolCall.name;
-                                        }
-                                        if (eventToolCall.arguments) {
-                                            toolCall.arguments += eventToolCall.arguments;
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        this.sessionStore.appendChunk(streamingMessage, response);
                         // 流式传输中自动跟随滚动
                         this.scrollToBottom();
                         break
                     }
                     case "init_assistant": {
-                        if (!streamingMessage) {
-                            return;
-                        }
-                        // 只同步元数据属性，保留已累积的 contents / reasoningContent / toolCalls
-                        const serverMsg = response.messages[0];
-                        if (serverMsg.id) streamingMessage.id = serverMsg.id;
-                        if (serverMsg.sessionId) streamingMessage.sessionId = serverMsg.sessionId;
-                        if (serverMsg.parentId) streamingMessage.parentId = serverMsg.parentId;
-                        if (serverMsg.name) streamingMessage.name = serverMsg.name;
-                        if (serverMsg.role) streamingMessage.role = serverMsg.role;
-                        if (serverMsg.createTime) streamingMessage.createTime = serverMsg.createTime;
-                        if (serverMsg.siblingCount != null) streamingMessage.siblingCount = serverMsg.siblingCount;
-                        if (serverMsg.siblingIndex != null) streamingMessage.siblingIndex = serverMsg.siblingIndex;
-                        // 同步落库消息的 extension（如 TTS 整轮完整音频 ttsAudio，供 🔊 重播）
-                        if (serverMsg.extension) {
-                            streamingMessage.extension = Object.assign({}, streamingMessage.extension || {}, serverMsg.extension);
-                        }
-                        // 斜杠指令等场景：没有 chunk 流，文字直接附在 init_assistant 里
-                        if (response.text) {
-                            let lastContent = Utils.getLast(streamingMessage.contents);
-                            if (lastContent && !lastContent.content) {
-                                lastContent.content = response.text;
-                            }
-                        }
+                        this.sessionStore.handleInitAssistant(streamingMessage, response);
                         break;
                     }
                     case "error": {
                         console.error('AI 对话错误:', response);
-                        this.sending = false; // 服务端处理失败，恢复可发送（允许重试）
-                        // 清理该会话的流式消息，避免界面卡在"等待回复"状态。
-                        // 后端在 handleChatSession 阶段（如 replace/edit 校验）出错时可能不带 sessionId，
-                        // 此时兜底清理当前会话的流式消息，保证 isStreaming 一定能复位
-                        const errSessionId = response.sessionId || this.currentSessionId;
-                        if (errSessionId) {
-                            this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === errSessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
-                        }
-                        this.streamingMap[errSessionId] = false;
-                        // 提取错误文本并提示用户
-                        let errText = (response.messages && response.messages.length > 0)
-                            ? response.messages[0].contents?.map(c => c.content).join('')
-                            : 'AI 服务返回了一个错误，请稍后重试';
-                        ElementPlus.ElMessage.error(errText || '未知错误');
+                        const errText = this.sessionStore.handleError(response);
+                        ElementPlus.ElMessage.error(errText);
                     }
                 }
             },
@@ -1156,17 +856,6 @@
             },
 
             /**
-             * 创建会话
-             */
-            createSession() {
-                this.closeSidebar();
-                this.$md.clearCache();
-                this.agentLogs = [];
-                this.currentSession = {};
-                this.currentMessages = [];
-            },
-
-            /**
              * 使用 requestAnimationFrame 合并图标刷新，避免流式传输时频繁全量扫描 DOM
              */
             _scheduleIconRefresh() {
@@ -1176,18 +865,6 @@
                     lucide.createIcons();
                     this._iconRefreshScheduled = false;
                 });
-            },
-
-            /** 工具确认弹窗待处理数量变化 → 刷新顶部入口角标 */
-            onToolPendingChange(n) {
-                this.pendingToolCount = n;
-                this._scheduleIconRefresh();
-            },
-
-            /** 结构化提问弹窗待回答数量变化 → 刷新顶部入口角标 */
-            onQuestionPendingChange(n) {
-                this.pendingQuestionCount = n;
-                this._scheduleIconRefresh();
             },
 
             /**
@@ -1458,25 +1135,12 @@
                 }
             },
 
-            /**
-             * 侧边栏通知某会话已被删除，清理本地 state
-             * @param session - 删除的会话对象
-             */
-            onDeleteSession(session) {
-                // 侧边栏已从内部数组移除，父组件只需清理当前视图
-                if (this.currentSession === session) {
-                    this.currentSession = {};
-                    this.currentMessages = [];
-                }
-            },
-
             /* ---------- 折叠/展开 ---------- */
 
             /**
-             * 判断指定消息的指定区域是否处于折叠状态
-             * @param {string} msgId - 消息 ID
-             * @param {string} section - 区域标识：'thinking' | 'tool' | 'toolcalls'
-             * @returns {boolean} 是否折叠
+             * 判断指定消息是否处于"思考中"（流式且只有思维链）
+             * @param {object} msg - 消息对象
+             * @returns {boolean}
              */
             isThinkingMsg(msg) {
                 if (!this.isStreaming || !(msg.role === 'assistant' && msg.id && msg.id.startsWith('streaming_'))) return false;
@@ -1553,6 +1217,21 @@
 
         mounted() {
             lucide.createIcons();
+            // 注册 SessionStore 的 UI 副作用钩子（DOM / TTS / 侧边栏），数据与 UI 解耦
+            this.sessionStore.registerUi({
+                scrollToBottom: (force) => this.scrollToBottom(force),
+                renderMermaid: () => MermaidUtils.renderAll(),
+                knowledgeFlash: () => this.showKnowledgeFlash(),
+                clearTts: () => this.clearTtsQueue(),
+                enqueueTts: (audio) => { if (this.$refs.sendArea) this.$refs.sendArea.enqueueTtsAudio(audio); },
+                isTtsEnabled: () => this.currentTtsEnabled(),
+                clearMdCache: () => this.$md.clearCache(),
+                closeSidebar: () => this.closeSidebar(),
+                refreshSidebar: () => this.$refs.sidebar ? this.$refs.sidebar.refresh() : Promise.resolve(),
+                getSessionRef: (session) => this.$refs.sidebar ? this.$refs.sidebar.get(session) : session,
+                clearSendArea: () => { if (this.$refs.sendArea) this.$refs.sendArea.clear(); },
+                clearAgentLogs: () => { this.agentLogs = []; }
+            });
             this.init();
             // 代码块复制按钮（v-html 生成，无法用 Vue @click，走事件委托）
             document.addEventListener('click', (e) => {
@@ -1574,8 +1253,9 @@
     // 注册全局工具 & 指令
     app.config.globalProperties.$fileUrl = FileUrlUtils;
     app.config.globalProperties.$md = MarkdownUtils;
-    // WebSocket 消息总线：注入给后代组件（如 tool-confirm / tool-question 自行订阅信号）
+    // 全局服务注入：WebSocket 消息总线 + 会话/消息仓库
     app.provide('wsBus', WsBus);
+    app.provide('sessionStore', SessionStore);
     app.use(AutoFollow);
     // 注册组件库
     app.component('tool-confirm', ToolConfirm);

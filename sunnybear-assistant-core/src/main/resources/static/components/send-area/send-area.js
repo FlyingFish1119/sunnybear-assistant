@@ -19,15 +19,16 @@ const SLASH_COMMANDS = [
  *   - TTS 语音朗读开关（localStorage 记忆）与逐句/整轮音频播放
  *   - 看板熊彩蛋（桌面端连按 b×10 / 移动端长按发送键 3s）
  *
- * 发送不直接操作 WebSocket：组件把 { content, files, tts } 通过 send 事件交给父级发送。
+ * 有 sessionStore 时直接调用 store.sendMessage / store.stopStreaming；
+ * 无 store（插件页）时退回 emit send / stop 交父级处理。
  *
  * Props:
  *   mainColor    — String   主题色
- *   isStreaming  — Boolean  当前会话是否流式进行中
- *   sending      — Boolean  是否已发送待服务端确认
  *   getSessions  — Function 返回会话列表的函数（供 /look 指令二级面板，惰性读取避免快照过期）
- *   sessionId    — String   当前会话 id
  *   inputText    — String   v-model:inputText 输入框内容
+ *
+ * Injects:
+ *   sessionStore — 会话/消息仓库（可选）；isStreaming / sending / sessionId 取自仓库
  *
  * Emits:
  *   update:inputText     — 输入框内容变化（v-model:input-text）
@@ -108,7 +109,7 @@ const SendArea = {
                  @pointerleave="onSubmitPointerLeave">
                 <button v-if="isStreaming"
                     class="send-area-submit-button"
-                    @click="$emit('stop')"
+                    @click="onStop()"
                     :disabled="isStreaming && !sessionId"
                 >
                     <i style="margin-top: 5px; margin-left: -5px" data-lucide="square"></i>
@@ -126,14 +127,16 @@ const SendArea = {
 
     props: {
         mainColor:   { type: String,   default: 'lightsalmon' },
-        isStreaming: { type: Boolean,  default: false },
-        sending:     { type: Boolean,  default: false },
         getSessions: { type: Function, default: function () { return []; } },
-        sessionId:   { type: String,   default: '' },
         inputText:   { type: String,   default: '' }
     },
 
     emits: ['update:inputText', 'send', 'stop', 'drag-over-change'],
+
+    inject: {
+        // 可选注入：插件页未提供 sessionStore 时降级为 null
+        sessionStore: { default: null }
+    },
 
     data: function () {
         return {
@@ -152,6 +155,16 @@ const SendArea = {
     },
 
     computed: {
+        // 会话/消息仓库派生的状态（未注入时降级为默认值）
+        isStreaming: function () {
+            return this.sessionStore ? this.sessionStore.isStreaming : false;
+        },
+        sending: function () {
+            return this.sessionStore ? this.sessionStore.sending : false;
+        },
+        sessionId: function () {
+            return this.sessionStore ? this.sessionStore.currentSessionId : '';
+        },
         // 斜杠指令候选面板是否可见
         commandSuggestVisible: function () {
             if (this.commandSubMode && this.subOptions.length > 0) return true;
@@ -228,16 +241,30 @@ const SendArea = {
          */
         submit: function () {
             if (this.isStreaming) {
-                this.$emit('stop');
+                this.onStop();
                 return;
             }
             if (this.sending) return;
             if (!this.inputText && this.uploadedFiles.length === 0) return;
-            this.$emit('send', {
+            var payload = {
                 content: this.inputText,
                 files: this.uploadedFiles,
                 tts: this.ttsEnabled
-            });
+            };
+            if (this.sessionStore) {
+                this.sessionStore.sendMessage(payload);
+            } else {
+                this.$emit('send', payload);
+            }
+        },
+
+        /** 停止流式传输（有 store 直接调 store，否则 emit 交父级） */
+        onStop: function () {
+            if (this.sessionStore) {
+                this.sessionStore.stopStreaming();
+            } else {
+                this.$emit('stop');
+            }
         },
 
         /**

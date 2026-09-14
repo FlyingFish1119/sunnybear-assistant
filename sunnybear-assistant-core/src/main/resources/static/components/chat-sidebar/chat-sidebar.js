@@ -4,9 +4,11 @@
  * 组件内部持有 sessions[] 作为唯一数据源，父组件通过 ref 调用 refresh()/upsert() 同步数据。
  *
  * Props:
- *   currentSession  — Object   当前选中的会话
  *   mainColor         — String   主题色
  *   collapsed         — Boolean  桌面端侧边栏是否折叠
+ *
+ * Injects:
+ *   sessionStore      — 会话/消息仓库（可选）；当前会话高亮与 Pro/无审查同步取自其 currentSession
  *
  * Emits:
  *   select-session(session)     — 点击会话
@@ -158,12 +160,16 @@ const ChatSidebar = {
     </el-dialog>`,
 
     props: {
-        currentSession: { type: Object, default: null },
         mainColor: { type: String, default: 'lightsalmon' },
         collapsed: { type: Boolean, default: false }
     },
 
     emits: ['select-session', 'create-session', 'on-delete-session', 'change-session-loading', 'toggle-collapsed'],
+
+    inject: {
+        // 可选注入：插件页未提供 sessionStore 时降级为 null（仍可独立工作）
+        sessionStore: { default: null }
+    },
 
     data: function () {
         return {
@@ -461,7 +467,7 @@ const ChatSidebar = {
                     }
                     // 同步更新 currentSession
                     if (self.currentSession && self.currentSession.id === session.id) {
-                        Object.assign(self.currentSession, result.data);
+                        if (self.sessionStore) Object.assign(self.sessionStore.state.currentSession, result.data);
                     }
                 } else {
                     ElementPlus.ElMessage.error(result.message || '切换模式失败');
@@ -491,7 +497,7 @@ const ChatSidebar = {
                         }
                         // 同步更新 currentSession
                         if (self.currentSession && self.currentSession.id === session.id) {
-                            Object.assign(self.currentSession, result.data);
+                            if (self.sessionStore) Object.assign(self.sessionStore.state.currentSession, result.data);
                         }
                         ElementPlus.ElMessage.success(enabling ? '已开启无审查模式' : '已关闭无审查模式');
                     } else {
@@ -589,6 +595,10 @@ const ChatSidebar = {
     },
 
     computed: {
+        // 当前会话：优先取注入的 sessionStore，插件页无法注入时回退空对象
+        currentSession: function () {
+            return this.sessionStore ? this.sessionStore.state.currentSession : {};
+        },
         isNewSession: function () {
             return this.currentSession && !this.currentSession.id;
         }

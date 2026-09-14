@@ -2,19 +2,22 @@
  * 会话名称组件（显示 + 编辑）
  *
  * Props:
- *   currentSession — Object  { id, name, ... } 当前会话对象
+ *   currentSession — Object  { id, name, ... }（可选，插件页回退用；主应用由 store 提供）
  *   mainColor      — String  主题色
  *
+ * Injects:
+ *   sessionStore   — 会话/消息仓库（可选）；优先读取其 currentSession
+ *
  * Emits:
- *   update-session-name(newName) — 保存成功后通知父组件更新名称
+ *   update-session-name(newName) — 保存成功后通知父组件更新名称（仅无 store 的插件页触发）
  *
  * 交互：
  *   - 双击名称文本 → 进入编辑模式
  *   - Enter / 失焦   → 保存（调用 API.session.update）
  *   - Esc            → 取消编辑
  *
- * 组件不直接修改 prop，而是通过 emit 通知父组件更新。
- * 父组件（index.html）负责修改 currentSession.name。
+ * 有 sessionStore（主应用）时直接写入 store.currentSession.name；
+ * 无 store（插件页）时通过 emit 通知父组件修改传入的 currentSession。
  */
 const SessionName = {
     name: 'SessionName',
@@ -22,9 +25,9 @@ const SessionName = {
     template: `
     <span v-if="!editing"
           :style="{'--main-color': mainColor}"
-          :class="{'session-name-editable': currentSession.id}"
+          :class="{'session-name-editable': session.id}"
           @dblclick="startEdit">
-      {{ currentSession.name === undefined ? '新对话' : currentSession.name }}
+      {{ session.name === undefined ? '新对话' : session.name }}
     </span>
     <input v-else
            v-model="draft"
@@ -39,11 +42,27 @@ const SessionName = {
     />`,
 
     props: {
-        currentSession: { type: Object, default: function () { return {}; } },
+        // 插件页无 store 时作为回退数据源传入；主应用通过注入的 sessionStore 提供
+        currentSession: { type: Object, default: null },
         mainColor: { type: String, default: 'lightsalmon' }
     },
 
     emits: ['update-session-name'],
+
+    inject: {
+        // 可选注入：插件页未提供 sessionStore 时降级为 null
+        sessionStore: { default: null }
+    },
+
+    computed: {
+        // 优先读取注入的 store（主应用），否则回退到传入的 currentSession（插件页）
+        session: function () {
+            if (this.sessionStore) {
+                return this.sessionStore.state.currentSession;
+            }
+            return this.currentSession || {};
+        }
+    },
 
     data: function () {
         return {
@@ -55,8 +74,8 @@ const SessionName = {
     methods: {
         /* ---- 进入编辑 ---- */
         startEdit: function () {
-            if (!this.currentSession.id) return;
-            this.draft = this.currentSession.name || '新对话';
+            if (!this.session.id) return;
+            this.draft = this.session.name || '新对话';
             this.editing = true;
             var self = this;
             this.$nextTick(function () {
@@ -100,15 +119,19 @@ const SessionName = {
                 this.editing = false;
                 return;
             }
-            if (newName === this.currentSession.name) {
+            if (newName === this.session.name) {
                 this.editing = false;
                 return;
             }
             try {
-                var result = await API.session.update({ id: this.currentSession.id, name: newName });
+                var result = await API.session.update({ id: this.session.id, name: newName });
                 if (result.status === 200) {
-                    // 通过 emit 通知父组件更新名称，不直接修改 prop
-                    this.$emit('update-session-name', newName);
+                    // 主应用：直接写入共享 store；插件页（无 store）：emit 通知父组件
+                    if (this.sessionStore) {
+                        this.sessionStore.state.currentSession.name = newName;
+                    } else {
+                        this.$emit('update-session-name', newName);
+                    }
                     ElementPlus.ElMessage.success('会话名称已更新');
                 } else {
                     ElementPlus.ElMessage.error(result.message || '更新会话名称失败');
