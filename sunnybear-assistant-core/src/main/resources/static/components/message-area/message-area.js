@@ -44,8 +44,8 @@ const MessageArea = {
             <p class="hero-greeting">{{ greetingText || '你好，我能帮你做点什么？' }}</p>
             <p class="hero-subtitle">{{ heroSubtitle }}</p>
             <div class="hero-suggestions">
-                <button v-for="item in suggestions"
-                        :key="item.text"
+                <button v-for="(item, index) in suggestions"
+                        :key="index"
                         class="hero-suggestion"
                         @click="useSuggestion(item.text)">
                     <i :data-lucide="item.icon" class="hero-suggestion-icon"></i>
@@ -378,7 +378,17 @@ const MessageArea = {
                     this.greetingText = result.data.text;
                     const list = result.data.suggestions;
                     if (Array.isArray(list) && list.length > 0) {
-                        this.suggestions = list.map(function (text, i) {
+                        // 去重：AI 可能生成重复建议，重复的 v-for key 会导致 DOM 插入异常
+                        const unique = [];
+                        const seen = {};
+                        list.forEach(function (text) {
+                            const key = String(text);
+                            if (key && !seen[key]) {
+                                seen[key] = true;
+                                unique.push(text);
+                            }
+                        });
+                        this.suggestions = unique.map(function (text, i) {
                             return { icon: SUGGESTION_ICONS[i % SUGGESTION_ICONS.length], text: text };
                         });
                     }
