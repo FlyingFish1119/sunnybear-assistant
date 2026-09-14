@@ -187,7 +187,9 @@ const API = (function () {
                 save: function (data) { return post('settings/memorysettings/save', data); }
             },
             adapters: {
-                list: function () { return get('settings/adapters/list'); }
+                list: function () { return get('settings/adapters/list'); },
+                /** 拉取指定适配器可选的模型名称列表；未配置 modelUrl 或失败时 data 为空数组 */
+                models: function (apiName) { return get('settings/adapters/models?apiName=' + encodeURIComponent(apiName || '')); }
             }
         },
 

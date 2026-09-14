@@ -182,6 +182,23 @@ public class SettingsController {
         return new RestResponse().success(adapterFactory.getAvailableAdapterNames());
     }
 
+    /**
+     * 获取指定适配器的可选模型列表（供设置页下拉框使用），每个条目附带能拿到的简要信息（描述、上下文长度等）。
+     * 适配器未配置 modelUrl 或拉取失败时返回错误，前端回退为手动输入。
+     */
+    @RequestMapping("/adapters/models")
+    public RestResponse getAdapterModels(@RequestParam(value = "apiName", required = false) String apiName) {
+        if (!StringUtils.hasText(apiName)) {
+            return new RestResponse().error("apiName 不能为空");
+        }
+        try {
+            return new RestResponse().success(adapterFactory.listModels(apiName));
+        } catch (Exception e) {
+            log.warn("获取适配器模型列表失败: apiName={}, message={}", apiName, e.getMessage());
+            return new RestResponse().error(e.getMessage());
+        }
+    }
+
     private boolean validateAISettings(AISettings settings) {
         if (settings == null) {
             return false;

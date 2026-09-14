@@ -154,12 +154,24 @@ const AiSettings = {
             <el-form :model="aiForm" label-width="110px" label-position="left">
                 <div class="form-group-title">基础配置</div>
                 <el-form-item label="适配器名称">
-                    <el-select v-model="aiForm.adapterName" placeholder="请选择适配器" style="width:100%">
+                    <el-select v-model="aiForm.adapterName" placeholder="请选择适配器" style="width:100%" @change="onAdapterChange">
                         <el-option v-for="name in adapterList" :key="name" :label="name" :value="name"></el-option>
                     </el-select>
                 </el-form-item>
                 <el-form-item label="模型">
-                    <input class="settings-input" v-model="aiForm.model" placeholder="例如: gpt-4o, qwen-plus">
+                    <el-select v-model="aiForm.model" filterable allow-create default-first-option clearable
+                               :loading="modelLoading" placeholder="选择或输入模型名称" style="width:100%">
+                        <el-option v-for="m in modelOptions" :key="m.id" :label="m.id" :value="m.id">
+                            <el-tooltip v-if="modelDetail(m)" effect="dark" placement="right" :show-after="200">
+                                <template #content>
+                                    <div style="max-width:320px;white-space:pre-line;line-height:1.5">{{ modelDetail(m) }}</div>
+                                </template>
+                                <span style="display:block;width:100%">{{ m.id }}</span>
+                            </el-tooltip>
+                            <span v-else>{{ m.id }}</span>
+                        </el-option>
+                    </el-select>
+                    <div v-if="modelListHint" style="font-size:12px;color:#909399;line-height:1.6;margin-top:4px">{{ modelListHint }}</div>
                 </el-form-item>
                 <el-form-item label="System Prompt" v-if="aiDialogType === 'chat'">
                     <textarea class="settings-textarea" v-model="aiForm.prompt" rows="3" placeholder="系统提示词（可选）"></textarea>
@@ -241,13 +253,25 @@ const AiSettings = {
             showAiAdvanced: false,
             aiForm: { prompt: '', adapterName: '', model: '', stream: false, thinking: false, reasoningEffort: null, temperature: 1, top_p: 1, maxTokens: 4096, frequencyPenalty: 0, presencePenalty: 0, customFieldsText: '' },
             // 可用适配器列表
-            adapterList: []
+            adapterList: [],
+            // 当前适配器返回的可选模型列表（为空时仍可手动输入）
+            modelList: [],
+            modelLoading: false,
+            modelListHint: ''
         };
     },
 
     computed: {
         aiDialogTitle() {
             return AI_TYPE_NAMES[this.aiDialogType] || 'AI 模型';
+        },
+
+        /** 下拉选项：远端模型列表 + 当前已配置的模型（避免历史模型不在列表里时显示为空） */
+        modelOptions() {
+            const list = (this.modelList || []).slice();
+            const current = (this.aiForm.model || '').trim();
+            if (current && !list.some(m => m.id === current)) list.unshift({ id: current });
+            return list;
         },
 
         /** 高级参数是否已配置（任一非 null）；全 null 即「未配置」，打开对话框时默认收起 */
@@ -286,6 +310,7 @@ const AiSettings = {
             // 全部为 null 表示「未配置」，默认收起；有任意一项已配置则以展开态展示
             this.showAiAdvanced = this.hasAiAdvanced;
             this.dialogs.ai = true;
+            this.fetchModelList();
             this.$nextTick(() => lucide.createIcons());
         },
 
@@ -372,6 +397,52 @@ const AiSettings = {
             } catch (e) {
                 console.error(e);
             }
+        },
+
+        /* ---------- 模型列表（切换适配器时重新拉取） ---------- */
+        onAdapterChange() {
+            // 模型与适配器绑定，切换后清空，等待新列表或手动输入
+            this.aiForm.model = '';
+            this.fetchModelList();
+        },
+
+        async fetchModelList() {
+            const apiName = (this.aiForm.adapterName || '').trim();
+            this.modelList = [];
+            this.modelListHint = '';
+            if (!apiName) {
+                return;
+            }
+            this.modelLoading = true;
+            try {
+                const r = await API.settings.adapters.models(apiName);
+                if (r.status === 200) {
+                    this.modelList = r.data || [];
+                    if (!this.modelList.length) {
+                        this.modelListHint = '该适配器未返回模型列表，可直接输入模型名称';
+                    }
+                } else {
+                    this.modelListHint = '获取模型列表失败，可直接输入模型名称';
+                }
+            } catch (e) {
+                console.error(e);
+                this.modelListHint = '获取模型列表失败，可直接输入模型名称';
+            } finally {
+                this.modelLoading = false;
+            }
+        },
+
+        /** 组装悬浮提示内容：直接展示厂商返回的原始字段；无字段时返回空串（不显示 tooltip） */
+        modelDetail(m) {
+            if (!m || !m.details) return '';
+            return Object.keys(m.details)
+                .map(k => {
+                    const v = m.details[k];
+                    if (v == null || v === '') return null;
+                    return k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v);
+                })
+                .filter(Boolean)
+                .join('\n');
         }
     },
 

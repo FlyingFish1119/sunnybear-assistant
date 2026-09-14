@@ -21,5 +21,8 @@ import java.util.List;
 public class AIAdapterProperties {
 
     private List<AIAdapterRegister> register = new ArrayList<>();
+
+    /** 模型列表缓存时长（分钟）；<=0 表示不缓存。默认 30 分钟 */
+    private long modelCacheTtlMinutes = 30;
 }
 

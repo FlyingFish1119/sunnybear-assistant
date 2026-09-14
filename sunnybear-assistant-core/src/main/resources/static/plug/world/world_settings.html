@@ -994,15 +994,25 @@
                                 <div style="display:flex;align-items:center;gap:10px">
                                     <span class="char-param-label">适配器</span>
                                     <el-select v-model="worldForm.schedulerAiSettings.adapterName"
-                                        placeholder="请选择 AI 适配器" style="flex:1">
+                                        placeholder="请选择 AI 适配器" style="flex:1" @change="onSchedulerAdapterChange">
                                         <el-option v-for="name in adapterList" :key="name" :label="name" :value="name"></el-option>
                                     </el-select>
                                 </div>
                                 <div style="display:flex;align-items:center;gap:10px">
                                     <span class="char-param-label">模型</span>
-                                    <input class="char-form-input" :style="{'--main-color': mainColor}"
-                                        v-model="worldForm.schedulerAiSettings.model"
-                                        placeholder="例如: deepseek-v4-pro（留空使用当前设置）">
+                                    <el-select v-model="worldForm.schedulerAiSettings.model" filterable allow-create default-first-option clearable
+                                        style="flex:1" placeholder="选择或输入模型（留空使用当前设置）"
+                                        @visible-change="v => v && ensureSchedulerModels()">
+                                        <el-option v-for="m in modelOptions(schedulerModelList, worldForm.schedulerAiSettings.model)" :key="m.id" :label="m.id" :value="m.id">
+                                            <el-tooltip v-if="modelDetail(m)" effect="dark" placement="right" :show-after="200">
+                                                <template #content>
+                                                    <div style="max-width:320px;white-space:pre-line;line-height:1.5">{{ modelDetail(m) }}</div>
+                                                </template>
+                                                <span style="display:block;width:100%">{{ m.id }}</span>
+                                            </el-tooltip>
+                                            <span v-else>{{ m.id }}</span>
+                                        </el-option>
+                                    </el-select>
                                 </div>
                                 <span class="char-form-hint">用于调度群聊流程（轮次编排等）的 AI 模型，仅适配器 + 模型</span>
                             </div>
@@ -1186,14 +1196,25 @@
                     <div style="display:flex;align-items:center;gap:10px">
                         <span class="char-param-label">适配器</span>
                         <el-select v-model="characterForm.aiSettings.adapterName"
-                            placeholder="请选择 AI 适配器" style="flex:1">
+                            placeholder="请选择 AI 适配器" style="flex:1" @change="onWorldCharacterAdapterChange">
                             <el-option v-for="name in adapterList" :key="name" :label="name" :value="name"></el-option>
                         </el-select>
                     </div>
                     <div style="display:flex;align-items:center;gap:10px">
                         <span class="char-param-label">模型</span>
-                        <input class="char-form-input" :style="{'--main-color': mainColor}"
-                            v-model="characterForm.aiSettings.model" placeholder="例如: deepseek-v4-pro（留空使用当前设置）">
+                        <el-select v-model="characterForm.aiSettings.model" filterable allow-create default-first-option clearable
+                            style="flex:1" placeholder="选择或输入模型（留空使用当前设置）"
+                            @visible-change="v => v && ensureWorldCharacterModels()">
+                            <el-option v-for="m in modelOptions(characterModelList, characterForm.aiSettings.model)" :key="m.id" :label="m.id" :value="m.id">
+                                <el-tooltip v-if="modelDetail(m)" effect="dark" placement="right" :show-after="200">
+                                    <template #content>
+                                        <div style="max-width:320px;white-space:pre-line;line-height:1.5">{{ modelDetail(m) }}</div>
+                                    </template>
+                                    <span style="display:block;width:100%">{{ m.id }}</span>
+                                </el-tooltip>
+                                <span v-else>{{ m.id }}</span>
+                            </el-option>
+                        </el-select>
                     </div>
                     <div style="display:flex;align-items:center;gap:10px">
                         <span class="char-param-label">流式</span>
@@ -1299,6 +1320,10 @@ const app = Vue.createApp({
             characters: [],
             knowledgeList: [],
             adapterList: [],
+            schedulerModelList: [],
+            schedulerModelAdapter: '',
+            characterModelList: [],
+            characterModelAdapter: '',
             loading: true,
             selectedWorldId: null,
             sidebarCollapsed: false,
@@ -1546,6 +1571,58 @@ const app = Vue.createApp({
                 const r = await API.settings.adapters.list();
                 if (r.status === 200) this.adapterList = r.data || [];
             } catch (e) { console.error(e); }
+        },
+
+        /* ---- 模型列表（下拉 + 手输） ---- */
+        async loadAdapterModels(apiName) {
+            const name = (apiName || '').trim();
+            if (!name) return [];
+            try {
+                const r = await API.settings.adapters.models(name);
+                return r.status === 200 ? (r.data || []) : [];
+            } catch (e) { console.error(e); return []; }
+        },
+        modelOptions(list, current) {
+            const arr = (list || []).slice();
+            const cur = (current || '').trim();
+            if (cur && !arr.some(m => m.id === cur)) arr.unshift({ id: cur });
+            return arr;
+        },
+        /** 组装悬浮提示内容：直接展示厂商返回的原始字段；无字段时返回空串（不显示 tooltip） */
+        modelDetail(m) {
+            if (!m || !m.details) return '';
+            return Object.keys(m.details)
+                .map(k => {
+                    const v = m.details[k];
+                    if (v == null || v === '') return null;
+                    return k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v);
+                })
+                .filter(Boolean)
+                .join('\n');
+        },
+        async onSchedulerAdapterChange() {
+            this.worldForm.schedulerAiSettings.model = '';
+            const name = (this.worldForm.schedulerAiSettings.adapterName || '').trim();
+            this.schedulerModelList = await this.loadAdapterModels(name);
+            this.schedulerModelAdapter = name;
+        },
+        async ensureSchedulerModels() {
+            const name = (this.worldForm.schedulerAiSettings.adapterName || '').trim();
+            if (this.schedulerModelAdapter === name) return;
+            this.schedulerModelList = await this.loadAdapterModels(name);
+            this.schedulerModelAdapter = name;
+        },
+        async onWorldCharacterAdapterChange() {
+            this.characterForm.aiSettings.model = '';
+            const name = (this.characterForm.aiSettings.adapterName || '').trim();
+            this.characterModelList = await this.loadAdapterModels(name);
+            this.characterModelAdapter = name;
+        },
+        async ensureWorldCharacterModels() {
+            const name = (this.characterForm.aiSettings.adapterName || '').trim();
+            if (this.characterModelAdapter === name) return;
+            this.characterModelList = await this.loadAdapterModels(name);
+            this.characterModelAdapter = name;
         },
 
         openCharacterDialog(c) {

@@ -11,7 +11,6 @@ package com.fishsunny.assistant.engine.adapter.standard.multimodal;
  * @Date 2026/9/2
  */
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
@@ -38,46 +37,18 @@ import com.fishsunny.assistant.engine.protocol.standard.content.text.StandardTex
 import com.fishsunny.assistant.engine.protocol.standard.tools.request.StandardToolRequest;
 import com.fishsunny.assistant.engine.protocol.standard.tools.request.StandardToolRequestFunction;
 import com.fishsunny.assistant.utils.Base64Utils;
-import com.fishsunny.assistant.utils.ObjectMapperFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URI;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public abstract class MultimodalBaseAIAdapter extends AIAdapter {
 
     protected static final Logger log = LoggerFactory.getLogger(MultimodalBaseAIAdapter.class);
-    protected final ObjectMapper objectMapper = ObjectMapperFactory.getObjectMapper();
 
     public MultimodalBaseAIAdapter(AIAdapterOption option) throws Exception {
         super(option);
-    }
-
-    @Override
-    protected Stream<String> establishHttpClient(AIRequest request) throws Exception {
-        HttpRequest httpRequest = withCustomHeaders(HttpRequest.newBuilder()
-                .uri(URI.create(super.baseUrl))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + super.apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request))))
-                .build();
-
-        HttpResponse<Stream<String>> response = super.httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
-        if (response.statusCode() != 200) {
-            try (Stream<String> bodyStream = response.body()) {
-                String errorMessage = bodyStream.collect(Collectors.joining("\n"));
-                log.info(errorMessage);
-                throw new RuntimeException("Invalid status code: " + response.statusCode() + ", error: " + errorMessage);
-            }
-        } else {
-            return response.body();
-        }
     }
 
     // ==================== 请求侧：ChatMessage → MultimodalMessage ====================

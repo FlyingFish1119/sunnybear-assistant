@@ -847,7 +847,7 @@
                         <i data-lucide="cpu" style="width:14px;height:14px"></i> 适配器
                     </span>
                     <el-select v-model="form.aiSettings.adapterName"
-                        placeholder="请选择 AI 适配器" style="width:100%">
+                        placeholder="请选择 AI 适配器" style="width:100%" @change="onCharacterAdapterChange">
                         <el-option v-for="name in adapterList" :key="name" :label="name" :value="name"></el-option>
                     </el-select>
                     <span class="char-form-hint">该角色使用的 API 适配器</span>
@@ -858,8 +858,19 @@
                     <span class="char-form-label">
                         <i data-lucide="box" style="width:14px;height:14px"></i> 模型
                     </span>
-                    <input class="char-form-input" :style="{'--main-color': mainColor}"
-                        v-model="form.aiSettings.model" placeholder="例如: deepseek-v4-pro（留空使用当前设置）">
+                    <el-select v-model="form.aiSettings.model" filterable allow-create default-first-option clearable
+                        style="width:100%" placeholder="选择或输入模型（留空使用当前设置）"
+                        @visible-change="v => v && ensureCharacterModels()">
+                        <el-option v-for="m in modelOptions(characterModelList, form.aiSettings.model)" :key="m.id" :label="m.id" :value="m.id">
+                            <el-tooltip v-if="modelDetail(m)" effect="dark" placement="right" :show-after="200">
+                                <template #content>
+                                    <div style="max-width:320px;white-space:pre-line;line-height:1.5">{{ modelDetail(m) }}</div>
+                                </template>
+                                <span style="display:block;width:100%">{{ m.id }}</span>
+                            </el-tooltip>
+                            <span v-else>{{ m.id }}</span>
+                        </el-option>
+                    </el-select>
                 </div>
 
                 <!-- 流式 / 思考 -->
@@ -1089,12 +1100,24 @@
                 <div class="dialog-model-name">任务模型 mission</div>
                 <el-form label-width="64px" label-position="left">
                     <el-form-item label="适配器">
-                        <el-select v-model="userMissionForm.adapterName" size="small" style="width:100%" placeholder="选择适配器">
+                        <el-select v-model="userMissionForm.adapterName" size="small" style="width:100%" placeholder="选择适配器" @change="onMissionAdapterChange">
                             <el-option v-for="name in adapterList" :key="'mission-' + name" :label="name" :value="name"></el-option>
                         </el-select>
                     </el-form-item>
                     <el-form-item label="模型">
-                        <input class="settings-input" v-model="userMissionForm.model" placeholder="模型名称">
+                        <el-select v-model="userMissionForm.model" filterable allow-create default-first-option clearable
+                            size="small" style="width:100%" placeholder="选择或输入模型"
+                            @visible-change="v => v && ensureMissionModels()">
+                            <el-option v-for="m in modelOptions(missionModelList, userMissionForm.model)" :key="m.id" :label="m.id" :value="m.id">
+                                <el-tooltip v-if="modelDetail(m)" effect="dark" placement="right" :show-after="200">
+                                    <template #content>
+                                        <div style="max-width:320px;white-space:pre-line;line-height:1.5">{{ modelDetail(m) }}</div>
+                                    </template>
+                                    <span style="display:block;width:100%">{{ m.id }}</span>
+                                </el-tooltip>
+                                <span v-else>{{ m.id }}</span>
+                            </el-option>
+                        </el-select>
                     </el-form-item>
                     <el-form-item label="开关">
                         <div style="display:flex;gap:16px;align-items:center">
@@ -1109,12 +1132,24 @@
                 <div class="dialog-model-name">小熊崽 cub</div>
                 <el-form label-width="64px" label-position="left">
                     <el-form-item label="适配器">
-                        <el-select v-model="userCubForm.adapterName" size="small" style="width:100%" placeholder="选择适配器">
+                        <el-select v-model="userCubForm.adapterName" size="small" style="width:100%" placeholder="选择适配器" @change="onCubAdapterChange">
                             <el-option v-for="name in adapterList" :key="'cub-' + name" :label="name" :value="name"></el-option>
                         </el-select>
                     </el-form-item>
                     <el-form-item label="模型">
-                        <input class="settings-input" v-model="userCubForm.model" placeholder="模型名称">
+                        <el-select v-model="userCubForm.model" filterable allow-create default-first-option clearable
+                            size="small" style="width:100%" placeholder="选择或输入模型"
+                            @visible-change="v => v && ensureCubModels()">
+                            <el-option v-for="m in modelOptions(cubModelList, userCubForm.model)" :key="m.id" :label="m.id" :value="m.id">
+                                <el-tooltip v-if="modelDetail(m)" effect="dark" placement="right" :show-after="200">
+                                    <template #content>
+                                        <div style="max-width:320px;white-space:pre-line;line-height:1.5">{{ modelDetail(m) }}</div>
+                                    </template>
+                                    <span style="display:block;width:100%">{{ m.id }}</span>
+                                </el-tooltip>
+                                <span v-else>{{ m.id }}</span>
+                            </el-option>
+                        </el-select>
                     </el-form-item>
                     <el-form-item label="开关">
                         <div style="display:flex;gap:16px;align-items:center">
@@ -1150,6 +1185,12 @@ const app = Vue.createApp({
             mainColor: 'lightsalmon',
             characters: [],
             adapterList: [],
+            characterModelList: [],
+            characterModelAdapter: '',
+            missionModelList: [],
+            missionModelAdapter: '',
+            cubModelList: [],
+            cubModelAdapter: '',
             loading: true,
             saving: false,
             deleting: false,
@@ -1399,6 +1440,70 @@ const app = Vue.createApp({
                 const r = await API.settings.adapters.list();
                 if (r.status === 200) this.adapterList = r.data || [];
             } catch (e) { console.error(e); }
+        },
+
+        /* ---- 模型列表（下拉 + 手输） ---- */
+        async loadAdapterModels(apiName) {
+            const name = (apiName || '').trim();
+            if (!name) return [];
+            try {
+                const r = await API.settings.adapters.models(name);
+                return r.status === 200 ? (r.data || []) : [];
+            } catch (e) { console.error(e); return []; }
+        },
+        modelOptions(list, current) {
+            const arr = (list || []).slice();
+            const cur = (current || '').trim();
+            if (cur && !arr.some(m => m.id === cur)) arr.unshift({ id: cur });
+            return arr;
+        },
+        /** 组装悬浮提示内容：直接展示厂商返回的原始字段；无字段时返回空串（不显示 tooltip） */
+        modelDetail(m) {
+            if (!m || !m.details) return '';
+            return Object.keys(m.details)
+                .map(k => {
+                    const v = m.details[k];
+                    if (v == null || v === '') return null;
+                    return k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v);
+                })
+                .filter(Boolean)
+                .join('\n');
+        },
+        async onCharacterAdapterChange() {
+            this.form.aiSettings.model = '';
+            const name = (this.form.aiSettings.adapterName || '').trim();
+            this.characterModelList = await this.loadAdapterModels(name);
+            this.characterModelAdapter = name;
+        },
+        async ensureCharacterModels() {
+            const name = (this.form.aiSettings.adapterName || '').trim();
+            if (this.characterModelAdapter === name) return;
+            this.characterModelList = await this.loadAdapterModels(name);
+            this.characterModelAdapter = name;
+        },
+        async onMissionAdapterChange() {
+            this.userMissionForm.model = '';
+            const name = (this.userMissionForm.adapterName || '').trim();
+            this.missionModelList = await this.loadAdapterModels(name);
+            this.missionModelAdapter = name;
+        },
+        async ensureMissionModels() {
+            const name = (this.userMissionForm.adapterName || '').trim();
+            if (this.missionModelAdapter === name) return;
+            this.missionModelList = await this.loadAdapterModels(name);
+            this.missionModelAdapter = name;
+        },
+        async onCubAdapterChange() {
+            this.userCubForm.model = '';
+            const name = (this.userCubForm.adapterName || '').trim();
+            this.cubModelList = await this.loadAdapterModels(name);
+            this.cubModelAdapter = name;
+        },
+        async ensureCubModels() {
+            const name = (this.userCubForm.adapterName || '').trim();
+            if (this.cubModelAdapter === name) return;
+            this.cubModelList = await this.loadAdapterModels(name);
+            this.cubModelAdapter = name;
         },
         async fetchUserSettings() {
             try {

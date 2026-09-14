@@ -8,7 +8,6 @@ package com.fishsunny.assistant.engine.adapter.text;
  * @Date 2026/7/6 10:30
  */
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
@@ -22,22 +21,15 @@ import com.fishsunny.assistant.engine.protocol.text.messages.role.TextAssistantM
 import com.fishsunny.assistant.engine.protocol.text.messages.role.TextSystemMessage;
 import com.fishsunny.assistant.engine.protocol.text.messages.role.TextToolMessage;
 import com.fishsunny.assistant.engine.protocol.text.messages.role.TextUserMessage;
-import com.fishsunny.assistant.utils.ObjectMapperFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URI;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public abstract class TextBaseAIAdapter extends AIAdapter {
 
     protected static final Logger log = LoggerFactory.getLogger(TextBaseAIAdapter.class);
-    protected final ObjectMapper objectMapper = ObjectMapperFactory.getObjectMapper();
 
     public TextBaseAIAdapter(AIAdapterOption option) throws Exception {
         super(option);
@@ -61,27 +53,6 @@ public abstract class TextBaseAIAdapter extends AIAdapter {
     @Override
     public AIResponse convertToMaster(AIResponse response) {
         return null;
-    }
-
-    @Override
-    protected Stream<String> establishHttpClient(AIRequest request) throws Exception {
-        HttpRequest httpRequest = withCustomHeaders(HttpRequest.newBuilder()
-                .uri(URI.create(super.baseUrl))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + super.apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request))))
-                .build();
-
-        HttpResponse<Stream<String>> response = this.httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
-        if (response.statusCode() != 200) {
-            try (Stream<String> bodyStream = response.body()) {
-                String errorMessage = bodyStream.collect(Collectors.joining("\n"));
-                log.info(errorMessage);
-                throw new RuntimeException("Invalid status code: " + response.statusCode() + ", error: " + errorMessage);
-            }
-        } else {
-            return response.body();
-        }
     }
 
     @Override

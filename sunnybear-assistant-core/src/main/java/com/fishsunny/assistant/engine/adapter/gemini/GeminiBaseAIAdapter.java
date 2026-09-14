@@ -3,7 +3,6 @@ package com.fishsunny.assistant.engine.adapter.gemini;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
@@ -32,18 +31,12 @@ import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardT
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegisterParameter;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegisterProperty;
 import com.fishsunny.assistant.utils.Base64Utils;
-import com.fishsunny.assistant.utils.ObjectMapperFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
-import java.net.URI;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Gemini（generativelanguage.googleapis.com 原生协议）适配器基类。
@@ -64,7 +57,6 @@ import java.util.stream.Stream;
 public abstract class GeminiBaseAIAdapter extends AIAdapter {
 
     protected static final Logger log = LoggerFactory.getLogger(GeminiBaseAIAdapter.class);
-    protected final ObjectMapper objectMapper = ObjectMapperFactory.getObjectMapper();
 
     /**
      * 自造 tool call id 的前缀。模型没下发 id 时（2.5 系列常见）由适配器合成，
@@ -100,34 +92,23 @@ public abstract class GeminiBaseAIAdapter extends AIAdapter {
         super(option);
     }
 
+    /** Gemini 鉴权走 x-goog-api-key，不是 Authorization: Bearer */
+    @Override
+    protected Map<String, String> protocolHeaders() {
+        return Map.of(
+                "Content-Type", "application/json",
+                "x-goog-api-key", apiKey == null ? "" : apiKey);
+    }
+
     /**
      * 端点后缀，流式与非流式的唯一差异（{@code :generateContent} / {@code :streamGenerateContent?alt=sse}）。
      */
     protected abstract String endpointSuffix();
 
-    // ==================== 建连 ====================
-
+    /** Gemini 把模型名与动作拼进 URL 路径，覆写基类的端点构造 */
     @Override
-    protected Stream<String> establishHttpClient(AIRequest request) throws Exception {
-        String url = buildUrl(((GeminiAIRequest) request).getModel());
-
-        HttpRequest httpRequest = withCustomHeaders(HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/json")
-                .header("x-goog-api-key", super.apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request))))
-                .build();
-
-        HttpResponse<Stream<String>> response = super.httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
-        if (response.statusCode() != 200) {
-            try (Stream<String> bodyStream = response.body()) {
-                String errorMessage = bodyStream.collect(Collectors.joining("\n"));
-                log.info("Gemini API error: {}", errorMessage);
-                throw new RuntimeException("Invalid status code: " + response.statusCode() + ", error: " + errorMessage);
-            }
-        } else {
-            return response.body();
-        }
+    protected String buildRequestUrl(AIRequest request) {
+        return buildUrl(((GeminiAIRequest) request).getModel());
     }
 
     /**

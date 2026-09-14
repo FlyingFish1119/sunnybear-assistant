@@ -1,7 +1,6 @@
 package com.fishsunny.assistant.engine.adapter.anthropic;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
@@ -16,29 +15,32 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.Me
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.utils.Base64Utils;
-import com.fishsunny.assistant.utils.ObjectMapperFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.StringUtils;
 
-import java.net.URI;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.Map;
 
 public abstract class AnthropicBaseAIAdapter extends AIAdapter {
 
     protected static final Logger log = LoggerFactory.getLogger(AnthropicBaseAIAdapter.class);
-    protected final ObjectMapper objectMapper = ObjectMapperFactory.getObjectMapper();
 
     /** Anthropic API version header value */
     protected static final String ANTHROPIC_VERSION = "2023-06-01";
 
     public AnthropicBaseAIAdapter(AIAdapterOption option) throws Exception {
         super(option);
+    }
+
+    /** Anthropic 鉴权走 x-api-key + anthropic-version，所有端点（含模型列表）一致 */
+    @Override
+    protected Map<String, String> protocolHeaders() {
+        return Map.of(
+                "Content-Type", "application/json",
+                "x-api-key", apiKey == null ? "" : apiKey,
+                "anthropic-version", ANTHROPIC_VERSION);
     }
 
     @Override
@@ -59,28 +61,6 @@ public abstract class AnthropicBaseAIAdapter extends AIAdapter {
     @Override
     public AIResponse convertToMaster(AIResponse response) {
         return null;
-    }
-
-    @Override
-    protected Stream<String> establishHttpClient(AIRequest request) throws Exception {
-        HttpRequest httpRequest = withCustomHeaders(HttpRequest.newBuilder()
-                .uri(URI.create(super.baseUrl))
-                .header("Content-Type", "application/json")
-                .header("x-api-key", super.apiKey)
-                .header("anthropic-version", ANTHROPIC_VERSION)
-                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request))))
-                .build();
-
-        HttpResponse<Stream<String>> response = super.httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
-        if (response.statusCode() != 200) {
-            try (Stream<String> bodyStream = response.body()) {
-                String errorMessage = bodyStream.collect(Collectors.joining("\n"));
-                log.info("Anthropic API error: {}", errorMessage);
-                throw new RuntimeException("Invalid status code: " + response.statusCode() + ", error: " + errorMessage);
-            }
-        } else {
-            return response.body();
-        }
     }
 
     @Override

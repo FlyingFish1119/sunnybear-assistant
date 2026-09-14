@@ -1,7 +1,6 @@
 package com.fishsunny.assistant.engine.adapter.responses;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
@@ -22,22 +21,16 @@ import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardT
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegisterFunction;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegisterParameter;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegisterProperty;
-import com.fishsunny.assistant.utils.ObjectMapperFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
-import java.net.URI;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * OpenAI Responses API（{@code POST /v1/responses}）适配器基类。
@@ -60,7 +53,6 @@ import java.util.stream.Stream;
 public abstract class ResponsesBaseAIAdapter extends AIAdapter {
 
     protected static final Logger log = LoggerFactory.getLogger(ResponsesBaseAIAdapter.class);
-    protected final ObjectMapper objectMapper = ObjectMapperFactory.getObjectMapper();
 
     /**
      * store=false 时思考内容不落服务端，靠这个 include 换取加密思考串（reasoning item 的
@@ -77,29 +69,6 @@ public abstract class ResponsesBaseAIAdapter extends AIAdapter {
 
     /** 本适配器是否走流式，决定请求体的 {@code stream} 字段 */
     protected abstract boolean streaming();
-
-    // ==================== 建连 ====================
-
-    @Override
-    protected Stream<String> establishHttpClient(AIRequest request) throws Exception {
-        HttpRequest httpRequest = withCustomHeaders(HttpRequest.newBuilder()
-                .uri(URI.create(super.baseUrl))
-                .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + super.apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request))))
-                .build();
-
-        HttpResponse<Stream<String>> response = super.httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
-        if (response.statusCode() != 200) {
-            try (Stream<String> bodyStream = response.body()) {
-                String errorMessage = bodyStream.collect(Collectors.joining("\n"));
-                log.info("Responses API error: {}", errorMessage);
-                throw new RuntimeException("Invalid status code: " + response.statusCode() + ", error: " + errorMessage);
-            }
-        } else {
-            return response.body();
-        }
-    }
 
     // ==================== 请求组装 ====================
 

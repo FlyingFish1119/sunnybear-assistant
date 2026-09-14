@@ -23,6 +23,9 @@ public class AIAdapterOption {
 
     protected String baseUrl;
 
+    /** 模型列表端点（可选），用于拉取可选模型名称 */
+    protected String modelUrl;
+
     protected String apiKey;
 
     /** 自定义请求头，建立连接时随请求带上；Content-Type/Authorization 等基础头由适配器自行添加 */

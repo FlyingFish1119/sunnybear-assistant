@@ -12,8 +12,11 @@ import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.adapter.AIAdapterProperties;
 import com.fishsunny.assistant.engine.adapter.AIAdapterRegister;
+import com.fishsunny.assistant.engine.adapter.ModelInfo;
 import com.fishsunny.assistant.engine.tts.TTSClient;
 import com.fishsunny.assistant.engine.tts.TTSSettings;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,9 +24,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.net.http.HttpClient;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
@@ -34,6 +39,12 @@ public class AIAdapterFactory {
 
     /** 流式适配器配方表 */
     private volatile Map<String, AIAdapterRegister> streamAdapterMap = new HashMap<>();
+
+    /** 模型列表缓存（Caffeine 自动过期）；配方热加载时整体作废 */
+    private final Cache<String, List<ModelInfo>> modelCache;
+
+    /** 模型列表缓存时长（分钟）；<=0 表示不缓存 */
+    private final long modelCacheTtlMinutes;
 
     private final HttpClient httpClient;
 
@@ -47,6 +58,11 @@ public class AIAdapterFactory {
         this.httpClient = httpClient;
         this.ttsClient = ttsClient;
         this.ttsSettings = ttsSettings;
+        this.modelCacheTtlMinutes = Math.max(0, properties.getModelCacheTtlMinutes());
+        this.modelCache = Caffeine.newBuilder()
+                .maximumSize(200)
+                .expireAfterWrite(Math.max(1, this.modelCacheTtlMinutes), TimeUnit.MINUTES)
+                .build();
         List<AIAdapterRegister> registers = properties.getRegister();
         if (CollectionUtils.isEmpty(registers)) {
             throw new IllegalStateException("No adapter registered. Please configure 'adapter-register.register' in application.yml");
@@ -89,11 +105,45 @@ public class AIAdapterFactory {
         }
         this.adapterMap = newAdapterMap;
         this.streamAdapterMap = newStreamAdapterMap;
+        // 配方变了，模型列表缓存（随 modelUrl）也一并作废
+        modelCache.invalidateAll();
         log.info("expected adapter count: {}, success adapter count: {}", registers.size(), successCount);
     }
 
     public AIAdapterRegister getRegister(String apiName, boolean stream) {
         return stream ? streamAdapterMap.get(apiName) : adapterMap.get(apiName);
+    }
+
+    /** 按 apiName 取配方，不限流式与否（优先非流式） */
+    public AIAdapterRegister getRegister(String apiName) {
+        AIAdapterRegister register = adapterMap.get(apiName);
+        return register != null ? register : streamAdapterMap.get(apiName);
+    }
+
+    /**
+     * 拉取指定适配器的可选模型列表。未配置 modelUrl 时返回空列表（前端回退到手填）。
+     * 结果按 apiName 经 Caffeine 缓存（modelCacheTtlMinutes 内复用），配方热加载时整体作废。
+     * 模型列表与流式与否无关，复用任意一条配方制造适配器即可。
+     */
+    public List<ModelInfo> listModels(String apiName) throws Exception {
+        AIAdapterRegister register = getRegister(apiName);
+        if (register == null) {
+            throw new IllegalArgumentException("未知的适配器: " + apiName);
+        }
+        if (!StringUtils.hasText(register.getModelUrl())) {
+            return List.of();
+        }
+        if (modelCacheTtlMinutes > 0) {
+            List<ModelInfo> cached = modelCache.getIfPresent(apiName);
+            if (cached != null) {
+                return cached;
+            }
+        }
+        List<ModelInfo> models = getAdapter(apiName, !adapterMap.containsKey(apiName)).listModels();
+        if (modelCacheTtlMinutes > 0) {
+            modelCache.put(apiName, models);
+        }
+        return models;
     }
 
     /**
@@ -114,6 +164,7 @@ public class AIAdapterFactory {
 
         AIAdapterOption option = new AIAdapterOption()
                 .setBaseUrl(register.getBaseUrl())
+                .setModelUrl(register.getModelUrl())
                 .setApiKey(register.getApiKey())
                 .setHeaders(register.getHeaders())
                 .setMasterReqCls(register.getMasterReqCls())

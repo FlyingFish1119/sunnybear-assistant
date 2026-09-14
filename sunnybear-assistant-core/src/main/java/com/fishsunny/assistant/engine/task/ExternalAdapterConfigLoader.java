@@ -48,6 +48,7 @@ public class ExternalAdapterConfigLoader {
             AIAdapterRegister register = new AIAdapterRegister()
                     .setApiName(text(node, "apiName"))
                     .setBaseUrl(resolve(text(node, "baseUrl")))
+                    .setModelUrl(resolve(text(node, "modelUrl")))
                     .setApiKey(resolve(text(node, "apiKey")))
                     .setHeaders(headers(node))
                     .setStream(node.has("stream") ? node.get("stream").asBoolean() : null)
