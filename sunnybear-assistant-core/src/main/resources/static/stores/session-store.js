@@ -33,6 +33,7 @@ const SessionStore = (function () {
         renderMermaid: function () {},
         knowledgeFlash: function () {},
         enqueueTts: function () {},
+        playMessageAudio: function () {},
         clearTts: function () {},
         isTtsEnabled: function () { return false; },
         clearMdCache: function () {},
@@ -91,6 +92,19 @@ const SessionStore = (function () {
         state.sending = true;
         ui.clearTts();
         return true;
+    }
+
+    /** 组装带当前 sessionId / 朗读开关的聊天请求并发送（replace / edit 等复用） */
+    function sendChatRequest(extra) {
+        const ws = WsBus.getSocket();
+        if (!ws) {
+            console.error('WebSocket 未连接，请求发送失败');
+            return;
+        }
+        ws.send(JSON.stringify(Object.assign({
+            sessionId: currentSessionId(),
+            tts: ui.isTtsEnabled()
+        }, extra)));
     }
 
     /** 取数组最后一项（保持与旧 Utils.getLast 一致） */
@@ -255,6 +269,37 @@ const SessionStore = (function () {
             if (!sessionId || !state.streamingMap[sessionId]) return;
             ui.clearTts();
             API.chat.stop(sessionId).catch(err => console.error('中止请求发送失败:', err));
+        },
+
+        /**
+         * 重新生成助手回复（replace 模式）：按被替换消息重新发起对话。
+         * @param {string} replaceMessageId 被替换的助手消息 id
+         * @param {string} content 父用户消息的文本（重发的输入）
+         */
+        replaceBranch(replaceMessageId, content) {
+            sendChatRequest({
+                mode: 'replace',
+                replaceMessageId: replaceMessageId,
+                content: content
+            });
+        },
+
+        /**
+         * 编辑用户消息（edit 模式）：删除旧分支后按新内容重发。
+         * @param {string} editMessageId 被编辑的用户消息 id
+         * @param {string} content 编辑后的文本
+         */
+        editMessage(editMessageId, content) {
+            sendChatRequest({
+                mode: 'edit',
+                editMessageId: editMessageId,
+                content: content
+            });
+        },
+
+        /** 重播某条消息的整轮音频（委托发送区播放） */
+        playMessageAudio(msg) {
+            ui.playMessageAudio(msg);
         },
 
         /* ================= 消息操作 ================= */
