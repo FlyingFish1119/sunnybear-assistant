@@ -19,12 +19,18 @@
  *   // 主组件兜底处理所有未被精确订阅的帧（原 handleStreamChunk 的剩余逻辑）
  *   WsBus.on('*', rawData => this.handleStreamChunk(rawData));
  *
+ *   // 组件间本地事件（不走 socket，用于兄弟组件解耦通信）
+ *   WsBus.on('agent-log:toggle', () => this.toggle());
+ *   WsBus.emit('agent-log:toggle');
+ *
  * 路由规则：
  *   - 帧格式 `###SIGNAL###payload`：先找 SIGNAL 的精确订阅者；有则只交给它们；
  *     没有则交给 '*' 订阅者。
  *   - 其它帧（JSON、':' 心跳等）：直接交给 '*' 订阅者。
  *   - 精确订阅者可接收多个订阅者，按注册顺序依次调用。
  *   - '*' 兜底订阅者：仅在没有对应 SIGNAL 精确订阅者时调用。
+ *   - emit(type, payload)：仅调用该 type 的精确订阅者（不走 '*' 兜底），
+ *     用于组件间本地事件，与 WS 信号共用同一订阅表。
  *
  * 注意：本对象是单例（模块级唯一实例），通过 app.provide('wsBus', WsBus) 注入后代组件。
  */
@@ -132,6 +138,25 @@ const WsBus = (function () {
                     arr.splice(idx, 1);
                 }
             };
+        },
+
+        /**
+         * 触发本地事件（不经过 socket）：仅调用该 type 的精确订阅者。
+         * @param {string} type — 事件名
+         * @param {*} payload — 任意负载
+         */
+        emit(type, payload) {
+            const arr = handlers[type];
+            if (!arr || arr.length === 0) {
+                return;
+            }
+            for (const fn of arr.slice()) {
+                try {
+                    fn(payload);
+                } catch (e) {
+                    console.error('WsBus.emit 订阅者处理出错 [' + type + ']:', e);
+                }
+            }
         }
     };
 })();

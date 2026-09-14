@@ -72,9 +72,6 @@
     <chat-sidebar ref="sidebar"
         :main-color="mainColor"
         :collapsed="sidebarCollapsed"
-        @select-session="selectSession"
-        @create-session="createSession"
-        @on-delete-session="onDeleteSession"
         @toggle-collapsed="sidebarCollapsed = !sidebarCollapsed"
     ></chat-sidebar>
     <div class="message-area-wrapper" :class="{ 'expanded': sidebarCollapsed }">
@@ -87,13 +84,10 @@
         </div>
         <div class="message-area-background" :style="backgroundStyle"></div>
         <message-topbar
-            ref="topbar"
             :main-color="mainColor"
             :display-model="displayModel"
             :ws-url="wsUrl"
-            :agent-log-visible="agentLogVisible"
             @toggle-sidebar="toggleSidebar"
-            @toggle-agent-log="toggleAgentLog"
             @connected="onWsConnect"
             @disconnected="onWsDisconnect"
         ></message-topbar>
@@ -102,17 +96,10 @@
             :user-settings="userSettings"
             :assistant-settings="assistantSettings"
         ></message-area>
-        <agent-log-sidebar
-            ref="agentLogSidebar"
-            :logs="agentLogs"
-            :visible="agentLogVisible"
-            :main-color="mainColor"
-            @toggle="agentLogVisible = !agentLogVisible">
-        </agent-log-sidebar>
+        <agent-log-sidebar :main-color="mainColor"></agent-log-sidebar>
         <send-area
             ref="sendArea"
             :main-color="mainColor"
-            :get-sessions="getSidebarSessions"
             v-model:input-text="inputText"
             @drag-over-change="isChange => dragOver = isChange"
         ></send-area>
@@ -129,7 +116,6 @@
                 // 标记 app 是否已完成加载并可见，避免在 #app display:none 期间
                 // 设置 background-image 导致浏览器跳过图片请求
                 loaded: false,
-                ws: null,
                 chatModel: null,
                 chatProModel: null,
 
@@ -140,9 +126,6 @@
                 sidebarCollapsed: false,
                 // 拖拽上传悬停状态（由发送区组件上抛，控制消息区遮罩）
                 dragOver: false,
-                // Agent Log 侧边框
-                agentLogs: [],
-                agentLogVisible: false,
             }
         },
 
@@ -218,15 +201,6 @@
              */
             $api(path) {
                 return API.BASE_PATH + path;
-            },
-
-            /**
-             * 惰性读取侧边栏会话列表（供发送区 /look 指令二级面板）。
-             * 传函数而非快照，确保读取时拿到的是侧边栏的最新数据。
-             * @returns {Array} 会话对象数组
-             */
-            getSidebarSessions() {
-                return this.$refs.sidebar ? (this.$refs.sidebar.sessions || []) : [];
             },
 
             inLoading() {
@@ -313,48 +287,15 @@
                 }
             },
 
-            /**
-             * 知识库命中：顶部栏闪现图标
-             */
-            showKnowledgeFlash() {
-                if (this.$refs.topbar) {
-                    this.$refs.topbar.flashKnowledge();
-                }
-            },
-
-            /* ================= 会话操作（委托 SessionStore） ================= */
-
-            selectSession(session) {
-                return this.sessionStore.selectSession(session);
-            },
-
-            createSession() {
-                this.sessionStore.createSession();
-            },
-
-            onDeleteSession(session) {
-                this.sessionStore.onDeleteSession(session);
-            },
-
             onWsConnect(ws) {
-                this.ws = ws;
-                // 交给消息总线接管 onmessage：组件订阅各自关心的信号，其余帧走 '*' 兜底到 handleStreamChunk
+                // 交给消息总线接管 onmessage：各组件 / store 已自行订阅关心的信号与兜底
                 WsBus.setSocket(ws);
-                // 兜底订阅只需注册一次
-                if (!this._wsBusFallbackOff) {
-                    this._wsBusFallbackOff = WsBus.on('*', (raw) => this.handleStreamChunk({ data: raw }));
-                }
-                if (this.currentSessionId) {
-                    // 断线重连：清空全部流式标记并清掉残留占位（轮次可能已结束、缓冲已清空）。
-                    // 若轮次仍在进行，###REPLAY_MESSAGE### 重放会重建并重新置 true
-                    this.sessionStore.resetStreamingOnReconnect();
-                    this.ws.send("###REQUIRE_REPLAY_MESSAGE###" + this.currentSessionId);
-                }
+                // 断线重连：清空全部流式标记并清掉残留占位，请求当前会话总线续传
+                this.sessionStore.onSocketConnected();
             },
 
             onWsDisconnect() {
                 this.sessionStore.clearSending();
-                this.ws = null;
                 WsBus.clearSocket();
             },
 
@@ -369,124 +310,6 @@
             clearTtsQueue() {
                 if (this.$refs.sendArea) {
                     this.$refs.sendArea.clearTtsQueue();
-                }
-            },
-
-            /**
-             * 处理服务端流式推送的每一个 chunk（未被 WsBus 精确订阅的帧统一走这里）
-             * 通过 sessionId 匹配到对应 session 的消息列表后进行处理
-             */
-            async handleStreamChunk(event) {
-                if (event.data.startsWith(':')) {
-                    return;
-                }
-                if (event.data.startsWith("###REPLAY_MESSAGE###")) {
-                    let sessionId = event.data.split('###REPLAY_MESSAGE###')[1];
-                    this.sessionStore.handleReplay(sessionId);
-                    return;
-                }
-                if (event.data.startsWith('###START###')) {
-                    let sessionId = event.data.split('###START###')[1];
-                    this.sessionStore.handleStart(sessionId);
-                    return;
-                }
-                if (event.data.startsWith('###REPLACE###')) {
-                    let messageId = event.data.split('###REPLACE###')[1];
-                    this.sessionStore.handleReplace(messageId);
-                    return;
-                }
-                // ###TOOL_ASK### / ###TOOL_QUESTION### 由 tool-confirm / tool-question 组件
-                // 自行订阅 WsBus 处理，不再由本兜底分发
-                if (event.data.startsWith('###AGENT_LOG###')) {
-                    let entry = JSON.parse(event.data.split('###AGENT_LOG###')[1]);
-                    // 只记录当前会话的日志
-                    if (entry.sessionId === this.currentSessionId) {
-                        this.agentLogs.push(entry);
-                    }
-                    return;
-                }
-                if (event.data.startsWith('###END###')) {
-                    let sessionId = event.data.split('###END###')[1];
-                    this.sessionStore.handleEnd(sessionId);
-                    return;
-                }
-                if (event.data.startsWith('###UPDATE_SESSION###')) {
-                    let sessionJson = event.data.split('###UPDATE_SESSION###')[1];
-                    console.log('update session', sessionJson)
-                    let session = JSON.parse(sessionJson);
-                    this.sessionStore.upsertSession(session);
-                    return;
-                }
-                if (event.data.startsWith('###KNOWLEDGE_HIT###')) {
-                    // 知识库内容被自动注入到提示词，顶部栏闪现图标提示
-                    this.showKnowledgeFlash();
-                    return;
-                }
-                if (event.data.startsWith('###TOOL_CALL_FINISH###')) {
-                    let sessionId = event.data.split('###TOOL_CALL_FINISH###')[1];
-                    this.sessionStore.handleToolCallFinish(sessionId);
-                    return;
-                }
-                if (event.data.startsWith('###TTS_AUDIO###')) {
-                    // TTS 逐句音频帧：{sessionId, audio(mp3 base64)}
-                    let ttsFrame;
-                    try {
-                        ttsFrame = JSON.parse(event.data.substring('###TTS_AUDIO###'.length));
-                    } catch (e) {
-                        return;
-                    }
-                    this.sessionStore.handleTtsAudio(ttsFrame);
-                    return;
-                }
-                if (event.data.startsWith('###')) {
-                    console.warn("未知的信号:" + event.data);
-                    return;
-                }
-
-                let response = JSON.parse(event.data);
-                let streamingMessage = this.sessionStore.findStreamingMessage(response.sessionId);
-
-                switch (response.status) {
-                    case 'init_user': {
-                        console.log('init_user', response)
-                        await this.sessionStore.handleInitUser(response);
-                        break;
-                    }
-                    case 'tool_execution': {
-                        // 工具开始执行：插入黄色"执行中"占位消息，工具结果到达后按工具名替换
-                        this.sessionStore.handleToolExecution(response);
-                        break;
-                    }
-                    case 'tool_response': {
-                        // 单个工具执行完成 → 用真实结果替换同名"执行中"占位
-                        this.sessionStore.handleToolResponse(response);
-                        break;
-                    }
-                    case 'init_tool': {
-                        // 工具消息已落库，携带真实 DB id：校准占位/结果消息的假 id
-                        this.sessionStore.handleInitTool(response);
-                        break;
-                    }
-                    case 'done':
-                    case 'chunk': {
-                        if (!streamingMessage) {
-                            console.warn('未找到对应的 streamingMessage, sessionId:', response.sessionId);
-                            return;
-                        }
-                        this.sessionStore.appendChunk(streamingMessage, response);
-                        // 流式传输中自动跟随滚动
-                        this.scrollToBottom();
-                        break
-                    }
-                    case "init_assistant": {
-                        this.sessionStore.handleInitAssistant(streamingMessage, response);
-                        break;
-                    }
-                    case "error": {
-                        console.error('AI 对话错误:', response);
-                        const errText = this.sessionStore.handleError(response);
-                        ElementPlus.ElMessage.error(errText);
-                    }
                 }
             },
 
@@ -524,13 +347,6 @@
             },
 
             /**
-             * 切换 Agent Log 浮窗
-             */
-            toggleAgentLog() {
-                this.agentLogVisible = !this.agentLogVisible;
-            },
-
-            /**
              * 使用 requestAnimationFrame 合并图标刷新，避免流式传输时频繁全量扫描 DOM
              */
             _scheduleIconRefresh() {
@@ -546,21 +362,17 @@
 
         mounted() {
             lucide.createIcons();
-            // 注册 SessionStore 的 UI 副作用钩子（DOM / TTS / 侧边栏），数据与 UI 解耦
+            // 注册 SessionStore 的 UI 副作用钩子（DOM / TTS），数据与 UI 解耦
             this.sessionStore.registerUi({
                 scrollToBottom: (force) => this.scrollToBottom(force),
                 renderMermaid: () => MermaidUtils.renderAll(),
-                knowledgeFlash: () => this.showKnowledgeFlash(),
                 clearTts: () => this.clearTtsQueue(),
                 enqueueTts: (audio) => { if (this.$refs.sendArea) this.$refs.sendArea.enqueueTtsAudio(audio); },
                 playMessageAudio: (msg) => { if (this.$refs.sendArea) this.$refs.sendArea.playMessageAudio(msg); },
                 isTtsEnabled: () => this.currentTtsEnabled(),
                 clearMdCache: () => this.$md.clearCache(),
                 closeSidebar: () => this.closeSidebar(),
-                refreshSidebar: () => this.$refs.sidebar ? this.$refs.sidebar.refresh() : Promise.resolve(),
-                getSessionRef: (session) => this.$refs.sidebar ? this.$refs.sidebar.get(session) : session,
-                clearSendArea: () => { if (this.$refs.sendArea) this.$refs.sendArea.clear(); },
-                clearAgentLogs: () => { this.agentLogs = []; }
+                clearSendArea: () => { if (this.$refs.sendArea) this.$refs.sendArea.clear(); }
             });
             this.init();
         },

@@ -4,26 +4,27 @@
  * 展示：菜单（侧边栏开关）、模型名、会话名（可双击编辑）、待确认工具/提问入口、
  *       知识库命中闪现、连接状态指示器、Agent Log 开关。
  *
- * 组件自包含连接指示器（内部建立 WebSocket 并通过事件上抛），知识命中闪现由
- * 父组件在收到 ###KNOWLEDGE_HIT### 时通过 ref 调用 flashKnowledge()。
+ * 组件自包含连接指示器（内部建立 WebSocket 并通过事件上抛），并自行通过 WsBus
+ * 订阅 ###KNOWLEDGE_HIT### 信号触发知识命中闪现。
  *
  * 工具确认 / 结构化提问弹窗也内聚在本组件内（与展开入口同处），组件自行通过
  * ref 调用其 expand()，并监听 pending-change 维护入口角标数量。
+ *
+ * Agent Log 按钮通过 WsBus 本地事件与 agent-log-sidebar 解耦：
+ * 点击时 emit 'agent-log:toggle'，并订阅 'agent-log:visibility' 回显按钮高亮。
  *
  * Props:
  *   mainColor             — String   主题色
  *   displayModel          — String   当前模型展示文本
  *   wsUrl                 — String   WebSocket 地址
- *   agentLogVisible       — Boolean  Agent Log 是否展开
  *
  * Emits:
  *   toggle-sidebar         — 点击菜单按钮
- *   toggle-agent-log       — 点击 Agent Log 按钮
  *   connected(ws)          — WebSocket 连接建立
  *   disconnected()         — WebSocket 连接断开
  *
- * 公开方法（通过 ref 调用）：
- *   flashKnowledge()       — 闪现知识库命中图标，5 秒后自动消失
+ * 依赖注入（可选）：
+ *   wsBus                  — WebSocket 消息总线
  */
 const MessageTopbar = {
     name: 'MessageTopbar',
@@ -64,7 +65,7 @@ const MessageTopbar = {
                 @connected="ws => $emit('connected', ws)"
                 @disconnected="$emit('disconnected')">
             </connection-indicator>
-            <button class="sidebar-toggle-btn" @click="$emit('toggle-agent-log')"
+            <button class="sidebar-toggle-btn" @click="toggleAgentLog"
                     :title="agentLogVisible ? '折叠 Agent Log' : '展开 Agent Log'"
                     :style="agentLogVisible ? {color: mainColor} : {}">
                 <i data-lucide="terminal" style="width: 18px; height: 18px;"></i>
@@ -83,20 +84,25 @@ const MessageTopbar = {
     props: {
         mainColor:      { type: String,  default: 'lightsalmon' },
         displayModel:   { type: String,  default: '' },
-        wsUrl:          { type: String,  default: '' },
-        agentLogVisible:{ type: Boolean, default: false }
+        wsUrl:          { type: String,  default: '' }
     },
 
     emits: [
         'toggle-sidebar',
-        'toggle-agent-log',
         'connected',
         'disconnected'
     ],
 
+    inject: {
+        // 可选注入：插件页未提供 wsBus 时降级（按钮仅作占位）
+        wsBus: { default: null }
+    },
+
     data: function () {
         return {
             knowledgeFlashVisible: false,
+            // Agent Log 展开态（由 sidebar 通过 'agent-log:visibility' 回显）
+            agentLogVisible: false,
             // 顶部入口角标：待确认工具请求数 / 待回答提问数（由内聚的弹窗组件上报）
             pendingToolCount: 0,
             pendingQuestionCount: 0
@@ -106,7 +112,7 @@ const MessageTopbar = {
     methods: {
         /**
          * 知识库命中：闪现图标，约 5 秒后自动消失（与 CSS 动画时长一致）。
-         * 由父组件在收到 ###KNOWLEDGE_HIT### 时通过 ref 调用。
+         * 由组件自行订阅 ###KNOWLEDGE_HIT### 信号触发（见 mounted）。
          */
         flashKnowledge: function () {
             this.knowledgeFlashVisible = true;
@@ -114,11 +120,36 @@ const MessageTopbar = {
             this._knowledgeFlashTimer = setTimeout(function () {
                 this.knowledgeFlashVisible = false;
             }.bind(this), 5000);
+        },
+
+        /** 切换 Agent Log：通过本地事件通知 agent-log-sidebar */
+        toggleAgentLog: function () {
+            if (this.wsBus) {
+                this.wsBus.emit('agent-log:toggle');
+            }
+        }
+    },
+
+    mounted: function () {
+        if (this.wsBus) {
+            this._unsubAgentLogVisibility = this.wsBus.on('agent-log:visibility', (val) => {
+                this.agentLogVisible = !!val;
+            });
+            // 自行订阅知识库命中信号（原由父组件兜底分发后经 ref 调用）
+            this._unsubKnowledgeHit = this.wsBus.on('KNOWLEDGE_HIT', () => this.flashKnowledge());
         }
     },
 
     beforeUnmount: function () {
         clearTimeout(this._knowledgeFlashTimer);
+        if (this._unsubAgentLogVisibility) {
+            this._unsubAgentLogVisibility();
+            this._unsubAgentLogVisibility = null;
+        }
+        if (this._unsubKnowledgeHit) {
+            this._unsubKnowledgeHit();
+            this._unsubKnowledgeHit = null;
+        }
     },
 
     updated: function () {

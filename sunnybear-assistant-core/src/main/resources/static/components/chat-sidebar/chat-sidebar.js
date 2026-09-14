@@ -1,46 +1,23 @@
 /**
  * 聊天页侧边栏组件（会话列表 + 右键菜单 + 桌面折叠 / 移动端抽屉）
  *
- * 组件内部持有 sessions[] 作为唯一数据源，父组件通过 ref 调用 refresh()/upsert() 同步数据。
+ * 纯视图：会话列表与分页状态统一由 SessionStore 持有，本组件只负责渲染与交互，
+ * 数据操作（刷新/翻页/增删/Pro/无审查）一律调用 store 方法。
  *
  * Props:
  *   mainColor         — String   主题色
  *   collapsed         — Boolean  桌面端侧边栏是否折叠
  *
  * Injects:
- *   sessionStore      — 会话/消息仓库（可选）；当前会话高亮与 Pro/无审查同步取自其 currentSession
+ *   sessionStore      — 会话/消息仓库（可选，插件页降级）
  *
  * Emits:
- *   select-session(session)     — 点击会话
- *   create-session()            — 点击"新对话"
- *   session-deleted(sessionId)  — 会话已被删除（组件已从内部数组移除）
- *   toggle-collapsed()          — 桌面端折叠 / 移动端滑出
+ *   toggle-collapsed()  — 桌面端折叠 / 移动端滑出
  *
  * 公开方法（通过 ref 调用）：
  *   toggle()               — 切换侧边栏（桌面折叠 or 移动抽屉）
  *   close()                — 关闭移动端抽屉
- *   refresh()              — 重新从服务端拉取 sessions
- *   upsert(session)        — 新增或更新一个会话条目
- *   getSessionById(id)     — 按 id 查找会话对象（返回引用）
  */
-
-/** 会话列表每页条数（与后端 /session/get/page 的 size 默认一致） */
-const SESSION_PAGE_SIZE = 50;
-
-/**
- * 会话按 (update_time, id) 降序比较 —— 与后端 /session/get/page 的排序一致。
- * update_time 为 "yyyy-MM-dd HH:mm:ss" 文本，字典序即时间序；id 仅作同秒内的稳定平局裁决。
- */
-function compareSessionDesc(a, b) {
-    const at = a.updateTime || '';
-    const bt = b.updateTime || '';
-    if (at !== bt) return at < bt ? 1 : -1;
-    const ai = a.id || '';
-    const bi = b.id || '';
-    if (ai === bi) return 0;
-    return ai < bi ? 1 : -1;
-}
-
 const ChatSidebar = {
     name: 'ChatSidebar',
 
@@ -52,7 +29,7 @@ const ChatSidebar = {
                    class="sidebar-new-chat-button"
                    :color="mainColor"
                    plain
-                   @click="$emit('create-session')">
+                   @click="createSession">
             <i data-lucide="square-plus"></i>
             <span style="margin-left: 10px">新对话</span>
         </el-button>
@@ -64,11 +41,11 @@ const ChatSidebar = {
                  :key="session.id"
                  :class="{ pro: session.enablePro, unreviewed: session.unreviewed }"
                  :style="currentSession.id === session.id ? {backgroundColor: 'white', borderRadius: '10px', padding: '5px 5px 15px 5px',  borderBottomColor: 'white'} : {}"
-                 @click="$emit('select-session', session)"
+                 @click="selectSession(session)"
                  @contextmenu.prevent="showContextMenu($event, session)">
                 {{ session.name }}
             </div>
-            <div v-if="loadingMore"
+            <div v-if="sessionsLoadingMore"
                  style="color:rgba(255,255,255,.75);font-size:13px;padding:6px 0 16px;">加载中…</div>
         </div>
         <!-- 右键上下文菜单 -->
@@ -164,23 +141,15 @@ const ChatSidebar = {
         collapsed: { type: Boolean, default: false }
     },
 
-    emits: ['select-session', 'create-session', 'on-delete-session', 'change-session-loading', 'toggle-collapsed'],
+    emits: ['toggle-collapsed'],
 
     inject: {
-        // 可选注入：插件页未提供 sessionStore 时降级为 null（仍可独立工作）
+        // 可选注入：插件页未提供 sessionStore 时降级为 null
         sessionStore: { default: null }
     },
 
     data: function () {
         return {
-            /** 会话列表（组件内部唯一数据源：已加载的子集，始终按 update_time 降序） */
-            sessions: [],
-            /** 触底加载更早一页是否进行中 */
-            loadingMore: false,
-            /** 是否还有更早的会话可加载（触底翻页后由服务端 hasMore 更新） */
-            hasMore: true,
-            /** 当前列表模式：chat / cron */
-            listMode: 'chat',
             sidebarOpen: false,
             contextMenu: {
                 visible: false,
@@ -197,7 +166,10 @@ const ChatSidebar = {
     },
 
     mounted: function () {
-        this.refresh();
+        var self = this;
+        if (this.sessionStore) {
+            this.sessionStore.refreshSessions().finally(function () { self.ensureScrollable(); });
+        }
     },
 
     methods: {
@@ -228,69 +200,26 @@ const ChatSidebar = {
             window.location.href = API.BASE_PATH + 'settings.html';
         },
 
-        /**
-         * 刷新会话列表（根据当前 listMode）：拉最新一页用于纠正顶部排序 / 补入新会话，
-         * 并保留此前已加载的更早记录，避免打断正在滚动查看的历史。
-         * 由父组件在 WebSocket 事件（###START###）时通过 ref 调用。
-         */
-        refresh: async function () {
-            try {
-                const result = await API.session.page(this.listMode, SESSION_PAGE_SIZE);
-                if (result.status === 200 && result.data) {
-                    const top = result.data.list || [];
-                    const hasMoreTop = !!result.data.hasMore;
-                    // 已在内存、但不在最新一页里的旧记录 = 用户翻到的更早历史，原样保留
-                    const topIds = new Set(top.map(function (s) { return s.id; }));
-                    const tail = this.sessions.filter(function (s) { return !topIds.has(s.id); });
-                    this.sessions = top.concat(tail).sort(compareSessionDesc);
-                    if (hasMoreTop) {
-                        this.hasMore = true;
-                    } else if (tail.length === 0) {
-                        // 首页不满一页且无旧尾部 → 已全部加载完
-                        this.hasMore = false;
-                    }
-                    // hasMoreTop=false 但保留了旧尾部：曾加载过更早记录（多为已翻到底），保持原 hasMore 即可
-                }
-            } catch (error) {
-                console.error('获取会话列表失败:', error);
-            }
-            this.ensureScrollable();
+        /** 点击会话：切换当前会话（委托 store） */
+        selectSession: function (session) {
+            if (this.sessionStore) this.sessionStore.selectSession(session);
         },
 
-        /**
-         * 切换列表模式：chat ↔ cron（清空列表并重置分页状态）
-         */
+        /** 点击"新对话"（委托 store） */
+        createSession: function () {
+            if (this.sessionStore) this.sessionStore.createSession();
+        },
+
+        /** 切换列表模式：chat ↔ cron（委托 store） */
         toggleListMode: function () {
-            this.listMode = this.listMode === 'chat' ? 'cron' : 'chat';
-            this.sessions = [];
-            this.hasMore = true;
-            this.refresh();
+            if (this.sessionStore) this.sessionStore.toggleSessionListMode();
         },
 
-        /**
-         * 触底加载更早一页（由 v-infinite-scroll 指令触发）：
-         * 以当前最旧一条的 (update_time, id) 作 keyset 游标请求服务端，天然不重不漏、不受排序漂移影响。
-         */
-        loadMore: async function () {
-            if (this.loadingMore || !this.hasMore || this.sessions.length === 0) return;
-            const last = this.sessions[this.sessions.length - 1];
-            if (!last || !last.id || !last.updateTime) return;
-            this.loadingMore = true;
-            try {
-                const result = await API.session.page(this.listMode, SESSION_PAGE_SIZE, last.updateTime, last.id);
-                if (result.status === 200 && result.data) {
-                    const list = result.data.list || [];
-                    const existingIds = new Set(this.sessions.map(function (s) { return s.id; }));
-                    const fresh = list.filter(function (s) { return !existingIds.has(s.id); });
-                    this.sessions = this.sessions.concat(fresh).sort(compareSessionDesc);
-                    this.hasMore = !!result.data.hasMore;
-                }
-            } catch (error) {
-                console.error('加载更多会话失败:', error);
-            } finally {
-                this.loadingMore = false;
-            }
-            this.ensureScrollable();
+        /** 触底加载更早一页（由 v-infinite-scroll 指令触发，委托 store） */
+        loadMore: function () {
+            // 返回 Promise 以便指令在请求期间上锁，避免重复触发
+            if (!this.sessionStore) return Promise.resolve();
+            return this.sessionStore.loadMoreSessions();
         },
 
         /**
@@ -298,47 +227,15 @@ const ChatSidebar = {
          */
         ensureScrollable: function () {
             const self = this;
-            if (!self.hasMore || self.loadingMore) return;
+            if (!this.sessionsHasMore || this.sessionsLoadingMore) return;
             this.$nextTick(function () {
                 const el = self.$refs.sessionList;
                 // 容器不可见/无高度（折叠、抽屉收起）时不自动补页
-                if (!el || !el.clientHeight || self.loadingMore || !self.hasMore) return;
+                if (!el || !el.clientHeight || self.sessionsLoadingMore || !self.sessionsHasMore) return;
                 if (el.scrollHeight - el.clientHeight < 24) {
                     self.loadMore();
                 }
             });
-        },
-
-        /**
-         * 新增或更新一个会话条目。
-         * 由父组件在收到 ###UPDATE_SESSION### 时通过 ref 调用。
-         * 更新后按 (update_time, id) 重排（会话被新消息顶到最前时位置随之移动）。
-         * @param {object} session — { id, name, ... }
-         * @returns {object} 内部数组中的会话对象引用
-         */
-        upsert: function (session) {
-            const existing = this.sessions.find(function (s) { return s.id === session.id; });
-            if (existing) {
-                Object.assign(existing, session);
-            } else {
-                this.sessions.push(session);
-            }
-            this.sessions.sort(compareSessionDesc);
-            return existing || session;
-        },
-
-        get: function (session) {
-            if (!session) return session;
-            return this.upsert(session);
-        },
-
-        /**
-         * 按 id 查找会话对象。
-         * @param {string} id
-         * @returns {object|undefined} 会话对象引用
-         */
-        getSessionById: function (id) {
-            return this.sessions.find(function (s) { return s.id === id; });
         },
 
         /* ---- 内部方法 ---- */
@@ -365,7 +262,7 @@ const ChatSidebar = {
         },
 
         /**
-         * 删除会话：弹出确认框 → 调用接口 → 从内部数组移除 → 通知父组件
+         * 删除会话：弹出确认框 → 委托 store 调接口并从列表移除
          */
         deleteSession: function (session) {
             var self = this;
@@ -376,24 +273,8 @@ const ChatSidebar = {
                 confirmText: '删除',
                 cancelText: '取消',
                 type: 'warning'
-            }).then(async function () {
-                try {
-                    let result = await API.session.delete(session.id);
-                    if (result.status === 200) {
-                        ElementPlus.ElMessage.success('会话已删除');
-                        // 从内部数组移除
-                        var idx = self.sessions.findIndex(function (s) { return s.id === session.id; });
-                        if (idx !== -1) {
-                            self.sessions.splice(idx, 1);
-                        }
-                        self.$emit('on-delete-session', session);
-                    } else {
-                        ElementPlus.ElMessage.error(result.message || '删除会话失败');
-                    }
-                } catch (error) {
-                    ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
-                    console.error('删除会话失败:', error);
-                }
+            }).then(function () {
+                if (self.sessionStore) self.sessionStore.deleteSession(session);
             }).catch(function () { /* 用户取消 */ });
         },
 
@@ -452,30 +333,11 @@ const ChatSidebar = {
         },
 
         /**
-         * 切换会话的 Pro 模式（普通 ↔ 高级），直接切换无需确认
+         * 切换会话的 Pro 模式（普通 ↔ 高级），直接切换无需确认（委托 store）
          */
-        toggleProMode: async function (session) {
-            var self = this;
-            self.closeContextMenu();
-            try {
-                var result = await API.session.togglePro(session.id);
-                if (result.status === 200) {
-                    // 更新内部数组中的会话对象
-                    var target = self.sessions.find(function (s) { return s.id === session.id; });
-                    if (target) {
-                        Object.assign(target, result.data);
-                    }
-                    // 同步更新 currentSession
-                    if (self.currentSession && self.currentSession.id === session.id) {
-                        if (self.sessionStore) Object.assign(self.sessionStore.state.currentSession, result.data);
-                    }
-                } else {
-                    ElementPlus.ElMessage.error(result.message || '切换模式失败');
-                }
-            } catch (error) {
-                ElementPlus.ElMessage.error('网络请求失败');
-                console.error('切换模式失败:', error);
-            }
+        toggleProMode: function (session) {
+            this.closeContextMenu();
+            if (this.sessionStore) this.sessionStore.toggleSessionPro(session);
         },
 
         /**
@@ -485,32 +347,11 @@ const ChatSidebar = {
         toggleUnreviewed: function (session) {
             var self = this;
             self.closeContextMenu();
+            if (!self.sessionStore) return;
             var enabling = !session.unreviewed;
-            var doToggle = async function () {
-                try {
-                    var result = await API.session.toggleUnreviewed(session.id);
-                    if (result.status === 200) {
-                        // 更新内部数组中的会话对象
-                        var target = self.sessions.find(function (s) { return s.id === session.id; });
-                        if (target) {
-                            Object.assign(target, result.data);
-                        }
-                        // 同步更新 currentSession
-                        if (self.currentSession && self.currentSession.id === session.id) {
-                            if (self.sessionStore) Object.assign(self.sessionStore.state.currentSession, result.data);
-                        }
-                        ElementPlus.ElMessage.success(enabling ? '已开启无审查模式' : '已关闭无审查模式');
-                    } else {
-                        ElementPlus.ElMessage.error(result.message || '切换无审查模式失败');
-                    }
-                } catch (error) {
-                    ElementPlus.ElMessage.error('网络请求失败');
-                    console.error('切换无审查模式失败:', error);
-                }
-            };
             if (!enabling) {
                 // 关闭无审查：直接切换
-                doToggle();
+                self.sessionStore.toggleSessionUnreviewed(session);
                 return;
             }
             // 开启无审查：先弹确认，防止误触
@@ -520,7 +361,9 @@ const ChatSidebar = {
                 confirmText: '开启',
                 cancelText: '取消',
                 type: 'warning'
-            }).then(doToggle).catch(function () { /* 用户取消 */ });
+            }).then(function () {
+                self.sessionStore.toggleSessionUnreviewed(session);
+            }).catch(function () { /* 用户取消 */ });
         },
 
         /**
@@ -595,12 +438,32 @@ const ChatSidebar = {
     },
 
     computed: {
+        // 以下均来自 SessionStore（未注入时降级为空/默认，保证插件页不报错）
+        sessions: function () {
+            return this.sessionStore ? this.sessionStore.sessions : [];
+        },
+        sessionsHasMore: function () {
+            return this.sessionStore ? this.sessionStore.sessionsHasMore : false;
+        },
+        sessionsLoadingMore: function () {
+            return this.sessionStore ? this.sessionStore.sessionsLoadingMore : false;
+        },
+        listMode: function () {
+            return this.sessionStore ? this.sessionStore.sessionListMode : 'chat';
+        },
         // 当前会话：优先取注入的 sessionStore，插件页无法注入时回退空对象
         currentSession: function () {
             return this.sessionStore ? this.sessionStore.state.currentSession : {};
         },
         isNewSession: function () {
             return this.currentSession && !this.currentSession.id;
+        }
+    },
+
+    watch: {
+        // 列表长度变化（刷新/翻页）后确保容器可滚动
+        'sessions.length': function () {
+            this.ensureScrollable();
         }
     },
 

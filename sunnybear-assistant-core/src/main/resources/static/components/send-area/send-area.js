@@ -24,11 +24,10 @@ const SLASH_COMMANDS = [
  *
  * Props:
  *   mainColor    — String   主题色
- *   getSessions  — Function 返回会话列表的函数（供 /look 指令二级面板，惰性读取避免快照过期）
  *   inputText    — String   v-model:inputText 输入框内容
  *
  * Injects:
- *   sessionStore — 会话/消息仓库（可选）；isStreaming / sending / sessionId 取自仓库
+ *   sessionStore — 会话/消息仓库（可选）；isStreaming / sending / sessionId / sessions 取自仓库
  *
  * Emits:
  *   update:inputText     — 输入框内容变化（v-model:input-text）
@@ -127,7 +126,6 @@ const SendArea = {
 
     props: {
         mainColor:   { type: String,   default: 'lightsalmon' },
-        getSessions: { type: Function, default: function () { return []; } },
         inputText:   { type: String,   default: '' }
     },
 
@@ -178,10 +176,11 @@ const SendArea = {
                 return c.name.startsWith(lower) || c.name.includes(lower);
             });
         },
-        // 二级选项（如会话列表）
+        // 二级选项（如会话列表，来自 SessionStore）
         subOptions: function () {
             if (this.commandSubMode === 'sessions') {
-                return this.getSessions().map(function (s) {
+                var sessions = this.sessionStore ? this.sessionStore.sessions : [];
+                return sessions.map(function (s) {
                     return { id: s.id, label: s.name || s.id, desc: '' };
                 });
             }
