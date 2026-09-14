@@ -90,6 +90,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_memory_create_time ON chat_memory(create_tim
 CREATE TABLE IF NOT EXISTS ai_greeting (
     id            TEXT PRIMARY KEY,
     text          TEXT NOT NULL,
+    suggestions   TEXT NOT NULL DEFAULT '[]',
     greeting_time TEXT NOT NULL,
     create_time   TEXT NOT NULL
 );

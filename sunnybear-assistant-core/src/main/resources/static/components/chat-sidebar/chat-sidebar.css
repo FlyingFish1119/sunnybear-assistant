@@ -7,77 +7,198 @@
 .app-sidebar {
     flex: 0 0 var(--sidebar-width, 275px);
     height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 15px;
-    align-items: center;
+    gap: 12px;
+    align-items: stretch;
     overflow: hidden;
+    padding: 14px 0 6px;
+    /* 主色打底（inline background-color）+ 微渐变，做出层次 */
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(0, 0, 0, 0.10));
+    box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.06);
 }
 
 /* ---- 新建对话按钮 ---- */
 .sidebar-new-chat-button {
-    margin-top: 15px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 0 14px;
+    height: 44px;
+    border: none;
     border-radius: 12px;
-    width: 200px;
-    height: 50px;
-    font-size: 20px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    color: #333;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    cursor: pointer;
+    transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.sidebar-new-chat-button:hover:not(:disabled) {
+    background: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    transform: translateY(-1px);
+}
+
+.sidebar-new-chat-button:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
+}
+
+.sidebar-new-chat-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.sidebar-new-chat-button i,
+.sidebar-new-chat-button svg {
+    width: 18px;
+    height: 18px;
 }
 
 /* ---- 会话列表容器 ---- */
 .sidebar-session-list {
     width: 100%;
     flex: 1;
+    min-height: 0;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 15px;
+    gap: 4px;
+    padding: 2px 10px 8px;
     overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.5) transparent;
+}
+
+.sidebar-session-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-session-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 3px;
+}
+
+.sidebar-session-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.75);
 }
 
 /* ---- 单个会话条目 ---- */
 .sidebar-session-item {
     flex: none;
-    font-size: 18px;
-    width: 90%;
-    min-height: 40px;
-    border-bottom: 4px solid rgba(0, 0, 0, 0.5);
     display: flex;
-    flex-direction: column;
-    justify-content: end;
-    transition: all var(--transition-normal, 0.3s ease);
+    align-items: center;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    min-height: 40px;
+    border-radius: 10px;
+    font-size: 14.5px;
+    color: rgba(0, 0, 0, 0.8);
+    cursor: pointer;
+    transition: background-color var(--transition-fast, 0.2s ease), box-shadow 0.18s ease;
 }
 
 .sidebar-session-item:hover {
-    border-bottom-color: white;
-    background-color: white;
-    border-radius: var(--radius-md, 10px);
-    padding: 5px 5px 15px 5px;
-    cursor: pointer;
+    background: rgba(255, 255, 255, 0.35);
+}
+
+/* 选中：白卡片 + 阴影（不加粗，字重留给 pro 标识） */
+.sidebar-session-item.active {
+    background: #fff;
+    color: #333;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+}
+
+/* 会话名：单行省略 */
+.sidebar-session-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* 高级模式会话标识 */
-.sidebar-session-item.pro {
+.sidebar-session-item.pro .sidebar-session-name {
     font-weight: 700;
 }
 
 /* 无审查模式会话标识（警示色，与高级模式加粗区分） */
-.sidebar-session-item.unreviewed {
+.sidebar-session-item.unreviewed .sidebar-session-name {
     color: var(--el-color-danger, #f56c6c);
     font-weight: 700;
-    border-bottom-color: var(--el-color-danger, #f56c6c);
 }
 
+/* 空状态 */
+.sidebar-empty {
+    margin: auto 0;
+    padding: 24px 0;
+    text-align: center;
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.4);
+}
+
+/* 加载更多 */
+.sidebar-loading-more {
+    padding: 6px 0 14px;
+    text-align: center;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* ---- 底部栏 ---- */
 .sidebar-footer {
     width: 100%;
+    box-sizing: border-box;
+    flex: none;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    padding: 6px 10px 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.35);
 }
 
 /* ---- 左侧按钮组（设置 / 页面导航） ---- */
 .sidebar-footer-left {
     display: flex;
     align-items: center;
+    gap: 2px;
+}
+
+/* ---- 方形图标按钮 ---- */
+.sidebar-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    color: #333;
+    background: transparent;
+    cursor: pointer;
+    transition: background-color var(--transition-fast, 0.2s ease), color var(--transition-fast, 0.2s ease);
+}
+
+.sidebar-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.45);
+    color: #000;
+}
+
+.sidebar-icon-btn i,
+.sidebar-icon-btn svg {
+    width: 20px;
+    height: 20px;
 }
 
 /* ---- 列表模式切换按钮 ---- */
@@ -85,9 +206,9 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    margin: 10px 10px 10px 0;
     padding: 3px;
     border: none;
+    border-radius: 8px;
     background: transparent;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -97,25 +218,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 4px 6px;
-    border-radius: 6px;
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
     color: #333;
     transition: all 0.2s ease;
 }
 
 .list-mode-icon.active {
-    color: #bbb;
-}
-
-/* ---- 设置按钮 ---- */
-.sidebar-settings {
-    margin: 10px;
-    align-self: start;
-}
-
-.sidebar-settings-icon:hover {
-    color: #666;
-    transition: all var(--transition-fast, 0.2s ease);
+    color: #fff;
+    background: rgba(0, 0, 0, 0.22);
 }
 
 /* ============================================
@@ -217,7 +329,7 @@
 @media (max-width: 768px) {
     .app-sidebar {
         position: fixed;
-        left: -285px;
+        left: calc(-1 * var(--sidebar-width, 275px) - 10px);
         top: 0;
         width: var(--sidebar-width, 275px);
         height: 100dvh;
@@ -234,12 +346,11 @@
     }
 
     .sidebar-new-chat-button {
-        width: 180px;
-        font-size: 18px;
+        font-size: 16px;
     }
 
     .sidebar-session-item {
-        font-size: 16px;
+        font-size: 15px;
     }
 
     /* 移动端会话知识库对话框全屏化 */

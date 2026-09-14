@@ -10,6 +10,54 @@
  */
 const MarkdownUtils = (function () {
 
+    /* ---- 编辑工具 diff 渲染辅助 ---- */
+
+    /** HTML 转义（diff 分支自行拼 HTML 用） */
+    function escapeHtml(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    /** 是否为编辑工具产出的 diff：存在以 + / - 开头的「行号|内容」行 */
+    function isDiffText(text) {
+        return /^[+\-]\s*\d+\| /m.test(text);
+    }
+
+    /** 把 diff 文本渲染为逐行着色（+ 绿背景 / - 红背景，代码仍走高亮，标题保留原语言） */
+    function renderDiff(text, lang) {
+        var supported = lang && hljs.getLanguage(lang);
+        var langLabel = lang || 'diff';
+        var copyBtn = '<button type="button" class="code-copy-btn" title="复制代码"><i data-lucide="copy"></i></button>';
+        var body = text.split('\n').map(function (line) {
+            if (line === '') return '';
+            var cls = '';
+            if (line.charAt(0) === '+') {
+                cls = ' diff-add';
+            } else if (line.charAt(0) === '-') {
+                cls = ' diff-del';
+            }
+            // 拆出「标记 + 行号| 」前缀，代码部分单独走高亮
+            var m = line.match(/^([+\- ]\s*\d+\| )([\s\S]*)$/);
+            var gutter = m ? m[1] : '';
+            var code = m ? m[2] : line;
+            var highlighted;
+            try {
+                highlighted = supported ? hljs.highlight(code, { language: lang }).value : escapeHtml(code);
+            } catch (e) {
+                highlighted = escapeHtml(code);
+            }
+            return '<span class="diff-line' + cls + '">'
+                + '<span class="diff-gutter">' + escapeHtml(gutter) + '</span>'
+                + '<span class="diff-code-line">' + highlighted + '</span>'
+                + '</span>';
+        }).join('\n');
+        return '<div class="code-block-wrapper">'
+            + '<div class="code-block-header">'
+            + '<span class="code-block-lang">' + escapeHtml(langLabel) + '</span>'
+            + copyBtn
+            + '</div>'
+            + '<pre class="diff-pre"><code class="diff-code">' + body + '</code></pre></div>';
+    }
+
     /* ---- 配置 marked ---- */
     marked.use({
         renderer: {
@@ -18,6 +66,10 @@ const MarkdownUtils = (function () {
                 var lang = obj.lang;
                 if (lang === 'mermaid') {
                     return '<div class="mermaid-wrapper"><div class="mermaid">' + text + '</div></div>';
+                }
+                // 编辑工具产出的 diff：按行 + / - 上背景色（代码仍走语言高亮）
+                if (isDiffText(text)) {
+                    return renderDiff(text, lang);
                 }
                 var langLabel = lang || '';
                 var supported = lang && hljs.getLanguage(lang);

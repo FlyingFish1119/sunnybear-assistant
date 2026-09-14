@@ -8,6 +8,8 @@ package com.fishsunny.assistant.mvc.service.implement;
  * @Date 2026/7/3
  */
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.AiGreeting;
@@ -28,6 +30,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
@@ -69,8 +72,10 @@ public class AiGreetingServiceImplement implements AiGreetingService {
             Map.entry("深夜",   "晚上10点到第二天凌晨6点之前")
     );
 
-    /** 每个时间段生成的问候语数量 */
-    private static final int GREETINGS_PER_PERIOD = 3;
+    /** 每条问候语附带的建议提问数量 */
+    private static final int SUGGESTIONS_PER_PERIOD = 4;
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Override
     public List<AiGreeting> generateGreeting() throws Exception {
@@ -85,27 +90,29 @@ public class AiGreetingServiceImplement implements AiGreetingService {
             memorySection = "";
         }
         String memoryHint = StringUtils.hasText(memorySection)
-                ? "\n\n额外要求：可以在问候语中自然融入下面的核心记忆（不要生硬堆砌，没有合适的就不提）：\n" + memorySection
+                ? "\n\n额外要求：可以在问候语/建议中自然融入下面的核心记忆（不要生硬堆砌，没有合适的就不提）：\n" + memorySection
                 : "";
 
-        // mission AI 作为专业的问候语生成器
+        // mission AI 作为专业的问候语 + 建议生成器
         String generatorSystemPrompt = """
-                你是一个专业的问候语生成器。你的任务是接收一个角色设定，然后完全模仿该角色的语气、口吻和说话风格，生成一句简短、好玩、有趣的问候语。
+                你是一个专业的问候语与建议生成器。你的任务是接收一个角色设定，然后完全模仿该角色的语气、口吻和说话风格，
+                为指定时间段生成 1 句问候语，以及 %d 条用户可能想说的「建议提问」。
 
                 要求：
-                - 问候语不超过50个字
-                - 要体现出对指定时间段的感知
-                - 语气要欢快、有活力、带点俏皮，让人一看到就心情变好
-                - 只输出问候语本身，不要添加任何解释、引号或多余的标点""";
+                - 问候语不超过50个字，要体现对指定时间段的感知，语气欢快、有活力、带点俏皮
+                - 建议提问共 %d 条，每条不超过20个字，彼此角度不同、具体可执行
+                - 只输出一个 JSON 对象，不要任何解释、代码块或多余文字，格式严格如下：
+                {"greeting":"问候语","suggestions":["建议1","建议2","建议3","建议4"]}"""
+                .formatted(SUGGESTIONS_PER_PERIOD, SUGGESTIONS_PER_PERIOD);
 
-        // 并行生成所有时间段的问候语（每个时段按序生成 3 条，并发控制在时段数以内）
-        List<CompletableFuture<List<AiGreeting>>> futures = TIME_PERIODS.stream()
+        // 并行生成所有时间段的内容（每个时段 1 句问候 + N 条建议，并发控制在时段数以内）
+        List<CompletableFuture<AiGreeting>> futures = TIME_PERIODS.stream()
                 .map(period -> CompletableFuture.supplyAsync(() -> {
                     String timeOfDay = period.getKey();
                     String timeDesc = period.getValue();
 
                     String userPrompt = String.format("""
-                            请按照下面的角色设定，模仿其语气和口吻，为指定时间段生成一句问候语。
+                            请按照下面的角色设定，模仿其语气和口吻，为指定时间段生成 1 句问候语和 %d 条建议提问。
 
                             当前日期：%s
                             目标时间段：%s（%s）
@@ -113,57 +120,108 @@ public class AiGreetingServiceImplement implements AiGreetingService {
                             角色设定：
                             %s
                             %s""",
-                            currentDate, timeOfDay, timeDesc, chatAISettings.getPrompt(), memoryHint);
+                            SUGGESTIONS_PER_PERIOD, currentDate, timeOfDay, timeDesc, chatAISettings.getPrompt(), memoryHint);
 
-                    List<AiGreeting> periodGreetings = new ArrayList<>();
-                    for (int i = 0; i < GREETINGS_PER_PERIOD; i++) {
-                        ChatRequest request = new ChatRequest()
-                                .loadSettings(missionAISettings)
-                                .setMessages(List.of(
-                                        new ChatMessage().system(generatorSystemPrompt),
-                                        new ChatMessage().user(userPrompt)
-                                ));
-                        AtomicReference<String> generatedText = new AtomicReference<>();
-                        try {
-                            ChatHttpHandler.CompleteCallback onComplete = (result, lastRes) -> {
-                                generatedText.set(result.content() != null ? result.content().trim() : null);
-                            };
-                            chatHttpHandler.translate(UUID.randomUUID().toString(), missionAISettings.getAdapterName(), request,
-                                    missionAISettings.getStream(),
-                                    null, onComplete);
-
-                            if (!StringUtils.hasText(generatedText.get())) {
-                                log.warn("AI 未能为[{}]生成有效的问候语（第{}条），跳过", timeOfDay, i + 1);
-                                continue;
-                            }
-
-                            AiGreeting greeting = new AiGreeting()
-                                    .setId(UUID.randomUUID().toString())
-                                    .setText(generatedText.get())
-                                    .setGreetingTime(timeOfDay)
-                                    .setCreateTime(LocalDateTime.now());
-
-                            AiGreeting saved = aiGreetingRepository.insert(greeting);
-                            periodGreetings.add(saved);
-                            log.info("已生成[{}]问候语(第{}条): {}", timeOfDay, i + 1, generatedText.get());
-                        } catch (Exception e) {
-                            log.error("生成[{}]问候语失败(第{}条): {}", timeOfDay, i + 1, e.getMessage(), e);
+                    try {
+                        String generatedText = callGenerator(generatorSystemPrompt, userPrompt);
+                        if (!StringUtils.hasText(generatedText)) {
+                            log.warn("AI 未能为[{}]生成有效内容，跳过", timeOfDay);
+                            return null;
                         }
+                        AiGreeting greeting = parseGenerated(generatedText, timeOfDay);
+                        AiGreeting saved = aiGreetingRepository.insert(greeting);
+                        log.info("已生成[{}]问候语: {}（建议 {} 条）", timeOfDay, greeting.getText(),
+                                greeting.getSuggestions() == null ? 0 : greeting.getSuggestions().size());
+                        return saved;
+                    } catch (Exception e) {
+                        log.error("生成[{}]问候语失败: {}", timeOfDay, e.getMessage(), e);
+                        return null;
                     }
-                    return periodGreetings;
                 }, taskExecutor))
                 .toList();
 
         // 等待所有任务完成，收集结果
         List<AiGreeting> greetings = futures.stream()
                 .map(CompletableFuture::join)
-                .flatMap(List::stream)
+                .filter(Objects::nonNull)
                 .toList();
 
         if (greetings.isEmpty()) {
             throw new Exception("所有时间段的问候语生成均失败");
         }
         return greetings;
+    }
+
+    /** 调 mission AI 生成一条内容（同步等回调），返回纯文本 */
+    private String callGenerator(String systemPrompt, String userPrompt) throws Exception {
+        ChatRequest request = new ChatRequest()
+                .loadSettings(missionAISettings)
+                .setMessages(List.of(
+                        new ChatMessage().system(systemPrompt),
+                        new ChatMessage().user(userPrompt)
+                ));
+        AtomicReference<String> generatedText = new AtomicReference<>();
+        ChatHttpHandler.CompleteCallback onComplete = (result, lastRes) -> {
+            generatedText.set(result.content() != null ? result.content().trim() : null);
+        };
+        chatHttpHandler.translate(UUID.randomUUID().toString(), missionAISettings.getAdapterName(), request,
+                missionAISettings.getStream(), null, onComplete);
+        return generatedText.get();
+    }
+
+    /** 解析生成结果：优先按 JSON 解析出 greeting + suggestions，失败则整体当问候语 */
+    private AiGreeting parseGenerated(String raw, String greetingTime) {
+        String json = extractJson(raw);
+        String text = null;
+        List<String> suggestions = new ArrayList<>();
+        try {
+            JsonNode node = OBJECT_MAPPER.readTree(json);
+            text = node.path("greeting").asText(null);
+            JsonNode arr = node.path("suggestions");
+            if (arr != null && arr.isArray()) {
+                for (JsonNode item : arr) {
+                    String suggestion = item.asText();
+                    if (StringUtils.hasText(suggestion)) {
+                        suggestions.add(suggestion.trim());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("解析生成结果 JSON 失败，降级为纯问候语: {}", e.getMessage());
+        }
+        if (!StringUtils.hasText(text)) {
+            text = raw;
+        }
+        return new AiGreeting()
+                .setId(UUID.randomUUID().toString())
+                .setText(text)
+                .setSuggestions(suggestions)
+                .setGreetingTime(greetingTime)
+                .setCreateTime(LocalDateTime.now());
+    }
+
+    /** 去掉可能的 ```json 代码围栏，并截取第一个 { 到最后一个 } 之间的 JSON */
+    private String extractJson(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String text = raw.trim();
+        if (text.startsWith("```")) {
+            int firstNewline = text.indexOf('\n');
+            if (firstNewline >= 0) {
+                text = text.substring(firstNewline + 1);
+            }
+            if (text.endsWith("```")) {
+                text = text.substring(0, text.length() - 3);
+            }
+            text = text.trim();
+        }
+        int left = text.indexOf('{');
+        int right = text.lastIndexOf('}');
+        if (left >= 0 && right > left) {
+            text = text.substring(left, right + 1);
+        }
+        return text;
     }
 
     @Override

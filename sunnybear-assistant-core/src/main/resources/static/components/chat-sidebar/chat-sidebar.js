@@ -29,28 +29,25 @@ const ChatSidebar = {
     <div class="app-sidebar"
          :class="{ 'mobile-open': sidebarOpen, 'collapsed': collapsed }"
          :style="{backgroundColor: mainColor}">
-        <el-button :disabled="isNewSession"
-                   class="sidebar-new-chat-button"
-                   :color="mainColor"
-                   plain
-                   @click="createSession">
+        <button class="sidebar-new-chat-button"
+                :disabled="isNewSession"
+                @click="createSession">
             <i data-lucide="square-plus"></i>
-            <span style="margin-left: 10px">新对话</span>
-        </el-button>
+            <span>新对话</span>
+        </button>
         <div class="sidebar-session-list"
              ref="sessionList"
              v-infinite-scroll="loadMore">
+            <div v-if="sessions.length === 0" class="sidebar-empty">暂无对话</div>
             <div class="sidebar-session-item"
                  v-for="session in sessions"
                  :key="session.id"
-                 :class="{ pro: session.enablePro, unreviewed: session.unreviewed }"
-                 :style="currentSession.id === session.id ? {backgroundColor: 'white', borderRadius: '10px', padding: '5px 5px 15px 5px',  borderBottomColor: 'white'} : {}"
+                 :class="{ pro: session.enablePro, unreviewed: session.unreviewed, active: currentSession.id === session.id }"
                  @click="selectSession(session)"
                  @contextmenu.prevent="showContextMenu($event, session)">
-                {{ session.name }}
+                <span class="sidebar-session-name">{{ session.name }}</span>
             </div>
-            <div v-if="sessionsLoadingMore"
-                 style="color:rgba(255,255,255,.75);font-size:13px;padding:6px 0 16px;">加载中…</div>
+            <div v-if="sessionsLoadingMore" class="sidebar-loading-more">加载中…</div>
         </div>
         <!-- 右键上下文菜单 -->
         <div v-if="contextMenu.visible"
@@ -80,20 +77,12 @@ const ChatSidebar = {
         </div>
         <div class="sidebar-footer">
             <div class="sidebar-footer-left">
-                <el-button class="sidebar-settings"
-                           @click="goSettings"
-                           style="color: #333"
-                           type="text"
-                           title="设置">
-                    <i ref="settings" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="settings"></i>
-                </el-button>
-                <el-button class="sidebar-settings"
-                           @click="goRouter"
-                           style="color: #333"
-                           type="text"
-                           title="页面导航">
-                    <i ref="router" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="layout-grid"></i>
-                </el-button>
+                <button class="sidebar-icon-btn" @click="goSettings" title="设置">
+                    <i data-lucide="settings"></i>
+                </button>
+                <button class="sidebar-icon-btn" @click="goRouter" title="页面导航">
+                    <i data-lucide="layout-grid"></i>
+                </button>
             </div>
             <!-- 定时器 / 对话 切换 -->
             <button class="sidebar-list-mode-toggle"
@@ -189,9 +178,22 @@ const ChatSidebar = {
             this._unsubSidebarToggle = this.wsBus.on('sidebar:toggle', function () { self.toggle(); });
             this._unsubSidebarClose = this.wsBus.on('sidebar:close', function () { self.close(); });
         }
+        // Ctrl+Alt+N：新建对话（已是新对话时忽略）
+        this._onGlobalKeydown = function (e) {
+            if ((e.ctrlKey || e.metaKey) && e.altKey && !e.shiftKey && (e.key === 'n' || e.key === 'N')) {
+                e.preventDefault();
+                if (self.isNewSession) return;
+                self.createSession();
+            }
+        };
+        window.addEventListener('keydown', this._onGlobalKeydown);
     },
 
     beforeUnmount: function () {
+        if (this._onGlobalKeydown) {
+            window.removeEventListener('keydown', this._onGlobalKeydown);
+            this._onGlobalKeydown = null;
+        }
         if (this._unsubSidebarToggle) { this._unsubSidebarToggle(); this._unsubSidebarToggle = null; }
         if (this._unsubSidebarClose) { this._unsubSidebarClose(); this._unsubSidebarClose = null; }
     },

@@ -74,10 +74,15 @@
 /* ---- 代码块 ---- */
 .markdown-body .code-block-wrapper {
     margin: 0.6em 0;
+    /* hidden 作旧浏览器回退；clip 不产生滚动容器，sticky 才能相对消息列表生效 */
     overflow: hidden;
+    overflow: clip;
 }
 
 .markdown-body .code-block-header {
+    position: sticky;
+    top: 0;
+    z-index: 3;
     display: flex;
     align-items: center;
     background: #2d2d44;
@@ -135,6 +140,31 @@
 /* 当有语言标签时，pre 顶部变直角，与 header 拼接 */
 .markdown-body .code-block-header + pre {
     border-radius: 0 0 8px 8px;
+}
+
+/* ---- 编辑工具 diff：仅上背景色，文字仍走语言高亮 ---- */
+.markdown-body .diff-pre {
+    padding: 10px 0;
+}
+
+.markdown-body .diff-code {
+    display: block;
+    /* 行间换行由块级 .diff-line 承担；这里恢复 normal，避免 pre 再把 textContent 里的换行渲染成空行 */
+    white-space: normal;
+}
+
+.markdown-body .diff-line {
+    display: block;
+    white-space: pre;
+    padding: 0 16px;
+}
+
+.markdown-body .diff-line.diff-add {
+    background: rgba(63, 185, 80, 0.16);
+}
+
+.markdown-body .diff-line.diff-del {
+    background: rgba(248, 81, 73, 0.16);
 }
 
 .markdown-body pre code {

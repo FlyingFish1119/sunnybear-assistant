@@ -1,9 +1,9 @@
 package com.fishsunny.assistant.task;
 
 /*
- * @Usage 每隔一天凌晨定时刷新问候语：先删除创建时间超过 7 天的旧问候语，
- *        再为所有时间段（上午/中午/下午/晚上/深夜）各生成 3 条新问候语，
- *        生成时附带核心记忆，使问候语更贴合用户
+ * @Usage 每天凌晨定时刷新问候语：先删除创建时间超过 7 天的旧问候语，
+ *        再为所有时间段（上午/中午/下午/晚上/深夜）各生成 1 条问候语 + 4 条建议提问，
+ *        生成时附带核心记忆，使内容更贴合用户
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
@@ -47,7 +47,7 @@ public class GreetingRefreshTask {
             int deleted = aiGreetingService.deleteBefore(LocalDateTime.now().minusDays(expireDay));
             log.info("已清理 {} 条超过 {} 天的旧问候语", deleted, expireDay);
 
-            // 2. 重新生成各时段问候语（每时段 3 条）
+            // 2. 重新生成各时段内容（每时段 1 条问候语 + 4 条建议提问）
             List<AiGreeting> greetings = aiGreetingService.generateGreeting();
             log.info("问候语定时刷新完成，共生成 {} 条", greetings.size());
         } catch (Exception e) {

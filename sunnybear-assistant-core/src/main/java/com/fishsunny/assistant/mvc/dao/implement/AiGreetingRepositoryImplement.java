@@ -8,6 +8,8 @@ package com.fishsunny.assistant.mvc.dao.implement;
  * @Date 2026/7/3
  */
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.AiGreeting;
 import com.fishsunny.assistant.mvc.dao.AiGreetingRepository;
 import org.slf4j.Logger;
@@ -29,10 +31,19 @@ public class AiGreetingRepositoryImplement implements AiGreetingRepository {
 
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     private final JdbcTemplate jdbcTemplate;
 
     public AiGreetingRepositoryImplement(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+        // 自动迁移：为旧数据库添加 suggestions 列（JSON 数组字符串）
+        try {
+            jdbcTemplate.execute("ALTER TABLE ai_greeting ADD COLUMN suggestions TEXT NOT NULL DEFAULT '[]'");
+            log.info("Migration: added suggestions column to ai_greeting");
+        } catch (Exception e) {
+            log.debug("Migration: suggestions column may already exist, skipping. {}", e.getMessage());
+        }
     }
 
     private final RowMapper<AiGreeting> rowMapper = new RowMapper<>() {
@@ -42,6 +53,7 @@ public class AiGreetingRepositoryImplement implements AiGreetingRepository {
             greeting.setId(set.getString("id"));
             greeting.setText(set.getString("text"));
             greeting.setGreetingTime(set.getString("greeting_time"));
+            greeting.setSuggestions(parseSuggestions(set.getString("suggestions")));
             try {
                 String createTime = set.getString("create_time");
                 greeting.setCreateTime(LocalDateTime.parse(createTime, FORMATTER));
@@ -52,15 +64,42 @@ public class AiGreetingRepositoryImplement implements AiGreetingRepository {
         }
     };
 
+    /** 解析 suggestions 列（JSON 数组字符串）为 List；解析失败/空则返回空列表 */
+    private static List<String> parseSuggestions(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return OBJECT_MAPPER.readValue(json, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            log.warn("解析问候语 suggestions 失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 把 List 序列化为 suggestions 列所需的 JSON 数组字符串 */
+    private static String toSuggestionsJson(List<String> suggestions) {
+        if (suggestions == null || suggestions.isEmpty()) {
+            return "[]";
+        }
+        try {
+            return OBJECT_MAPPER.writeValueAsString(suggestions);
+        } catch (Exception e) {
+            log.warn("序列化问候语 suggestions 失败: {}", e.getMessage());
+            return "[]";
+        }
+    }
+
     @Override
     public AiGreeting insert(AiGreeting greeting) {
         String sql = """
-                INSERT INTO ai_greeting (id, text, greeting_time, create_time)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO ai_greeting (id, text, suggestions, greeting_time, create_time)
+                VALUES (?, ?, ?, ?, ?)
                 """;
         jdbcTemplate.update(sql,
                 greeting.getId(),
                 greeting.getText(),
+                toSuggestionsJson(greeting.getSuggestions()),
                 greeting.getGreetingTime(),
                 greeting.getCreateTime().format(FORMATTER)
         );

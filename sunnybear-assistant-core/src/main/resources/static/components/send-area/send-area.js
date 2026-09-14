@@ -68,8 +68,8 @@ const SendArea = {
             @update-files="files => uploadedFiles = files"
             @drag-over-change="isChange => $emit('drag-over-change', isChange)">
         </file-upload>
-        <div class="send-area-input-row">
-            <!-- 看板熊彩蛋：趴在“发送按钮”顶沿上，宽度跟随按钮（样式见 css/send-area.css）。
+        <div class="send-area-composer">
+            <!-- 看板熊彩蛋：趴在输入卡右上沿（样式见 components/send-area/send-area.css）。
                  连按 10 次 b 键召唤/送走，显隐状态记入 localStorage，刷新后保持。
                  img 的 width 属性仅作 CSS 未加载时的兜底 -->
             <div class="send-area-mascot" aria-hidden="true"
@@ -77,29 +77,37 @@ const SendArea = {
                 <img class="mascot-body" src="icon/signboard_bear/signboard_bear_2.png" alt="" width="100">
                 <img class="mascot-paws" src="icon/signboard_bear/signboard_bear_1.png" alt="" width="100">
             </div>
-            <button class="send-area-attach-button tts-toggle-button" :class="{ 'tts-on': ttsEnabled }"
-                    @click="toggleTts()"
-                    :title="ttsEnabled ? '本条消息语音朗读已开启（点击关闭）' : '开启本条消息的语音朗读'">
-                <i v-show="ttsEnabled" data-lucide="volume-2" style="width:18px;height:18px"></i>
-                <i v-show="!ttsEnabled" data-lucide="volume-x" style="width:18px;height:18px"></i>
-            </button>
-            <button class="send-area-attach-button" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
-                <i data-lucide="paperclip" style="width:18px;height:18px"></i>
-            </button>
-            <auto-resize-textarea
-                class="send-area-textarea"
-                :main-color="mainColor"
-                v-model="inputText"
-                placeholder="输入消息，Ctrl+Enter 发送，Enter 换行"
-                :max-height="180"
-                :min-height="85"
-                @submit="submit"
-                @cancel="onTextareaCancel"
-                @keydown="onTextareaKeydown"
-            ></auto-resize-textarea>
-            <!-- 发送/停止按钮：外包一层 .send-area-submit-wrap 承载“长按 3s 召唤/送走看板熊”的移动端彩蛋手势。
-                 短按 = 照常发送/停止；按下 3s 不抬 = 切换看板熊（不再发送）。
-                 内部按钮 pointer-events:none，命中统一由 wrapper 接管，布局/尺寸与原来一致。 -->
+            <div class="send-area-main">
+                <auto-resize-textarea
+                    ref="textarea"
+                    class="send-area-textarea"
+                    :main-color="mainColor"
+                    v-model="inputText"
+                    placeholder="输入消息，Ctrl+Enter 发送，Enter 换行"
+                    :max-height="180"
+                    :min-height="60"
+                    @submit="submit"
+                    @cancel="onTextareaCancel"
+                    @keydown="onTextareaKeydown"
+                ></auto-resize-textarea>
+                <div class="send-area-toolbar">
+                    <div class="send-area-tools">
+                        <button class="send-area-icon-btn tts-toggle-button" :class="{ 'tts-on': ttsEnabled }"
+                                @click="toggleTts()"
+                                :title="ttsEnabled ? '本条消息语音朗读已开启（点击关闭）' : '开启本条消息的语音朗读'">
+                            <i v-show="ttsEnabled" data-lucide="volume-2"></i>
+                            <i v-show="!ttsEnabled" data-lucide="volume-x"></i>
+                        </button>
+                        <button class="send-area-icon-btn" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
+                            <i data-lucide="paperclip"></i>
+                        </button>
+                    </div>
+                    <span class="send-area-hint">Ctrl+Enter 发送</span>
+                </div>
+            </div>
+            <!-- 发送/停止按钮：右侧整高竖块，与输入区用分隔线隔开，图标居中。
+                 外包一层 .send-area-submit-wrap 承载“长按 3s 召唤/送走看板熊”的移动端彩蛋手势：
+                 短按 = 照常发送/停止；按下 3s 不抬 = 切换看板熊（不再发送）。 -->
             <div class="send-area-submit-wrap"
                  @pointerdown="onSubmitPointerDown"
                  @pointerup="onSubmitPointerEnd"
@@ -110,14 +118,14 @@ const SendArea = {
                     @click="onStop()"
                     :disabled="isStreaming && !sessionId"
                 >
-                    <i style="margin-top: 5px; margin-left: -5px" data-lucide="square"></i>
+                    <i data-lucide="square"></i>
                 </button>
                 <button v-else
                         class="send-area-submit-button"
                         @click="submit"
                         :disabled="sending || (!isStreaming && !inputText && uploadedFiles.length === 0)"
                 >
-                    <i style="margin-top: 5px; margin-left: -5px" data-lucide="send"></i>
+                    <i data-lucide="send"></i>
                 </button>
             </div>
         </div>
@@ -131,7 +139,9 @@ const SendArea = {
 
     inject: {
         // 可选注入：插件页未提供 sessionStore 时降级为 null
-        sessionStore: { default: null }
+        sessionStore: { default: null },
+        // 可选：本地事件总线（新对话页「建议提问」→ 填入输入框）
+        wsBus: { default: null }
     },
 
     data: function () {
@@ -204,6 +214,7 @@ const SendArea = {
 
     mounted: function () {
         // 看板熊彩蛋：连按 10 次 b → 召唤/送走（中间按了别的键就打断重计；长按连发不计）
+        var self = this;
         this._mascotBKeyCount = 0;
         this._mascotPressTimer = null;
         this._mascotLongPress = false;
@@ -221,10 +232,24 @@ const SendArea = {
             }
         }.bind(this);
         window.addEventListener('keydown', this._onKeydown);
+        // 新对话页「建议提问」→ 填入输入框并聚焦
+        if (this.wsBus) {
+            this._unsubFill = this.wsBus.on('send-area:fill', function (text) {
+                self.inputText = text;
+                self.$nextTick(function () {
+                    var el = self.$refs.textarea && self.$refs.textarea.$el;
+                    if (el) {
+                        el.focus();
+                        if (el.setSelectionRange) el.setSelectionRange(el.value.length, el.value.length);
+                    }
+                });
+            });
+        }
     },
 
     beforeUnmount: function () {
         window.removeEventListener('keydown', this._onKeydown);
+        if (this._unsubFill) { this._unsubFill(); this._unsubFill = null; }
         clearTimeout(this._mascotPressTimer);
         if (this._ttsAudio) {
             this._ttsAudio.pause();

@@ -27,15 +27,31 @@ function getLast(arr) {
     return arr[arr.length - 1];
 }
 
+/** 建议提问的图标：后端只回文本，前端按顺序轮换配图标 */
+const SUGGESTION_ICONS = ['pen-line', 'file-text', 'lightbulb', 'compass'];
+
 const MessageArea = {
     name: 'MessageArea',
 
     template: `
     <div class="message-area-panel" :class="{ 'is-new-chat': isNewChat }">
-        <!-- 新对话时的问候语横幅 -->
-        <div v-if="isNewChat" class="greeting-banner" :style="{'--main-color': mainColor}">
-            <i :data-lucide="greetingIcon" class="greeting-icon"></i>
-            <span>{{ greetingText || '输入内容开始新对话' }}</span>
+        <!-- 新对话落地页：头像 + 问候 + 建议提问 -->
+        <div v-if="isNewChat" class="new-chat-hero" :style="{'--main-color': mainColor}">
+            <div class="hero-avatar">
+                <img v-if="heroAvatar" :src="heroAvatar" alt="" @error="assistantAvatarError = true">
+                <i v-else :data-lucide="greetingIcon" class="hero-avatar-icon"></i>
+            </div>
+            <p class="hero-greeting">{{ greetingText || '你好，我能帮你做点什么？' }}</p>
+            <p class="hero-subtitle">{{ heroSubtitle }}</p>
+            <div class="hero-suggestions">
+                <button v-for="item in suggestions"
+                        :key="item.text"
+                        class="hero-suggestion"
+                        @click="useSuggestion(item.text)">
+                    <i :data-lucide="item.icon" class="hero-suggestion-icon"></i>
+                    <span>{{ item.text }}</span>
+                </button>
+            </div>
         </div>
         <!-- 消息列表：新对话时隐藏 -->
         <div v-show="currentSessionId || currentMessages.length > 0" class="message-area-list" v-auto-follow>
@@ -46,22 +62,37 @@ const MessageArea = {
                 <span class="loading-text">加载中</span>
                 <span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>
             </div>
-            <div v-for="msg in currentMessages" :key="msg.id" :class="['message-area-row', msg.role]">
-                <div v-if="msg.role !== 'tool'" class="message-area-col">
-                    <!-- 头像 + 名称时间 同一行 -->
-                    <div class="message-header-row">
-                        <img v-if="getMessageAvatar(msg)"
-                             :src="getMessageAvatar(msg)"
-                             class="message-avatar-top"
-                             :alt="msg.name + '头像'"
-                             @error="msg.role === 'user' ? userAvatarError = true : assistantAvatarError = true">
-                        <div v-else class="message-avatar-top message-avatar-default"
-                             :class="msg.role === 'user' ? 'user-avatar-default' : 'assistant-avatar-default'">
-                            <span>{{ getAvatarInitial(msg) }}</span>
+            <template v-for="group in messageGroups" :key="'group-' + group.messages[0].id">
+                <div class="message-area-row" :class="group.role">
+                    <!-- 助手组左侧导轨：头像（仅组第一条）+ 主色淡竖线 -->
+                    <div v-if="group.role !== 'user'" class="react-rail">
+                        <img v-if="getMessageAvatar(group.messages[0])"
+                             :src="getMessageAvatar(group.messages[0])"
+                             class="message-avatar-top react-avatar"
+                             :alt="group.messages[0].name + '头像'"
+                             @error="assistantAvatarError = true">
+                        <div v-else class="message-avatar-top react-avatar message-avatar-default assistant-avatar-default">
+                            <span>{{ getAvatarInitial(group.messages[0]) }}</span>
                         </div>
-                        <span class="message-header-meta">{{ msg.name }} · {{ msg.createTime }}</span>
+                        <span v-if="group.messages.length > 1" class="react-line"></span>
                     </div>
-                    <div class="message-area-bubble" :style="msg.role === 'user' ? {'background-color': userBubbleBg} : {}">
+                    <div class="message-area-col">
+                        <!-- 名称 + 时间：仅组的第一条显示（用户消息头像在名称旁） -->
+                        <div class="message-header-row">
+                            <template v-if="group.role === 'user'">
+                                <img v-if="getMessageAvatar(group.messages[0])"
+                                     :src="getMessageAvatar(group.messages[0])"
+                                     class="message-avatar-top"
+                                     :alt="group.messages[0].name + '头像'"
+                                     @error="userAvatarError = true">
+                                <div v-else class="message-avatar-top message-avatar-default user-avatar-default">
+                                    <span>{{ getAvatarInitial(group.messages[0]) }}</span>
+                                </div>
+                            </template>
+                            <span class="message-header-meta">{{ group.messages[0].name }} · {{ group.messages[0].createTime }}</span>
+                        </div>
+                        <template v-for="msg in group.messages" :key="msg.id">
+                        <div v-if="msg.role !== 'tool'" class="message-area-bubble" :style="msg.role === 'user' ? {'background-color': userBubbleBg} : {}">
                         <div v-if="msg.reasoningContent !== null && msg.reasoningContent.length > 0">
                             <div class="message-area-bubble-meta reasoning-header" @click="toggleCollapse(msg.id, 'thinking')">
                                 <i style="width: 10px; height: 10px" data-lucide="sparkle"></i>
@@ -182,9 +213,8 @@ const MessageArea = {
                                 <i style="width: 14px; height: 14px" data-lucide="trash-2"></i>
                             </span>
                         </div>
-                    </div>
-                </div>
-                <div v-else-if="msg.role === 'tool'" class="message-area-bubble">
+                        </div>
+                        <div v-else class="message-area-bubble tool-bubble">
                     <div class="message-area-bubble-meta tool-meta-header" @click="toggleCollapse(msg.id, 'tool')">
                         <i :class="['tool-chevron', { collapsed: isCollapsed(msg.id, 'tool') }]" style="width: 14px; height: 14px" data-lucide="chevron-right"></i>
                         <span>{{ msg.name }} · {{ msg.createTime }}</span>
@@ -232,7 +262,10 @@ const MessageArea = {
                         </div>
                     </div>
                 </div>
-            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
         </div>
     </div>`,
 
@@ -242,12 +275,24 @@ const MessageArea = {
         assistantSettings: { type: Object, default: function () { return { avatar: '', assistantName: '' }; } }
     },
 
-    inject: ['sessionStore'],
+    inject: {
+        // 主应用必注：会话/消息仓库
+        sessionStore: { required: true },
+        // 可选：本地事件总线（用于把建议提问填进发送框）
+        wsBus: { default: null }
+    },
 
     data: function () {
         return {
             // 空会话问候语（组件自行请求）
             greetingText: '',
+            // 新对话页的「建议提问」：点击填入发送框
+            suggestions: [
+                { icon: 'pen-line', text: '帮我写一封得体的邮件' },
+                { icon: 'file-text', text: '总结这份文档的核心要点' },
+                { icon: 'lightbulb', text: '用简单的话解释一个概念' },
+                { icon: 'calendar-check', text: '帮我制定一周的作息计划' }
+            ],
             // 头像加载失败兜底：失败后回退到默认首字母头像
             userAvatarError: false,
             assistantAvatarError: false,
@@ -263,6 +308,24 @@ const MessageArea = {
     computed: {
         currentMessages: function () {
             return this.sessionStore.state.currentMessages;
+        },
+        // 按用户消息切分渲染组：assistant/tool 连续段归为一个 ReAct 组（共用一个头像+竖线）
+        messageGroups: function () {
+            const groups = [];
+            let current = null;
+            for (const msg of this.currentMessages) {
+                if (msg.role === 'user') {
+                    groups.push({ role: 'user', messages: [msg] });
+                    current = null;
+                } else {
+                    if (!current) {
+                        current = { role: 'assistant', messages: [] };
+                        groups.push(current);
+                    }
+                    current.messages.push(msg);
+                }
+            }
+            return groups;
         },
         currentSessionId: function () {
             return this.sessionStore.currentSessionId;
@@ -286,21 +349,51 @@ const MessageArea = {
             if (hour >= 12 && hour < 18) return 'sun';
             if (hour >= 18 && hour < 22) return 'sunset';
             return 'moon';
+        },
+        // 新对话页副标题：带上助理名，无则用通用引导
+        heroSubtitle: function () {
+            const name = this.assistantSettings.assistantName;
+            return name ? ('和 ' + name + ' 聊点什么，或试试下面的问题')
+                        : '试试下面的问题，或直接输入你的想法';
+        },
+        // 新对话页头像：复用消息头像的 URL 处理（本地文件走代理）
+        heroAvatar: function () {
+            return this.getMessageAvatar({ role: 'assistant' });
+        }
+    },
+
+    watch: {
+        // 每次进入新对话刷新问候语 + 建议提问（换个花样）
+        isNewChat: function (val) {
+            if (val) this.fetchGreeting();
         }
     },
 
     methods: {
-        /** 空会话问候语：组件挂载时自行请求，失败时回退默认文案 */
+        /** 空会话问候语 + 建议提问：组件挂载时自行请求，失败时回退默认文案 */
         async fetchGreeting() {
             try {
                 const result = await API.greeting.random();
                 if (result.status === 200 && result.data) {
                     this.greetingText = result.data.text;
+                    const list = result.data.suggestions;
+                    if (Array.isArray(list) && list.length > 0) {
+                        this.suggestions = list.map(function (text, i) {
+                            return { icon: SUGGESTION_ICONS[i % SUGGESTION_ICONS.length], text: text };
+                        });
+                    }
                 } else {
                     this.greetingText = '你好！今天有什么可以帮你的吗？';
                 }
             } catch (error) {
                 console.error('获取问候语失败:', error);
+            }
+        },
+
+        /** 点击建议提问：通过本地事件把文案填进发送框（由 send-area 接收并聚焦） */
+        useSuggestion(text) {
+            if (this.wsBus) {
+                this.wsBus.emit('send-area:fill', text);
             }
         },
 

@@ -170,7 +170,7 @@
 @media (max-width: 768px) {
     .app-sidebar {
         position: fixed;
-        left: -285px;
+        left: calc(-1 * var(--sidebar-width, 275px) - 10px);
         top: 0;
         width: var(--sidebar-width, 275px);
         height: 100dvh;

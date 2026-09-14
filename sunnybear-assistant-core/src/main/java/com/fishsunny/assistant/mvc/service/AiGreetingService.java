@@ -16,10 +16,10 @@ import java.util.List;
 public interface AiGreetingService {
 
     /**
-     * 使用 mission AI 设置，为所有时间段各生成 3 条问候语并存储。
-     * 生成提示词中会附带核心记忆，使问候语更贴合用户
+     * 使用 mission AI 设置，为每个时间段各生成 1 条问候语 + 4 条建议提问并存储。
+     * 生成提示词中会附带核心记忆，使内容更贴合用户
      *
-     * @return 生成的问候语列表（每时段 3 条：上午、中午、下午、晚上、深夜）
+     * @return 生成结果列表（每时段 1 条，含 greeting 与 suggestions）
      */
     public List<AiGreeting> generateGreeting() throws Exception;
 

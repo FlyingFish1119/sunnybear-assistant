@@ -13,6 +13,7 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Accessors(chain = true)
@@ -21,6 +22,11 @@ public class AiGreeting {
     private String id;
 
     private String text;
+
+    /**
+     * 4 条「建议提问」，供新对话落地页展示（点击填入输入框）
+     */
+    private List<String> suggestions;
 
     /**
      * 生成问候语时的时间上下文（如 "morning", "afternoon", "evening", "night"）
