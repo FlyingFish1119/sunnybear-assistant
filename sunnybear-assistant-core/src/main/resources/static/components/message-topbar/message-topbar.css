@@ -1,0 +1,119 @@
+/* ============================================
+   Message Topbar — 顶部信息栏组件
+   菜单按钮、模型名、会话名行、待处理入口、知识命中闪现
+   （连接状态指示器样式见 components/connection-indicator/connection-indicator.css）
+   ============================================ */
+
+/* ---- 顶部信息栏 ---- */
+.message-area-top {
+    width: 95%;
+    height: 40px;
+    padding: 5px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.message-area-top-info {
+    display: flex;
+}
+
+/* ---- 顶部待处理入口（工具确认 / 结构化提问 收起后的重新展开入口） ---- */
+.pending-entry-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--main-color, lightsalmon);
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    animation: pending-entry-pop 0.25s ease;
+}
+.pending-entry-btn:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.pending-entry-btn i {
+    width: 17px;
+    height: 17px;
+}
+.pending-entry-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: #ff4d4f;
+    color: #fff;
+    font-size: 11px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 0 2px #fff;
+}
+@keyframes pending-entry-pop {
+    from { transform: scale(0.6); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+}
+
+/* ==================== 知识库命中闪现 ==================== */
+.knowledge-hit-flash {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    color: #fff;
+    background: var(--main-color);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    animation: knowledge-flash 5s ease forwards;
+}
+
+@keyframes knowledge-flash {
+    /* 弹入 */
+    0% { opacity: 0; transform: scale(0.6); animation-timing-function: ease-out; }
+    8% { opacity: 1; transform: scale(1); animation-timing-function: ease-in-out; }
+    /* 两轮深呼吸：缓慢降下再缓慢回升 */
+    25% { opacity: 0.4; animation-timing-function: ease-in-out; }
+    42% { opacity: 1; animation-timing-function: ease-in-out; }
+    60% { opacity: 0.4; animation-timing-function: ease-in-out; }
+    78% { opacity: 1; animation-timing-function: ease-out; }
+    /* 停留后淡出 */
+    100% { opacity: 0; }
+}
+
+/* ============================================
+   移动端适配
+   ============================================ */
+@media (max-width: 768px) {
+    .message-area-top {
+        width: 92%;
+        font-size: var(--text-md, 14px);
+    }
+
+    /* 移动端隐藏模型名称，只保留会话名称 */
+    .model-name-tag {
+        display: none;
+    }
+
+    /* 移动端会话名称过长时省略号截断，避免换行 */
+    .message-area-top .session-name-editable {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}

@@ -26,6 +26,7 @@
     <script src="utils/color.js"></script>
     <script src="utils/mermaid.js"></script>
     <script src="utils/file-url.js"></script>
+    <script src="utils/ws-bus.js"></script>
     <script src="directives/auto-follow.js"></script>
     <script src="directives/infinite-scroll.js"></script>
     <script src="components/tool-confirm/tool-confirm.js"></script>
@@ -38,14 +39,18 @@
     <script src="components/auto-resize-textarea/auto-resize-textarea.js"></script>
     <script src="components/command-suggest/command-suggest.js"></script>
     <script src="components/agent-log-sidebar/agent-log-sidebar.js"></script>
+    <script src="components/message-topbar/message-topbar.js"></script>
+    <script src="components/send-area/send-area.js"></script>
     <!-- 样式 -->
     <link rel="stylesheet" href="css/scrollbar.css"/>
     <link rel="stylesheet" href="css/layout.css"/>
     <!-- 三大板块样式：侧边栏 | 消息栏 | 发送栏 -->
     <link rel="stylesheet" href="components/chat-sidebar/chat-sidebar.css"/>
     <link rel="stylesheet" href="css/message-area.css"/>
+    <link rel="stylesheet" href="components/message-topbar/message-topbar.css"/>
     <link rel="stylesheet" href="components/session-name/session-name.css"/>
     <link rel="stylesheet" href="css/send-area.css"/>
+    <link rel="stylesheet" href="components/send-area/send-area.css"/>
     <link rel="stylesheet" href="components/file-upload/file-upload.css"/>
     <link rel="stylesheet" href="css/markdown.css"/>
     <link rel="stylesheet" href="components/tool-confirm/tool-confirm.css"/>
@@ -80,52 +85,23 @@
             </div>
         </div>
         <div class="message-area-background" :style="backgroundStyle"></div>
-        <div class="message-area-top">
-            <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
-                <button class="sidebar-toggle-btn" @click="toggleSidebar" title="展开/收起侧边栏">
-                    <i data-lucide="menu" style="width: 18px; height: 18px;"></i>
-                </button>
-                <span class="model-name-tag">{{ displayModel }} ·</span>
-                <session-name
-                    :current-session="currentSession"
-                    :main-color="mainColor"
-                    @update-session-name="n => currentSession.name = n">
-                </session-name>
-                <!-- 待确认工具请求入口：弹窗收起后从此处重新展开 -->
-                <button v-if="pendingToolCount > 0"
-                        class="pending-entry-btn"
-                        :style="{'--main-color': mainColor}"
-                        @click="$refs.toolConfirm.expand()"
-                        :title="pendingToolCount + ' 个工具请求待确认'">
-                    <i data-lucide="shield-alert"></i>
-                    <span class="pending-entry-badge">{{ pendingToolCount }}</span>
-                </button>
-                <!-- 待回答提问入口：弹窗收起后从此处重新展开 -->
-                <button v-if="pendingQuestionCount > 0"
-                        class="pending-entry-btn"
-                        :style="{'--main-color': mainColor}"
-                        @click="$refs.toolQuestion.expand()"
-                        :title="pendingQuestionCount + ' 个提问待回答'">
-                    <i data-lucide="message-circle-question"></i>
-                    <span class="pending-entry-badge">{{ pendingQuestionCount }}</span>
-                </button>
-            </div>
-            <div style="display: flex; align-items: center; gap: 16px;">
-                <span v-if="knowledgeFlashVisible" class="knowledge-hit-flash" title="已自动检索知识库内容">
-                    <i data-lucide="database"></i>
-                </span>
-                <connection-indicator
-                    :ws-url="wsUrl"
-                    @connected="onWsConnect"
-                    @disconnected="sending = false; ws = null">
-                </connection-indicator>
-                <button class="sidebar-toggle-btn" @click="toggleAgentLog"
-                        :title="agentLogVisible ? '折叠 Agent Log' : '展开 Agent Log'"
-                        :style="agentLogVisible ? {color: mainColor} : {}">
-                    <i data-lucide="terminal" style="width: 18px; height: 18px;"></i>
-                </button>
-            </div>
-        </div>
+        <message-topbar
+            ref="topbar"
+            :current-session="currentSession"
+            :main-color="mainColor"
+            :display-model="displayModel"
+            :ws-url="wsUrl"
+            :pending-tool-count="pendingToolCount"
+            :pending-question-count="pendingQuestionCount"
+            :agent-log-visible="agentLogVisible"
+            @toggle-sidebar="toggleSidebar"
+            @toggle-agent-log="toggleAgentLog"
+            @expand-tool-confirm="$refs.toolConfirm.expand()"
+            @expand-tool-question="$refs.toolQuestion.expand()"
+            @update-session-name="n => currentSession.name = n"
+            @connected="onWsConnect"
+            @disconnected="onWsDisconnect"
+        ></message-topbar>
         <div class="message-area-panel" :class="{ 'is-new-chat': !currentSessionId && currentMessages.length === 0 }">
             <!-- 新对话时的问候语横幅 -->
             <div v-if="!currentSessionId && currentMessages.length === 0" class="greeting-banner" :style="{'--main-color': mainColor}">
@@ -337,81 +313,18 @@
             :main-color="mainColor"
             @toggle="agentLogVisible = !agentLogVisible">
         </agent-log-sidebar>
-        <div class="send-area-container" :style="{'--main-color': mainColor}" style="position: relative;">
-            <command-suggest
-                :commands="filteredCommands"
-                :active-index="commandActiveIndex"
-                :visible="commandSuggestVisible"
-                :main-color="mainColor"
-                :sub-options="subOptions"
-                :sub-title="'选择一个会话'"
-                @select="onCommandSelect"
-                @sub-select="onSubSelect"
-                @back="onCommandBack"
-                @update:active-index="idx => commandActiveIndex = idx"
-            ></command-suggest>
-            <file-upload ref="fileUpload"
-                drop-zone=".message-area-wrapper"
-                :files="uploadedFiles"
-                :enable-paste="true"
-                :main-color="mainColor"
-                @update-files="files => uploadedFiles = files"
-                @drag-over-change="isChange => dragOver = isChange">
-            </file-upload>
-            <div class="send-area-input-row">
-                <!-- 看板熊彩蛋：趴在“发送按钮”顶沿上，宽度跟随按钮（样式见 css/send-area.css）。
-                     连按 10 次 b 键召唤/送走，显隐状态记入 localStorage，刷新后保持。
-                     img 的 width 属性仅作 CSS 未加载时的兜底 -->
-                <div class="send-area-mascot" aria-hidden="true"
-                     :class="{ 'mascot-visible': mascotVisible }">
-                    <img class="mascot-body" src="icon/signboard_bear/signboard_bear_2.png" alt="" width="100">
-                    <img class="mascot-paws" src="icon/signboard_bear/signboard_bear_1.png" alt="" width="100">
-                </div>
-                <button class="send-area-attach-button tts-toggle-button" :class="{ 'tts-on': ttsEnabled }"
-                        @click="toggleTts()"
-                        :title="ttsEnabled ? '本条消息语音朗读已开启（点击关闭）' : '开启本条消息的语音朗读'">
-                    <i v-show="ttsEnabled" data-lucide="volume-2" style="width:18px;height:18px"></i>
-                    <i v-show="!ttsEnabled" data-lucide="volume-x" style="width:18px;height:18px"></i>
-                </button>
-                <button class="send-area-attach-button" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
-                    <i data-lucide="paperclip" style="width:18px;height:18px"></i>
-                </button>
-                <auto-resize-textarea
-                    class="send-area-textarea"
-                    :main-color="mainColor"
-                    v-model="inputText"
-                    placeholder="输入消息，Ctrl+Enter 发送，Enter 换行"
-                    :max-height="180"
-                    :min-height="85"
-                    @submit="sendMessage"
-                    @cancel="onTextareaCancel"
-                    @keydown="onTextareaKeydown"
-                ></auto-resize-textarea>
-                <!-- 发送/停止按钮：外包一层 .send-area-submit-wrap 承载“长按 3s 召唤/送走看板熊”的移动端彩蛋手势。
-                     短按 = 照常发送/停止；按下 3s 不抬 = 切换看板熊（不再发送）。
-                     内部按钮 pointer-events:none，命中统一由 wrapper 接管，布局/尺寸与原来一致。 -->
-                <div class="send-area-submit-wrap"
-                     @pointerdown="onSubmitPointerDown"
-                     @pointerup="onSubmitPointerEnd"
-                     @pointercancel="onSubmitPointerEnd"
-                     @pointerleave="onSubmitPointerLeave">
-                    <button v-if="isStreaming"
-                        class="send-area-submit-button"
-                        @click="stopStreaming()"
-                        :disabled="isStreaming && !currentSessionId"
-                    >
-                        <i style="margin-top: 5px; margin-left: -5px" data-lucide="square"></i>
-                    </button>
-                    <button v-else
-                            class="send-area-submit-button"
-                            @click="sendMessage()"
-                            :disabled="sending || (!isStreaming && !inputText && uploadedFiles.length === 0)"
-                    >
-                        <i style="margin-top: 5px; margin-left: -5px" data-lucide="send"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
+        <send-area
+            ref="sendArea"
+            :main-color="mainColor"
+            :is-streaming="isStreaming"
+            :sending="sending"
+            :session-id="currentSessionId"
+            :get-sessions="getSidebarSessions"
+            v-model:input-text="inputText"
+            @send="onSendAreaSend"
+            @stop="stopStreaming"
+            @drag-over-change="isChange => dragOver = isChange"
+        ></send-area>
 
         <!-- 工具确认对话框（组件） -->
         <tool-confirm
@@ -453,18 +366,6 @@
         }
     }
 
-    /* ========== 斜杠指令注册表 ==========
-     * 每项: { name, desc, usage, icon }
-     * icon 使用 lucide 图标名，见 https://lucide.dev/icons/
-     * 添加新指令只需在此数组中追加一项即可，框架自动生效。
-     */
-    const SLASH_COMMANDS = [
-        { name: '/look', desc: '查看指定会话的对话记录', usage: '/look', icon: 'eye', subCommand: 'sessions' },
-        { name: '/preview', desc: '显示当前处理后的系统提示词', usage: '/preview', icon: 'scroll-text' },
-        { name: '/fast-search', desc: '联网快速搜索并整理为易读简报', usage: '/fast-search <关键字>', icon: 'search' },
-        { name: '/extensions', desc: '列出当前可用的扩展脚本', usage: '/extensions', icon: 'file-code' },
-    ];
-
     const app = Vue.createApp({
         data() {
             return {
@@ -495,13 +396,6 @@
                 // 当前正在处理的 tool call id
                 currentToolCallId: null,
 
-                // 语音朗读：发送框 🔊 开关（localStorage 记忆）。逐句音频经 ###TTS_AUDIO### 帧
-                // 实时入队顺序播放（ttsQueue/ttsPlaying + 常驻单 Audio 元素）；整轮完整音频在
-                // assistant 消息 extension.ttsAudio，供历史回放。
-                ttsEnabled: localStorage.getItem('sunnybear.tts') === '1',
-                ttsQueue: [],
-                ttsPlaying: false,
-
                 // 用户是否手动上滑离开了底部（用于流式传输时自动跟随/停止跟随）
                 // 消息编辑状态
                 currentEditId: null,
@@ -509,24 +403,15 @@
                 editTargetRole: null,
                 // 问候语
                 greetingText: '',
-                // 知识库命中闪现提示
-                knowledgeFlashVisible: false,
                 // 桌面端侧边栏折叠
                 sidebarCollapsed: false,
                 // 折叠状态：key = msgId_section, value = true(折叠)/false(展开)
                 collapsedState: {},
-                // 斜杠指令候选
-                commandActiveIndex: 0,
-                commandSubMode: null,      // null | 'sessions'  — 二级面板模式
-                commandParentCmd: null,    // 触发二级面板的一级指令
-                // 文件上传
-                uploadedFiles: [],   // [{name, data}] — 对应后端 FileData
+                // 拖拽上传悬停状态（由发送区组件上抛，控制消息区遮罩）
                 dragOver: false,
                 // Agent Log 侧边框
                 agentLogs: [],
                 agentLogVisible: false,
-                // 看板熊彩蛋（连按 10 次 b 切换）显隐：状态持久化到 localStorage
-                mascotVisible: localStorage.getItem('assistant-mascot-visible') === '1',
                 // 顶部入口角标：待确认工具请求数 / 待回答提问数
                 pendingToolCount: 0,
                 pendingQuestionCount: 0,
@@ -553,29 +438,6 @@
                 if (hour >= 12 && hour < 18) return 'sun';
                 if (hour >= 18 && hour < 22) return 'sunset';
                 return 'moon';
-            },
-            // 斜杠指令候选面板是否可见
-            commandSuggestVisible() {
-                if (this.commandSubMode && this.subOptions.length > 0) return true;
-                return this.inputText.startsWith('/') && this.filteredCommands.length > 0;
-            },
-            // 根据当前输入过滤匹配的指令
-            filteredCommands() {
-                if (!this.inputText || !this.inputText.startsWith('/')) return [];
-                const lower = this.inputText.toLowerCase().split(' ')[0];
-                return SLASH_COMMANDS.filter(c => c.name.startsWith(lower) || c.name.includes(lower));
-            },
-            // 二级选项（如会话列表）
-            subOptions() {
-                if (this.commandSubMode === 'sessions') {
-                    const sessions = this.$refs.sidebar ? (this.$refs.sidebar.sessions || []) : [];
-                    return sessions.map(s => ({
-                        id: s.id,
-                        label: s.name || s.id,
-                        desc: ''
-                    }));
-                }
-                return [];
             },
             // 用户消息气泡背景色：跟随主色自动变浅
             userBubbleBg() {
@@ -616,6 +478,15 @@
              */
             $api(path) {
                 return API.BASE_PATH + path;
+            },
+
+            /**
+             * 惰性读取侧边栏会话列表（供发送区 /look 指令二级面板）。
+             * 传函数而非快照，确保读取时拿到的是侧边栏的最新数据。
+             * @returns {Array} 会话对象数组
+             */
+            getSidebarSessions() {
+                return this.$refs.sidebar ? (this.$refs.sidebar.sessions || []) : [];
             },
 
             /**
@@ -797,14 +668,12 @@
             },
 
             /**
-             * 知识库命中：顶部栏闪现图标，约 5 秒后自动消失（与 CSS 动画时长一致）
+             * 知识库命中：顶部栏闪现图标
              */
             showKnowledgeFlash() {
-                this.knowledgeFlashVisible = true;
-                clearTimeout(this._knowledgeFlashTimer);
-                this._knowledgeFlashTimer = setTimeout(() => {
-                    this.knowledgeFlashVisible = false;
-                }, 5000);
+                if (this.$refs.topbar) {
+                    this.$refs.topbar.flashKnowledge();
+                }
             },
 
             selectSession(session) {
@@ -839,111 +708,9 @@
             },
 
             /**
-             * 
-             * 斜杠指令面板键盘导航。
-             * 由 auto-resize-textarea 的 @keydown 事件触发。
+             * 发送区发来发送请求（内容、附件、朗读开关由发送区组装）
              */
-            /** Esc 键：优先关闭指令面板，否则走默认行为 */
-            onTextareaCancel(event) {
-                if (this.commandSubMode) {
-                    this.onCommandBack();
-                    return;
-                }
-                if (this.commandSuggestVisible) {
-                    this.inputText = '';
-                    return;
-                }
-                // 无面板时，透传 cancel（编辑模式退出等）
-                this.currentEditId = null;
-                this.editDraft = '';
-                this.editTargetRole = null;
-            },
-
-            onTextareaKeydown(event) {
-                if (!this.commandSuggestVisible) return;
-
-                // 二级面板模式
-                if (this.commandSubMode) {
-                    const len = this.subOptions.length;
-                    if (event.key === 'ArrowDown') {
-                        event.preventDefault();
-                        this.commandActiveIndex = (this.commandActiveIndex + 1) % len;
-                    } else if (event.key === 'ArrowUp') {
-                        event.preventDefault();
-                        this.commandActiveIndex = (this.commandActiveIndex - 1 + len) % len;
-                    } else if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey) {
-                        event.preventDefault();
-                        const opt = this.subOptions[this.commandActiveIndex];
-                        if (opt) this.onSubSelect(opt);
-                    } else if (event.key === 'Escape') {
-                        event.preventDefault();
-                        this.onCommandBack();
-                    }
-                    return;
-                }
-
-                // 一级面板模式
-                const len = this.filteredCommands.length;
-                if (event.key === 'ArrowDown') {
-                    event.preventDefault();
-                    this.commandActiveIndex = (this.commandActiveIndex + 1) % len;
-                } else if (event.key === 'ArrowUp') {
-                    event.preventDefault();
-                    this.commandActiveIndex = (this.commandActiveIndex - 1 + len) % len;
-                } else if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey) {
-                    event.preventDefault();
-                    const cmd = this.filteredCommands[this.commandActiveIndex];
-                    if (cmd) this.onCommandSelect(cmd);
-                } else if (event.key === 'Escape') {
-                    event.preventDefault();
-                    this.inputText = '';
-                }
-            },
-
-            /**
-             * 选中一级指令：有 subCommand 则进入二级面板，否则直接替换输入框。
-             */
-            onCommandSelect(cmd) {
-                this.inputText = cmd.name + ' ';
-                if (cmd.subCommand) {
-                    this.commandSubMode = cmd.subCommand;
-                    this.commandParentCmd = cmd;
-                    this.commandActiveIndex = 0;
-                    return;
-                }
-                this.commandActiveIndex = 0;
-                this.$nextTick(() => {
-                    const ta = document.querySelector('.send-area-textarea');
-                    if (ta) ta.focus();
-                });
-            },
-
-            /** 选中二级选项（如会话） → 拼出最终指令 */
-            onSubSelect(opt) {
-                if (this.commandParentCmd && this.commandParentCmd.name === '/look') {
-                    this.inputText = '/look ' + opt.id + ' ';
-                }
-                this.commandSubMode = null;
-                this.commandParentCmd = null;
-                this.commandActiveIndex = 0;
-                this.$nextTick(() => {
-                    const ta = document.querySelector('.send-area-textarea');
-                    if (ta) ta.focus();
-                });
-            },
-
-            /** 从二级面板返回一级 */
-            onCommandBack() {
-                this.commandSubMode = null;
-                this.commandParentCmd = null;
-                this.commandActiveIndex = 0;
-            },
-
-            /**
-             * 发送消息
-             * 根据是否已选中会话自动选择 create / append 模式
-             */
-            async sendMessage() {
+            onSendAreaSend(payload) {
                 if (this.sending) {
                     return; // 等待服务端 init_user 确认期间禁止重复发送
                 }
@@ -954,20 +721,25 @@
                 let request = {
                     mode: mode,
                     sessionId: this.currentSessionId,
-                    content: this.inputText,
-                    tts: this.ttsEnabled
+                    content: payload.content,
+                    tts: payload.tts
                 };
-                if (this.uploadedFiles.length > 0) {
-                    request.files = this.uploadedFiles;
+                if (payload.files && payload.files.length > 0) {
+                    request.files = payload.files;
                 }
                 this.ws.send(JSON.stringify(request));
-                // 不在这里清空 inputText/uploadedFiles，改为在收到服务端 init_user 确认后再清空
+                // 不在这里清空输入框/附件，改为在收到服务端 init_user 确认后由发送区 clear()
                 // 避免移动端 WebSocket 假连接导致消息丢失
             },
 
             onWsConnect(ws) {
                 this.ws = ws;
-                this.ws.onmessage = (e) => this.handleStreamChunk(e);
+                // 交给消息总线接管 onmessage：组件订阅各自关心的信号，其余帧走 '*' 兜底到 handleStreamChunk
+                WsBus.setSocket(ws);
+                // 兜底订阅只需注册一次
+                if (!this._wsBusFallbackOff) {
+                    this._wsBusFallbackOff = WsBus.on('*', (raw) => this.handleStreamChunk({ data: raw }));
+                }
                 if (this.currentSessionId) {
                     // 断线重连：清空全部流式标记并清掉残留占位（轮次可能已结束、缓冲已清空）。
                     // 若轮次仍在进行，###REPLAY_MESSAGE### 重放会重建并重新置 true
@@ -975,6 +747,12 @@
                     this.currentMessages = this.currentMessages.filter(m => !(m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     this.ws.send("###REQUIRE_REPLAY_MESSAGE###" + this.currentSessionId);
                 }
+            },
+
+            onWsDisconnect() {
+                this.sending = false;
+                this.ws = null;
+                WsBus.clearSocket();
             },
 
             /**
@@ -989,88 +767,32 @@
                     .catch(err => console.error('中止请求发送失败:', err));
             },
 
-            /* ========== TTS 语音朗读 ========== */
+            /* ========== TTS 语音朗读（实际播放逻辑在发送区组件内） ========== */
 
-            /** 发送框 🔊 开关（localStorage 记忆）；关闭时同步清掉队列 */
-            toggleTts() {
-                this.ttsEnabled = !this.ttsEnabled;
-                localStorage.setItem('sunnybear.tts', this.ttsEnabled ? '1' : '0');
-                if (!this.ttsEnabled) {
-                    this.clearTtsQueue();
-                }
+            /** 当前语音朗读开关状态（发送区组件持有，供 replace/edit 请求复读开关） */
+            currentTtsEnabled() {
+                return this.$refs.sendArea ? this.$refs.sendArea.isTtsEnabled() : false;
             },
 
-            /** 常驻单 Audio 元素（非响应式），onended 驱动队列 FIFO */
-            ensureTtsAudio() {
-                if (!this._ttsAudio) {
-                    this._ttsAudio = new Audio();
-                    this._ttsAudio.onended = () => {
-                        this.ttsQueue.shift();
-                        this.ttsPlaying = false;
-                        this.playNextTts();
-                    };
-                    this._ttsRetryPending = false;
-                }
-                return this._ttsAudio;
-            },
-
-            /** 清空播放队列并停掉当前音频（停止/切会话/新轮/发新消息/关开关时调用） */
+            /** 清空播放队列并停掉当前音频（停止/切会话/新轮/发新消息时调用） */
             clearTtsQueue() {
-                this.ttsQueue = [];
-                this.ttsPlaying = false;
-                if (this._ttsAudio) {
-                    this._ttsAudio.pause();
-                    this._ttsAudio.removeAttribute('src');
+                if (this.$refs.sendArea) {
+                    this.$refs.sendArea.clearTtsQueue();
                 }
             },
 
-            /** 逐句音频入队（###TTS_AUDIO### 帧到达）；未在播放时立即起播 */
+            /** 逐句音频入队（###TTS_AUDIO### 帧到达） */
             enqueueTtsAudio(audioBase64) {
-                if (!audioBase64) {
-                    return;
-                }
-                this.ttsQueue.push(audioBase64);
-                this.playNextTts();
-            },
-
-            /** 播放队头；队空 / 已在播放 / 开关已关时不动 */
-            playNextTts() {
-                if (this.ttsPlaying || this.ttsQueue.length === 0 || !this.ttsEnabled) {
-                    return;
-                }
-                this.ttsPlaying = true;
-                this.playAudioData(this.ttsQueue[0], 'audio/mpeg');
-            },
-
-            /** 底层播放：base64 → data URI；被自动播放策略拦截时挂起，等下一次用户手势重试 */
-            playAudioData(audioBase64, mime) {
-                const el = this.ensureTtsAudio();
-                el.src = 'data:' + mime + ';base64,' + audioBase64;
-                const p = el.play();
-                if (p && p.catch) {
-                    p.catch(() => {
-                        el.removeAttribute('src');
-                        this.ttsPlaying = false;
-                        if (!this._ttsRetryPending) {
-                            this._ttsRetryPending = true;
-                            document.addEventListener('pointerdown', () => {
-                                this._ttsRetryPending = false;
-                                this.playNextTts();
-                            }, { once: true });
-                        }
-                    });
+                if (this.$refs.sendArea) {
+                    this.$refs.sendArea.enqueueTtsAudio(audioBase64);
                 }
             },
 
             /** 消息气泡 🔊：重播整轮完整音频（extension.ttsAudio，历史/刷新后可用） */
             playMessageAudio(msg) {
-                const tts = msg.extension && msg.extension.ttsAudio;
-                if (!tts || !tts.audio) {
-                    return;
+                if (this.$refs.sendArea) {
+                    this.$refs.sendArea.playMessageAudio(msg);
                 }
-                this.clearTtsQueue();
-                const mime = tts.format === 'wav' ? 'audio/wav' : 'audio/mpeg';
-                this.playAudioData(tts.audio, mime);
             },
 
             /**
@@ -1135,16 +857,8 @@
                     }
                     return;
                 }
-                if (event.data.startsWith('###TOOL_ASK###')) {
-                    let commandConfirm = JSON.parse(event.data.split('###TOOL_ASK###')[1]);
-                    this.$refs.toolConfirm.show(commandConfirm);
-                    return;
-                }
-                if (event.data.startsWith('###TOOL_QUESTION###')) {
-                    let toolQuestion = JSON.parse(event.data.split('###TOOL_QUESTION###')[1]);
-                    this.$refs.toolQuestion.show(toolQuestion);
-                    return;
-                }
+                // ###TOOL_ASK### / ###TOOL_QUESTION### 由 tool-confirm / tool-question 组件
+                // 自行订阅 WsBus 处理，不再由本兜底分发
                 if (event.data.startsWith('###AGENT_LOG###')) {
                     let entry = JSON.parse(event.data.split('###AGENT_LOG###')[1]);
                     // 只记录当前会话的日志
@@ -1199,7 +913,8 @@
                     } catch (e) {
                         return;
                     }
-                    if (!ttsFrame || ttsFrame.sessionId !== this.currentSessionId || !this.ttsEnabled) {
+                    if (!ttsFrame || ttsFrame.sessionId !== this.currentSessionId
+                            || !this.$refs.sendArea || !this.$refs.sendArea.isTtsEnabled()) {
                         return;
                     }
                     let ttsStreamingMessage = this.currentMessages.findLast(m => m.sessionId === ttsFrame.sessionId
@@ -1250,8 +965,9 @@
                         }
 
                         // 服务端已确认收到消息，此时清空输入框和已上传文件
-                        this.inputText = '';
-                        this.uploadedFiles = [];
+                        if (this.$refs.sendArea) {
+                            this.$refs.sendArea.clear();
+                        }
 
                         this.scrollToBottom(true);
                         // 用户消息中可能包含 mermaid 图表，收到确认后立即渲染（无需等流结束）
@@ -1525,7 +1241,7 @@
                     sessionId: this.currentSessionId,
                     replaceMessageId: msg.id,
                     content: userText,
-                    tts: this.ttsEnabled
+                    tts: this.currentTtsEnabled()
                 };
                 this.ws.send(JSON.stringify(request));
             },
@@ -1574,7 +1290,7 @@
                     sessionId: this.currentSessionId,
                     editMessageId: msg.id,
                     content: this.editDraft,
-                    tts: this.ttsEnabled
+                    tts: this.currentTtsEnabled()
                 };
                 this.ws.send(JSON.stringify(request));
                 // 清除编辑状态
@@ -1833,92 +1549,11 @@
                 }
             },
 
-            /* ---- 看板熊彩蛋：移动端长按发送键 3s 召唤/送走（桌面端保留连按 b×10） ---- */
-
-            /**
-             * 按下发送键：3s 内不抬起判为“长按召唤彩蛋”；抬起前取消则按普通短按处理。
-             */
-            onSubmitPointerDown: function (event) {
-                // 只认主键按下（触屏/笔/鼠标左键）；右键、菜单键的按下不算，抬起自然也不触发
-                const primary = event.pointerType === 'mouse' ? event.button === 0 : true;
-                this._mascotPrimaryPress = primary;
-                this._mascotLongPress = false;
-                if (!primary) return;
-                clearTimeout(this._mascotPressTimer);
-                this._mascotPressTimer = setTimeout(() => {
-                    this._mascotLongPress = true;
-                    this.toggleMascot();
-                }, 3000);
-            },
-
-            /**
-             * 抬起：短按 → 照常发送/停止；长按触发过彩蛋 → 不再发送；右键等非主键直接忽略。
-             */
-            onSubmitPointerEnd: function () {
-                clearTimeout(this._mascotPressTimer);
-                const primary = this._mascotPrimaryPress;
-                const longPressed = this._mascotLongPress;
-                this._mascotPrimaryPress = false;
-                this._mascotLongPress = false;
-                if (!primary) return;
-                if (!longPressed) {
-                    this.onSubmitAction();
-                }
-            },
-
-            /**
-             * 指针滑出发送键（未抬起）：取消彩蛋计时并清掉按下标记（与原生 click 需按下/抬起同元素一致）。
-             */
-            onSubmitPointerLeave: function () {
-                clearTimeout(this._mascotPressTimer);
-                this._mascotPrimaryPress = false;
-                this._mascotLongPress = false;
-            },
-
-            /**
-             * 短按发送/停止的统一入口（等价于原发送按钮 @click + :disabled，供 wrapper 指针路径复用；
-             * 键盘 Tab+Enter 仍走按钮原生 @click，不经过这里）。
-             */
-            onSubmitAction: function () {
-                if (this.isStreaming) {
-                    this.stopStreaming();
-                    return;
-                }
-                if (this.sending) return;
-                if (!this.inputText && this.uploadedFiles.length === 0) return;
-                this.sendMessage();
-            },
-
-            /**
-             * 切换看板熊显隐并持久化（长按 3s / 连按 b×10 共用）。
-             */
-            toggleMascot: function () {
-                this.mascotVisible = !this.mascotVisible;
-                localStorage.setItem('assistant-mascot-visible', this.mascotVisible ? '1' : '0');
-            },
-
         },
 
         mounted() {
             lucide.createIcons();
             this.init();
-            // 看板熊彩蛋：连按 10 次 b → 召唤/送走（中间按了别的键就打断重计；长按连发不计）
-            this._mascotBKeyCount = 0;
-            this._mascotPressTimer = null;
-            this._mascotLongPress = false;
-            this._mascotPrimaryPress = false;
-            window.addEventListener('keydown', (e) => {
-                if (e.repeat || e.isComposing || e.keyCode === 229) return;
-                if (e.key.toLowerCase() === 'b') {
-                    this._mascotBKeyCount++;
-                    if (this._mascotBKeyCount >= 10) {
-                        this._mascotBKeyCount = 0;
-                        this.toggleMascot();
-                    }
-                } else {
-                    this._mascotBKeyCount = 0;
-                }
-            });
             // 代码块复制按钮（v-html 生成，无法用 Vue @click，走事件委托）
             document.addEventListener('click', (e) => {
                 const btn = e.target.closest('.code-copy-btn');
@@ -1931,20 +1566,6 @@
             });
         },
 
-        watch: {
-            // 指令候选列表变化时，重置高亮到第一项
-            filteredCommands() {
-                this.commandActiveIndex = 0;
-            },
-            // 输入不再以 / 开头时，退出二级模式
-            inputText(val) {
-                if (!val || !val.startsWith('/')) {
-                    this.commandSubMode = null;
-                    this.commandParentCmd = null;
-                }
-            }
-        },
-
         updated() {
             this._scheduleIconRefresh();
         },
@@ -1953,6 +1574,8 @@
     // 注册全局工具 & 指令
     app.config.globalProperties.$fileUrl = FileUrlUtils;
     app.config.globalProperties.$md = MarkdownUtils;
+    // WebSocket 消息总线：注入给后代组件（如 tool-confirm / tool-question 自行订阅信号）
+    app.provide('wsBus', WsBus);
     app.use(AutoFollow);
     // 注册组件库
     app.component('tool-confirm', ToolConfirm);
@@ -1965,6 +1588,8 @@
     app.component('auto-resize-textarea', AutoResizeTextarea);
     app.component('command-suggest', CommandSuggest);
     app.component('agent-log-sidebar', AgentLogSidebar);
+    app.component('message-topbar', MessageTopbar);
+    app.component('send-area', SendArea);
 
     app.use(ElementPlus);
     // 自定义指令（放在 ElementPlus 之后注册，确保同名指令以自定义实现为准）

@@ -22,6 +22,9 @@
  * Props:
  *   mainColor — String  主题色
  *
+ * Injects:
+ *   wsBus     — WebSocket 消息总线（app.provide('wsBus', WsBus)），用于订阅 ###TOOL_QUESTION###
+ *
  * 公开方法（通过 ref 调用）：
  *   show(toolQuestion) — 入队并弹出结构化提问弹窗
  *   expand()           — 重新展开收起的弹窗（供顶部入口按钮调用）
@@ -114,6 +117,11 @@ const ToolQuestion = {
     },
 
     emits: ['pending-change'],
+
+    inject: {
+        // 可选注入：插件页未提供 wsBus 时降级为 null（仍可由父组件通过 ref 调用 show()）
+        wsBus: { default: null }
+    },
 
     data() {
         return {
@@ -379,9 +387,23 @@ const ToolQuestion = {
         if (!this.active && this.queue.length > 0) {
             this.loadNext();
         }
+        // 自行订阅 ###TOOL_QUESTION### 信号（wsBus 由 app.provide 注入）
+        if (this.wsBus) {
+            this._unsubToolQuestion = this.wsBus.on('TOOL_QUESTION', (payload) => {
+                try {
+                    this.show(JSON.parse(payload));
+                } catch (e) {
+                    console.error('解析 TOOL_QUESTION 失败:', e);
+                }
+            });
+        }
     },
 
     beforeUnmount() {
         this.clearTimer();
+        if (this._unsubToolQuestion) {
+            this._unsubToolQuestion();
+            this._unsubToolQuestion = null;
+        }
     }
 };

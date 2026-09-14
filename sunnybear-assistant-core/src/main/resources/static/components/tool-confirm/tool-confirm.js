@@ -2,16 +2,14 @@
  * 工具确认弹窗组件（自包含版 · 多标签）
  *
  * 将 WebSocket 通信、图标/标题映射、markdown 渲染、倒计时全部内聚在组件内部。
- * 父组件只需：
- *   1. 传入 ws / mainColor / renderMarkdown 三个 props
- *   2. 调用 this.$refs.toolConfirm.show(toolAsk) 即可
- *
- * 并发支持：多个确认请求以"浏览器标签页"形式共存于一个弹窗内，
- * 每标签独立倒计时（时间取服务端 ToolAsk.timeout，为空/<=0 则不超时一直等待），
- * 可点击标签栏切换查看，新到达的 ask 自动激活。超时/接受/拒绝只作用于对应的标签，互不影响。
+ * 组件自行通过 inject('wsBus') 订阅 ###TOOL_ASK### 信号并调用 show()，
+ * 父组件无需再转发该信号；入口按钮仍可通过 ref 调用 expand()。
  *
  * Props:
  *   mainColor      — String     主题色
+ *
+ * Injects:
+ *   wsBus          — WebSocket 消息总线（app.provide('wsBus', WsBus)），用于订阅 ###TOOL_ASK###
  *
  * 关闭语义：点遮罩 / Esc / 右上角 X 均为"收起"（不拒绝），待确认项保留在队列中，
  * 收起后由页面顶部的入口按钮（角标显示待确认数量）再次调 expand() 打开。
@@ -101,6 +99,11 @@ const ToolConfirm = {
     },
 
     emits: ['pending-change'],
+
+    inject: {
+        // 可选注入：插件页未提供 wsBus 时降级为 null（仍可由父组件通过 ref 调用 show()）
+        wsBus: { default: null }
+    },
 
     data() {
         return {
@@ -296,6 +299,16 @@ const ToolConfirm = {
     mounted() {
         // 防御：父组件在组件挂载前调用 show() 的极端情况
         this.asks.forEach(t => this.startCountdown(t));
+        // 自行订阅 ###TOOL_ASK### 信号（wsBus 由 app.provide 注入）
+        if (this.wsBus) {
+            this._unsubToolAsk = this.wsBus.on('TOOL_ASK', (payload) => {
+                try {
+                    this.show(JSON.parse(payload));
+                } catch (e) {
+                    console.error('解析 TOOL_ASK 失败:', e);
+                }
+            });
+        }
     },
 
     updated() {
@@ -304,5 +317,9 @@ const ToolConfirm = {
 
     beforeUnmount() {
         this.asks.forEach(t => this.clearTimer(t));
+        if (this._unsubToolAsk) {
+            this._unsubToolAsk();
+            this._unsubToolAsk = null;
+        }
     }
 };

@@ -1,0 +1,503 @@
+/* ========== 斜杠指令注册表 ==========
+ * 每项: { name, desc, usage, icon }
+ * icon 使用 lucide 图标名，见 https://lucide.dev/icons/
+ * 添加新指令只需在此数组中追加一项即可，框架自动生效。
+ */
+const SLASH_COMMANDS = [
+    { name: '/look', desc: '查看指定会话的对话记录', usage: '/look', icon: 'eye', subCommand: 'sessions' },
+    { name: '/preview', desc: '显示当前处理后的系统提示词', usage: '/preview', icon: 'scroll-text' },
+    { name: '/fast-search', desc: '联网快速搜索并整理为易读简报', usage: '/fast-search <关键字>', icon: 'search' },
+    { name: '/extensions', desc: '列出当前可用的扩展脚本', usage: '/extensions', icon: 'file-code' },
+];
+
+/**
+ * 发送区组件（输入框 + 上传/朗读按钮 + 发送/停止按钮 + 斜杠指令面板 + 看板熊彩蛋）
+ *
+ * 自包含内容：
+ *   - 斜杠指令候选面板（一级指令 + 二级会话选择），键盘导航与 Esc 关闭
+ *   - 文件上传（chips / 拖拽 / 粘贴），拖拽悬停状态通过事件上抛父级
+ *   - TTS 语音朗读开关（localStorage 记忆）与逐句/整轮音频播放
+ *   - 看板熊彩蛋（桌面端连按 b×10 / 移动端长按发送键 3s）
+ *
+ * 发送不直接操作 WebSocket：组件把 { content, files, tts } 通过 send 事件交给父级发送。
+ *
+ * Props:
+ *   mainColor    — String   主题色
+ *   isStreaming  — Boolean  当前会话是否流式进行中
+ *   sending      — Boolean  是否已发送待服务端确认
+ *   getSessions  — Function 返回会话列表的函数（供 /look 指令二级面板，惰性读取避免快照过期）
+ *   sessionId    — String   当前会话 id
+ *   inputText    — String   v-model:inputText 输入框内容
+ *
+ * Emits:
+ *   update:inputText     — 输入框内容变化（v-model:input-text）
+ *   send(payload)        — { content, files, tts } 请求发送
+ *   stop                 — 请求中止流式传输
+ *   drag-over-change     — 拖拽悬停状态变化（透传给父级控制遮罩）
+ *
+ * 公开方法（通过 ref 调用）：
+ *   submit()             — 触发发送/停止（供键盘 Enter 或父级入口）
+ *   clear()              — 清空输入框与已上传文件（供父级在 init_user 确认后调用）
+ *   isTtsEnabled()       — 读取语音朗读开关状态
+ *   playMessageAudio(msg)— 重播某条消息的整轮完整音频
+ *   toggleMascot()       — 切换看板熊显隐
+ *   getUploadedFiles()   — 读取当前已上传文件（供父级读取，避免父级持有状态）
+ */
+const SendArea = {
+    name: 'SendArea',
+
+    template: `
+    <div class="send-area-container" :style="{'--main-color': mainColor}" style="position: relative;">
+        <command-suggest
+            :commands="filteredCommands"
+            :active-index="commandActiveIndex"
+            :visible="commandSuggestVisible"
+            :main-color="mainColor"
+            :sub-options="subOptions"
+            :sub-title="'选择一个会话'"
+            @select="onCommandSelect"
+            @sub-select="onSubSelect"
+            @back="onCommandBack"
+            @update:active-index="idx => commandActiveIndex = idx"
+        ></command-suggest>
+        <file-upload ref="fileUpload"
+            drop-zone=".message-area-wrapper"
+            :files="uploadedFiles"
+            :enable-paste="true"
+            :main-color="mainColor"
+            @update-files="files => uploadedFiles = files"
+            @drag-over-change="isChange => $emit('drag-over-change', isChange)">
+        </file-upload>
+        <div class="send-area-input-row">
+            <!-- 看板熊彩蛋：趴在“发送按钮”顶沿上，宽度跟随按钮（样式见 css/send-area.css）。
+                 连按 10 次 b 键召唤/送走，显隐状态记入 localStorage，刷新后保持。
+                 img 的 width 属性仅作 CSS 未加载时的兜底 -->
+            <div class="send-area-mascot" aria-hidden="true"
+                 :class="{ 'mascot-visible': mascotVisible }">
+                <img class="mascot-body" src="icon/signboard_bear/signboard_bear_2.png" alt="" width="100">
+                <img class="mascot-paws" src="icon/signboard_bear/signboard_bear_1.png" alt="" width="100">
+            </div>
+            <button class="send-area-attach-button tts-toggle-button" :class="{ 'tts-on': ttsEnabled }"
+                    @click="toggleTts()"
+                    :title="ttsEnabled ? '本条消息语音朗读已开启（点击关闭）' : '开启本条消息的语音朗读'">
+                <i v-show="ttsEnabled" data-lucide="volume-2" style="width:18px;height:18px"></i>
+                <i v-show="!ttsEnabled" data-lucide="volume-x" style="width:18px;height:18px"></i>
+            </button>
+            <button class="send-area-attach-button" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
+                <i data-lucide="paperclip" style="width:18px;height:18px"></i>
+            </button>
+            <auto-resize-textarea
+                class="send-area-textarea"
+                :main-color="mainColor"
+                :model-value="inputText"
+                placeholder="输入消息，Ctrl+Enter 发送，Enter 换行"
+                :max-height="180"
+                :min-height="85"
+                @update:model-value="v => $emit('update:inputText', v)"
+                @submit="submit"
+                @cancel="onTextareaCancel"
+                @keydown="onTextareaKeydown"
+            ></auto-resize-textarea>
+            <!-- 发送/停止按钮：外包一层 .send-area-submit-wrap 承载“长按 3s 召唤/送走看板熊”的移动端彩蛋手势。
+                 短按 = 照常发送/停止；按下 3s 不抬 = 切换看板熊（不再发送）。
+                 内部按钮 pointer-events:none，命中统一由 wrapper 接管，布局/尺寸与原来一致。 -->
+            <div class="send-area-submit-wrap"
+                 @pointerdown="onSubmitPointerDown"
+                 @pointerup="onSubmitPointerEnd"
+                 @pointercancel="onSubmitPointerEnd"
+                 @pointerleave="onSubmitPointerLeave">
+                <button v-if="isStreaming"
+                    class="send-area-submit-button"
+                    @click="$emit('stop')"
+                    :disabled="isStreaming && !sessionId"
+                >
+                    <i style="margin-top: 5px; margin-left: -5px" data-lucide="square"></i>
+                </button>
+                <button v-else
+                        class="send-area-submit-button"
+                        @click="submit"
+                        :disabled="sending || (!isStreaming && !inputText && uploadedFiles.length === 0)"
+                >
+                    <i style="margin-top: 5px; margin-left: -5px" data-lucide="send"></i>
+                </button>
+            </div>
+        </div>
+    </div>`,
+
+    props: {
+        mainColor:   { type: String,   default: 'lightsalmon' },
+        isStreaming: { type: Boolean,  default: false },
+        sending:     { type: Boolean,  default: false },
+        getSessions: { type: Function, default: function () { return []; } },
+        sessionId:   { type: String,   default: '' },
+        inputText:   { type: String,   default: '' }
+    },
+
+    emits: ['update:inputText', 'send', 'stop', 'drag-over-change'],
+
+    data: function () {
+        return {
+            uploadedFiles: [],   // [{ name, data }] — 对应后端 FileData
+            // 语音朗读：发送框 🔊 开关（localStorage 记忆）
+            ttsEnabled: localStorage.getItem('sunnybear.tts') === '1',
+            ttsQueue: [],
+            ttsPlaying: false,
+            // 看板熊彩蛋（连按 10 次 b 切换）显隐：状态持久化到 localStorage
+            mascotVisible: localStorage.getItem('assistant-mascot-visible') === '1',
+            // 斜杠指令候选
+            commandActiveIndex: 0,
+            commandSubMode: null,      // null | 'sessions'  — 二级面板模式
+            commandParentCmd: null     // 触发二级面板的一级指令
+        };
+    },
+
+    computed: {
+        // 斜杠指令候选面板是否可见
+        commandSuggestVisible: function () {
+            if (this.commandSubMode && this.subOptions.length > 0) return true;
+            return this.inputText.startsWith('/') && this.filteredCommands.length > 0;
+        },
+        // 根据当前输入过滤匹配的指令
+        filteredCommands: function () {
+            if (!this.inputText || !this.inputText.startsWith('/')) return [];
+            const lower = this.inputText.toLowerCase().split(' ')[0];
+            return SLASH_COMMANDS.filter(function (c) {
+                return c.name.startsWith(lower) || c.name.includes(lower);
+            });
+        },
+        // 二级选项（如会话列表）
+        subOptions: function () {
+            if (this.commandSubMode === 'sessions') {
+                return this.getSessions().map(function (s) {
+                    return { id: s.id, label: s.name || s.id, desc: '' };
+                });
+            }
+            return [];
+        }
+    },
+
+    watch: {
+        // 指令候选列表变化时，重置高亮到第一项
+        filteredCommands: function () {
+            this.commandActiveIndex = 0;
+        },
+        // 输入不再以 / 开头时，退出二级模式
+        inputText: function (val) {
+            if (!val || !val.startsWith('/')) {
+                this.commandSubMode = null;
+                this.commandParentCmd = null;
+            }
+        }
+    },
+
+    mounted: function () {
+        // 看板熊彩蛋：连按 10 次 b → 召唤/送走（中间按了别的键就打断重计；长按连发不计）
+        this._mascotBKeyCount = 0;
+        this._mascotPressTimer = null;
+        this._mascotLongPress = false;
+        this._mascotPrimaryPress = false;
+        this._onKeydown = function (e) {
+            if (e.repeat || e.isComposing || e.keyCode === 229) return;
+            if (e.key.toLowerCase() === 'b') {
+                this._mascotBKeyCount++;
+                if (this._mascotBKeyCount >= 10) {
+                    this._mascotBKeyCount = 0;
+                    this.toggleMascot();
+                }
+            } else {
+                this._mascotBKeyCount = 0;
+            }
+        }.bind(this);
+        window.addEventListener('keydown', this._onKeydown);
+    },
+
+    beforeUnmount: function () {
+        window.removeEventListener('keydown', this._onKeydown);
+        clearTimeout(this._mascotPressTimer);
+        if (this._ttsAudio) {
+            this._ttsAudio.pause();
+            this._ttsAudio.removeAttribute('src');
+        }
+    },
+
+    methods: {
+        /* ========== 对外方法 ========== */
+
+        /**
+         * 短按发送/停止的统一入口（等价于发送按钮 @click + :disabled）。
+         */
+        submit: function () {
+            if (this.isStreaming) {
+                this.$emit('stop');
+                return;
+            }
+            if (this.sending) return;
+            if (!this.inputText && this.uploadedFiles.length === 0) return;
+            this.$emit('send', {
+                content: this.inputText,
+                files: this.uploadedFiles,
+                tts: this.ttsEnabled
+            });
+        },
+
+        /**
+         * 清空输入框与已上传文件（服务端 init_user 确认后由父级调用）。
+         */
+        clear: function () {
+            this.$emit('update:inputText', '');
+            this.uploadedFiles = [];
+        },
+
+        /**
+         * 读取当前已上传文件（供父级需要时读取）。
+         */
+        getUploadedFiles: function () {
+            return this.uploadedFiles;
+        },
+
+        /**
+         * 语音朗读开关是否开启（供父级在处理 TTS 音频帧时判断）。
+         */
+        isTtsEnabled: function () {
+            return this.ttsEnabled;
+        },
+
+        /**
+         * 切换看板熊显隐并持久化（长按 3s / 连按 b×10 共用）。
+         */
+        toggleMascot: function () {
+            this.mascotVisible = !this.mascotVisible;
+            localStorage.setItem('assistant-mascot-visible', this.mascotVisible ? '1' : '0');
+        },
+
+        /* ========== 键盘 / 指令面板 ========== */
+
+        /** Esc 键：优先关闭指令面板，否则透传 cancel（编辑模式退出等由父级兜底） */
+        onTextareaCancel: function () {
+            if (this.commandSubMode) {
+                this.onCommandBack();
+                return;
+            }
+            if (this.commandSuggestVisible) {
+                this.$emit('update:inputText', '');
+                return;
+            }
+        },
+
+        /**
+         * 指令面板键盘导航（由 auto-resize-textarea 的 @keydown 触发）。
+         */
+        onTextareaKeydown: function (event) {
+            if (!this.commandSuggestVisible) return;
+
+            // 二级面板模式
+            if (this.commandSubMode) {
+                const len = this.subOptions.length;
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    this.commandActiveIndex = (this.commandActiveIndex + 1) % len;
+                } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    this.commandActiveIndex = (this.commandActiveIndex - 1 + len) % len;
+                } else if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey) {
+                    event.preventDefault();
+                    const opt = this.subOptions[this.commandActiveIndex];
+                    if (opt) this.onSubSelect(opt);
+                } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    this.onCommandBack();
+                }
+                return;
+            }
+
+            // 一级面板模式
+            const len = this.filteredCommands.length;
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                this.commandActiveIndex = (this.commandActiveIndex + 1) % len;
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                this.commandActiveIndex = (this.commandActiveIndex - 1 + len) % len;
+            } else if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey) {
+                event.preventDefault();
+                const cmd = this.filteredCommands[this.commandActiveIndex];
+                if (cmd) this.onCommandSelect(cmd);
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                this.$emit('update:inputText', '');
+            }
+        },
+
+        /**
+         * 选中一级指令：有 subCommand 则进入二级面板，否则直接替换输入框。
+         */
+        onCommandSelect: function (cmd) {
+            this.$emit('update:inputText', cmd.name + ' ');
+            if (cmd.subCommand) {
+                this.commandSubMode = cmd.subCommand;
+                this.commandParentCmd = cmd;
+                this.commandActiveIndex = 0;
+                return;
+            }
+            this.commandActiveIndex = 0;
+            this.focusTextarea();
+        },
+
+        /** 选中二级选项（如会话） → 拼出最终指令 */
+        onSubSelect: function (opt) {
+            if (this.commandParentCmd && this.commandParentCmd.name === '/look') {
+                this.$emit('update:inputText', '/look ' + opt.id + ' ');
+            }
+            this.commandSubMode = null;
+            this.commandParentCmd = null;
+            this.commandActiveIndex = 0;
+            this.focusTextarea();
+        },
+
+        /** 从二级面板返回一级 */
+        onCommandBack: function () {
+            this.commandSubMode = null;
+            this.commandParentCmd = null;
+            this.commandActiveIndex = 0;
+        },
+
+        focusTextarea: function () {
+            this.$nextTick(function () {
+                const ta = document.querySelector('.send-area-textarea');
+                if (ta) ta.focus();
+            });
+        },
+
+        /* ========== TTS 语音朗读 ========== */
+
+        /** 发送框 🔊 开关（localStorage 记忆）；关闭时同步清掉队列 */
+        toggleTts: function () {
+            this.ttsEnabled = !this.ttsEnabled;
+            localStorage.setItem('sunnybear.tts', this.ttsEnabled ? '1' : '0');
+            if (!this.ttsEnabled) {
+                this.clearTtsQueue();
+            }
+        },
+
+        /** 常驻单 Audio 元素（非响应式），onended 驱动队列 FIFO */
+        ensureTtsAudio: function () {
+            if (!this._ttsAudio) {
+                this._ttsAudio = new Audio();
+                this._ttsAudio.onended = function () {
+                    this.ttsQueue.shift();
+                    this.ttsPlaying = false;
+                    this.playNextTts();
+                }.bind(this);
+                this._ttsRetryPending = false;
+            }
+            return this._ttsAudio;
+        },
+
+        /** 清空播放队列并停掉当前音频（停止/切会话/新轮/发新消息/关开关时调用） */
+        clearTtsQueue: function () {
+            this.ttsQueue = [];
+            this.ttsPlaying = false;
+            if (this._ttsAudio) {
+                this._ttsAudio.pause();
+                this._ttsAudio.removeAttribute('src');
+            }
+        },
+
+        /** 逐句音频入队（###TTS_AUDIO### 帧到达）；未在播放时立即起播 */
+        enqueueTtsAudio: function (audioBase64) {
+            if (!audioBase64) {
+                return;
+            }
+            this.ttsQueue.push(audioBase64);
+            this.playNextTts();
+        },
+
+        /** 播放队头；队空 / 已在播放 / 开关已关时不动 */
+        playNextTts: function () {
+            if (this.ttsPlaying || this.ttsQueue.length === 0 || !this.ttsEnabled) {
+                return;
+            }
+            this.ttsPlaying = true;
+            this.playAudioData(this.ttsQueue[0], 'audio/mpeg');
+        },
+
+        /** 底层播放：base64 → data URI；被自动播放策略拦截时挂起，等下一次用户手势重试 */
+        playAudioData: function (audioBase64, mime) {
+            const el = this.ensureTtsAudio();
+            el.src = 'data:' + mime + ';base64,' + audioBase64;
+            const p = el.play();
+            if (p && p.catch) {
+                p.catch(function () {
+                    el.removeAttribute('src');
+                    this.ttsPlaying = false;
+                    if (!this._ttsRetryPending) {
+                        this._ttsRetryPending = true;
+                        document.addEventListener('pointerdown', function () {
+                            this._ttsRetryPending = false;
+                            this.playNextTts();
+                        }.bind(this), { once: true });
+                    }
+                }.bind(this));
+            }
+        },
+
+        /** 消息气泡 🔊：重播整轮完整音频（extension.ttsAudio，历史/刷新后可用）。供父级通过 ref 调用 */
+        playMessageAudio: function (msg) {
+            const tts = msg.extension && msg.extension.ttsAudio;
+            if (!tts || !tts.audio) {
+                return;
+            }
+            this.clearTtsQueue();
+            const mime = tts.format === 'wav' ? 'audio/wav' : 'audio/mpeg';
+            this.playAudioData(tts.audio, mime);
+        },
+
+        /* ========== 看板熊：移动端长按发送键 3s 召唤/送走 ========== */
+
+        /**
+         * 按下发送键：3s 内不抬起判为“长按召唤彩蛋”；抬起前取消则按普通短按处理。
+         */
+        onSubmitPointerDown: function (event) {
+            // 只认主键按下（触屏/笔/鼠标左键）；右键、菜单键的按下不算，抬起自然也不触发
+            const primary = event.pointerType === 'mouse' ? event.button === 0 : true;
+            this._mascotPrimaryPress = primary;
+            this._mascotLongPress = false;
+            if (!primary) return;
+            clearTimeout(this._mascotPressTimer);
+            this._mascotPressTimer = setTimeout(function () {
+                this._mascotLongPress = true;
+                this.toggleMascot();
+            }.bind(this), 3000);
+        },
+
+        /**
+         * 抬起：短按 → 照常发送/停止；长按触发过彩蛋 → 不再发送；右键等非主键直接忽略。
+         */
+        onSubmitPointerEnd: function () {
+            clearTimeout(this._mascotPressTimer);
+            const primary = this._mascotPrimaryPress;
+            const longPressed = this._mascotLongPress;
+            this._mascotPrimaryPress = false;
+            this._mascotLongPress = false;
+            if (!primary) return;
+            if (!longPressed) {
+                this.submit();
+            }
+        },
+
+        /**
+         * 指针滑出发送键（未抬起）：取消彩蛋计时并清掉按下标记（与原生 click 需按下/抬起同元素一致）。
+         */
+        onSubmitPointerLeave: function () {
+            clearTimeout(this._mascotPressTimer);
+            this._mascotPrimaryPress = false;
+            this._mascotLongPress = false;
+        }
+    },
+
+    updated: function () {
+        if (typeof lucide !== 'undefined') {
+            this.$nextTick(function () { lucide.createIcons(); });
+        }
+    }
+};
