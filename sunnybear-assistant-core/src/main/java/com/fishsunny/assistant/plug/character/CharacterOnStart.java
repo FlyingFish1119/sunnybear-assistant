@@ -8,6 +8,7 @@ package com.fishsunny.assistant.plug.character;
  * @Date 2026/9/4
  */
 
+import com.fishsunny.assistant.mvc.controller.GlobalRouteController;
 import com.fishsunny.assistant.mvc.dao.ChatSessionRepository;
 import com.fishsunny.assistant.plug.character.service.CharacterSessionBindings;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +36,15 @@ public class CharacterOnStart implements InitializingBean {
     @Override
     public void afterPropertiesSet() {
         migrateLegacyMappingTable();
+        registerPages();
+    }
+
+    /** 登记角色插件的前端页面到全局导航 */
+    private void registerPages() {
+        GlobalRouteController.register(
+                "角色扮演", "plug/character/character_index.html", "角色扮演", "与角色对话、战斗与角色库", "users");
+        GlobalRouteController.register(
+                "角色扮演", "plug/character/character_settings.html", "角色设置", "管理角色库、术语表与战斗配置", "user-cog");
     }
 
     /**

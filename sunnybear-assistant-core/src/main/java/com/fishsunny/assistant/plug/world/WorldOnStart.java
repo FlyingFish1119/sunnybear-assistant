@@ -9,6 +9,7 @@ package com.fishsunny.assistant.plug.world;
  */
 
 import com.fishsunny.assistant.App;
+import com.fishsunny.assistant.mvc.controller.GlobalRouteController;
 import com.fishsunny.assistant.mvc.dao.ChatSessionRepository;
 import com.fishsunny.assistant.plug.world.service.WorldSessionBindings;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +48,15 @@ public class WorldOnStart implements InitializingBean {
     public void afterPropertiesSet() throws Exception {
         writePlugReadme();
         migrateLegacyMappingTable();
+        registerPages();
+    }
+
+    /** 登记世界观插件的前端页面到全局导航 */
+    private void registerPages() {
+        GlobalRouteController.register(
+                "群聊", "plug/world/world_index.html", "群聊", "多角色群聊与旁白调度", "messages-square");
+        GlobalRouteController.register(
+                "群聊", "plug/world/world_settings.html", "世界设置", "管理世界书、知识库与预设", "book-open");
     }
 
     /** 释放 WORLD_PLUG_README.md 到插件目录 */

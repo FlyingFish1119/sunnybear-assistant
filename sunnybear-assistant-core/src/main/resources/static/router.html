@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>页面导航 — SunnyBear 助手</title>
+    <link rel="icon" type="image/png" href="icon/icon.png">
+    <!-- Element Plus 样式 -->
+    <link rel="stylesheet" href="lib/element-plus.css">
+    <!-- Vue 3 -->
+    <script src="lib/vue.global.prod.js"></script>
+    <!-- Element Plus 组件库 -->
+    <script src="lib/element-plus.full.min.js"></script>
+    <!-- lucide 图标 -->
+    <script src="lib/lucide.min.js"></script>
+    <!-- 项目本地封装 -->
+    <script src="api.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            min-height: 100%;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+            "Microsoft YaHei", Helvetica, Arial, sans-serif;
+            background: #f5f6f8;
+            color: #303133;
+        }
+
+        #app {
+            min-height: 100vh;
+        }
+
+        .router-topbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 20px 32px;
+            background: #fff;
+            border-bottom: 1px solid #ebeef5;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .router-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: var(--main-color, lightsalmon);
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .router-logo svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .router-heading {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.25;
+        }
+
+        .router-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .router-subtitle {
+            font-size: 12px;
+            color: #909399;
+        }
+
+        .router-body {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 28px 32px 48px;
+        }
+
+        .router-group {
+            margin-bottom: 26px;
+        }
+
+        .router-group-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #606266;
+            letter-spacing: .04em;
+            margin-bottom: 10px;
+        }
+
+        .router-group-title::before {
+            content: "";
+            width: 4px;
+            height: 15px;
+            border-radius: 2px;
+            background: var(--main-color, lightsalmon);
+        }
+
+        .router-list {
+            background: #fff;
+            border: 1px solid #ebeef5;
+            border-radius: 14px;
+            overflow: hidden;
+        }
+
+        .router-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 18px;
+            cursor: pointer;
+            transition: background .15s ease;
+        }
+
+        .router-row + .router-row {
+            border-top: 1px solid #f2f3f5;
+        }
+
+        .router-row:hover {
+            background: color-mix(in srgb, var(--main-color, lightsalmon) 8%, #fff);
+        }
+
+        .router-row:focus-visible {
+            outline: 2px solid var(--main-color, lightsalmon);
+            outline-offset: -2px;
+        }
+
+        .router-row-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: color-mix(in srgb, var(--main-color, lightsalmon) 14%, #fff);
+            color: var(--main-color, lightsalmon);
+            flex-shrink: 0;
+        }
+
+        .router-row-icon svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .router-row-main {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .router-row-title {
+            font-size: 14.5px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .router-row-desc {
+            font-size: 12.5px;
+            color: #909399;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .router-row-path {
+            font-size: 11.5px;
+            color: #c0c4cc;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            flex-shrink: 0;
+            max-width: 42%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .router-row-arrow {
+            width: 18px;
+            height: 18px;
+            color: #c0c4cc;
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 640px) {
+            .router-row-path {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="router-topbar">
+        <div class="router-logo"><i data-lucide="layout-grid"></i></div>
+        <div class="router-heading">
+            <span class="router-title">页面导航</span>
+            <span class="router-subtitle">选择一个页面进入</span>
+        </div>
+    </div>
+
+    <div class="router-body" v-loading="loading" element-loading-background="rgba(245,246,248,0.6)">
+        <el-empty v-if="!loading && routes.length === 0" description="暂无可导航页面"></el-empty>
+        <template v-else>
+            <div v-for="group in groups" :key="group.name" class="router-group">
+                <div class="router-group-title">{{ group.name }}</div>
+                <div class="router-list">
+                    <div
+                        v-for="route in group.routes"
+                        :key="route.path"
+                        class="router-row"
+                        tabindex="0"
+                        @click="go(route)"
+                        @keyup.enter="go(route)"
+                    >
+                        <div class="router-row-icon"><i :data-lucide="route.icon || 'file'"></i></div>
+                        <div class="router-row-main">
+                            <div class="router-row-title">{{ route.title }}</div>
+                            <div class="router-row-desc" :title="route.description">{{ route.description }}</div>
+                        </div>
+                        <div class="router-row-path" :title="route.path">{{ route.path }}</div>
+                        <i data-lucide="chevron-right" class="router-row-arrow"></i>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>
+
+<script>
+    const app = Vue.createApp({
+        data() {
+            return {
+                routes: [],
+                loading: true,
+                mainColor: 'lightsalmon'
+            };
+        },
+
+        computed: {
+            /** 按后端返回顺序对 routes 分组 */
+            groups() {
+                const order = [];
+                const map = {};
+                for (const route of this.routes) {
+                    const name = route.group || '其他';
+                    if (!map[name]) {
+                        map[name] = [];
+                        order.push(name);
+                    }
+                    map[name].push(route);
+                }
+                return order.map(name => ({ name: name, routes: map[name] }));
+            }
+        },
+
+        watch: {
+            // 主题色写到根元素，避免只挂在 #app 上导致覆盖不到
+            mainColor(value) {
+                document.documentElement.style.setProperty('--main-color', value);
+            }
+        },
+
+        methods: {
+            go(route) {
+                window.location.href = route.path;
+            },
+
+            async fetchData() {
+                this.loading = true;
+                try {
+                    const [routeRes, userRes] = await Promise.all([
+                        API.router.list(),
+                        API.settings.user.get().catch(() => null)
+                    ]);
+                    if (routeRes && routeRes.status === 200) {
+                        this.routes = routeRes.data || [];
+                    } else {
+                        ElementPlus.ElMessage.error((routeRes && routeRes.message) || '加载导航失败');
+                    }
+                    if (userRes && userRes.status === 200 && userRes.data && userRes.data.mainColor) {
+                        this.mainColor = userRes.data.mainColor;
+                    }
+                } catch (e) {
+                    ElementPlus.ElMessage.error('加载导航失败: ' + e.message);
+                } finally {
+                    this.loading = false;
+                    this.$nextTick(() => lucide.createIcons());
+                }
+            }
+        },
+
+        mounted() {
+            document.documentElement.style.setProperty('--main-color', this.mainColor);
+            lucide.createIcons();
+            this.fetchData();
+        },
+
+        updated() {
+            lucide.createIcons();
+        }
+    });
+
+    app.use(ElementPlus);
+    app.mount('#app');
+</script>
+</body>
+</html>

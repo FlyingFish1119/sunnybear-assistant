@@ -31,10 +31,10 @@
     <script src="../../components/tool-confirm/tool-confirm.js"></script>
     <script src="components/battle-panel/battle-panel.js"></script>
     <script src="../../components/confirm-dialog/confirm-dialog.js"></script>
-    <script src="../../components/session-name/session-name.js"></script>
+    <script src="../component/session-name/session-name.js"></script>
     <script src="components/character-sidebar/character-sidebar.js"></script>
     <script src="../../components/file-upload/file-upload.js"></script>
-    <script src="../../components/connection-indicator/connection-indicator.js"></script>
+    <script src="../component/connection-indicator/connection-indicator.js"></script>
     <script src="../../components/auto-resize-textarea/auto-resize-textarea.js"></script>
     <script src="../../components/command-suggest/command-suggest.js"></script>
     <script src="components/character-db-panel/character-db-panel.js"></script>
@@ -44,14 +44,14 @@
     <!-- 三大板块样式：侧边栏 | 消息栏 | 发送栏 -->
     <link rel="stylesheet" href="components/character-sidebar/character-sidebar.css"/>
     <link rel="stylesheet" href="../../css/message-area.css"/>
-    <link rel="stylesheet" href="../../components/session-name/session-name.css"/>
+    <link rel="stylesheet" href="../component/session-name/session-name.css"/>
     <link rel="stylesheet" href="../../css/send-area.css"/>
     <link rel="stylesheet" href="../../components/file-upload/file-upload.css"/>
     <link rel="stylesheet" href="../../css/markdown.css"/>
     <link rel="stylesheet" href="../../components/tool-confirm/tool-confirm.css"/>
     <link rel="stylesheet" href="components/battle-panel/battle-panel.css"/>
     <link rel="stylesheet" href="../../components/confirm-dialog/confirm-dialog.css"/>
-    <link rel="stylesheet" href="../../components/connection-indicator/connection-indicator.css"/>
+    <link rel="stylesheet" href="../component/connection-indicator/connection-indicator.css"/>
     <link rel="stylesheet" href="../../components/auto-resize-textarea/auto-resize-textarea.css"/>
     <link rel="stylesheet" href="../../components/command-suggest/command-suggest.css"/>
     <link rel="stylesheet" href="components/character-db-panel/character-db-panel.css"/>
@@ -61,7 +61,7 @@
 <body>
 <div id="in-loading">
 </div>
-<div id="app" :style="{'--main-color': mainColor, '--bg-user': userBubbleBg}">
+<div id="app">
     <character-sidebar ref="sidebar"
         :current-session="currentSession"
         :main-color="mainColor"
@@ -1770,6 +1770,14 @@
         },
 
         watch: {
+            // 主题色写到根元素，才能覆盖 teleport 到 body 的 Element Plus 组件
+            mainColor: {
+                handler(val) {
+                    document.documentElement.style.setProperty('--main-color', val);
+                    document.documentElement.style.setProperty('--el-color-primary', val);
+                },
+                immediate: true
+            },
             filteredCommands() {
                 this.commandActiveIndex = 0;
             },

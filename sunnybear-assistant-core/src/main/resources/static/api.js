@@ -86,6 +86,12 @@ const API = (function () {
             // 插件（角色/世界）的 ws 地址由各插件自己的 api 文件补充：API.ws.characterUrl / API.ws.worldUrl
         },
 
+        /* ---------- 页面导航 ---------- */
+        router: {
+            /** 拉取全局页面路由清单（供 router.html 使用） */
+            list: function () { return get('router/list'); }
+        },
+
         /** 文件代理 URL（用于图片/音视频等本地文件的展示） */
         fileProxyUrl: function (path) {
             var ampIdx = path.indexOf('&');

@@ -68,7 +68,7 @@
 <body>
 <div id="in-loading">
 </div>
-<div id="app" :style="{'--main-color': mainColor, '--bg-user': userBubbleBg}">
+<div id="app">
     <chat-sidebar
         :main-color="mainColor"
         :collapsed="sidebarCollapsed"
@@ -123,10 +123,6 @@
             wsUrl: function () {
                 return API.ws.url
             },
-            // 用户消息气泡背景色：跟随主色自动变浅
-            userBubbleBg() {
-                return ColorUtils.lighten(this.mainColor, 0.25);
-            },
             backgroundStyle() {
                 const bg = this.userSettings.background;
                 // loaded 为 false 时 #app 仍是 display:none，
@@ -142,6 +138,17 @@
                     opacity: this.userSettings.opacity != null ? this.userSettings.opacity : 0.3
                 };
             },
+        },
+
+        watch: {
+            // 主题色写到根元素，才能覆盖 teleport 到 body 的 Element Plus 组件
+            mainColor: {
+                handler(val) {
+                    document.documentElement.style.setProperty('--main-color', val);
+                    document.documentElement.style.setProperty('--el-color-primary', val);
+                },
+                immediate: true
+            }
         },
 
         inject: ['sessionStore'],
