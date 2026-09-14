@@ -14,6 +14,15 @@
  * 之后 Vue 每次 patch 动态属性（:class / :style / :data-lucide 等）都会重新
  * 写到宿主上，渲染时与基线合并；静态 class/style 即使图标名变了也不会丢。
  *
+ * ⚠ 唯一的例外是 display，它必须留在宿主上，绝不复制到 svg：
+ *  v-show 直接操作宿主 <i> 的 el.style.display，若把它一起搬到 svg，
+ *  就会出现「宿主 / svg 双写」的两个后果——
+ *   1) svg 上那份 display 会随基线被冻结，此后 v-show 只改宿主、再也改不到
+ *      svg，表现为「切到显示态时图标依旧看不见」（点一下图标反而消失）；
+ *   2) 宿主被摘掉 display 后不再隐藏，会以「隐藏图标」的身份继续占位，
+ *      把同一个按钮里真正要显示的图标挤出中线（图标看着歪了）。
+ *  所以：display 声明留在宿主，svg 只继承其余声明（尺寸、颜色等）。
+ *
  * 必须在 lib/lucide.min.js 之后、任何组件脚本之前引入。
  */
 (function () {
@@ -35,40 +44,94 @@
         return lucide.icons[toPascalCase(name)] || lucide.icons[name] || null;
     }
 
+    /**
+     * 拆分 style 字符串：
+     *  - display：交给 v-show，留在宿主 <i> 上；
+     *  - rest：尺寸、颜色等，搬给 svg。
+     */
+    function splitStyle(styleValue) {
+        var display = '';
+        var rest = [];
+        var decls = String(styleValue || '').split(';');
+        for (var i = 0; i < decls.length; i++) {
+            var decl = decls[i].replace(/^\s+|\s+$/g, '');
+            if (!decl) {
+                continue;
+            }
+            if (/^display\s*:/i.test(decl)) {
+                display = display ? display + '; ' + decl : decl;
+            } else {
+                rest.push(decl);
+            }
+        }
+        return { display: display, rest: rest.join('; ') };
+    }
+
+    /** 属性签名 = 图标名 + 排序后的属性键值，用来判断这次是否真的需要重绘 */
+    function buildSignature(name, attrs) {
+        var keys = [];
+        for (var key in attrs) {
+            keys.push(key);
+        }
+        keys.sort();
+        var parts = [name];
+        for (var i = 0; i < keys.length; i++) {
+            parts.push(keys[i] + '=' + attrs[keys[i]]);
+        }
+        return parts.join('\n');
+    }
+
     function renderInto(host) {
         var name = host.getAttribute('data-lucide');
         if (!name) {
             return;
         }
 
-        // 收集宿主上除 data-lucide 外的属性：首次是模板里的静态属性 + 当时的动态属性；
-        // 之后每次 Vue patch 动态属性都会再次写到宿主上。
-        var current = {};
-        var currentNames = [];
+        // 收集宿主属性：display 去掉后剩下的部分搬给 svg
+        var attrsForSvg = {};
+        var moveOut = [];          // 需要从宿主上摘掉的属性名
+        var hostDisplay = '';      // 留在宿主上的 display 声明（v-show 管辖）
+        var staleOnHost = false;   // 宿主上又出现了 Vue 写入的动态属性
+
         for (var i = 0; i < host.attributes.length; i++) {
             var attr = host.attributes[i];
             if (attr.name === 'data-lucide' || attr.name === RENDERED_ATTR) {
                 continue;
             }
-            current[attr.name] = attr.value;
-            currentNames.push(attr.name);
+            if (attr.name === 'style') {
+                var split = splitStyle(attr.value);
+                hostDisplay = split.display;
+                attrsForSvg.style = split.rest;
+                moveOut.push('style');
+            } else {
+                attrsForSvg[attr.name] = attr.value;
+                moveOut.push(attr.name);
+                staleOnHost = true;
+            }
         }
 
         var isFirstRender = !host.__lucideAttrs;
         if (isFirstRender) {
-            host.__lucideAttrs = current;
-        } else if (currentNames.length > 0) {
-            // 合并 Vue 本次写入的动态属性，动态值覆盖基线
-            for (var key in current) {
-                host.__lucideAttrs[key] = current[key];
+            host.__lucideAttrs = attrsForSvg;
+        } else {
+            for (var key in attrsForSvg) {
+                // 宿主上的 style 只剩 display，拆出来若为空，说明本次没有新的
+                // 尺寸/样式信息，不能把基线上已有的 style 覆盖成空。
+                if (key === 'style' && !attrsForSvg[key] && host.__lucideAttrs.style) {
+                    continue;
+                }
+                host.__lucideAttrs[key] = attrsForSvg[key];
             }
         }
 
-        // 图标名未变、宿主也没有被 Vue 重新写属性，则无需重绘
+        var signature = buildSignature(name, host.__lucideAttrs);
+        var svg = host.firstElementChild;
+
+        // 图标名与属性签名都没变、宿主上也没有待搬走的残留 —— 收工
         if (!isFirstRender
-                && host.getAttribute(RENDERED_ATTR) === name
-                && currentNames.length === 0
-                && host.firstElementChild) {
+                && svg
+                && !staleOnHost
+                && host.getAttribute(RENDERED_ATTR) === signature) {
             return;
         }
 
@@ -77,19 +140,26 @@
             return;
         }
 
-        // 属性交给 createElement，得到与原生 replaceChild 时一致的 svg
-        var svg = lucide.createElement(iconNode, host.__lucideAttrs);
-
-        // 属性已转移到 svg，从宿主移除，避免同一份样式在宿主与 svg 上重复生效
-        for (var j = 0; j < currentNames.length; j++) {
-            host.removeAttribute(currentNames[j]);
+        // 属性已转移到 svg，从宿主移除；只把 display 留在宿主上，
+        // 这样 v-show 切宿主即可带动整个图标，也不会与 svg 上的样式重复生效。
+        for (var j = 0; j < moveOut.length; j++) {
+            host.removeAttribute(moveOut[j]);
+        }
+        if (hostDisplay) {
+            host.setAttribute('style', hostDisplay);
+        } else {
+            host.removeAttribute('style');
         }
 
-        while (host.firstChild) {
-            host.removeChild(host.firstChild);
+        // 只有签名真的变了才重建 svg：Vue 重复写入同值属性时只需清掉宿主上的副本
+        if (!svg || host.getAttribute(RENDERED_ATTR) !== signature) {
+            svg = lucide.createElement(iconNode, host.__lucideAttrs);
+            while (host.firstChild) {
+                host.removeChild(host.firstChild);
+            }
+            host.appendChild(svg);
         }
-        host.appendChild(svg);
-        host.setAttribute(RENDERED_ATTR, name);
+        host.setAttribute(RENDERED_ATTR, signature);
     }
 
     lucide.createIcons = function (options) {
