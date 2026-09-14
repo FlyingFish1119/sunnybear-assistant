@@ -91,6 +91,24 @@
                     :main-color="mainColor"
                     @update-session-name="n => currentSession.name = n">
                 </session-name>
+                <!-- 待确认工具请求入口：弹窗收起后从此处重新展开 -->
+                <button v-if="pendingToolCount > 0"
+                        class="pending-entry-btn"
+                        :style="{'--main-color': mainColor}"
+                        @click="$refs.toolConfirm.expand()"
+                        :title="pendingToolCount + ' 个工具请求待确认'">
+                    <i data-lucide="shield-alert"></i>
+                    <span class="pending-entry-badge">{{ pendingToolCount }}</span>
+                </button>
+                <!-- 待回答提问入口：弹窗收起后从此处重新展开 -->
+                <button v-if="pendingQuestionCount > 0"
+                        class="pending-entry-btn"
+                        :style="{'--main-color': mainColor}"
+                        @click="$refs.toolQuestion.expand()"
+                        :title="pendingQuestionCount + ' 个提问待回答'">
+                    <i data-lucide="message-circle-question"></i>
+                    <span class="pending-entry-badge">{{ pendingQuestionCount }}</span>
+                </button>
             </div>
             <div style="display: flex; align-items: center; gap: 16px;">
                 <span v-if="knowledgeFlashVisible" class="knowledge-hit-flash" title="已自动检索知识库内容">
@@ -398,12 +416,14 @@
         <!-- 工具确认对话框（组件） -->
         <tool-confirm
             ref="toolConfirm"
-            :main-color="mainColor">
+            :main-color="mainColor"
+            @pending-change="onToolPendingChange">
         </tool-confirm>
         <!-- 结构化提问对话框（组件） -->
         <tool-question
             ref="toolQuestion"
-            :main-color="mainColor">
+            :main-color="mainColor"
+            @pending-change="onQuestionPendingChange">
         </tool-question>
     </div>
 </div>
@@ -507,6 +527,9 @@
                 agentLogVisible: false,
                 // 看板熊彩蛋（连按 10 次 b 切换）显隐：状态持久化到 localStorage
                 mascotVisible: localStorage.getItem('assistant-mascot-visible') === '1',
+                // 顶部入口角标：待确认工具请求数 / 待回答提问数
+                pendingToolCount: 0,
+                pendingQuestionCount: 0,
             }
         },
 
@@ -1437,6 +1460,18 @@
                     lucide.createIcons();
                     this._iconRefreshScheduled = false;
                 });
+            },
+
+            /** 工具确认弹窗待处理数量变化 → 刷新顶部入口角标 */
+            onToolPendingChange(n) {
+                this.pendingToolCount = n;
+                this._scheduleIconRefresh();
+            },
+
+            /** 结构化提问弹窗待回答数量变化 → 刷新顶部入口角标 */
+            onQuestionPendingChange(n) {
+                this.pendingQuestionCount = n;
+                this._scheduleIconRefresh();
             },
 
             /**

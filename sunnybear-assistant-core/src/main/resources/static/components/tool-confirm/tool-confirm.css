@@ -165,6 +165,31 @@
     color: #999;
 }
 
+/* 收起按钮：位于 header 右侧，仅收起不拒绝 */
+.tool-confirm-close {
+    margin-left: auto;
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #999;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.tool-confirm-close:hover {
+    background: #f2f2f2;
+    color: #333;
+}
+.tool-confirm-close i {
+    width: 18px;
+    height: 18px;
+}
+
 /* ---- body ---- */
 .tool-confirm-body {
     padding: 18px 26px;

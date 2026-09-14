@@ -27,6 +27,55 @@
     display: flex;
 }
 
+/* ---- 顶部待处理入口（工具确认 / 结构化提问 收起后的重新展开入口） ---- */
+.pending-entry-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--main-color, lightsalmon);
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    animation: pending-entry-pop 0.25s ease;
+}
+.pending-entry-btn:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.pending-entry-btn i {
+    width: 17px;
+    height: 17px;
+}
+.pending-entry-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: #ff4d4f;
+    color: #fff;
+    font-size: 11px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 0 2px #fff;
+}
+@keyframes pending-entry-pop {
+    from { transform: scale(0.6); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+}
+
 /* ============================================
    连接状态指示器
    ============================================ */

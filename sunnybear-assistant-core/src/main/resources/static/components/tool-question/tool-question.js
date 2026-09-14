@@ -12,6 +12,10 @@
  *   - 取消 / Esc / 点遮罩 → 以 cancelled=true 回传，表示用户想自然聊这个话题。
  *   - timeout 秒数 > 0 时展示倒计时，超时自动按取消回传。
  *
+ * 关闭语义：点遮罩 / Esc / 右上角 X 为"收起"（不取消），待作答项保留在队列中，
+ * 收起后由页面顶部的入口按钮（角标显示待作答数量）再次调 expand() 打开。
+ * 收起状态下来的新提问不会自动展开，只累加角标；只有底部"取消·我想自由聊"才回传 cancelled=true。
+ *
  * 作答状态统一存在组件顶层 data.answersByKey（keyed by 问题 key），
  * 候选高亮/输入框都从这里读取，确保点选与输入的视觉状态实时同步。
  *
@@ -20,16 +24,20 @@
  *
  * 公开方法（通过 ref 调用）：
  *   show(toolQuestion) — 入队并弹出结构化提问弹窗
+ *   expand()           — 重新展开收起的弹窗（供顶部入口按钮调用）
+ *
+ * Emits:
+ *   pending-change — 待作答数量变化时触发，参数为当前未处理数量（供父组件渲染入口角标）
  */
 const ToolQuestion = {
     name: 'ToolQuestion',
 
     template: `
-    <div v-if="visible" class="tq-overlay" :style="{'--main-color': mainColor}" @click.self="cancel">
+    <div v-if="visible" class="tq-overlay" :style="{'--main-color': mainColor}" @click.self="collapse">
       <div class="tq-dialog"
            tabindex="-1"
            ref="dialog"
-           @keydown.esc="cancel"
+           @keydown.esc="collapse"
            @keydown.enter.ctrl.prevent="submit">
         <!-- 头部 -->
         <div class="tq-header">
@@ -42,7 +50,7 @@ const ToolQuestion = {
               {{ countdown }} 秒后自动取消
             </span>
           </div>
-          <button class="tq-close" title="取消提问（自由交谈）" @click="cancel">
+          <button class="tq-close" title="收起（稍后回答）" @click="collapse">
             <i data-lucide="x"></i>
           </button>
         </div>
@@ -105,7 +113,7 @@ const ToolQuestion = {
         mainColor: { type: String, default: 'lightsalmon' }
     },
 
-    emits: [],
+    emits: ['pending-change'],
 
     data() {
         return {
@@ -113,6 +121,8 @@ const ToolQuestion = {
             queue: [],
             // 当前正在展示的提问（含只读的题目展示数据）
             active: null,
+            // 用户是否主动收起了弹窗：收起后待作答项保留，新提问不自动展开只累加角标
+            collapsed: false,
             // 当前提问下每道题的作答状态（keyed by 问题 key）：{ chosen: 选中的候选, custom: 自由输入 }
             answersByKey: {},
             sending: false,
@@ -128,7 +138,11 @@ const ToolQuestion = {
 
     computed: {
         visible() {
-            return this.active != null;
+            return this.active != null && !this.collapsed;
+        },
+        // 待作答数量 = 当前展示中的 1 个 + 队列中排队的
+        pendingCount() {
+            return (this.active ? 1 : 0) + this.queue.length;
         },
         title() {
             if (!this.active) return '';
@@ -143,6 +157,13 @@ const ToolQuestion = {
                 if (!s) return false;
                 return (s.chosen && s.chosen.trim()) || (s.custom && s.custom.trim());
             });
+        }
+    },
+
+    watch: {
+        // 待作答数量变化 → 通知父组件刷新顶部入口角标
+        pendingCount(val) {
+            this.$emit('pending-change', val);
         }
     },
 
@@ -173,6 +194,16 @@ const ToolQuestion = {
             if (!this.active) {
                 this.loadNext();
             }
+        },
+
+        // 重新展开收起的弹窗（顶部入口按钮调用）
+        expand() {
+            if (this.pendingCount === 0) return;
+            this.collapsed = false;
+            this.$nextTick(() => {
+                this.focusDialog();
+                this.refreshIcons();
+            });
         },
 
         /* ---- 队列 ---- */
@@ -265,6 +296,12 @@ const ToolQuestion = {
         },
 
         /* ---- 回传 ---- */
+        // 收起：不取消，待作答项保留在队列中，可由顶部入口按钮重新展开
+        collapse() {
+            if (!this.active) return;
+            this.collapsed = true;
+        },
+
         // 取消：cancelled=true 回传（用户想自由聊），然后展示下一个
         cancel() {
             const a = this.active;
@@ -313,6 +350,10 @@ const ToolQuestion = {
             this.active = null;
             this.answersByKey = {};
             this.sending = false;
+            // 没有排队的提问了 → 复位收起态，下一次新提问可自动展开
+            if (this.queue.length === 0) {
+                this.collapsed = false;
+            }
             this.$nextTick(() => this.loadNext());
         },
 

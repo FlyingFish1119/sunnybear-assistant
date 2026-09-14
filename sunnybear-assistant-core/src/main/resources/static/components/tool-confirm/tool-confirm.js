@@ -13,18 +13,26 @@
  * Props:
  *   mainColor      — String     主题色
  *
+ * 关闭语义：点遮罩 / Esc / 右上角 X 均为"收起"（不拒绝），待确认项保留在队列中，
+ * 收起后由页面顶部的入口按钮（角标显示待确认数量）再次调 expand() 打开。
+ * 收起状态下来的新请求不会自动展开，只累加角标；只有"拒绝"按钮才回传 confirm:false。
+ *
  * 公开方法（通过 ref 调用）：
  *   show(toolAsk)  — 弹出/追加确认对话框，toolAsk 为服务端下发的 { id, toolName, message, timeout } 对象
+ *   expand()       — 重新展开收起的弹窗（供顶部入口按钮调用）
+ *
+ * Emits:
+ *   pending-change — 待确认数量变化时触发，参数为当前未处理数量（供父组件渲染入口角标）
  */
 const ToolConfirm = {
     name: 'ToolConfirm',
 
     template: `
-    <div v-if="visible" class="tool-confirm-overlay" @click.self="reject">
+    <div v-if="visible" class="tool-confirm-overlay" @click.self="collapse">
       <div class="tool-confirm-dialog"
            tabindex="-1"
            ref="dialog"
-           @keydown.esc="reject"
+           @keydown.esc="collapse"
            @keydown.enter.ctrl.prevent="accept">
         <!-- 标签栏：多个并发确认以标签页形式共存，可切换 -->
         <div class="tool-confirm-tabs" role="tablist" :style="{'--main-color': mainColor}">
@@ -51,6 +59,9 @@ const ToolConfirm = {
             <span class="tool-confirm-title">{{ activeAsk.title }}</span>
             <span class="tool-confirm-subtitle">AI 请求执行以下操作，请确认是否允许</span>
           </div>
+          <button class="tool-confirm-close" @click="collapse" title="收起（稍后处理）">
+            <i data-lucide="x"></i>
+          </button>
         </div>
         <div v-if="activeAsk" class="tool-confirm-body">
           <div class="markdown-body" v-html="activeAsk.renderedMessage"></div>
@@ -89,7 +100,7 @@ const ToolConfirm = {
         mainColor: { type: String, default: 'lightsalmon' }
     },
 
-    emits: [],
+    emits: ['pending-change'],
 
     data() {
         return {
@@ -97,6 +108,8 @@ const ToolConfirm = {
             asks: [],
             // 当前激活标签的下标，-1 表示无
             activeIndex: -1,
+            // 用户是否主动收起了弹窗：收起后待确认项保留，新请求不自动展开只累加角标
+            collapsed: false,
             // 工具名 → 图标 / 标题映射
             iconMap: {
                 'command_tool': 'terminal',
@@ -121,10 +134,21 @@ const ToolConfirm = {
 
     computed: {
         visible() {
-            return this.asks.length > 0;
+            return this.asks.length > 0 && !this.collapsed;
         },
         activeAsk() {
             return this.asks[this.activeIndex] || null;
+        },
+        // 待确认数量（供父组件入口角标使用）
+        pendingCount() {
+            return this.asks.length;
+        }
+    },
+
+    watch: {
+        // 待确认数量变化 → 通知父组件刷新顶部入口角标
+        pendingCount(val) {
+            this.$emit('pending-change', val);
         }
     },
 
@@ -150,13 +174,22 @@ const ToolConfirm = {
                 _timer: null
             };
             this.asks.push(tab);
-            // 浏览器行为：新标签自动激活
-            this.activeIndex = this.asks.length - 1;
+            // 浏览器行为：新标签自动激活，但收起状态下来新请求只累加角标、不打扰用户
+            if (!this.collapsed) {
+                this.activeIndex = this.asks.length - 1;
+            }
             this.$nextTick(() => {
                 if (!this.asks.includes(tab)) return; // 防御：期间标签已被移除
                 this.startCountdown(tab);
                 this.focusDialog();
             });
+        },
+
+        // 重新展开收起的弹窗（顶部入口按钮调用）
+        expand() {
+            if (this.asks.length === 0) return;
+            this.collapsed = false;
+            this.$nextTick(() => this.focusDialog());
         },
 
         /* ---- 内部方法 ---- */
@@ -208,8 +241,9 @@ const ToolConfirm = {
             this.clearTimer(this.asks[idx]);
             this.asks.splice(idx, 1);
             if (this.asks.length === 0) {
-                // 全部解决 → 整个弹窗关闭
+                // 全部解决 → 整个弹窗关闭，并复位收起态，下一次新请求可自动展开
                 this.activeIndex = -1;
+                this.collapsed = false;
                 return;
             }
             // 浏览器行为：删除激活标签 → 激活右侧邻居；删除背景标签 → 激活项不变或左移
@@ -234,6 +268,12 @@ const ToolConfirm = {
             this._resolving = true;
             this.resolveTab(t.id, false);
             setTimeout(() => { this._resolving = false; }, 300);
+        },
+
+        // 收起：不拒绝，待确认项保留在队列中，可由顶部入口按钮重新展开
+        collapse() {
+            if (this.asks.length === 0) return;
+            this.collapsed = true;
         },
 
         selectTab(idx) {

@@ -232,6 +232,15 @@
                     :main-color="mainColor"
                     @update-session-name="n => currentSession.name = n">
                 </session-name>
+                <!-- 待确认工具请求入口：弹窗收起后从此处重新展开 -->
+                <button v-if="pendingToolCount > 0"
+                        class="pending-entry-btn"
+                        :style="{'--main-color': mainColor}"
+                        @click="$refs.toolConfirm.expand()"
+                        :title="pendingToolCount + ' 个工具请求待确认'">
+                    <i data-lucide="shield-alert"></i>
+                    <span class="pending-entry-badge">{{ pendingToolCount }}</span>
+                </button>
             </div>
             <div style="display: flex; align-items: center; gap: 16px;">
                 <connection-indicator
@@ -559,7 +568,8 @@
         <!-- 工具确认对话框（组件） -->
         <tool-confirm
             ref="toolConfirm"
-            :main-color="mainColor">
+            :main-color="mainColor"
+            @pending-change="onToolPendingChange">
         </tool-confirm>
     </div>
 </div>
@@ -660,6 +670,8 @@
                 switchChatPanelVisible: false,
                 switchChatForm: { target: '' },
                 worldCharacterList: [],
+                // 顶部入口角标：待确认工具请求数
+                pendingToolCount: 0,
             }
         },
 
@@ -1701,6 +1713,12 @@
                     lucide.createIcons();
                     this._iconRefreshScheduled = false;
                 });
+            },
+
+            /** 工具确认弹窗待处理数量变化 → 刷新顶部入口角标 */
+            onToolPendingChange(n) {
+                this.pendingToolCount = n;
+                this._scheduleIconRefresh();
             },
 
             /**
