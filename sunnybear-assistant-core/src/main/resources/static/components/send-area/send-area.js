@@ -101,6 +101,8 @@ const SendArea = {
                         <button class="send-area-icon-btn" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
                             <i data-lucide="paperclip"></i>
                         </button>
+                        <!-- 步骤清单跟踪：紧挨文件上传按钮右侧，无步骤时不渲染 -->
+                        <mark-tracker :main-color="mainColor"></mark-tracker>
                     </div>
                     <span class="send-area-hint">Ctrl+Enter 发送</span>
                 </div>

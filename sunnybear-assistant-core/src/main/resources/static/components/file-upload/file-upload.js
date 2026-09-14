@@ -26,12 +26,25 @@ const FileUpload = {
     template: `
     <!-- 已选文件 chips -->
     <div v-if="files.length > 0" class="file-chips-area">
-        <div v-for="(file, idx) in files" :key="idx" class="file-chip">
-            <i :data-lucide="getFileIcon(file.name)" style="width:16px;height:16px"></i>
-            <span class="file-chip-name">{{ file.name }}</span>
-            <span class="file-chip-remove" @click="removeFile(idx)">
-                <i data-lucide="x" style="width:14px;height:14px"></i>
-            </span>
+        <div v-for="(file, idx) in files" :key="idx"
+             class="file-chip"
+             :class="isImage(file) ? 'file-chip-image' : 'file-chip-file'">
+            <!-- 图片：128px 缩略图卡片 -->
+            <template v-if="isImage(file)">
+                <img class="file-chip-thumb" :src="file.data" :alt="file.name" :title="file.name" />
+                <span class="file-chip-caption">{{ file.name }}</span>
+                <span class="file-chip-remove file-chip-remove-overlay" @click="removeFile(idx)" title="移除">
+                    <i data-lucide="x" style="width:14px;height:14px"></i>
+                </span>
+            </template>
+            <!-- 普通文件：胶囊 -->
+            <template v-else>
+                <i :data-lucide="getFileIcon(file.name)" style="width:16px;height:16px"></i>
+                <span class="file-chip-name">{{ file.name }}</span>
+                <span class="file-chip-remove" @click="removeFile(idx)">
+                    <i data-lucide="x" style="width:14px;height:14px"></i>
+                </span>
+            </template>
         </div>
         <span class="file-chip-add" @click="openFilePicker" title="添加更多文件">
             <i data-lucide="plus" style="width:16px;height:16px"></i>
@@ -160,6 +173,17 @@ const FileUpload = {
         },
 
         /* ---- 图标 ---- */
+
+        /**
+         * 是否为图片文件：优先看 data URL 的 MIME，其次看扩展名。
+         */
+        isImage: function (file) {
+            if (file && typeof file.data === 'string' && file.data.indexOf('data:image/') === 0) {
+                return true;
+            }
+            let ext = ((file && file.name) || '').split('.').pop().toLowerCase();
+            return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'avif'].indexOf(ext) >= 0;
+        },
 
         /**
          * 根据文件名后缀返回 Lucide 图标名

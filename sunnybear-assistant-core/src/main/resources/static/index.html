@@ -43,6 +43,7 @@
     <script src="components/agent-log-sidebar/agent-log-sidebar.js"></script>
     <script src="components/message-topbar/message-topbar.js"></script>
     <script src="components/send-area/send-area.js"></script>
+    <script src="components/mark-tracker/mark-tracker.js"></script>
     <script src="components/message-area/message-area.js"></script>
     <!-- 样式 -->
     <link rel="stylesheet" href="css/scrollbar.css"/>
@@ -54,6 +55,7 @@
     <link rel="stylesheet" href="components/chat-session-name/chat-session-name.css"/>
     <link rel="stylesheet" href="css/send-area.css"/>
     <link rel="stylesheet" href="components/send-area/send-area.css"/>
+    <link rel="stylesheet" href="components/mark-tracker/mark-tracker.css"/>
     <link rel="stylesheet" href="components/file-upload/file-upload.css"/>
     <link rel="stylesheet" href="css/markdown.css"/>
     <link rel="stylesheet" href="components/tool-confirm/tool-confirm.css"/>
@@ -297,29 +299,21 @@
     app.provide('wsBus', WsBus);
     app.provide('sessionStore', SessionStore);
     app.use(AutoFollow);
-    // 注册组件库（逐个校验：脚本若 404/未加载，组件会是 undefined，这里显式报出名字，
-    // 否则运行期只会抛出难以定位的 insertBefore / emitsOptions 报错）
-    [
-        ['tool-confirm', ToolConfirm],
-        ['tool-question', ToolQuestion],
-        ['confirm-dialog', ConfirmDialog],
-        ['chat-session-name', ChatSessionName],
-        ['chat-sidebar', ChatSidebar],
-        ['file-upload', FileUpload],
-        ['chat-connection', ChatConnection],
-        ['auto-resize-textarea', AutoResizeTextarea],
-        ['command-suggest', CommandSuggest],
-        ['agent-log-sidebar', AgentLogSidebar],
-        ['message-topbar', MessageTopbar],
-        ['message-area', MessageArea],
-        ['send-area', SendArea],
-    ].forEach(function (entry) {
-        if (!entry[1]) {
-            console.error('[组件未加载] ' + entry[0] + ' 为 undefined，请检查对应脚本是否 404 / 未部署');
-            return;
-        }
-        app.component(entry[0], entry[1]);
-    });
+    // 注册组件库
+    app.component('tool-confirm', ToolConfirm);
+    app.component('tool-question', ToolQuestion);
+    app.component('confirm-dialog', ConfirmDialog);
+    app.component('chat-session-name', ChatSessionName);
+    app.component('chat-sidebar', ChatSidebar);
+    app.component('file-upload', FileUpload);
+    app.component('chat-connection', ChatConnection);
+    app.component('auto-resize-textarea', AutoResizeTextarea);
+    app.component('command-suggest', CommandSuggest);
+    app.component('agent-log-sidebar', AgentLogSidebar);
+    app.component('message-topbar', MessageTopbar);
+    app.component('message-area', MessageArea);
+    app.component('send-area', SendArea);
+    app.component('mark-tracker', MarkTracker);
 
     app.use(ElementPlus);
     // 自定义指令（放在 ElementPlus 之后注册，确保同名指令以自定义实现为准）

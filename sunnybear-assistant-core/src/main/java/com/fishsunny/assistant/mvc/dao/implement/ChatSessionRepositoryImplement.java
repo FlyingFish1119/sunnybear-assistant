@@ -8,6 +8,8 @@ package com.fishsunny.assistant.mvc.dao.implement;
  * @Date 2026/6/28 02:02
  */
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.mvc.dao.ChatSessionRepository;
 import org.slf4j.Logger;
@@ -17,10 +19,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
 public class ChatSessionRepositoryImplement implements ChatSessionRepository {
@@ -30,10 +36,15 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
+
+    /** 每个会话一把锁：保证 extension 的 read-modify-write 原子，不丢并发写入的键 */
+    private final Map<String, Object> extensionLocks = new ConcurrentHashMap<>();
 
     @Autowired
-    public ChatSessionRepositoryImplement(JdbcTemplate jdbcTemplate) {
+    public ChatSessionRepositoryImplement(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
         // 自动迁移：为旧数据库添加 enable_pro 列
         try {
             jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN enable_pro INTEGER NOT NULL DEFAULT 0");
@@ -129,6 +140,48 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         }
 
         return chatSession;
+    }
+
+    @Override
+    public String mergeExtension(String id, Map<String, Object> fields) {
+        if (!StringUtils.hasText(id)) {
+            throw new IllegalArgumentException("会话 id 不能为空");
+        }
+        if (fields == null || fields.isEmpty()) {
+            ChatSession current = selectById(id);
+            return current == null ? "{}" : current.getExtension();
+        }
+        synchronized (extensionLocks.computeIfAbsent(id, k -> new Object())) {
+            ChatSession current = selectById(id);
+            if (current == null) {
+                throw new RuntimeException("Session not found: " + id);
+            }
+            Map<String, Object> extension = parseExtension(current.getExtension());
+            extension.putAll(fields);
+            String merged;
+            try {
+                merged = objectMapper.writeValueAsString(extension);
+            } catch (Exception e) {
+                throw new RuntimeException("序列化会话 extension 失败: " + e.getMessage(), e);
+            }
+            jdbcTemplate.update("UPDATE chat_session SET extension = ? WHERE id = ?", merged, id);
+            return merged;
+        }
+    }
+
+    /** 把 extension JSON 解析为可写 Map；空/损坏时按空对象处理 */
+    private Map<String, Object> parseExtension(String extension) {
+        if (!StringUtils.hasText(extension)) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            Map<String, Object> map = objectMapper.readValue(extension, new TypeReference<>() {
+            });
+            return map == null ? new LinkedHashMap<>() : map;
+        } catch (Exception e) {
+            log.warn("解析会话 extension 失败，按空对象处理: {}", e.getMessage());
+            return new LinkedHashMap<>();
+        }
     }
 
     @Override

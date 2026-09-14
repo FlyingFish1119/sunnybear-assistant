@@ -3,13 +3,14 @@
    文件 chips、隐藏选择器、拖拽遮罩
    ============================================ */
 
-/* ---- 文件 chips 区域 ---- */
+/* ---- 文件 chips 区域（与输入卡同宽对齐，左对齐） ---- */
 .file-chips-area {
-    width: calc(50% + 100px);
+    width: 100%;
+    max-width: 920px;
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    align-items: center;
+    align-items: flex-end;
 }
 
 .file-chip {
@@ -31,6 +32,45 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ---- 图片 chip：128px 缩略图卡片（移除按钮浮右上，文件名叠在图片底部） ---- */
+.file-chip-image {
+    position: relative;
+    display: block;
+    width: 128px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    border-radius: 10px;
+    line-height: 0;
+}
+.file-chip-image:hover { background: transparent; }
+.file-chip-thumb {
+    display: block;
+    width: 128px;
+    height: 128px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid #e0e0e0;
+    background: #fff;
+}
+.file-chip-caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    box-sizing: border-box;
+    padding: 14px 8px 6px;
+    font-size: 12px;
+    line-height: 1.2;
+    color: #fff;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0));
+    border-radius: 0 0 10px 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+}
 .file-chip-remove {
     cursor: pointer;
     display: flex;
@@ -40,6 +80,21 @@
     transition: all 0.2s;
 }
 .file-chip-remove:hover { color: #ff4d4f; background: rgba(255, 77, 79, 0.1); }
+
+/* 图片浮层移除按钮：放在 .file-chip-remove 之后，避免被其 hover 规则盖掉 */
+.file-chip-remove-overlay {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 2;
+    color: #fff;
+    background: rgba(0, 0, 0, 0.55);
+    padding: 3px;
+}
+.file-chip-remove-overlay:hover {
+    color: #fff;
+    background: rgba(255, 77, 79, 0.92);
+}
 
 .file-chip-add {
     display: inline-flex;
@@ -86,10 +141,6 @@
    移动端适配
    ============================================ */
 @media (max-width: 768px) {
-    .file-chips-area {
-        width: calc(70% + 65px);
-    }
-
     .drag-overlay-content {
         padding: 24px 32px;
         font-size: 16px;

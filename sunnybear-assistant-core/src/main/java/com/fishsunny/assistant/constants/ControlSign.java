@@ -35,6 +35,9 @@ public class ControlSign {
     // 不参与断线重放（shouldReplay 排除），避免旧语音注入新轮次
     public static final String SIGN_TTS_AUDIO = "###TTS_AUDIO###";
 
+    // 应携带一个 MarkPayload json 对象（{sessionId, marks:[...]}）：步骤清单全量数组，前端持续跟踪
+    public static final String SIGN_MARK = "###MARK###";
+
     // 前端需要重播消息
     public static final String SIGN_REQUIRE_REPLAY_MESSAGE = "###REQUIRE_REPLAY_MESSAGE###";
 }

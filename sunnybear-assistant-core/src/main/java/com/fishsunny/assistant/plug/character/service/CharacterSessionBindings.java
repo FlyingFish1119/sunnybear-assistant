@@ -38,9 +38,11 @@ public class CharacterSessionBindings {
             return null;
         }
         try {
-            Map<String, String> map = MAPPER.readValue(extension, new TypeReference<>() {
+            // extension 是各消费方混用的 JSON 对象，按 Object 解析以容忍别人的数组/对象字段
+            Map<String, Object> map = MAPPER.readValue(extension, new TypeReference<>() {
             });
-            return map.get(EXTENSION_KEY);
+            Object value = map.get(EXTENSION_KEY);
+            return value == null ? null : String.valueOf(value);
         } catch (Exception e) {
             return null;
         }
