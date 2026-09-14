@@ -79,13 +79,22 @@ const ChatSidebar = {
             </div>
         </div>
         <div class="sidebar-footer">
-            <el-button class="sidebar-settings"
-                       @click="goSettings"
-                       style="color: #333"
-                       type="text"
-                       title="设置">
-                <i ref="settings" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="settings"></i>
-            </el-button>
+            <div class="sidebar-footer-left">
+                <el-button class="sidebar-settings"
+                           @click="goSettings"
+                           style="color: #333"
+                           type="text"
+                           title="设置">
+                    <i ref="settings" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="settings"></i>
+                </el-button>
+                <el-button class="sidebar-settings"
+                           @click="goRouter"
+                           style="color: #333"
+                           type="text"
+                           title="页面导航">
+                    <i ref="router" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="layout-grid"></i>
+                </el-button>
+            </div>
             <!-- 定时器 / 对话 切换 -->
             <button class="sidebar-list-mode-toggle"
                     :title="listMode === 'chat' ? '切换到定时器会话' : '切换到对话会话'"
@@ -213,6 +222,13 @@ const ChatSidebar = {
          */
         goSettings: function () {
             window.location.href = API.BASE_PATH + 'settings.html';
+        },
+
+        /**
+         * 跳转到页面导航（router）
+         */
+        goRouter: function () {
+            window.location.href = API.BASE_PATH + 'router.html';
         },
 
         /** 点击会话：切换当前会话（委托 store） */

@@ -28,6 +28,7 @@ import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -43,13 +44,12 @@ import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @ToolKitComponent(AgentToolKit.class)
 @ConditionalOnExpression("${engine.tool.agent.enable:true} && ${engine.tool.agent.clone-assistant.enable:true}")
 public class CloneAssistantTool implements SubAgentToolHandler {
 
     public static final String NAME = "clone_assistant_tool";
-
-    private static final Logger log = LoggerFactory.getLogger(CloneAssistantTool.class);
 
     /** 消息树文件名，落在会话的 file 目录下 */
     private static final String MESSAGE_TREE_FILE = "clone-assistant-message-tree.json";

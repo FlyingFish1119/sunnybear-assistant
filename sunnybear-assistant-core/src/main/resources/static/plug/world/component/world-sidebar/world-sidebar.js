@@ -71,11 +71,11 @@ const WorldSidebar = {
                 <i ref="settings" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="settings"></i>
             </el-button>
             <el-button class="sidebar-settings"
-                       @click="goCharacterChat"
+                       @click="goRouter"
                        style="color: #333"
                        type="text"
-                       title="角色扮演">
-                <i ref="characterchat" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="bot"></i>
+                       title="页面导航">
+                <i ref="router" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="layout-grid"></i>
             </el-button>
         </div>
     </div>
@@ -142,10 +142,10 @@ const WorldSidebar = {
         },
 
         /**
-         * 跳转到角色扮演页面（不依赖父页面，组件内直接跳转）
+         * 跳转到页面导航（router）
          */
-        goCharacterChat: function () {
-            window.location.href = API.BASE_PATH + 'plug/character/character_index.html';
+        goRouter: function () {
+            window.location.href = API.BASE_PATH + 'router.html';
         },
 
         /**

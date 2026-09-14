@@ -74,6 +74,12 @@
     justify-content: space-between;
 }
 
+/* ---- 左侧按钮组（设置 / 页面导航） ---- */
+.sidebar-footer-left {
+    display: flex;
+    align-items: center;
+}
+
 /* ---- 列表模式切换按钮 ---- */
 .sidebar-list-mode-toggle {
     display: flex;

@@ -71,11 +71,11 @@ const CharacterSidebar = {
                 <i ref="settings" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="settings"></i>
             </el-button>
             <el-button class="sidebar-settings"
-                       @click="goWorldChat"
+                       @click="goRouter"
                        style="color: #333"
                        type="text"
-                       title="世界群聊">
-                <i ref="worldchat" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="users"></i>
+                       title="页面导航">
+                <i ref="router" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="layout-grid"></i>
             </el-button>
         </div>
     </div>
@@ -142,10 +142,10 @@ const CharacterSidebar = {
         },
 
         /**
-         * 跳转到世界群聊页面（不依赖父页面，组件内直接跳转）
+         * 跳转到页面导航（router）
          */
-        goWorldChat: function () {
-            window.location.href = API.BASE_PATH + 'plug/world/world_index.html';
+        goRouter: function () {
+            window.location.href = API.BASE_PATH + 'router.html';
         },
 
         /**
