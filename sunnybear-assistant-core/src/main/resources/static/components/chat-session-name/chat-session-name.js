@@ -1,23 +1,23 @@
 /**
- * 会话名称组件（显示 + 编辑）— 插件页通用版
+ * 对话页会话名称组件（主应用，显示 + 编辑）
  *
- * 纯受控：会话对象由 currentSession prop 传入，保存成功后 emit update-session-name
- * 由父组件写回。主应用请使用自持 store 的 chat-session-name。
+ * 由 session-name 复制而来，但去掉兼容层：只依赖注入的 SessionStore，
+ * 不再接受 currentSession prop，也不再 emit update-session-name。
+ * 插件页仍使用通用的 session-name（prop / emit 模式）。
  *
  * Props:
- *   currentSession — Object  { id, name, ... }
- *   mainColor      — String  主题色
+ *   mainColor — String 主题色
  *
- * Emits:
- *   update-session-name(newName) — 保存成功后通知父组件更新名称
+ * Injects:
+ *   sessionStore — 会话/消息仓库（主应用必定提供）
  *
  * 交互：
  *   - 双击名称文本 → 进入编辑模式
- *   - Enter / 失焦   → 保存（调用 API.session.update）
+ *   - Enter / 失焦   → 保存（调用 API.session.update，成功后写回 store）
  *   - Esc            → 取消编辑
  */
-const SessionName = {
-    name: 'SessionName',
+const ChatSessionName = {
+    name: 'ChatSessionName',
 
     template: `
     <span v-if="!editing"
@@ -39,15 +39,14 @@ const SessionName = {
     />`,
 
     props: {
-        currentSession: { type: Object, default: null },
         mainColor: { type: String, default: 'lightsalmon' }
     },
 
-    emits: ['update-session-name'],
+    inject: ['sessionStore'],
 
     computed: {
         session: function () {
-            return this.currentSession || {};
+            return this.sessionStore.state.currentSession;
         }
     },
 
@@ -113,8 +112,8 @@ const SessionName = {
             try {
                 var result = await API.session.update({ id: this.session.id, name: newName });
                 if (result.status === 200) {
-                    // emit 通知父组件写回传入的 currentSession
-                    this.$emit('update-session-name', newName);
+                    // 直接写入共享 store（主应用）
+                    this.sessionStore.state.currentSession.name = newName;
                     ElementPlus.ElMessage.success('会话名称已更新');
                 } else {
                     ElementPlus.ElMessage.error(result.message || '更新会话名称失败');

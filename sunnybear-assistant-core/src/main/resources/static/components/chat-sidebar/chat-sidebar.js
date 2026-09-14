@@ -4,12 +4,16 @@
  * 纯视图：会话列表与分页状态统一由 SessionStore 持有，本组件只负责渲染与交互，
  * 数据操作（刷新/翻页/增删/Pro/无审查）一律调用 store 方法。
  *
+ * 开合由 WsBus 本地事件驱动：订阅 'sidebar:toggle'（顶部菜单按钮）与
+ * 'sidebar:close'（store 切/新建会话时）。桌面端的折叠态仍通过 emit 交父级布局。
+ *
  * Props:
  *   mainColor         — String   主题色
  *   collapsed         — Boolean  桌面端侧边栏是否折叠
  *
  * Injects:
  *   sessionStore      — 会话/消息仓库（可选，插件页降级）
+ *   wsBus             — WebSocket 消息总线（可选）
  *
  * Emits:
  *   toggle-collapsed()  — 桌面端折叠 / 移动端滑出
@@ -144,8 +148,9 @@ const ChatSidebar = {
     emits: ['toggle-collapsed'],
 
     inject: {
-        // 可选注入：插件页未提供 sessionStore 时降级为 null
-        sessionStore: { default: null }
+        // 可选注入：未提供时降级为 null
+        sessionStore: { default: null },
+        wsBus: { default: null }
     },
 
     data: function () {
@@ -170,6 +175,16 @@ const ChatSidebar = {
         if (this.sessionStore) {
             this.sessionStore.refreshSessions().finally(function () { self.ensureScrollable(); });
         }
+        // 兄弟组件（message-topbar）/ store 经 WsBus 本地事件驱动侧边栏开合
+        if (this.wsBus) {
+            this._unsubSidebarToggle = this.wsBus.on('sidebar:toggle', function () { self.toggle(); });
+            this._unsubSidebarClose = this.wsBus.on('sidebar:close', function () { self.close(); });
+        }
+    },
+
+    beforeUnmount: function () {
+        if (this._unsubSidebarToggle) { this._unsubSidebarToggle(); this._unsubSidebarToggle = null; }
+        if (this._unsubSidebarClose) { this._unsubSidebarClose(); this._unsubSidebarClose = null; }
     },
 
     methods: {

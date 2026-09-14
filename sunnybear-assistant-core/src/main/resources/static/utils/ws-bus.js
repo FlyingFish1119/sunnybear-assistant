@@ -86,9 +86,24 @@ const WsBus = (function () {
     /** 当前 socket 上挂载的 onmessage 包装（用于断开/替换时精确摘除） */
     let boundOnMessage = null;
 
+    /** 触发本地事件：仅调用该 type 的精确订阅者（不走 '*' 兜底） */
+    function emitLocal(type, payload) {
+        const arr = handlers[type];
+        if (!arr || arr.length === 0) {
+            return;
+        }
+        for (const fn of arr.slice()) {
+            try {
+                fn(payload);
+            } catch (e) {
+                console.error('WsBus.emit 订阅者处理出错 [' + type + ']:', e);
+            }
+        }
+    }
+
     return {
         /**
-         * 移交 WebSocket：总线接管 onmessage。
+         * 移交 WebSocket：总线接管 onmessage，并广播 'ws:connected'。
          * @param {WebSocket} ws
          */
         setSocket(ws) {
@@ -104,15 +119,17 @@ const WsBus = (function () {
             } else {
                 boundOnMessage = null;
             }
+            emitLocal('ws:connected', ws);
         },
 
-        /** 清空当前 socket 引用（断开时调用） */
+        /** 清空当前 socket 引用（断开时调用），并广播 'ws:disconnected' */
         clearSocket() {
             if (socket && boundOnMessage && socket.onmessage === boundOnMessage) {
                 socket.onmessage = null;
             }
             socket = null;
             boundOnMessage = null;
+            emitLocal('ws:disconnected');
         },
 
         /** 当前 socket 实例（只读） */
@@ -146,17 +163,7 @@ const WsBus = (function () {
          * @param {*} payload — 任意负载
          */
         emit(type, payload) {
-            const arr = handlers[type];
-            if (!arr || arr.length === 0) {
-                return;
-            }
-            for (const fn of arr.slice()) {
-                try {
-                    fn(payload);
-                } catch (e) {
-                    console.error('WsBus.emit 订阅者处理出错 [' + type + ']:', e);
-                }
-            }
+            emitLocal(type, payload);
         }
     };
 })();

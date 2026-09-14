@@ -4,8 +4,8 @@
  * 展示：菜单（侧边栏开关）、模型名、会话名（可双击编辑）、待确认工具/提问入口、
  *       知识库命中闪现、连接状态指示器、Agent Log 开关。
  *
- * 组件自包含连接指示器（内部建立 WebSocket 并通过事件上抛），并自行通过 WsBus
- * 订阅 ###KNOWLEDGE_HIT### 信号触发知识命中闪现。
+ * 组件自包含连接指示器（chat-connection，内部建立 WebSocket 并交接给 WsBus），
+ * 并自行通过 WsBus 订阅 ###KNOWLEDGE_HIT### 信号触发知识命中闪现。
  *
  * 工具确认 / 结构化提问弹窗也内聚在本组件内（与展开入口同处），组件自行通过
  * ref 调用其 expand()，并监听 pending-change 维护入口角标数量。
@@ -13,18 +13,19 @@
  * Agent Log 按钮通过 WsBus 本地事件与 agent-log-sidebar 解耦：
  * 点击时 emit 'agent-log:toggle'，并订阅 'agent-log:visibility' 回显按钮高亮。
  *
+ * 模型展示文本由本组件自行计算：启动时拉取 chat / chat_pro 设置，
+ * 结合注入 store 的 currentSession.enablePro 决定显示哪个模型。
+ *
  * Props:
  *   mainColor             — String   主题色
- *   displayModel          — String   当前模型展示文本
  *   wsUrl                 — String   WebSocket 地址
  *
- * Emits:
- *   toggle-sidebar         — 点击菜单按钮
- *   connected(ws)          — WebSocket 连接建立
- *   disconnected()         — WebSocket 连接断开
+ * 菜单按钮通过 WsBus 本地事件通知 chat-sidebar 切换：
+ * 点击时 emit 'sidebar:toggle'。
  *
  * 依赖注入（可选）：
  *   wsBus                  — WebSocket 消息总线
+ *   sessionStore           — 会话/消息仓库（读取 currentSession.enablePro）
  */
 const MessageTopbar = {
     name: 'MessageTopbar',
@@ -32,11 +33,11 @@ const MessageTopbar = {
     template: `
     <div class="message-area-top">
         <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
-            <button class="sidebar-toggle-btn" @click="$emit('toggle-sidebar')" title="展开/收起侧边栏">
+            <button class="sidebar-toggle-btn" @click="toggleSidebar" title="展开/收起侧边栏">
                 <i data-lucide="menu" style="width: 18px; height: 18px;"></i>
             </button>
             <span class="model-name-tag">{{ displayModel }} ·</span>
-            <session-name :main-color="mainColor"></session-name>
+            <chat-session-name :main-color="mainColor"></chat-session-name>
             <!-- 待确认工具请求入口：弹窗收起后从此处重新展开 -->
             <button v-if="pendingToolCount > 0"
                     class="pending-entry-btn"
@@ -60,11 +61,7 @@ const MessageTopbar = {
             <span v-if="knowledgeFlashVisible" class="knowledge-hit-flash" title="已自动检索知识库内容">
                 <i data-lucide="database"></i>
             </span>
-            <connection-indicator
-                :ws-url="wsUrl"
-                @connected="ws => $emit('connected', ws)"
-                @disconnected="$emit('disconnected')">
-            </connection-indicator>
+            <chat-connection :ws-url="wsUrl"></chat-connection>
             <button class="sidebar-toggle-btn" @click="toggleAgentLog"
                     :title="agentLogVisible ? '折叠 Agent Log' : '展开 Agent Log'"
                     :style="agentLogVisible ? {color: mainColor} : {}">
@@ -83,19 +80,13 @@ const MessageTopbar = {
 
     props: {
         mainColor:      { type: String,  default: 'lightsalmon' },
-        displayModel:   { type: String,  default: '' },
         wsUrl:          { type: String,  default: '' }
     },
 
-    emits: [
-        'toggle-sidebar',
-        'connected',
-        'disconnected'
-    ],
-
     inject: {
-        // 可选注入：插件页未提供 wsBus 时降级（按钮仅作占位）
-        wsBus: { default: null }
+        // 可选注入：未提供时降级
+        wsBus: { default: null },
+        sessionStore: { default: null }
     },
 
     data: function () {
@@ -105,8 +96,25 @@ const MessageTopbar = {
             agentLogVisible: false,
             // 顶部入口角标：待确认工具请求数 / 待回答提问数（由内聚的弹窗组件上报）
             pendingToolCount: 0,
-            pendingQuestionCount: 0
+            pendingQuestionCount: 0,
+            // 模型展示：chat / chat_pro 设置（启动时拉取）
+            chatModel: null,
+            chatProModel: null
         };
+    },
+
+    computed: {
+        // 当前会话启用 Pro → 显示 Pro 模型，否则显示普通模型；无会话时两者并列
+        displayModel: function () {
+            var session = this.sessionStore ? this.sessionStore.state.currentSession : {};
+            if (!session || !session.id) {
+                return (this.chatModel || '?') + ' / ' + (this.chatProModel || '?');
+            }
+            if (session.enablePro) {
+                return this.chatProModel || '?';
+            }
+            return this.chatModel || '?';
+        }
     },
 
     methods: {
@@ -122,15 +130,41 @@ const MessageTopbar = {
             }.bind(this), 5000);
         },
 
+        /** 展开/收起侧边栏：通过本地事件通知 chat-sidebar */
+        toggleSidebar: function () {
+            if (this.wsBus) {
+                this.wsBus.emit('sidebar:toggle');
+            }
+        },
+
         /** 切换 Agent Log：通过本地事件通知 agent-log-sidebar */
         toggleAgentLog: function () {
             if (this.wsBus) {
                 this.wsBus.emit('agent-log:toggle');
             }
+        },
+
+        /** 拉取 chat / chat_pro 模型设置，用于 displayModel 展示 */
+        fetchChatSettings: async function () {
+            try {
+                const [chatResult, chatProResult] = await Promise.all([
+                    API.settings.chat.get(),
+                    API.settings.chat_pro.get()
+                ]);
+                if (chatResult.status === 200) {
+                    this.chatModel = chatResult.data.model;
+                }
+                if (chatProResult.status === 200) {
+                    this.chatProModel = chatProResult.data.model;
+                }
+            } catch (error) {
+                console.error('获取聊天设置失败:', error);
+            }
         }
     },
 
     mounted: function () {
+        this.fetchChatSettings();
         if (this.wsBus) {
             this._unsubAgentLogVisibility = this.wsBus.on('agent-log:visibility', (val) => {
                 this.agentLogVisible = !!val;

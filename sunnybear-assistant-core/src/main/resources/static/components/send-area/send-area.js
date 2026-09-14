@@ -22,15 +22,15 @@ const SLASH_COMMANDS = [
  * 有 sessionStore 时直接调用 store.sendMessage / store.stopStreaming；
  * 无 store（插件页）时退回 emit send / stop 交父级处理。
  *
+ * 输入框内容为组件内部状态（inputText），不再对外双向绑定。
+ *
  * Props:
  *   mainColor    — String   主题色
- *   inputText    — String   v-model:inputText 输入框内容
  *
  * Injects:
  *   sessionStore — 会话/消息仓库（可选）；isStreaming / sending / sessionId / sessions 取自仓库
  *
  * Emits:
- *   update:inputText     — 输入框内容变化（v-model:input-text）
  *   send(payload)        — { content, files, tts } 请求发送
  *   stop                 — 请求中止流式传输
  *   drag-over-change     — 拖拽悬停状态变化（透传给父级控制遮罩）
@@ -89,11 +89,10 @@ const SendArea = {
             <auto-resize-textarea
                 class="send-area-textarea"
                 :main-color="mainColor"
-                :model-value="inputText"
+                v-model="inputText"
                 placeholder="输入消息，Ctrl+Enter 发送，Enter 换行"
                 :max-height="180"
                 :min-height="85"
-                @update:model-value="v => $emit('update:inputText', v)"
                 @submit="submit"
                 @cancel="onTextareaCancel"
                 @keydown="onTextareaKeydown"
@@ -125,11 +124,10 @@ const SendArea = {
     </div>`,
 
     props: {
-        mainColor:   { type: String,   default: 'lightsalmon' },
-        inputText:   { type: String,   default: '' }
+        mainColor:   { type: String,   default: 'lightsalmon' }
     },
 
-    emits: ['update:inputText', 'send', 'stop', 'drag-over-change'],
+    emits: ['send', 'stop', 'drag-over-change'],
 
     inject: {
         // 可选注入：插件页未提供 sessionStore 时降级为 null
@@ -138,6 +136,8 @@ const SendArea = {
 
     data: function () {
         return {
+            // 输入框内容（组件内部状态）
+            inputText: '',
             uploadedFiles: [],   // [{ name, data }] — 对应后端 FileData
             // 语音朗读：发送框 🔊 开关（localStorage 记忆）
             ttsEnabled: localStorage.getItem('sunnybear.tts') === '1',
@@ -270,7 +270,7 @@ const SendArea = {
          * 清空输入框与已上传文件（服务端 init_user 确认后由父级调用）。
          */
         clear: function () {
-            this.$emit('update:inputText', '');
+            this.inputText = '';
             this.uploadedFiles = [];
         },
 
@@ -305,7 +305,7 @@ const SendArea = {
                 return;
             }
             if (this.commandSuggestVisible) {
-                this.$emit('update:inputText', '');
+                this.inputText = '';
                 return;
             }
         },
@@ -350,7 +350,7 @@ const SendArea = {
                 if (cmd) this.onCommandSelect(cmd);
             } else if (event.key === 'Escape') {
                 event.preventDefault();
-                this.$emit('update:inputText', '');
+                this.inputText = '';
             }
         },
 
@@ -358,7 +358,7 @@ const SendArea = {
          * 选中一级指令：有 subCommand 则进入二级面板，否则直接替换输入框。
          */
         onCommandSelect: function (cmd) {
-            this.$emit('update:inputText', cmd.name + ' ');
+            this.inputText = cmd.name + ' ';
             if (cmd.subCommand) {
                 this.commandSubMode = cmd.subCommand;
                 this.commandParentCmd = cmd;
@@ -372,7 +372,7 @@ const SendArea = {
         /** 选中二级选项（如会话） → 拼出最终指令 */
         onSubSelect: function (opt) {
             if (this.commandParentCmd && this.commandParentCmd.name === '/look') {
-                this.$emit('update:inputText', '/look ' + opt.id + ' ');
+                this.inputText = '/look ' + opt.id + ' ';
             }
             this.commandSubMode = null;
             this.commandParentCmd = null;

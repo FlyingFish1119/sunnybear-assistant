@@ -15,8 +15,9 @@
  *   - WS 路由：加载时自行订阅 WsBus，精确处理各 ###SIGNAL### 帧，
  *     并订阅 '*' 兜底处理 JSON 状态帧（原 index.handleStreamChunk 全部逻辑）。
  *
- * 不负责（UI 副作用）：滚动、Mermaid 渲染、TTS 播放、关闭抽屉、右键菜单/弹窗等。
- * 这些通过 ui 钩子对象交由页面主组件实现（registerUi(hooks)）或留在组件内，
+ * 不负责（UI 副作用）：滚动、Mermaid 渲染、TTS 播放、右键菜单/弹窗等。
+ * 这些通过 ui 钩子对象交由页面主组件实现（registerUi(hooks)）或留在组件内；
+ * 关闭侧边栏则经 WsBus 本地事件 'sidebar:close' 通知 chat-sidebar，
  * 从而把「数据」与「DOM/TTS」解耦，同时保持所有既有行为。
  *
  * 典型用法：
@@ -57,7 +58,6 @@ const SessionStore = (function () {
         clearTts: function () {},
         isTtsEnabled: function () { return false; },
         clearMdCache: function () {},
-        closeSidebar: function () {},
         clearSendArea: function () {}
     };
 
@@ -196,7 +196,7 @@ const SessionStore = (function () {
          * @param {object} session 会话对象
          */
         async selectSession(session) {
-            ui.closeSidebar();
+            WsBus.emit('sidebar:close');
             ui.clearMdCache();
             WsBus.emit('agent-log:clear');
             ui.clearTts();
@@ -228,7 +228,7 @@ const SessionStore = (function () {
 
         /** 新建会话：清空当前会话与消息 */
         createSession() {
-            ui.closeSidebar();
+            WsBus.emit('sidebar:close');
             ui.clearMdCache();
             WsBus.emit('agent-log:clear');
             state.currentSession = {};
@@ -829,6 +829,9 @@ const SessionStore = (function () {
             }
         });
         WsBus.on('*', raw => store.handleWsMessage(raw));
+        // 连接生命周期：由 chat-connection 经 WsBus.setSocket / clearSocket 广播
+        WsBus.on('ws:connected', () => store.onSocketConnected());
+        WsBus.on('ws:disconnected', () => store.clearSending());
     })();
 
     return store;

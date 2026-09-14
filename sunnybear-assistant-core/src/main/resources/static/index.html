@@ -33,10 +33,10 @@
     <script src="components/tool-confirm/tool-confirm.js"></script>
     <script src="components/tool-question/tool-question.js"></script>
     <script src="components/confirm-dialog/confirm-dialog.js"></script>
-    <script src="components/session-name/session-name.js"></script>
+    <script src="components/chat-session-name/chat-session-name.js"></script>
     <script src="components/chat-sidebar/chat-sidebar.js"></script>
     <script src="components/file-upload/file-upload.js"></script>
-    <script src="components/connection-indicator/connection-indicator.js"></script>
+    <script src="components/chat-connection/chat-connection.js"></script>
     <script src="components/auto-resize-textarea/auto-resize-textarea.js"></script>
     <script src="components/command-suggest/command-suggest.js"></script>
     <script src="components/agent-log-sidebar/agent-log-sidebar.js"></script>
@@ -50,15 +50,15 @@
     <link rel="stylesheet" href="components/chat-sidebar/chat-sidebar.css"/>
     <link rel="stylesheet" href="components/message-area/message-area.css"/>
     <link rel="stylesheet" href="components/message-topbar/message-topbar.css"/>
-    <link rel="stylesheet" href="components/session-name/session-name.css"/>
+    <link rel="stylesheet" href="components/chat-session-name/chat-session-name.css"/>
     <link rel="stylesheet" href="css/send-area.css"/>
     <link rel="stylesheet" href="components/send-area/send-area.css"/>
     <link rel="stylesheet" href="components/file-upload/file-upload.css"/>
     <link rel="stylesheet" href="css/markdown.css"/>
     <link rel="stylesheet" href="components/tool-confirm/tool-confirm.css"/>
     <link rel="stylesheet" href="components/tool-question/tool-question.css"/>
-<link rel="stylesheet" href="components/confirm-dialog/confirm-dialog.css"/>
-    <link rel="stylesheet" href="components/connection-indicator/connection-indicator.css"/>
+    <link rel="stylesheet" href="components/confirm-dialog/confirm-dialog.css"/>
+    <link rel="stylesheet" href="components/chat-connection/chat-connection.css"/>
     <link rel="stylesheet" href="components/auto-resize-textarea/auto-resize-textarea.css"/>
     <link rel="stylesheet" href="components/command-suggest/command-suggest.css"/>
     <link rel="stylesheet" href="components/agent-log-sidebar/agent-log-sidebar.css"/>
@@ -69,7 +69,7 @@
 <div id="in-loading">
 </div>
 <div id="app" :style="{'--main-color': mainColor, '--bg-user': userBubbleBg}">
-    <chat-sidebar ref="sidebar"
+    <chat-sidebar
         :main-color="mainColor"
         :collapsed="sidebarCollapsed"
         @toggle-collapsed="sidebarCollapsed = !sidebarCollapsed"
@@ -85,11 +85,7 @@
         <div class="message-area-background" :style="backgroundStyle"></div>
         <message-topbar
             :main-color="mainColor"
-            :display-model="displayModel"
             :ws-url="wsUrl"
-            @toggle-sidebar="toggleSidebar"
-            @connected="onWsConnect"
-            @disconnected="onWsDisconnect"
         ></message-topbar>
         <message-area
             :main-color="mainColor"
@@ -100,7 +96,6 @@
         <send-area
             ref="sendArea"
             :main-color="mainColor"
-            v-model:input-text="inputText"
             @drag-over-change="isChange => dragOver = isChange"
         ></send-area>
     </div>
@@ -116,11 +111,6 @@
                 // 标记 app 是否已完成加载并可见，避免在 #app display:none 期间
                 // 设置 background-image 导致浏览器跳过图片请求
                 loaded: false,
-                chatModel: null,
-                chatProModel: null,
-
-                // 输入框内容（发送区通过 v-model:input-text 双向绑定）
-                inputText: '',
 
                 // 桌面端侧边栏折叠
                 sidebarCollapsed: false,
@@ -130,34 +120,8 @@
         },
 
         computed : {
-            // ===== 会话/消息状态：统一来自 SessionStore（inject），此处透传给模板 =====
-            store() {
-                return this.sessionStore;
-            },
             wsUrl: function () {
                 return API.ws.url
-            },
-            currentSession() {
-                return this.store.state.currentSession;
-            },
-            currentMessages() {
-                return this.store.state.currentMessages;
-            },
-            currentSessionId() {
-                return this.store.currentSessionId;
-            },
-            isNewSession() {
-                return this.store.isNewSession;
-            },
-            // 当前会话是否正在流式：只查当前会话自己的标记，其他会话的 START/END 不会互相影响
-            isStreaming() {
-                return this.store.isStreaming;
-            },
-            sessionSelectLoading() {
-                return this.store.sessionSelectLoading;
-            },
-            sending() {
-                return this.store.sending;
             },
             // 用户消息气泡背景色：跟随主色自动变浅
             userBubbleBg() {
@@ -178,30 +142,11 @@
                     opacity: this.userSettings.opacity != null ? this.userSettings.opacity : 0.3
                 };
             },
-            displayModel() {
-                const session = this.store.state.currentSession;
-                if (!session || !session.id) {
-                    return (this.chatModel || '?') + ' / ' + (this.chatProModel || '?');
-                }
-                if (session.enablePro) {
-                    return this.chatProModel || '?';
-                }
-                return this.chatModel || '?';
-            },
         },
 
         inject: ['sessionStore'],
 
         methods: {
-
-            /**
-             * 将根路径转换为相对路径（相对当前目录）
-             * @param {string} path - 不带前导 / 的路径
-             * @returns {string} 带 BASE_PATH 前缀的完整路径
-             */
-            $api(path) {
-                return API.BASE_PATH + path;
-            },
 
             inLoading() {
                 document.getElementById("app").style.display = "none";
@@ -231,7 +176,6 @@
                 this.inLoading();
                 await this.fetchUserSettings();
                 await this.fetchAssistantSettings();
-                await this.getChatSettings();
                 this.outLoading();
             },
 
@@ -270,35 +214,6 @@
                 }
             },
 
-            async getChatSettings() {
-                try {
-                    const [chatResult, chatProResult] = await Promise.all([
-                        API.settings.chat.get(),
-                        API.settings.chat_pro.get()
-                    ]);
-                    if (chatResult.status === 200) {
-                        this.chatModel = chatResult.data.model;
-                    }
-                    if (chatProResult.status === 200) {
-                        this.chatProModel = chatProResult.data.model;
-                    }
-                } catch (error) {
-                    console.error('获取聊天设置失败:', error);
-                }
-            },
-
-            onWsConnect(ws) {
-                // 交给消息总线接管 onmessage：各组件 / store 已自行订阅关心的信号与兜底
-                WsBus.setSocket(ws);
-                // 断线重连：清空全部流式标记并清掉残留占位，请求当前会话总线续传
-                this.sessionStore.onSocketConnected();
-            },
-
-            onWsDisconnect() {
-                this.sessionStore.clearSending();
-                WsBus.clearSocket();
-            },
-
             /* ========== TTS 语音朗读（实际播放逻辑在发送区组件内） ========== */
 
             /** 当前语音朗读开关状态（发送区组件持有，供 replace/edit 请求复读开关） */
@@ -333,20 +248,6 @@
             },
 
             /**
-             * 切换侧边栏：桌面端折叠/展开，移动端滑出抽屉
-             */
-            toggleSidebar() {
-                this.$refs.sidebar.toggle();
-            },
-
-            /**
-             * 关闭侧边栏（移动端抽屉 + 桌面端折叠通用）
-             */
-            closeSidebar() {
-                this.$refs.sidebar.close();
-            },
-
-            /**
              * 使用 requestAnimationFrame 合并图标刷新，避免流式传输时频繁全量扫描 DOM
              */
             _scheduleIconRefresh() {
@@ -371,7 +272,6 @@
                 playMessageAudio: (msg) => { if (this.$refs.sendArea) this.$refs.sendArea.playMessageAudio(msg); },
                 isTtsEnabled: () => this.currentTtsEnabled(),
                 clearMdCache: () => this.$md.clearCache(),
-                closeSidebar: () => this.closeSidebar(),
                 clearSendArea: () => { if (this.$refs.sendArea) this.$refs.sendArea.clear(); }
             });
             this.init();
@@ -393,10 +293,10 @@
     app.component('tool-confirm', ToolConfirm);
     app.component('tool-question', ToolQuestion);
     app.component('confirm-dialog', ConfirmDialog);
-    app.component('session-name', SessionName);
+    app.component('chat-session-name', ChatSessionName);
     app.component('chat-sidebar', ChatSidebar);
     app.component('file-upload', FileUpload);
-    app.component('connection-indicator', ConnectionIndicator);
+    app.component('chat-connection', ChatConnection);
     app.component('auto-resize-textarea', AutoResizeTextarea);
     app.component('command-suggest', CommandSuggest);
     app.component('agent-log-sidebar', AgentLogSidebar);
