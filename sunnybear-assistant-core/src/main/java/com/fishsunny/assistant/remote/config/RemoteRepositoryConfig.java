@@ -38,68 +38,68 @@ public class RemoteRepositoryConfig {
     private final RemoteRepositoryProperties remoteRepositoryProperties;
 
     @Bean
-    @ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "remote")
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public RepoRpcClient repoRpcClient(ObjectMapper objectMapper) {
         return new RepoRpcClient(objectMapper, remoteRepositoryProperties);
     }
 
     /** 新增要远程化的仓库，就照抄一个这样的 bean；同时给它的 Implement 打上 mode=local 条件 */
     @Bean
-    @ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "remote")
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public AiGreetingRepository aiGreetingRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(AiGreetingRepository.class, repoRpcClient, objectMapper);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "remote")
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public ChatSessionRepository chatSessionRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(ChatSessionRepository.class, repoRpcClient, objectMapper);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "remote")
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public ChatMessageRepository chatMessageRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(ChatMessageRepository.class, repoRpcClient, objectMapper);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "remote")
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public CronJobRepository cronJobRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(CronJobRepository.class, repoRpcClient, objectMapper);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "remote")
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public KnowledgeRepository knowledgeRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(KnowledgeRepository.class, repoRpcClient, objectMapper);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "remote")
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public MemoryRepository memoryRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(MemoryRepository.class, repoRpcClient, objectMapper);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "remote")
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public SessionKnowledgeRepository sessionKnowledgeRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(SessionKnowledgeRepository.class, repoRpcClient, objectMapper);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "remote")
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public TaskPromptRepository taskPromptRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(TaskPromptRepository.class, repoRpcClient, objectMapper);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "remote")
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public TaskRepository taskRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(TaskRepository.class, repoRpcClient, objectMapper);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "remote")
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public TaskStepRepository taskStepRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(TaskStepRepository.class, repoRpcClient, objectMapper);
     }

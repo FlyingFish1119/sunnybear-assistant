@@ -25,7 +25,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Repository
-@ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
+@ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
 public class TaskPromptRepositoryImplement implements TaskPromptRepository {
 
     private static final Logger log = LoggerFactory.getLogger(TaskPromptRepositoryImplement.class);

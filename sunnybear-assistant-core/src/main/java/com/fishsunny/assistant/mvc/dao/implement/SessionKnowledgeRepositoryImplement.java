@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-@ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
+@ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
 public class SessionKnowledgeRepositoryImplement implements SessionKnowledgeRepository {
 
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
