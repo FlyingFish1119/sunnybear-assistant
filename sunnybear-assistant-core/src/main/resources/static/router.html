@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>页面导航 — SunnyBear 助手</title>
     <link rel="icon" type="image/png" href="icon/icon.png">
+    <meta name="theme-color" content="#FFA07A">
+    <script src="utils/theme-color.js"></script>
     <!-- Element Plus 样式 -->
     <link rel="stylesheet" href="lib/element-plus.css">
     <!-- Vue 3 -->
@@ -245,7 +247,7 @@
             return {
                 routes: [],
                 loading: true,
-                mainColor: 'lightsalmon'
+                mainColor: (window.ThemeColorCache && window.ThemeColorCache.get()) || 'lightsalmon'
             };
         },
 
@@ -292,6 +294,7 @@
                     }
                     if (userRes && userRes.status === 200 && userRes.data && userRes.data.mainColor) {
                         this.mainColor = userRes.data.mainColor;
+                        if (window.ThemeColorCache) window.ThemeColorCache.set(userRes.data.mainColor);
                     }
                 } catch (e) {
                     ElementPlus.ElMessage.error('加载导航失败: ' + e.message);

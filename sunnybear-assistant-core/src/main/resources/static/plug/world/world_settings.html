@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover">
     <title>世界设置 — SunnyBear 助手</title>
     <link rel="icon" type="image/png" href="../../icon/icon.png">
+    <meta name="theme-color" content="#FFA07A">
+    <script src="../../utils/theme-color.js"></script>
     <link rel="stylesheet" href="../../lib/element-plus.css">
     <script src="../../lib/vue.global.prod.js"></script>
     <script src="../../lib/element-plus.full.min.js"></script>
@@ -1316,7 +1318,7 @@
 const app = Vue.createApp({
     data() {
         return {
-            mainColor: 'lightsalmon',
+            mainColor: (window.ThemeColorCache && window.ThemeColorCache.get()) || 'lightsalmon',
             worlds: [],
             characters: [],
             knowledgeList: [],

@@ -5,6 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover">
     <title>SunnyBear 助手</title>
     <link rel="icon" type="image/png" href="icon/icon.png">
+    <!-- PWA：独立窗口 / 添加到主屏幕 -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon/icon-180.png">
+    <meta name="theme-color" content="#FFA07A">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="SunnyBear">
+    <script src="utils/theme-color.js"></script>
     <!-- Element Plus 样式 -->
     <link rel="stylesheet" href="lib/element-plus.css">
     <!-- Vue 3 -->
@@ -108,7 +117,7 @@
     const app = Vue.createApp({
         data() {
             return {
-                mainColor: "lightsalmon",
+                mainColor: (window.ThemeColorCache && window.ThemeColorCache.get()) || "lightsalmon",
                 userSettings: { background: '', opacity: 0.3 },
                 assistantSettings: { avatar: '', assistantName: '' },
                 // 标记 app 是否已完成加载并可见，避免在 #app display:none 期间
@@ -194,9 +203,10 @@
                     const result = await API.settings.user.get();
                     if (result.status === 200) {
                         this.userSettings = result.data || { background: '', opacity: 0.3 };
-                        // 从服务端获取主题色
+                        // 从服务端获取主题色，并刷新本地缓存（下次加载先用缓存，避免闪默认色）
                         if (this.userSettings.mainColor) {
                             this.mainColor = this.userSettings.mainColor;
+                            if (window.ThemeColorCache) window.ThemeColorCache.set(this.userSettings.mainColor);
                         }
                     }
                 } catch (error) {
@@ -319,6 +329,15 @@
     // 自定义指令（放在 ElementPlus 之后注册，确保同名指令以自定义实现为准）
     app.use(InfiniteScrollDirective);
     app.mount('#app');
+
+    // 注册 Service Worker（PWA 安装 / 独立窗口）
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js').catch((err) => {
+                console.error('Service Worker 注册失败:', err);
+            });
+        });
+    }
 </script>
 </body>
 </html>

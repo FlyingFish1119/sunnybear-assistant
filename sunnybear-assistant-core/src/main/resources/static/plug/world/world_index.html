@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover">
     <title>群聊 — SunnyBear 助手</title>
     <link rel="icon" type="image/png" href="../../icon/icon.png">
+    <meta name="theme-color" content="#FFA07A">
+    <script src="../../utils/theme-color.js"></script>
     <!-- Element Plus 样式 -->
     <link rel="stylesheet" href="../../lib/element-plus.css">
     <!-- Vue 3 -->
@@ -612,7 +614,7 @@
     const app = Vue.createApp({
         data() {
             return {
-                mainColor: "lightsalmon",
+                mainColor: (window.ThemeColorCache && window.ThemeColorCache.get()) || "lightsalmon",
                 userSettings: { background: '', opacity: 0.3 },
                 assistantSettings: { avatar: '', assistantName: '' },
                 // 世界观群聊相关

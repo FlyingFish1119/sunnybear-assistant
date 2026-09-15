@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>设置 — SunnyBear 助手</title>
     <link rel="icon" type="image/png" href="icon/icon.png">
+    <meta name="theme-color" content="#FFA07A">
+    <script src="utils/theme-color.js"></script>
     <link rel="stylesheet" href="lib/element-plus.css">
     <script src="lib/vue.global.prod.js"></script>
     <script src="lib/element-plus.full.min.js"></script>
@@ -180,7 +182,7 @@
 const app = Vue.createApp({
     data() {
         return {
-            mainColor: 'lightsalmon',
+            mainColor: (window.ThemeColorCache && window.ThemeColorCache.get()) || 'lightsalmon',
 
             // 所有设置原始数据（按分类传给对应组件）
             userSettings: {},
