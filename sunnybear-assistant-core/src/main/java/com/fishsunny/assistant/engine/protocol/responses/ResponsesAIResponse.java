@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.protocol.TokenUsage;
+import com.fishsunny.assistant.engine.protocol.UsageSource;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
@@ -22,7 +24,7 @@ import java.util.List;
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class ResponsesAIResponse implements AIResponse {
+public class ResponsesAIResponse implements AIResponse, UsageSource {
 
     private String id;
 
@@ -36,7 +38,7 @@ public class ResponsesAIResponse implements AIResponse {
     /** 输出 item 列表：message / function_call / reasoning 互为兄弟 */
     private List<ResponsesItem> output;
 
-    private JsonNode usage;
+    private ResponsesUsage usage;
 
     /** status=incomplete 时给出原因（如 max_output_tokens） */
     private JsonNode incomplete_details;
@@ -45,6 +47,11 @@ public class ResponsesAIResponse implements AIResponse {
     private JsonNode error;
 
     public ResponsesAIResponse() {
+    }
+
+    @Override
+    public TokenUsage toTokenUsage() {
+        return ResponsesUsage.toTokenUsage(usage);
     }
 
     /**

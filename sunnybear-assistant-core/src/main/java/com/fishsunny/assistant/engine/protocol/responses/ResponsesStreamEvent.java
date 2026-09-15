@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.protocol.TokenUsage;
+import com.fishsunny.assistant.engine.protocol.UsageSource;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
@@ -22,7 +24,7 @@ import lombok.experimental.Accessors;
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class ResponsesStreamEvent implements AIResponse {
+public class ResponsesStreamEvent implements AIResponse, UsageSource {
 
     /** 事件类型，见下方 TYPE_* 常量 */
     private String type;
@@ -62,6 +64,15 @@ public class ResponsesStreamEvent implements AIResponse {
     private JsonNode error;
 
     public ResponsesStreamEvent() {
+    }
+
+    /**
+     * 用量只在 {@code response.completed}（部分网关 {@code response.in_progress} / {@code response.failed}
+     * 也会带）的内嵌 response 里给出，其余事件内嵌 response 为空，返回 null——主链路不会因此覆盖已有值。
+     */
+    @Override
+    public TokenUsage toTokenUsage() {
+        return response == null ? null : response.toTokenUsage();
     }
 
     public static final String TYPE_CREATED = "response.created";

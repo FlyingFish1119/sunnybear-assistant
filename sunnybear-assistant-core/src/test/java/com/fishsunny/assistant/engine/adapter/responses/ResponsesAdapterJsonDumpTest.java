@@ -18,6 +18,7 @@ import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.protocol.TokenUsage;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
@@ -592,6 +593,34 @@ class ResponsesAdapterJsonDumpTest {
         // incomplete 只是告警，不抛异常——已有内容比什么都没有划算
         ChatResponse converted = (ChatResponse) adapter.convertToMaster(response);
         assertEquals(ChatResponse.STATUS_DONE, converted.getStatus());
+    }
+
+    @Test
+    void responsesUsageMapsToTokenUsage() throws Exception {
+        ResponsesAIResponse response = MAPPER.readValue(
+                "{\"id\":\"resp_13\",\"status\":\"completed\","
+                        + "\"usage\":{\"input_tokens\":31,"
+                        + "\"input_tokens_details\":{\"cached_tokens\":7},"
+                        + "\"output_tokens\":18,"
+                        + "\"output_tokens_details\":{\"reasoning_tokens\":5},"
+                        + "\"total_tokens\":49}}",
+                ResponsesAIResponse.class);
+
+        TokenUsage usage = response.toTokenUsage();
+        System.out.println("\n===== Responses 用量转换 =====");
+        System.out.println(MAPPER.writeValueAsString(usage));
+        assertNotNull(usage);
+        assertEquals(31, usage.getPromptTokens().intValue());
+        assertEquals(18, usage.getCompletionTokens().intValue());
+        assertEquals(49, usage.getTotalTokens().intValue());
+        assertEquals(7, usage.getCachedTokens().intValue());
+        assertEquals(5, usage.getReasoningTokens().intValue());
+
+        // 流式用量挂在内嵌 response 上，事件本身也要能取到
+        ResponsesStreamEvent event = MAPPER.readValue(
+                "{\"type\":\"response.completed\",\"response\":" + MAPPER.writeValueAsString(response) + "}",
+                ResponsesStreamEvent.class);
+        assertEquals(usage, event.toTokenUsage());
     }
 
     // ------------------------------------------------------------------

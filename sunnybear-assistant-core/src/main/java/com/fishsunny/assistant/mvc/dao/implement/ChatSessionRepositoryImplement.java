@@ -176,14 +176,14 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         }
         if (fields == null || fields.isEmpty()) {
             ChatSession current = selectById(id);
-            return current == null ? new LinkedHashMap<>() : current.getExtension();
+            return current == null ? new LinkedHashMap<>() : current.ensureExtension();
         }
         synchronized (extensionLocks.computeIfAbsent(id, k -> new Object())) {
             ChatSession current = selectById(id);
             if (current == null) {
                 throw new RuntimeException("Session not found: " + id);
             }
-            Map<String, Object> extension = current.getExtension();
+            Map<String, Object> extension = current.ensureExtension();
             extension.putAll(fields);
             String merged;
             try {
