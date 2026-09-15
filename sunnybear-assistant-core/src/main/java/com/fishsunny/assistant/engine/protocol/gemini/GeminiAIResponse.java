@@ -3,6 +3,8 @@ package com.fishsunny.assistant.engine.protocol.gemini;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.protocol.TokenUsage;
+import com.fishsunny.assistant.engine.protocol.UsageSource;
 import com.fishsunny.assistant.engine.protocol.gemini.message.GeminiCandidate;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -17,7 +19,7 @@ import java.util.List;
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class GeminiAIResponse implements AIResponse {
+public class GeminiAIResponse implements AIResponse, UsageSource {
 
     private List<GeminiCandidate> candidates = new ArrayList<>();
 
@@ -40,5 +42,10 @@ public class GeminiAIResponse implements AIResponse {
     /** 首个候选，无候选（如被安全策略拦截）时返回 null */
     public GeminiCandidate firstCandidate() {
         return candidates == null || candidates.isEmpty() ? null : candidates.getFirst();
+    }
+
+    @Override
+    public TokenUsage toTokenUsage() {
+        return GeminiUsage.toTokenUsage(usageMetadata);
     }
 }

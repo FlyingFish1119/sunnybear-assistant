@@ -60,6 +60,8 @@ const MarkdownUtils = (function () {
 
     /* ---- 配置 marked ---- */
     marked.use({
+        // 单个换行也渲染成 <br>（GFM 行为），避免必须敲两次回车才换行
+        breaks: true,
         renderer: {
             code: function (obj) {
                 var text = obj.text;

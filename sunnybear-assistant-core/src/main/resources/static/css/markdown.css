@@ -74,15 +74,10 @@
 /* ---- 代码块 ---- */
 .markdown-body .code-block-wrapper {
     margin: 0.6em 0;
-    /* hidden 作旧浏览器回退；clip 不产生滚动容器，sticky 才能相对消息列表生效 */
     overflow: hidden;
-    overflow: clip;
 }
 
 .markdown-body .code-block-header {
-    position: sticky;
-    top: 0;
-    z-index: 3;
     display: flex;
     align-items: center;
     background: #2d2d44;
@@ -151,6 +146,9 @@
     display: block;
     /* 行间换行由块级 .diff-line 承担；这里恢复 normal，避免 pre 再把 textContent 里的换行渲染成空行 */
     white-space: normal;
+    /* 撑到最长行宽度，保证横向滚动时行背景铺满整个滚动宽度 */
+    width: max-content;
+    min-width: 100%;
 }
 
 .markdown-body .diff-line {

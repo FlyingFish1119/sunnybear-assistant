@@ -14,6 +14,8 @@ import lombok.experimental.Accessors;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Data
 @Accessors(chain = true)
@@ -51,13 +53,24 @@ public class ChatSession {
     private Boolean unreviewed = false;
 
     /**
-     * 插件扩展字段（JSON 字符串，语义由各插件自行约定，核心层不解析不解释）。
-     * 例如角色/世界会话在此存放绑定资源 ID；普通会话与定时任务会话为 null。
+     * 插件扩展字段（JSON 对象，语义由各插件自行约定，核心层不解析不解释）。
+     * 例如角色/世界会话在此存放绑定资源 ID；核心层 token 统计在此存放 chat_ 前缀的累计值。
+     * <p>DAO 层负责与数据库 TEXT 列的 JSON 字符串互相转换；为 null 表示未设置。
+     * 写入时始终「合并」到已有 map，不得整体覆盖（避免抹掉其它插件写入的 key）。
      */
-    private String extension;
-    public ChatSession setExtension(String extension) {
-        this.extension = extension == null ? "{}" : extension;
+    private Map<String, Object> extension;
+
+    public ChatSession setExtension(Map<String, Object> extension) {
+        this.extension = extension;
         return this;
+    }
+
+    /** 取扩展字段（为 null 时惰性创建），便于 getExtension().put(...) 后回写 */
+    public Map<String, Object> ensureExtension() {
+        if (this.extension == null) {
+            this.extension = new LinkedHashMap<>();
+        }
+        return this.extension;
     }
 
     public ChatSession() {

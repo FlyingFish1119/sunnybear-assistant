@@ -2,6 +2,7 @@ package com.fishsunny.assistant.engine.protocol.gemini;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fishsunny.assistant.engine.protocol.TokenUsage;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
@@ -28,5 +29,18 @@ public class GeminiUsage {
     private Integer totalTokenCount;
 
     public GeminiUsage() {
+    }
+
+    public static TokenUsage toTokenUsage(GeminiUsage usage) {
+        if (usage == null) {
+            return null;
+        }
+        TokenUsage result = new TokenUsage()
+                .setPromptTokens(usage.getPromptTokenCount())
+                .setCompletionTokens(usage.getCandidatesTokenCount())
+                .setTotalTokens(usage.getTotalTokenCount())
+                .setCachedTokens(usage.getCachedContentTokenCount())
+                .setReasoningTokens(usage.getThoughtsTokenCount());
+        return result.isEmpty() ? null : result;
     }
 }

@@ -14,6 +14,8 @@ import com.fishsunny.assistant.engine.adapter.HandleTTSAble;
 import com.fishsunny.assistant.engine.adapter.factory.AIAdapterFactory;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.protocol.TokenUsage;
+import com.fishsunny.assistant.engine.protocol.UsageSource;
 import lombok.Data;
 import lombok.Getter;
 import lombok.experimental.Accessors;
@@ -46,6 +48,12 @@ public class ChatHttpHandler {
 
     /** 泵线程与主线程之间缓冲的行数，兼作背压 */
     private static final int QUEUE_CAPACITY = 1024;
+
+    /**
+     * 流式收流结束后，为捕获 OpenAI include_usage 的独立用量尾帧，最多额外等待的毫秒数。
+     * 尾帧紧跟在 finish 帧之后且很快到达；拿不到就放弃（不影响正文与结束）。
+     */
+    private static final long USAGE_DRAIN_GRACE_MILLIS = 800;
 
     @Getter
     private static final Set<String> PASS_SIGN = ConcurrentHashMap.newKeySet();
@@ -121,6 +129,8 @@ public class ChatHttpHandler {
 
         long deadline = idleMillis > 0 ? System.currentTimeMillis() + idleMillis : 0;
         AIResponse lastRes = null;
+        // token 用量：由携带 usage 的响应帧不断刷新，取整轮最后一次有效值
+        TokenUsage usage = null;
         // 流正常走完（最后一个 chunk finished=true）才合成整轮完整音频；
         // 中断/流早断/出错时不做（避免把半截回复的语音塞进消息）
         boolean streamCompleted = false;
@@ -175,6 +185,14 @@ public class ChatHttpHandler {
                 // 处理可能的工具调用
                 adapter.collectChunk(response);
 
+                // 收集 token 用量（各协议响应实现 UsageSource；无 usage 的帧返回 null，不覆盖已有值）
+                if (response instanceof UsageSource usageSource) {
+                    TokenUsage frameUsage = usageSource.toTokenUsage();
+                    if (frameUsage != null) {
+                        usage = frameUsage;
+                    }
+                }
+
                 // 文本先行推给调用方，之后才轮到 TTS（同步合成会短暂阻塞收流循环）
                 AIResponse converted = adapter.convertToMaster(response);
                 if (inTranslate != null) {
@@ -191,6 +209,14 @@ public class ChatHttpHandler {
                 }
                 if (finished) {
                     streamCompleted = true;
+                    // OpenAI 兼容流式把 usage 放在 finish 帧之后的独立尾帧里：短暂排空队列尽力取到。
+                    // 已经在 finish 帧拿到用量的协议（如 Gemini）无需排空。
+                    if (safeStream && usage == null) {
+                        TokenUsage drained = drainUsage(queue, adapter);
+                        if (drained != null) {
+                            usage = drained;
+                        }
+                    }
                     break;
                 }
             }
@@ -205,7 +231,8 @@ public class ChatHttpHandler {
                         adapter.getContent(),
                         adapter.getToolCalls(),
                         adapter.getReasoningSignature(),
-                        fullAudio
+                        fullAudio,
+                        usage
                 );
                 onComplete.onComplete(result, lastConverted);
             }
@@ -241,6 +268,52 @@ public class ChatHttpHandler {
             throw new StreamIdleTimeoutException((int) (idleMillis / 1000), adapterName);
         }
         return event;
+    }
+
+    /**
+     * finish 帧之后短暂排空队列，捕获 OpenAI include_usage 的独立用量尾帧。
+     * 只解析、只取用量，不推送、不影响正文；超时/流结束/解析失败都返回 null。
+     */
+    private TokenUsage drainUsage(BlockingQueue<StreamEvent> queue, AIAdapter adapter) {
+        long deadline = System.currentTimeMillis() + USAGE_DRAIN_GRACE_MILLIS;
+        while (true) {
+            long remain = deadline - System.currentTimeMillis();
+            if (remain <= 0) {
+                return null;
+            }
+            StreamEvent event;
+            try {
+                event = queue.poll(remain, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+            // 超时 / 泵线程错误 / 流已结束：都停止排空
+            if (event == null || event.error() != null || event.line() == null) {
+                return null;
+            }
+            String line = event.line();
+            if (!StringUtils.hasText(line) || line.startsWith(":") || line.startsWith("event:")) {
+                continue;
+            }
+            if (line.startsWith("data:")) {
+                line = line.substring("data:".length()).stripLeading();
+            }
+            if (!StringUtils.hasText(line) || "[DONE]".equals(line)) {
+                continue;
+            }
+            try {
+                AIResponse response = objectMapper.readValue(line, adapter.getTargetRespCls());
+                if (response instanceof UsageSource usageSource) {
+                    TokenUsage usage = usageSource.toTokenUsage();
+                    if (usage != null) {
+                        return usage;
+                    }
+                }
+            } catch (Exception ignored) {
+                // 尾帧解析失败不影响正文
+            }
+        }
     }
 
     /**
@@ -345,13 +418,15 @@ public class ChatHttpHandler {
      *
      * @param audioBase64 整轮完整音频（mp3 base64，enableTTS 且合成成功时非空；
      *                    供调用方入库，如塞进 assistant 消息的 extension）
+     * @param usage       整轮 token 用量（协议提供时非空；供调用方入库）
      */
     public record TranslateResult(
         String reasoning,
         String content,
         List<AIAdapter.ToolCall> toolCalls,
         String reasoningSignature,
-        String audioBase64
+        String audioBase64,
+        TokenUsage usage
     ) {}
 
     public interface InTranslateCallback {

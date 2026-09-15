@@ -50,6 +50,9 @@ const ChatSidebar = {
                      @click="selectSession(session)"
                      @contextmenu.prevent="showContextMenu($event, session)">
                     <span class="sidebar-session-name">{{ session.name }}</span>
+                    <span v-if="sessionTokenTotal(session) != null"
+                          class="sidebar-session-tokens"
+                          title="本会话累计 token 消耗">{{ formatTokens(sessionTokenTotal(session)) }}</span>
                 </div>
             </template>
             <div v-if="sessionsLoadingMore" class="sidebar-loading-more">加载中…</div>
@@ -390,6 +393,23 @@ const ChatSidebar = {
             if (diffDays === 2) return '前天';
             if (year === now.getFullYear()) return month + '月' + day + '日';
             return year + '年' + month + '月' + day + '日';
+        },
+
+        /** 会话累计 token（来自 extension.chat_total_tokens，无则返回 null） */
+        sessionTokenTotal: function (session) {
+            var extension = session && session.extension;
+            if (!extension || typeof extension !== 'object') return null;
+            var total = extension.chat_total_tokens;
+            return total == null ? null : total;
+        },
+
+        /** token 数字压缩：1234 -> 1.2k，1048576 -> 1.0M */
+        formatTokens: function (n) {
+            if (n == null || isNaN(n)) return '-';
+            n = Number(n);
+            if (n < 1000) return String(n);
+            if (n < 1000000) return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'k';
+            return (n / 1000000).toFixed(1) + 'M';
         },
 
         /**

@@ -8,6 +8,8 @@ package com.fishsunny.assistant.mvc.dao.implement;
  * @Date 2026/6/28 02:02
  */
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.mvc.dao.ChatSessionRepository;
 import org.slf4j.Logger;
@@ -17,10 +19,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
 @Repository
 public class ChatSessionRepositoryImplement implements ChatSessionRepository {
@@ -30,10 +34,12 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
 
     @Autowired
-    public ChatSessionRepositoryImplement(JdbcTemplate jdbcTemplate) {
+    public ChatSessionRepositoryImplement(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
         // 自动迁移：为旧数据库添加 enable_pro 列
         try {
             jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN enable_pro INTEGER NOT NULL DEFAULT 0");
@@ -73,9 +79,36 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         chatSession.setUpdateTime(LocalDateTime.parse(resultSet.getString("update_time"), formatter));
         chatSession.setEnablePro(resultSet.getInt("enable_pro") == 1);
         chatSession.setUnreviewed(resultSet.getInt("unreviewed") == 1);
-        chatSession.setExtension(resultSet.getString("extension"));
+        chatSession.setExtension(parseExtension(resultSet.getString("extension")));
         return chatSession;
     };
+
+    /** DB TEXT 列（JSON 字符串）→ Map；空值/解析失败返回 null（视为未设置） */
+    private Map<String, Object> parseExtension(String json) {
+        if (!StringUtils.hasText(json)) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
+            });
+        } catch (Exception e) {
+            log.warn("解析 chat_session.extension 失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** Map → DB TEXT 列（JSON 字符串）；null 原样存 null */
+    private String serializeExtension(Map<String, Object> extension) {
+        if (extension == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(extension);
+        } catch (Exception e) {
+            log.warn("序列化 chat_session.extension 失败: {}", e.getMessage());
+            return null;
+        }
+    }
 
     @Override
     public ChatSession insert(ChatSession chatSession) {
@@ -94,7 +127,7 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
                 chatSession.getUpdateTime().format(formatter),
                 chatSession.getEnablePro() != null && chatSession.getEnablePro() ? 1 : 0,
                 chatSession.getUnreviewed() != null && chatSession.getUnreviewed() ? 1 : 0,
-                chatSession.getExtension()
+                serializeExtension(chatSession.getExtension())
         );
 
         ChatSession session = selectById(chatSession.getId());
@@ -121,6 +154,11 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         if (chatSession.getUnreviewed() != null) {
             jdbcTemplate.update("UPDATE chat_session SET unreviewed = ? WHERE id = ?",
                     chatSession.getUnreviewed() ? 1 : 0, chatSession.getId());
+        }
+        // extension 仅在显式携带（非 null）时更新；调用方应基于已有 map 合并后再传入，避免抹掉其它 key
+        if (chatSession.getExtension() != null) {
+            jdbcTemplate.update("UPDATE chat_session SET extension = ? WHERE id = ?",
+                    serializeExtension(chatSession.getExtension()), chatSession.getId());
         }
 
         ChatSession session = selectById(chatSession.getId());

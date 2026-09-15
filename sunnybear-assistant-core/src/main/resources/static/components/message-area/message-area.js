@@ -145,6 +145,25 @@ const MessageArea = {
                                 </div>
                             </div>
                         </div>
+                        <!-- 本轮 token 消耗（来自消息 extension.chat_usage） -->
+                        <div v-if="messageUsage(msg)" class="message-token-usage">
+                            <el-tooltip effect="light" placement="top" :show-after="100"
+                                        popper-class="message-token-tooltip">
+                                <template #content>
+                                    <div class="message-token-tip">
+                                        <div v-for="row in tokenBreakdown(messageUsage(msg))"
+                                             :key="row.label" class="message-token-tip-row">
+                                            <span class="message-token-tip-label">{{ row.label }}</span>
+                                            <span class="message-token-tip-value">{{ row.value }}</span>
+                                        </div>
+                                    </div>
+                                </template>
+                                <span class="message-token-badge">
+                                    <i data-lucide="coins" style="width:12px;height:12px"></i>
+                                    tokens {{ tokenSummary(messageUsage(msg)) }}
+                                </span>
+                            </el-tooltip>
+                        </div>
                         <!-- streaming 时空占位，防止高度抽搐 -->
                         <div v-if="(msg.siblingCount > 1 || msg.role === 'assistant' || msg.role === 'user') && isStreaming"
                              class="message-area-bubble-actions" style="visibility: hidden;"></div>
@@ -405,6 +424,45 @@ const MessageArea = {
             if (this.wsBus) {
                 this.wsBus.emit('send-area:fill', text);
             }
+        },
+
+        /** 读取消息扩展里的本轮 token 用量（无则返回 null，用于 v-if） */
+        messageUsage(msg) {
+            return (msg && msg.extension && msg.extension.chat_usage) || null;
+        },
+
+        /** token 数字压缩：1234 -> 1.2k，1048576 -> 1.0M */
+        formatTokens(n) {
+            if (n == null || isNaN(n)) return '-';
+            n = Number(n);
+            if (n < 1000) return String(n);
+            if (n < 1000000) return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'k';
+            return (n / 1000000).toFixed(1) + 'M';
+        },
+
+        /** 本轮用量紧凑摘要：优先总 token，缺失时退回输入 token */
+        tokenSummary(usage) {
+            if (!usage) return '';
+            var value = usage.total_tokens != null ? usage.total_tokens : usage.prompt_tokens;
+            return this.formatTokens(value);
+        },
+
+        /** 本轮用量明细行（供悬浮提示展示） */
+        tokenBreakdown(usage) {
+            if (!usage) return [];
+            var fmt = this.formatTokens.bind(this);
+            var rows = [];
+            var add = function (label, value) {
+                if (value != null) {
+                    rows.push({ label: label, value: fmt(value) });
+                }
+            };
+            add('输入', usage.prompt_tokens);
+            add('输出', usage.completion_tokens);
+            if (usage.cached_tokens != null) add('缓存输入', usage.cached_tokens);
+            if (usage.reasoning_tokens != null) add('思考', usage.reasoning_tokens);
+            add('合计', usage.total_tokens);
+            return rows;
         },
 
         /**

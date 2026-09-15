@@ -21,6 +21,16 @@
         return;
     }
 
+    // 保留的宿主 <i> 只作 Vue 的 DOM 锚点，不应参与布局：否则它会引入行内行盒/
+    // 基线对齐，导致图标被抬高或变高。display:contents 让内部 <svg> 像原生替换时
+    // 一样，直接作为父容器的子项参与布局。
+    if (!document.getElementById('lucide-safe-style')) {
+        var styleEl = document.createElement('style');
+        styleEl.id = 'lucide-safe-style';
+        styleEl.textContent = 'i[data-lucide]{display:contents}';
+        (document.head || document.documentElement).appendChild(styleEl);
+    }
+
     var RENDERED_ATTR = 'data-lucide-rendered';
 
     /** kebab-case -> PascalCase，与 lucide 内部的名称归一化保持一致 */
