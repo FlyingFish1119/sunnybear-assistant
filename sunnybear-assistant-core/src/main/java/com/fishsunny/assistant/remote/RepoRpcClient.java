@@ -16,6 +16,8 @@ package com.fishsunny.assistant.remote;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.remote.config.RemoteRepositoryProperties;
+import jakarta.websocket.ContainerProvider;
+import jakarta.websocket.WebSocketContainer;
 import lombok.extern.slf4j.Slf4j;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.springframework.util.StringUtils;
@@ -43,11 +45,21 @@ import java.util.concurrent.TimeoutException;
 @Slf4j
 public class RepoRpcClient {
 
+    /** 接收缓冲默认只有 8KB，分页查询这种大响应会被 Tomcat 以 1009 直接关连接，跟服务端保持一致放到 50MB */
+    private static final int MAX_MESSAGE_BUFFER_SIZE = 50 * 1024 * 1024;
+
     private final ObjectMapper objectMapper;
     private final String url;
     private final long timeoutMs;
     private final WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
-    private final StandardWebSocketClient webSocketClient = new StandardWebSocketClient();
+    private final StandardWebSocketClient webSocketClient = createWebSocketClient();
+
+    private static StandardWebSocketClient createWebSocketClient() {
+        WebSocketContainer container = ContainerProvider.getWebSocketContainer();
+        container.setDefaultMaxTextMessageBufferSize(MAX_MESSAGE_BUFFER_SIZE);
+        container.setDefaultMaxBinaryMessageBufferSize(MAX_MESSAGE_BUFFER_SIZE);
+        return new StandardWebSocketClient(container);
+    }
 
     /** 请求 id → 等待响应的将来，用于把返回帧配回发起调用的线程（多路复用） */
     private final ConcurrentMap<String, CompletableFuture<RepoRpcResponse>> pending = new ConcurrentHashMap<>();
