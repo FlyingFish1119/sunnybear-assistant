@@ -39,9 +39,7 @@ assistant:
       queue-capacity: 100
       thread-name-prefix: chat-async-
   remote-storage:
-    mode: local                          # local=本地 SQLite；remote=仓储调用经 WebSocket 代理到云端
-    remote-url: ws://127.0.0.1:11451/ws/repo
-    timeout-ms: 15000
+    mode: local
 
 # QQ Bot（OneBot）配置
 plug:
