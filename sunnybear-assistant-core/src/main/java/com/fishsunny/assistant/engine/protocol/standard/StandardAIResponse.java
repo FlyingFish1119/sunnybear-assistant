@@ -1,6 +1,8 @@
 package com.fishsunny.assistant.engine.protocol.standard;
 
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.protocol.TokenUsage;
+import com.fishsunny.assistant.engine.protocol.UsageSource;
 import com.fishsunny.assistant.engine.protocol.standard.response.StandardChoice;
 import com.fishsunny.assistant.engine.protocol.standard.response.usage.StandardUsage;
 import lombok.Data;
@@ -8,7 +10,7 @@ import lombok.experimental.Accessors;
 
 @Data
 @Accessors(chain = true)
-public class StandardAIResponse implements AIResponse {
+public class StandardAIResponse implements AIResponse, UsageSource {
 
     private String id;
 
@@ -30,5 +32,10 @@ public class StandardAIResponse implements AIResponse {
     private String system_fingerprint;
 
     public StandardAIResponse() {
+    }
+
+    @Override
+    public TokenUsage toTokenUsage() {
+        return StandardUsage.toTokenUsage(usage);
     }
 }

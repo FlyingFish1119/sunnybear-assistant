@@ -1,0 +1,86 @@
+/* ============================================
+   Model Detail Tip — 模型详情悬浮提示
+   配合 model-detail-tip.js；提示被 teleport 到 body，故为全局样式。
+   浅色卡片风格，呼应设置页的对话框 / 表单样式。
+   ============================================ */
+
+/* ---- popper 容器（浅色卡片） ---- */
+.model-detail-tooltip.el-popper.is-light {
+    padding: 10px 12px;
+    border: 1px solid #ebeef5;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+}
+
+.model-detail-tooltip.el-popper.is-light .el-popper__arrow::before {
+    border: 1px solid #ebeef5;
+    background: #fff;
+}
+
+/* ---- 内容 ---- */
+.model-detail-tip {
+    max-width: 340px;
+    max-height: 340px;
+    overflow-y: auto;
+    font-size: 12px;
+    line-height: 1.7;
+}
+
+.model-detail-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.model-detail-item + .model-detail-item {
+    margin-top: 2px;
+}
+
+.model-detail-key {
+    flex: none;
+    min-width: 64px;
+    color: var(--text-muted, #909399);
+}
+
+.model-detail-value {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-primary, #303133);
+    word-break: break-word;
+}
+
+/* 布尔能力项徽章 */
+.model-detail-badge {
+    display: inline-block;
+    padding: 0 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 18px;
+}
+
+.model-detail-badge.is-yes {
+    background: rgba(103, 194, 58, 0.12);
+    color: #67c23a;
+}
+
+.model-detail-badge.is-no {
+    background: #f4f4f5;
+    color: #909399;
+}
+
+/* 复杂 JSON 值：小号等宽块 */
+.model-detail-json {
+    display: block;
+    margin: 2px 0;
+    padding: 6px 8px;
+    border: 1px solid #f0f0f2;
+    border-radius: 6px;
+    background: #f7f8fa;
+    font-family: Consolas, Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-secondary, #606266);
+    white-space: pre-wrap;
+    word-break: break-all;
+}

@@ -191,11 +191,7 @@ public class ServiceProcessor {
             chatSession.setType(sessionType);
         }
         if (!CollectionUtils.isEmpty(request.getExtension())) {
-            try {
-                chatSession.setExtension(objectMapper.writeValueAsString(request.getExtension()));
-            } catch (Exception e) {
-                log.warn("写入会话扩展字段失败: {}", e.getMessage());
-            }
+            chatSession.setExtension(new java.util.LinkedHashMap<>(request.getExtension()));
         }
         try {
             return chatSessionService.save(chatSession);

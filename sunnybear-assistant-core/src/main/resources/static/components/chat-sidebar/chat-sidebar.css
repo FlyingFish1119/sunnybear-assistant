@@ -153,6 +153,24 @@
     white-space: nowrap;
 }
 
+/* 会话累计 token（右侧小徽章） */
+.sidebar-session-tokens {
+    flex: none;
+    margin-left: 8px;
+    padding: 0 6px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.06);
+    font-size: 11px;
+    line-height: 16px;
+    color: rgba(0, 0, 0, 0.45);
+    font-variant-numeric: tabular-nums;
+}
+
+.sidebar-session-item.active .sidebar-session-tokens {
+    background: rgba(0, 0, 0, 0.05);
+    color: rgba(0, 0, 0, 0.5);
+}
+
 /* 高级模式会话标识 */
 .sidebar-session-item.pro .sidebar-session-name {
     font-weight: 700;

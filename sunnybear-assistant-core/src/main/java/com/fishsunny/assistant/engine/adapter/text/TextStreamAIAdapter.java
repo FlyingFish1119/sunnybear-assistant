@@ -16,6 +16,7 @@ import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.settings.ChatSettings;
 import com.fishsunny.assistant.engine.protocol.standard.option.StandardAIThinking;
+import com.fishsunny.assistant.engine.protocol.standard.request.StreamOptions;
 import com.fishsunny.assistant.engine.protocol.standard.tools.request.StandardToolRequest;
 import com.fishsunny.assistant.engine.protocol.text.TextAIRequest;
 import com.fishsunny.assistant.engine.protocol.text.TextStreamAIResponse;
@@ -50,6 +51,7 @@ public class TextStreamAIAdapter extends TextBaseAIAdapter implements HandleTTSA
         String thinking = Boolean.TRUE.equals(settings.getThinking()) ? "enabled" : "disabled";
         textAIRequest.setModel(settings.getModel())
                 .setStream(true)
+                .setStream_options(new StreamOptions(true))
                 .setThinking(new StandardAIThinking(thinking))
                 .setReasoning_effort(settings.getReasoning_effort())
                 .setFrequency_penalty(settings.getFrequency_penalty())

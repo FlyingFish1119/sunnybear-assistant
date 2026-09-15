@@ -162,9 +162,10 @@ const AiSettings = {
                     <el-select v-model="aiForm.model" filterable allow-create default-first-option clearable
                                :loading="modelLoading" placeholder="选择或输入模型名称" style="width:100%">
                         <el-option v-for="m in modelOptions" :key="m.id" :label="m.id" :value="m.id">
-                            <el-tooltip v-if="modelDetail(m)" effect="dark" placement="right" :show-after="200">
+                            <el-tooltip v-if="hasModelDetail(m)" effect="light" placement="right" :show-after="200"
+                                        popper-class="model-detail-tooltip">
                                 <template #content>
-                                    <div style="max-width:320px;white-space:pre-line;line-height:1.5">{{ modelDetail(m) }}</div>
+                                    <model-detail-tip :details="m.details"></model-detail-tip>
                                 </template>
                                 <span style="display:block;width:100%">{{ m.id }}</span>
                             </el-tooltip>
@@ -432,17 +433,9 @@ const AiSettings = {
             }
         },
 
-        /** 组装悬浮提示内容：直接展示厂商返回的原始字段；无字段时返回空串（不显示 tooltip） */
-        modelDetail(m) {
-            if (!m || !m.details) return '';
-            return Object.keys(m.details)
-                .map(k => {
-                    const v = m.details[k];
-                    if (v == null || v === '') return null;
-                    return k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v);
-                })
-                .filter(Boolean)
-                .join('\n');
+        /** 是否存在厂商返回的模型详情（决定是否显示悬浮提示） */
+        hasModelDetail(m) {
+            return !!(m && ModelDetailUtils.has(m.details));
         }
     },
 

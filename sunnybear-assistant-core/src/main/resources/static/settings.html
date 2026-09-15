@@ -13,6 +13,7 @@
     <script src="api.js"></script>
     <script src="components/confirm-dialog/confirm-dialog.js"></script>
     <script src="components/settings/settings-common.js"></script>
+    <script src="components/settings/model-detail-tip/model-detail-tip.js"></script>
     <script src="components/settings/user-settings/user-settings.js"></script>
     <script src="components/settings/assistant-settings/assistant-settings.js"></script>
     <script src="components/settings/ai-settings/ai-settings.js"></script>
@@ -34,6 +35,7 @@
     <link rel="stylesheet" href="css/scrollbar.css"/>
     <link rel="stylesheet" href="css/settings.css"/>
     <link rel="stylesheet" href="components/confirm-dialog/confirm-dialog.css"/>
+    <link rel="stylesheet" href="components/settings/model-detail-tip/model-detail-tip.css"/>
 </head>
 <body style="margin: 0; overflow: hidden">
 <div id="app" :style="{'--main-color': mainColor}">
@@ -309,6 +311,7 @@ app.component('confirm-dialog', ConfirmDialog);
 app.component('user-settings', UserSettings);
 app.component('assistant-settings', AssistantSettings);
 app.component('ai-param-row', AiParamRow);
+app.component('model-detail-tip', ModelDetailTip);
 app.component('ai-settings', AiSettings);
 app.component('command-settings', CommandSettings);
 app.component('web-search-settings', WebSearchSettings);

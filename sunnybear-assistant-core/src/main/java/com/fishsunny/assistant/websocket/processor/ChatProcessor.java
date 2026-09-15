@@ -14,9 +14,11 @@ import com.fishsunny.assistant.constants.PromptReplaceVariable;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.protocol.TokenUsage;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.ChatToolRequest;
+import com.fishsunny.assistant.engine.protocol.project.ChatUsage;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
@@ -27,6 +29,7 @@ import com.fishsunny.assistant.engine.tool.service.ToolVisibilityPolicy;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
+import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
 import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AISettings;
@@ -59,6 +62,7 @@ import java.util.*;
 public class ChatProcessor {
 
     private final ChatMessageService chatMessageService;
+    private final ChatSessionService chatSessionService;
     private final ObjectMapper objectMapper;
     private final AssistantSettings assistantSettings;
     private final MemorySettings memorySettings;
@@ -74,6 +78,7 @@ public class ChatProcessor {
     private final ToolVisibilityPolicy toolVisibilityPolicy;
 
     public ChatProcessor(ChatMessageService chatMessageService,
+                            ChatSessionService chatSessionService,
                             ObjectMapper objectMapper,
                             AssistantSettings assistantSettings,
                             MemorySettings memorySettings,
@@ -89,6 +94,7 @@ public class ChatProcessor {
                             ToolVisibilityPolicy toolVisibilityPolicy
                          ) {
         this.chatMessageService = chatMessageService;
+        this.chatSessionService = chatSessionService;
         this.objectMapper = objectMapper;
         this.assistantSettings = assistantSettings;
         this.memorySettings = memorySettings;
@@ -336,7 +342,24 @@ public class ChatProcessor {
                             .put(ChatMessage.EXTENSION_REASONING_SIGNATURE, reasoningSignature);
                 }
 
+                // token 用量：本轮各项写进消息 extension（chat_usage），前端据此展示「每轮消耗」
+                TokenUsage usage = result.usage();
+                boolean hasUsage = usage != null && !usage.isEmpty();
+                if (hasUsage) {
+                    readyToSaveChatMessage.getExtension().put(ChatUsage.MESSAGE_KEY, usage.toMap());
+                }
+
                 ChatMessage assistantMessage = appendAssistantMessage(readyToSaveChatMessage);
+                // 消息落库成功后，把本轮用量累计到会话 extension（chat_ 前缀，合并写入），
+                // 并把更新后的会话下发给前端，让侧边栏/顶栏的会话累计即时刷新
+                if (hasUsage && accumulateSessionUsage(chatSession, usage)) {
+                    try {
+                        session.sendMessage(new TextMessage(ControlSign.UPDATE_SESSION
+                                + objectMapper.writeValueAsString(chatSession)));
+                    } catch (Exception e) {
+                        log.warn("推送会话 token 累计失败: {}", e.getMessage());
+                    }
+                }
                 // 内存链路同时留在字段上，本轮后续（工具调用循环）直接用
                 if (StringUtils.hasText(reasoningSignature)) {
                     assistantMessage.setReasoningSignature(reasoningSignature);
@@ -425,6 +448,41 @@ public class ChatProcessor {
         ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler(translate, complete);
 
         chatHttpHandler.translate(data, translateHandler, option);
+    }
+
+    /**
+     * 把本轮 token 用量累计到会话 extension（chat_ 前缀）。合并写入，不覆盖其它 key。
+     * 累计失败只告警，不影响本轮消息。
+     * @return 是否成功更新到数据库
+     */
+    private boolean accumulateSessionUsage(ChatSession chatSession, TokenUsage usage) {
+        try {
+            Map<String, Object> extension = chatSession.ensureExtension();
+            addLong(extension, ChatUsage.SESSION_PROMPT_TOKENS, usage.getPromptTokens());
+            addLong(extension, ChatUsage.SESSION_COMPLETION_TOKENS, usage.getCompletionTokens());
+            addLong(extension, ChatUsage.SESSION_TOTAL_TOKENS, usage.getTotalTokens());
+            addLong(extension, ChatUsage.SESSION_CACHED_TOKENS, usage.getCachedTokens());
+            addLong(extension, ChatUsage.SESSION_REASONING_TOKENS, usage.getReasoningTokens());
+            addLong(extension, ChatUsage.SESSION_ROUNDS, 1);
+            chatSessionService.update(chatSession);
+            return true;
+        } catch (Exception e) {
+            log.warn("累计会话 token 用量失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /** 累加一个 long 计数到 extension[key]（缺失或非数字按 0 起算） */
+    private void addLong(Map<String, Object> extension, String key, Integer delta) {
+        if (delta == null) {
+            return;
+        }
+        long base = 0L;
+        Object current = extension.get(key);
+        if (current instanceof Number number) {
+            base = number.longValue();
+        }
+        extension.put(key, base + delta);
     }
 
     private ChatMessage appendAssistantMessage(ChatMessage chatMessage) throws Exception {

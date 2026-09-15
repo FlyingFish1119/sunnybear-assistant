@@ -23,10 +23,8 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
 public class ChatSessionRepositoryImplement implements ChatSessionRepository {
@@ -37,9 +35,6 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
-
-    /** 每个会话一把锁：保证 extension 的 read-modify-write 原子，不丢并发写入的键 */
-    private final Map<String, Object> extensionLocks = new ConcurrentHashMap<>();
 
     @Autowired
     public ChatSessionRepositoryImplement(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
@@ -84,9 +79,36 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         chatSession.setUpdateTime(LocalDateTime.parse(resultSet.getString("update_time"), formatter));
         chatSession.setEnablePro(resultSet.getInt("enable_pro") == 1);
         chatSession.setUnreviewed(resultSet.getInt("unreviewed") == 1);
-        chatSession.setExtension(resultSet.getString("extension"));
+        chatSession.setExtension(parseExtension(resultSet.getString("extension")));
         return chatSession;
     };
+
+    /** DB TEXT 列（JSON 字符串）→ Map；空值/解析失败返回 null（视为未设置） */
+    private Map<String, Object> parseExtension(String json) {
+        if (!StringUtils.hasText(json)) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
+            });
+        } catch (Exception e) {
+            log.warn("解析 chat_session.extension 失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** Map → DB TEXT 列（JSON 字符串）；null 原样存 null */
+    private String serializeExtension(Map<String, Object> extension) {
+        if (extension == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(extension);
+        } catch (Exception e) {
+            log.warn("序列化 chat_session.extension 失败: {}", e.getMessage());
+            return null;
+        }
+    }
 
     @Override
     public ChatSession insert(ChatSession chatSession) {
@@ -105,7 +127,7 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
                 chatSession.getUpdateTime().format(formatter),
                 chatSession.getEnablePro() != null && chatSession.getEnablePro() ? 1 : 0,
                 chatSession.getUnreviewed() != null && chatSession.getUnreviewed() ? 1 : 0,
-                chatSession.getExtension()
+                serializeExtension(chatSession.getExtension())
         );
 
         ChatSession session = selectById(chatSession.getId());
@@ -133,6 +155,11 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
             jdbcTemplate.update("UPDATE chat_session SET unreviewed = ? WHERE id = ?",
                     chatSession.getUnreviewed() ? 1 : 0, chatSession.getId());
         }
+        // extension 仅在显式携带（非 null）时更新；调用方应基于已有 map 合并后再传入，避免抹掉其它 key
+        if (chatSession.getExtension() != null) {
+            jdbcTemplate.update("UPDATE chat_session SET extension = ? WHERE id = ?",
+                    serializeExtension(chatSession.getExtension()), chatSession.getId());
+        }
 
         ChatSession session = selectById(chatSession.getId());
         if (session == null) {
@@ -140,48 +167,6 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         }
 
         return chatSession;
-    }
-
-    @Override
-    public String mergeExtension(String id, Map<String, Object> fields) {
-        if (!StringUtils.hasText(id)) {
-            throw new IllegalArgumentException("会话 id 不能为空");
-        }
-        if (fields == null || fields.isEmpty()) {
-            ChatSession current = selectById(id);
-            return current == null ? "{}" : current.getExtension();
-        }
-        synchronized (extensionLocks.computeIfAbsent(id, k -> new Object())) {
-            ChatSession current = selectById(id);
-            if (current == null) {
-                throw new RuntimeException("Session not found: " + id);
-            }
-            Map<String, Object> extension = parseExtension(current.getExtension());
-            extension.putAll(fields);
-            String merged;
-            try {
-                merged = objectMapper.writeValueAsString(extension);
-            } catch (Exception e) {
-                throw new RuntimeException("序列化会话 extension 失败: " + e.getMessage(), e);
-            }
-            jdbcTemplate.update("UPDATE chat_session SET extension = ? WHERE id = ?", merged, id);
-            return merged;
-        }
-    }
-
-    /** 把 extension JSON 解析为可写 Map；空/损坏时按空对象处理 */
-    private Map<String, Object> parseExtension(String extension) {
-        if (!StringUtils.hasText(extension)) {
-            return new LinkedHashMap<>();
-        }
-        try {
-            Map<String, Object> map = objectMapper.readValue(extension, new TypeReference<>() {
-            });
-            return map == null ? new LinkedHashMap<>() : map;
-        } catch (Exception e) {
-            log.warn("解析会话 extension 失败，按空对象处理: {}", e.getMessage());
-            return new LinkedHashMap<>();
-        }
     }
 
     @Override
