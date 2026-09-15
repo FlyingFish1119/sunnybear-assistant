@@ -451,20 +451,21 @@ public class ChatProcessor {
     }
 
     /**
-     * 把本轮 token 用量累计到会话 extension（chat_ 前缀）。合并写入，不覆盖其它 key。
-     * 累计失败只告警，不影响本轮消息。
+     * 把本轮 token 用量累计到会话 extension（chat_ 前缀）。extension 只能经 mergeExtension 合并写入，
+     * 不覆盖其它 key，也不经 update()。累计失败只告警，不影响本轮消息。
      * @return 是否成功更新到数据库
      */
     private boolean accumulateSessionUsage(ChatSession chatSession, TokenUsage usage) {
         try {
             Map<String, Object> extension = chatSession.ensureExtension();
-            addLong(extension, ChatUsage.SESSION_PROMPT_TOKENS, usage.getPromptTokens());
-            addLong(extension, ChatUsage.SESSION_COMPLETION_TOKENS, usage.getCompletionTokens());
-            addLong(extension, ChatUsage.SESSION_TOTAL_TOKENS, usage.getTotalTokens());
-            addLong(extension, ChatUsage.SESSION_CACHED_TOKENS, usage.getCachedTokens());
-            addLong(extension, ChatUsage.SESSION_REASONING_TOKENS, usage.getReasoningTokens());
-            addLong(extension, ChatUsage.SESSION_ROUNDS, 1);
-            chatSessionService.update(chatSession);
+            Map<String, Object> fields = new LinkedHashMap<>();
+            addLong(extension, fields, ChatUsage.SESSION_PROMPT_TOKENS, usage.getPromptTokens());
+            addLong(extension, fields, ChatUsage.SESSION_COMPLETION_TOKENS, usage.getCompletionTokens());
+            addLong(extension, fields, ChatUsage.SESSION_TOTAL_TOKENS, usage.getTotalTokens());
+            addLong(extension, fields, ChatUsage.SESSION_CACHED_TOKENS, usage.getCachedTokens());
+            addLong(extension, fields, ChatUsage.SESSION_REASONING_TOKENS, usage.getReasoningTokens());
+            addLong(extension, fields, ChatUsage.SESSION_ROUNDS, 1);
+            chatSession.setExtension(chatSessionService.mergeExtension(chatSession.getId(), fields));
             return true;
         } catch (Exception e) {
             log.warn("累计会话 token 用量失败: {}", e.getMessage());
@@ -472,8 +473,8 @@ public class ChatProcessor {
         }
     }
 
-    /** 累加一个 long 计数到 extension[key]（缺失或非数字按 0 起算） */
-    private void addLong(Map<String, Object> extension, String key, Integer delta) {
+    /** 累加一个 long 计数：同时写入内存 extension 与待合并 fields（缺失或非数字按 0 起算） */
+    private void addLong(Map<String, Object> extension, Map<String, Object> fields, String key, Integer delta) {
         if (delta == null) {
             return;
         }
@@ -482,7 +483,9 @@ public class ChatProcessor {
         if (current instanceof Number number) {
             base = number.longValue();
         }
-        extension.put(key, base + delta);
+        long value = base + delta;
+        extension.put(key, value);
+        fields.put(key, value);
     }
 
     private ChatMessage appendAssistantMessage(ChatMessage chatMessage) throws Exception {

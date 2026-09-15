@@ -72,7 +72,7 @@ public class ChatSessionServiceImplement implements ChatSessionService {
     }
 
     @Override
-    public String mergeExtension(String id, Map<String, Object> fields) {
+    public Map<String, Object> mergeExtension(String id, Map<String, Object> fields) {
         return chatSessionRepository.mergeExtension(id, fields);
     }
 

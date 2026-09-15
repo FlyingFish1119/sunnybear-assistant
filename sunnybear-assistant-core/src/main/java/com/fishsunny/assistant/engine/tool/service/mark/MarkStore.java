@@ -44,14 +44,6 @@ public class MarkStore {
         this.objectMapper = objectMapper;
     }
 
-    /** 从会话 extension 中解析步骤清单；缺失或损坏时返回空数组 */
-    public List<Mark> load(ChatSession session) {
-        if (session == null) {
-            return new ArrayList<>();
-        }
-        return parse(session.getExtension());
-    }
-
     /**
      * 合并保存步骤清单：经 mergeExtension 只覆盖 chat_mark 键，保留其它字段。
      * 返回本次写入的清单。
@@ -63,7 +55,7 @@ public class MarkStore {
         List<Mark> safeMarks = marks == null ? new ArrayList<>() : marks;
         Map<String, Object> fields = new LinkedHashMap<>();
         fields.put(EXTENSION_KEY, safeMarks);
-        String merged = chatSessionService.mergeExtension(session.getId(), fields);
+        Map<String, Object> merged = chatSessionService.mergeExtension(session.getId(), fields);
         // 同步内存对象，保证同轮后续调用与 UPDATE_SESSION 都带上最新清单
         session.setExtension(merged);
         return safeMarks;

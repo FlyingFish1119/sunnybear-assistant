@@ -23,8 +23,10 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
 public class ChatSessionRepositoryImplement implements ChatSessionRepository {
@@ -35,6 +37,8 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+
+    private final Map<String, Object> extensionLocks = new ConcurrentHashMap<>();
 
     @Autowired
     public ChatSessionRepositoryImplement(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
@@ -155,11 +159,7 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
             jdbcTemplate.update("UPDATE chat_session SET unreviewed = ? WHERE id = ?",
                     chatSession.getUnreviewed() ? 1 : 0, chatSession.getId());
         }
-        // extension 仅在显式携带（非 null）时更新；调用方应基于已有 map 合并后再传入，避免抹掉其它 key
-        if (chatSession.getExtension() != null) {
-            jdbcTemplate.update("UPDATE chat_session SET extension = ? WHERE id = ?",
-                    serializeExtension(chatSession.getExtension()), chatSession.getId());
-        }
+        // extension 不在此处更新：唯一入口是 mergeExtension（append-only 合并，避免抹掉其它消费方的 key）
 
         ChatSession session = selectById(chatSession.getId());
         if (session == null) {
@@ -168,6 +168,34 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
 
         return chatSession;
     }
+
+    @Override
+    public Map<String, Object> mergeExtension(String id, Map<String, Object> fields) {
+        if (!StringUtils.hasText(id)) {
+            throw new IllegalArgumentException("会话 id 不能为空");
+        }
+        if (fields == null || fields.isEmpty()) {
+            ChatSession current = selectById(id);
+            return current == null ? new LinkedHashMap<>() : current.getExtension();
+        }
+        synchronized (extensionLocks.computeIfAbsent(id, k -> new Object())) {
+            ChatSession current = selectById(id);
+            if (current == null) {
+                throw new RuntimeException("Session not found: " + id);
+            }
+            Map<String, Object> extension = current.getExtension();
+            extension.putAll(fields);
+            String merged;
+            try {
+                merged = objectMapper.writeValueAsString(extension);
+            } catch (Exception e) {
+                throw new RuntimeException("序列化会话 extension 失败: " + e.getMessage(), e);
+            }
+            jdbcTemplate.update("UPDATE chat_session SET extension = ? WHERE id = ?", merged, id);
+            return extension;
+        }
+    }
+
 
     @Override
     @Transactional
@@ -219,7 +247,7 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
     public ChatSession selectById(String id) {
         String sql = "SELECT * FROM chat_session WHERE id = ?";
         List<ChatSession> results = jdbcTemplate.query(sql, rowMapper, id);
-        return results.isEmpty() ? null : results.get(0);
+        return results.isEmpty() ? null : results.getFirst();
     }
 
     @Override

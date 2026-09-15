@@ -28,7 +28,7 @@ public interface ChatSessionRepository {
      * @param fields 要写入的键值对（值可为对象/数组，会按 JSON 序列化）
      * @return 合并后的 extension JSON 字符串
      */
-    public String mergeExtension(String id, Map<String, Object> fields);
+    public Map<String, Object> mergeExtension(String id, Map<String, Object> fields);
 
     public ChatSession deleteById(String id);
 

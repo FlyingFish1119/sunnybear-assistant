@@ -35,7 +35,7 @@ public interface ChatSessionService {
      *
      * @return 合并后的 extension JSON 字符串
      */
-    public String mergeExtension(String id, Map<String, Object> fields);
+    public Map<String, Object> mergeExtension(String id, Map<String, Object> fields);
 
     /** 按 type + extension 内 JSON 字段值查询会话，jsonKey/value 语义由插件约定 */
     public List<ChatSession> findByTypeAndExtensionValue(String type, String jsonKey, String value);

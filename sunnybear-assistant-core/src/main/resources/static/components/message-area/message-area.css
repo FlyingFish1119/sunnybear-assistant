@@ -964,8 +964,11 @@
 /* ============================================
    本轮 token 消耗
    ============================================ */
-.message-token-usage {
-    margin-top: 6px;
+/* 位于操作按钮行内：右对齐，与图标按钮同高 */
+.message-area-bubble-actions .message-token-usage {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
 }
 
 .message-token-badge {

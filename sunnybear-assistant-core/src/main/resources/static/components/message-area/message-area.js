@@ -145,25 +145,6 @@ const MessageArea = {
                                 </div>
                             </div>
                         </div>
-                        <!-- 本轮 token 消耗（来自消息 extension.chat_usage） -->
-                        <div v-if="messageUsage(msg)" class="message-token-usage">
-                            <el-tooltip effect="light" placement="top" :show-after="100"
-                                        popper-class="message-token-tooltip">
-                                <template #content>
-                                    <div class="message-token-tip">
-                                        <div v-for="row in tokenBreakdown(messageUsage(msg))"
-                                             :key="row.label" class="message-token-tip-row">
-                                            <span class="message-token-tip-label">{{ row.label }}</span>
-                                            <span class="message-token-tip-value">{{ row.value }}</span>
-                                        </div>
-                                    </div>
-                                </template>
-                                <span class="message-token-badge">
-                                    <i data-lucide="coins" style="width:12px;height:12px"></i>
-                                    tokens {{ tokenSummary(messageUsage(msg)) }}
-                                </span>
-                            </el-tooltip>
-                        </div>
                         <!-- streaming 时空占位，防止高度抽搐 -->
                         <div v-if="(msg.siblingCount > 1 || msg.role === 'assistant' || msg.role === 'user') && isStreaming"
                              class="message-area-bubble-actions" style="visibility: hidden;"></div>
@@ -231,6 +212,25 @@ const MessageArea = {
                                   title="删除消息">
                                 <i style="width: 14px; height: 14px" data-lucide="trash-2"></i>
                             </span>
+                            <!-- 本轮 token 消耗（来自消息 extension.chat_usage），并入操作按钮区 -->
+                            <div v-if="messageUsage(msg)" class="message-token-usage">
+                                <el-tooltip effect="light" placement="top" :show-after="100"
+                                            popper-class="message-token-tooltip">
+                                    <template #content>
+                                        <div class="message-token-tip">
+                                            <div v-for="row in tokenBreakdown(messageUsage(msg))"
+                                                 :key="row.label" class="message-token-tip-row">
+                                                <span class="message-token-tip-label">{{ row.label }}</span>
+                                                <span class="message-token-tip-value">{{ row.value }}</span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <span class="message-token-badge">
+                                        <i data-lucide="coins" style="width:12px;height:12px"></i>
+                                        tokens {{ tokenSummary(messageUsage(msg)) }}
+                                    </span>
+                                </el-tooltip>
+                            </div>
                         </div>
                         </div>
                         <div v-else class="message-area-bubble tool-bubble">
