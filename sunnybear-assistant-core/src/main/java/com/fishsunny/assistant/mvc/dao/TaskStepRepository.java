@@ -9,10 +9,12 @@ package com.fishsunny.assistant.mvc.dao;
  */
 
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskStep;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+@RemoteRepository(repoCls = TaskStepRepository.class)
 public interface TaskStepRepository {
 
     TaskStep insert(TaskStep step);

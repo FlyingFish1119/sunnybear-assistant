@@ -9,9 +9,11 @@ package com.fishsunny.assistant.mvc.dao;
  */
 
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
 import java.util.List;
 
+@RemoteRepository(repoCls = ChatMessageRepository.class)
 public interface ChatMessageRepository {
 
     public ChatMessage insert(ChatMessage chatMessage);

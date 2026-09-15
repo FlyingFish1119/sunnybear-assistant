@@ -9,7 +9,9 @@ package com.fishsunny.assistant.mvc.dao;
  */
 
 import com.fishsunny.assistant.engine.protocol.project.entity.SessionKnowledgeRecord;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
+@RemoteRepository(repoCls = SessionKnowledgeRepository.class)
 public interface SessionKnowledgeRepository {
 
     SessionKnowledgeRecord upsertBySessionId(SessionKnowledgeRecord record);

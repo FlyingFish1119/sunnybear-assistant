@@ -9,9 +9,11 @@ package com.fishsunny.assistant.mvc.dao;
  */
 
 import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
 import java.util.List;
 
+@RemoteRepository(repoCls = CronJobRepository.class)
 public interface CronJobRepository {
 
     CronJob insert(CronJob cronJob);

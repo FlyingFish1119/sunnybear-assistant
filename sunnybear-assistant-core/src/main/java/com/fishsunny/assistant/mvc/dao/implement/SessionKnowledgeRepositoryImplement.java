@@ -10,6 +10,7 @@ package com.fishsunny.assistant.mvc.dao.implement;
 
 import com.fishsunny.assistant.engine.protocol.project.entity.SessionKnowledgeRecord;
 import com.fishsunny.assistant.mvc.dao.SessionKnowledgeRepository;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
+@ConditionalOnProperty(prefix = "assistant.storage.mode", havingValue = "local", matchIfMissing = true)
 public class SessionKnowledgeRepositoryImplement implements SessionKnowledgeRepository {
 
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");

@@ -1,5 +1,6 @@
 package com.fishsunny.assistant.config;
 
+import com.fishsunny.assistant.remote.RepoRpcServerHandler;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,14 +21,19 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final ChatWebSocketHandler chatWebSocketHandler;
+    private final RepoRpcServerHandler repoRpcServerHandler;
 
-    public WebSocketConfig(ChatWebSocketHandler chatWebSocketHandler) {
+    public WebSocketConfig(ChatWebSocketHandler chatWebSocketHandler, RepoRpcServerHandler repoRpcServerHandler) {
         this.chatWebSocketHandler = chatWebSocketHandler;
+        this.repoRpcServerHandler = repoRpcServerHandler;
     }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(chatWebSocketHandler, "/ws/chat")
+                .setAllowedOrigins("*");
+        // 仓储 RPC 端点：本地 remote 模式的客户端连这里，把 Repository 调用代理到云端执行
+        registry.addHandler(repoRpcServerHandler, "/ws/repo")
                 .setAllowedOrigins("*");
     }
 

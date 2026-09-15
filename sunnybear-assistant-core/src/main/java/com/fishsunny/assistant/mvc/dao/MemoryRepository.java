@@ -9,9 +9,11 @@ package com.fishsunny.assistant.mvc.dao;
  */
 
 import com.fishsunny.assistant.engine.protocol.project.entity.MemoryRecord;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
 import java.util.List;
 
+@RemoteRepository(repoCls = MemoryRepository.class)
 public interface MemoryRepository {
 
     MemoryRecord insert(MemoryRecord record);

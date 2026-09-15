@@ -9,10 +9,12 @@ package com.fishsunny.assistant.mvc.dao;
  */
 
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
 import java.util.List;
 import java.util.Map;
 
+@RemoteRepository(repoCls = ChatSessionRepository.class)
 public interface ChatSessionRepository {
 
     public ChatSession insert(ChatSession chatSession);

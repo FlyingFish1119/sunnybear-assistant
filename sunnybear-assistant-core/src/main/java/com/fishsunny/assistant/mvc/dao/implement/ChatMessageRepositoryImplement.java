@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
 
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 @Repository
+@ConditionalOnProperty(prefix = "assistant.storage.mode", havingValue = "local", matchIfMissing = true)
 public class ChatMessageRepositoryImplement implements ChatMessageRepository {
 
     private static final Logger log = LoggerFactory.getLogger(ChatMessageRepositoryImplement.class);

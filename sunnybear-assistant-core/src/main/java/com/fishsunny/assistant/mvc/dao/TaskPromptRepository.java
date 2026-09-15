@@ -9,9 +9,11 @@ package com.fishsunny.assistant.mvc.dao;
  */
 
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskPrompt;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
 import java.util.List;
 
+@RemoteRepository(repoCls = TaskPromptRepository.class)
 public interface TaskPromptRepository {
 
     TaskPrompt selectByType(String type);

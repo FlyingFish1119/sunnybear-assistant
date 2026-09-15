@@ -9,9 +9,11 @@ package com.fishsunny.assistant.mvc.dao;
  */
 
 import com.fishsunny.assistant.engine.protocol.project.entity.KnowledgeRecord;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
 import java.util.List;
 
+@RemoteRepository(repoCls = KnowledgeRepository.class)
 public interface KnowledgeRepository {
 
     KnowledgeRecord insert(KnowledgeRecord record);

@@ -13,6 +13,7 @@ import com.fishsunny.assistant.mvc.dao.TaskPromptRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -24,6 +25,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Repository
+@ConditionalOnProperty(prefix = "assistant.storage.mode", havingValue = "local", matchIfMissing = true)
 public class TaskPromptRepositoryImplement implements TaskPromptRepository {
 
     private static final Logger log = LoggerFactory.getLogger(TaskPromptRepositoryImplement.class);

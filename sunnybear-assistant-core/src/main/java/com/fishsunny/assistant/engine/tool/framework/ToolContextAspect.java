@@ -21,8 +21,7 @@ import java.util.Map;
 public class ToolContextAspect {
 
     @Around("@annotation(toolIncludeContext)")
-    public Object checkToolContext(ProceedingJoinPoint joinPoint,
-                                   ToolIncludeContext toolIncludeContext) throws Throwable {
+    public Object checkToolContext(ProceedingJoinPoint joinPoint, ToolIncludeContext toolIncludeContext) throws Throwable {
         // 1. 拿到方法实参里那个 Map<String, Object>
         Map<String, Object> context = findContextMap(joinPoint);
 

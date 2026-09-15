@@ -12,6 +12,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.MemoryRecord;
 import com.fishsunny.assistant.mvc.dao.MemoryRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Objects;
 
 @Repository
+@ConditionalOnProperty(prefix = "assistant.storage.mode", havingValue = "local", matchIfMissing = true)
 public class MemoryRepositoryImplement implements MemoryRepository {
 
     private static final Logger log = LoggerFactory.getLogger(MemoryRepositoryImplement.class);
