@@ -28,7 +28,7 @@ import java.util.Map;
 
 @ToolKitComponent(CharacterAuthoringToolKit.class)
 @ConditionalOnExpression("${plug.character.tool.authoring.enable:true} && ${plug.character.tool.authoring.delete.enable:true}")
-public class DeleteCharacterTool implements ToolHandler {
+public class DeleteAuthoringCharacterTool implements ToolHandler {
 
     public static final String NAME = "character_authoring_delete_tool";
 
@@ -40,9 +40,9 @@ public class DeleteCharacterTool implements ToolHandler {
     private final CharacterInfoService characterInfoService;
     private final SecurityService securityService;
 
-    public DeleteCharacterTool(ObjectMapper objectMapper,
-                               CharacterInfoService characterInfoService,
-                               SecurityService securityService) {
+    public DeleteAuthoringCharacterTool(ObjectMapper objectMapper,
+                                        CharacterInfoService characterInfoService,
+                                        SecurityService securityService) {
         this.objectMapper = objectMapper;
         this.characterInfoService = characterInfoService;
         this.securityService = securityService;

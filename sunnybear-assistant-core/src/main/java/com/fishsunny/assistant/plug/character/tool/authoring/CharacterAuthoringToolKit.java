@@ -18,6 +18,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
 import com.fishsunny.assistant.plug.character.service.CharacterGlossaryService;
+import com.fishsunny.assistant.plug.character.service.CharacterInfoService;
 import com.fishsunny.assistant.settings.AISettings;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -208,5 +209,26 @@ public class CharacterAuthoringToolKit extends ToolKit {
             sb.append(StringUtils.hasText(g.getContent()) ? g.getContent() : "(无内容)").append("\n\n");
         }
         return sb.toString();
+    }
+
+    /** 按 id 优先、其次按 name（忽略大小写）查找角色；都为空或未找到返回 null */
+    static CharacterInfo find(CharacterInfoService service, String id, String name) {
+        if (StringUtils.hasText(id)) {
+            return service.findById(id.trim());
+        }
+        if (!StringUtils.hasText(name)) {
+            return null;
+        }
+        String target = name.trim();
+        List<CharacterInfo> all = service.findAll();
+        if (all == null) {
+            return null;
+        }
+        for (CharacterInfo character : all) {
+            if (StringUtils.hasText(character.getName()) && character.getName().equalsIgnoreCase(target)) {
+                return character;
+            }
+        }
+        return null;
     }
 }

@@ -1,7 +1,8 @@
 package com.fishsunny.assistant.plug.character.tool.authoring;
 
 /*
- * @Usage 删除角色词条 —— 按 characterId + keyword 定位，直接删除，无需用户确认。
+ * @Usage 保存角色词条 —— 按 characterId + keyword 定位，存在则更新、不存在则新建（upsert）。
+ *        更新是补丁式的，未传字段保持原值；新建时 content 必填。
  *
  * @Project sunnybear-assistant
  * @Author FlyingFish-SunnyBear
@@ -25,17 +26,17 @@ import java.util.List;
 import java.util.Map;
 
 @ToolKitComponent(CharacterAuthoringToolKit.class)
-@ConditionalOnExpression("${plug.character.tool.authoring.enable:true} && ${plug.character.tool.authoring.glossary-delete.enable:true}")
-public class DeleteGlossaryTool implements ToolHandler {
+@ConditionalOnExpression("${plug.character.tool.authoring.enable:true} && ${plug.character.tool.authoring.glossary-upsert.enable:true}")
+public class UpsertAuthoringGlossaryTool implements ToolHandler {
 
-    public static final String NAME = "character_authoring_glossary_delete_tool";
+    public static final String NAME = "character_authoring_glossary_upsert_tool";
 
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
     private final CharacterInfoService characterInfoService;
     private final CharacterGlossaryService glossaryService;
 
-    public DeleteGlossaryTool(ObjectMapper objectMapper,
+    public UpsertAuthoringGlossaryTool(ObjectMapper objectMapper,
                               CharacterInfoService characterInfoService,
                               CharacterGlossaryService glossaryService) {
         this.objectMapper = objectMapper;
@@ -44,11 +45,16 @@ public class DeleteGlossaryTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("按 characterId + keyword 删除角色词条，无需确认。")
+                .setDescription("""
+                        保存角色词条：按 characterId + keyword 定位，命中则更新、未命中则新建。
+                        更新是补丁式的，只改传入字段；新建时 keyword 与 content 必填。
+                        desc 是简短说明（会注入角色系统提示词），content 是完整内容（供角色工具查询）。""")
                 .setRequired(List.of("characterId", "keyword"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("characterId", "string", "所属角色 id，必填。"),
-                        new ToolRegister.Parameters("keyword", "string", "要删除的词条关键词，必填。")
+                        new ToolRegister.Parameters("keyword", "string", "词条关键词（角色内唯一），必填。"),
+                        new ToolRegister.Parameters("desc", "string", "简短描述，可省略。"),
+                        new ToolRegister.Parameters("content", "string", "完整内容，新建必填，更新时可省略。")
                 ));
     }
 
@@ -74,17 +80,41 @@ public class DeleteGlossaryTool implements ToolHandler {
 
         String keyword = arguments.getKeyword().trim();
         CharacterGlossary existing = glossaryService.getByCharacterIdAndKeyword(character.getId(), keyword);
-        if (existing == null) {
-            return new ToolExecutor.ToolExecuteResponse(NAME,
-                    "角色 `" + character.getName() + "` 下没有关键词为 `" + keyword + "` 的词条。");
-        }
+        return existing != null ? update(existing, arguments) : create(character, keyword, arguments);
+    }
 
+    private ToolExecutor.ToolExecuteResponse create(CharacterInfo character, String keyword, Arguments arguments) throws ToolExecutor.ToolExecuteException {
+        if (!StringUtils.hasText(arguments.getContent())) {
+            throw new ToolExecutor.ToolExecuteException("新建词条时参数 content 不能为空");
+        }
+        CharacterGlossary glossary = new CharacterGlossary()
+                .setCharacterId(character.getId())
+                .setKeyword(keyword)
+                .setDesc(arguments.getDesc() == null ? "" : arguments.getDesc())
+                .setContent(arguments.getContent());
         try {
-            glossaryService.deleteById(existing.getId());
+            CharacterGlossary saved = glossaryService.create(glossary);
             return new ToolExecutor.ToolExecuteResponse(NAME,
-                    "已删除角色 `" + character.getName() + "` 的词条 `" + keyword + "`。");
+                    "已为角色 `" + character.getName() + "` 新建词条。\n\n"
+                            + CharacterAuthoringToolKit.describeGlossaryDetail(saved));
         } catch (Exception e) {
-            throw new ToolExecutor.ToolExecuteException("删除词条失败: " + e.getMessage());
+            throw new ToolExecutor.ToolExecuteException("新建词条失败: " + e.getMessage());
+        }
+    }
+
+    private ToolExecutor.ToolExecuteResponse update(CharacterGlossary existing, Arguments arguments) throws ToolExecutor.ToolExecuteException {
+        CharacterGlossary toSave = new CharacterGlossary()
+                .setId(existing.getId())
+                .setKeyword(existing.getKeyword())
+                .setDesc(arguments.getDesc() != null ? arguments.getDesc() : existing.getDesc())
+                .setContent(arguments.getContent() != null ? arguments.getContent() : existing.getContent());
+        try {
+            CharacterGlossary saved = glossaryService.update(toSave);
+            return new ToolExecutor.ToolExecuteResponse(NAME,
+                    "已更新词条 `" + saved.getKeyword() + "`。\n\n"
+                            + CharacterAuthoringToolKit.describeGlossaryDetail(saved));
+        } catch (Exception e) {
+            throw new ToolExecutor.ToolExecuteException("更新词条失败: " + e.getMessage());
         }
     }
 
@@ -102,5 +132,7 @@ public class DeleteGlossaryTool implements ToolHandler {
     private static class Arguments {
         private String characterId;
         private String keyword;
+        private String desc;
+        private String content;
     }
 }

@@ -27,7 +27,7 @@ import java.util.Map;
 
 @ToolKitComponent(CharacterAuthoringToolKit.class)
 @ConditionalOnExpression("${plug.character.tool.authoring.enable:true} && ${plug.character.tool.authoring.glossary-get.enable:true}")
-public class GetGlossaryTool implements ToolHandler {
+public class GetAuthoringGlossaryTool implements ToolHandler {
 
     public static final String NAME = "character_authoring_glossary_get_tool";
 
@@ -39,7 +39,7 @@ public class GetGlossaryTool implements ToolHandler {
     private final CharacterInfoService characterInfoService;
     private final CharacterGlossaryService glossaryService;
 
-    public GetGlossaryTool(ObjectMapper objectMapper,
+    public GetAuthoringGlossaryTool(ObjectMapper objectMapper,
                            CharacterInfoService characterInfoService,
                            CharacterGlossaryService glossaryService) {
         this.objectMapper = objectMapper;

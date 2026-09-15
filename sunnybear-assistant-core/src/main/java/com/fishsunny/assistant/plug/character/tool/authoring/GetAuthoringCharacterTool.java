@@ -26,7 +26,7 @@ import java.util.Map;
 
 @ToolKitComponent(CharacterAuthoringToolKit.class)
 @ConditionalOnExpression("${plug.character.tool.authoring.enable:true} && ${plug.character.tool.authoring.get.enable:true}")
-public class GetCharacterTool implements ToolHandler {
+public class GetAuthoringCharacterTool implements ToolHandler {
 
     public static final String NAME = "character_authoring_get_tool";
 
@@ -35,9 +35,9 @@ public class GetCharacterTool implements ToolHandler {
     private final CharacterInfoService characterInfoService;
     private final CharacterGlossaryService glossaryService;
 
-    public GetCharacterTool(ObjectMapper objectMapper,
-                            CharacterInfoService characterInfoService,
-                            CharacterGlossaryService glossaryService) {
+    public GetAuthoringCharacterTool(ObjectMapper objectMapper,
+                                     CharacterInfoService characterInfoService,
+                                     CharacterGlossaryService glossaryService) {
         this.objectMapper = objectMapper;
         this.characterInfoService = characterInfoService;
         this.glossaryService = glossaryService;
@@ -67,7 +67,7 @@ public class GetCharacterTool implements ToolHandler {
             return new ToolExecutor.ToolExecuteResponse(NAME, listAll());
         }
 
-        CharacterInfo character = CharacterAuthoringSupport.find(
+        CharacterInfo character = CharacterAuthoringToolKit.find(
                 characterInfoService, arguments.getId(), arguments.getName());
         if (character == null) {
             throw new ToolExecutor.ToolExecuteException("未找到角色（id=" + arguments.getId() + ", name=" + arguments.getName() + "）");

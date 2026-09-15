@@ -26,7 +26,7 @@ import java.util.Map;
 
 @ToolKitComponent(CharacterAuthoringToolKit.class)
 @ConditionalOnExpression("${plug.character.tool.authoring.enable:true} && ${plug.character.tool.authoring.upsert.enable:true}")
-public class UpsertCharacterTool implements ToolHandler {
+public class UpsertAuthoringCharacterTool implements ToolHandler {
 
     public static final String NAME = "character_authoring_upsert_tool";
 
@@ -34,7 +34,7 @@ public class UpsertCharacterTool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final CharacterInfoService characterInfoService;
 
-    public UpsertCharacterTool(ObjectMapper objectMapper, CharacterInfoService characterInfoService) {
+    public UpsertAuthoringCharacterTool(ObjectMapper objectMapper, CharacterInfoService characterInfoService) {
         this.objectMapper = objectMapper;
         this.characterInfoService = characterInfoService;
 
@@ -67,7 +67,7 @@ public class UpsertCharacterTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
         }
 
-        CharacterInfo existing = CharacterAuthoringSupport.find(
+        CharacterInfo existing = CharacterAuthoringToolKit.find(
                 characterInfoService, arguments.getId(), arguments.getName());
         return existing != null ? update(existing, arguments) : create(arguments);
     }
