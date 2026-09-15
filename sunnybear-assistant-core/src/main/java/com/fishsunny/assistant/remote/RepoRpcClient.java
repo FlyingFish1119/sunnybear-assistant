@@ -14,18 +14,23 @@ package com.fishsunny.assistant.remote;
  */
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.remote.config.RemoteRepositoryProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import org.springframework.util.StringUtils;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -41,34 +46,46 @@ public class RepoRpcClient {
     private final ObjectMapper objectMapper;
     private final String url;
     private final long timeoutMs;
+    private final WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
     private final StandardWebSocketClient webSocketClient = new StandardWebSocketClient();
 
     /** 请求 id → 等待响应的将来，用于把返回帧配回发起调用的线程（多路复用） */
-    private final ConcurrentMap<String, CompletableFuture<JsonNode>> pending = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, CompletableFuture<RepoRpcResponse>> pending = new ConcurrentHashMap<>();
 
     private volatile WebSocketSession session;
 
-    public RepoRpcClient(ObjectMapper objectMapper, String url, long timeoutMs) {
+    public RepoRpcClient(ObjectMapper objectMapper, RemoteRepositoryProperties properties) {
         this.objectMapper = objectMapper;
-        this.url = url;
-        this.timeoutMs = timeoutMs;
+        this.url = properties.getRemoteUrl();
+        this.timeoutMs = properties.getTimeoutMs();
+        applyBasicAuth(properties.getUsername(), properties.getPassword());
+    }
+
+    /** 把 basic auth 的 username/password 写进握手请求头，用户名或密码为空则不加。 */
+    private void applyBasicAuth(String username, String password) {
+        if (!StringUtils.hasText(username) || password == null) {
+            return;
+        }
+        String token = Base64.getEncoder()
+                .encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
+        handshakeHeaders.set("Authorization", "Basic " + token);
     }
 
     /**
-     * 发起一次同步 RPC。返回 result 字段的 JsonNode（已确认 ok=true）；
+     * 发起一次同步 RPC。返回响应的 result（已确认 ok=true）；
      * 失败/超时/连接不上统一抛 {@link RepoRpcException}。
      */
-    public JsonNode call(String repo, String method, Object[] args) {
+    public Object call(String repo, String method, Object[] args) {
         String id = UUID.randomUUID().toString();
-        CompletableFuture<JsonNode> future = new CompletableFuture<>();
+        CompletableFuture<RepoRpcResponse> future = new CompletableFuture<>();
         pending.put(id, future);
         try {
             send(id, repo, method, args);
-            JsonNode frame = future.get(timeoutMs, TimeUnit.MILLISECONDS);
-            if (!frame.path("ok").asBoolean(false)) {
-                throw new RepoRpcException("远端仓储调用失败 " + repo + "." + method + ": " + frame.path("error").asText());
+            RepoRpcResponse response = future.get(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!response.ok()) {
+                throw new RepoRpcException("远端仓储调用失败 " + repo + "." + method + ": " + response.error());
             }
-            return frame.get("result");
+            return response.result();
         } catch (TimeoutException e) {
             throw new RepoRpcException("仓储 RPC 超时(" + timeoutMs + "ms): " + repo + "." + method, e);
         } catch (InterruptedException e) {
@@ -117,11 +134,10 @@ public class RepoRpcClient {
                 return current;
             }
             try {
-                WebSocketSession connected = webSocketClient.execute(new ClientHandler(), url)
+                session = webSocketClient.execute(new ClientHandler(), handshakeHeaders, URI.create(url))
                         .get(timeoutMs, TimeUnit.MILLISECONDS);
-                session = connected;
-                log.debug("仓储 RPC 已连接: {}", url);
-                return connected;
+                log.info("仓储 RPC 已连接: {}", url);
+                return session;
             } catch (Exception e) {
                 throw new RepoRpcException("连接仓储 RPC 服务端失败: " + url, e);
             }
@@ -157,24 +173,24 @@ public class RepoRpcClient {
 
         @Override
         protected void handleTextMessage(@NonNull WebSocketSession session, @NonNull TextMessage message) {
-            JsonNode frame;
+            RepoRpcResponse response;
             try {
-                frame = objectMapper.readTree(message.getPayload());
+                response = objectMapper.readValue(message.getPayload(), RepoRpcResponse.class);
             } catch (Exception e) {
                 log.warn("解析仓储 RPC 响应失败: {}", e.getMessage());
                 return;
             }
-            String id = frame.path("id").asText(null);
+            String id = response.id();
             if (id == null) {
                 log.warn("仓储 RPC 响应缺少 id，已丢弃");
                 return;
             }
-            CompletableFuture<JsonNode> future = pending.get(id);
+            CompletableFuture<RepoRpcResponse> future = pending.get(id);
             if (future == null) {
                 log.debug("忽略无人等待的仓储 RPC 响应: {}", id);
                 return;
             }
-            future.complete(frame);
+            future.complete(response);
         }
 
         @Override

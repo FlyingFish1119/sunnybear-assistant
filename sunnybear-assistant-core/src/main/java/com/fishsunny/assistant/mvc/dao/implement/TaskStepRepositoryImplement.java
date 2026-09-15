@@ -27,7 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Repository
-@ConditionalOnProperty(prefix = "assistant.storage.mode", havingValue = "local", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
 public class TaskStepRepositoryImplement implements TaskStepRepository {
 
     private static final Logger log = LoggerFactory.getLogger(TaskStepRepositoryImplement.class);

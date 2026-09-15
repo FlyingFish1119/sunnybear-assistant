@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.Map;
 
 @Repository
-@ConditionalOnProperty(prefix = "assistant.storage.mode", havingValue = "local", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
 public class ChatMessageRepositoryImplement implements ChatMessageRepository {
 
     private static final Logger log = LoggerFactory.getLogger(ChatMessageRepositoryImplement.class);

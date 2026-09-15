@@ -13,9 +13,9 @@ package com.fishsunny.assistant.remote;
  */
 
 import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 
 public final class RemoteRepositoryFactory {
@@ -25,27 +25,26 @@ public final class RemoteRepositoryFactory {
 
     @SuppressWarnings("unchecked")
     public static <T> T create(Class<T> repositoryInterface, RepoRpcClient client, ObjectMapper objectMapper) {
-        return (T) Proxy.newProxyInstance(
-                repositoryInterface.getClassLoader(),
-                new Class<?>[]{repositoryInterface},
-                (proxy, method, args) -> {
-                    // equals/hashCode/toString 是代理自身的行为，不能发到云端
-                    if (method.getDeclaringClass() == Object.class) {
-                        return switch (method.getName()) {
-                            case "equals" -> proxy == args[0];
-                            case "hashCode" -> System.identityHashCode(proxy);
-                            case "toString" -> "RemoteRepository<" + repositoryInterface.getSimpleName() + ">";
-                            default -> null;
-                        };
-                    }
-                    // 用泛型返回类型：List<ChatSession> 才能还原成元素是 ChatSession，而不是 LinkedHashMap
-                    JavaType returnType = objectMapper.getTypeFactory().constructType(method.getGenericReturnType());
-                    JsonNode result = client.call(repositoryInterface.getSimpleName(), method.getName(), args);
-                    // void / Void 方法没有 result，直接返回 null
-                    if (method.getReturnType() == void.class || method.getReturnType() == Void.class) {
-                        return null;
-                    }
-                    return objectMapper.convertValue(result, returnType);
-                });
+        InvocationHandler handler = (proxy, method, args) -> {
+            // equals/hashCode/toString 是代理自身的行为，不能发到云端
+            if (method.getDeclaringClass() == Object.class) {
+                return switch (method.getName()) {
+                    case "equals" -> proxy == args[0];
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "toString" -> "RemoteRepository<" + repositoryInterface.getSimpleName() + ">";
+                    default -> null;
+                };
+            }
+            // 用泛型返回类型：List<ChatSession> 才能还原成元素是 ChatSession，而不是 LinkedHashMap
+            JavaType returnType = objectMapper.getTypeFactory().constructType(method.getGenericReturnType());
+            Object result = client.call(repositoryInterface.getSimpleName(), method.getName(), args);
+            // void / Void 方法没有 result，直接返回 null
+            if (method.getReturnType() == void.class || method.getReturnType() == Void.class) {
+                return null;
+            }
+            return objectMapper.convertValue(result, returnType);
+        };
+
+        return (T) Proxy.newProxyInstance(repositoryInterface.getClassLoader(), new Class<?>[]{repositoryInterface}, handler);
     }
 }

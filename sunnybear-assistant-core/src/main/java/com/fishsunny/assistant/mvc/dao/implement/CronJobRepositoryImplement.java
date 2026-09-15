@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Objects;
 
 @Repository
-@ConditionalOnProperty(prefix = "assistant.storage.mode", havingValue = "local", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
 public class CronJobRepositoryImplement implements CronJobRepository {
 
     private static final Logger log = LoggerFactory.getLogger(CronJobRepositoryImplement.class);
