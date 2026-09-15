@@ -146,7 +146,7 @@ const MessageArea = {
                             </div>
                         </div>
                         <!-- streaming 时空占位，防止高度抽搐 -->
-                        <div v-if="(msg.siblingCount > 1 || msg.role === 'assistant' || msg.role === 'user') && isStreaming"
+                        <div v-if="(msg.siblingCount > 1 || msg.role === 'assistant' || msg.role === 'user') && busy"
                              class="message-area-bubble-actions" style="visibility: hidden;"></div>
                         <!-- 编辑模式：确认/取消按钮，始终可见 -->
                         <div v-else-if="currentEditId === msg.id" class="message-area-bubble-actions" style="opacity: 1;">
@@ -351,6 +351,10 @@ const MessageArea = {
         },
         isStreaming: function () {
             return this.sessionStore.isStreaming;
+        },
+        // 本轮不可交互（请求在途或流式输出中）：隐藏消息操作按钮，防止重复触发
+        busy: function () {
+            return this.sessionStore.busy;
         },
         sessionSelectLoading: function () {
             return this.sessionStore.sessionSelectLoading;

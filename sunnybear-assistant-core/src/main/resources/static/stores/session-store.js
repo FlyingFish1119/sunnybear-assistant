@@ -80,7 +80,11 @@ const SessionStore = (function () {
         currentToolCallId: null,
         /** 会话历史加载中 */
         sessionSelectLoading: false,
-        /** 已发送但尚未收到服务端 init_user 确认 —— 防止窗口期内重复提交 */
+        /**
+         * 本轮请求在途标记：send / edit / replace 发起时立即置 true，
+         * 直到服务端 END 帧（本轮结束）或出错/断线才复位。
+         * 用于在「点击 → 服务端返回」的整个空窗期内禁止重复提交。
+         */
         sending: false
     });
 
@@ -111,7 +115,7 @@ const SessionStore = (function () {
         return state.currentSession.id;
     }
 
-    /** 标记开始发送（等待服务端 init_user 确认期间禁止重复提交），返回是否成功占位 */
+    /** 标记开始发送（本轮结束前禁止重复提交），返回是否成功占位 */
     function beginSend() {
         if (state.sending) return false;
         state.sending = true;
@@ -179,6 +183,8 @@ const SessionStore = (function () {
         get isStreaming() { return !!state.streamingMap[currentSessionId()]; },
         get sessionSelectLoading() { return state.sessionSelectLoading; },
         get sending() { return state.sending; },
+        /** 本轮是否处于不可交互状态：请求在途（send/edit/replace）或正在流式输出 */
+        get busy() { return state.sending || !!state.streamingMap[currentSessionId()]; },
 
         /**
          * 注册 UI 副作用钩子（页面主组件在 mounted 时调用一次）。
@@ -440,28 +446,36 @@ const SessionStore = (function () {
 
         /**
          * 重新生成助手回复（replace 模式）：按被替换消息重新发起对话。
+         * 发起瞬间即置 sending，避免服务端返回前被重复点击。
          * @param {string} replaceMessageId 被替换的助手消息 id
          * @param {string} content 父用户消息的文本（重发的输入）
+         * @returns {boolean} 是否已发出
          */
         replaceBranch(replaceMessageId, content) {
+            if (!beginSend()) return false;
             sendChatRequest({
                 mode: 'replace',
                 replaceMessageId: replaceMessageId,
                 content: content
             });
+            return true;
         },
 
         /**
          * 编辑用户消息（edit 模式）：删除旧分支后按新内容重发。
+         * 发起瞬间即置 sending，避免服务端返回前被重复点击。
          * @param {string} editMessageId 被编辑的用户消息 id
          * @param {string} content 编辑后的文本
+         * @returns {boolean} 是否已发出
          */
         editMessage(editMessageId, content) {
+            if (!beginSend()) return false;
             sendChatRequest({
                 mode: 'edit',
                 editMessageId: editMessageId,
                 content: content
             });
+            return true;
         },
 
         /** 重播某条消息的整轮音频（委托发送区播放） */
@@ -563,6 +577,8 @@ const SessionStore = (function () {
 
         /** 处理 END 帧：清流式标记与残留占位，触发 Mermaid 渲染 */
         handleEnd(sessionId) {
+            // 本轮结束：解除请求在途锁（出错/断线时另有 handleError/clearSending 兜底）
+            state.sending = false;
             state.streamingMap[sessionId] = false;
             state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, sessionId));
             Vue.nextTick(() => {
@@ -582,8 +598,6 @@ const SessionStore = (function () {
 
         /** 处理 init_user 帧：确认用户消息、校正编辑重发、补会话引用 */
         async handleInitUser(response) {
-            state.sending = false;
-
             // 编辑/重发场景：按 parentId 定位旧用户消息并掐掉它及之后的所有内容
             let cutIndex = -1;
             for (const message of response.messages) {

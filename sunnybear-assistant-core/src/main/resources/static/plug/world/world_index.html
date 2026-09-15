@@ -357,7 +357,7 @@
                                 </div>
                             </div>
                             <!-- streaming 时空占位，防止高度抽搐 -->
-                            <div v-if="(msg.siblingCount > 1 || msg.role === 'assistant' || msg.role === 'user') && isStreaming"
+                            <div v-if="(msg.siblingCount > 1 || msg.role === 'assistant' || msg.role === 'user') && busy"
                                  class="message-area-bubble-actions" style="visibility: hidden;"></div>
                             <!-- 编辑模式：确认/取消按钮，始终可见 -->
                             <div v-else-if="currentEditId === msg.id" class="message-area-bubble-actions" style="opacity: 1;">
@@ -691,6 +691,10 @@
             // 当前会话是否正在流式：只查当前会话自己的标记，其他会话的 START/END 不会互相影响
             isStreaming() {
                 return !!this.streamingMap[this.currentSessionId];
+            },
+            // 本轮不可交互（send/edit/replace 在途或流式输出中）：隐藏消息操作按钮，防止重复触发
+            busy() {
+                return this.sending || this.isStreaming;
             },
              greetingIcon() {
                 const hour = new Date().getHours();
@@ -1416,6 +1420,8 @@
                 if (event.data.startsWith('###END###')) {
                     // 结束流式传输：清掉该会话残留的流式占位（正常情况已由 init_assistant 赋予真实 id，无需处理）
                     let sessionId = event.data.split('###END###')[1];
+                    // 本轮结束：解除请求在途锁（出错/断线时另有兜底）
+                    this.sending = false;
                     this.streamingMap[sessionId] = false;
                     this.currentMessages = this.currentMessages.filter(m => !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     this.$nextTick(() => {
@@ -1490,7 +1496,6 @@
                 switch (response.status) {
                     case 'init_user': {
                         console.log('init_user', response)
-                        this.sending = false; // 服务端已确认收到消息，恢复可发送
                         if (!this.currentSession.id) {
                             this.currentSession.id = response.sessionId;
                             // 新会话已在 create 时携带 extension 完成一次注册，无需再二次绑定
@@ -1783,11 +1788,14 @@
                     ElementPlus.ElMessage.error('消息内容不能为空');
                     return;
                 }
+                if (this.sending) return;
                 // 找到该用户消息在当前消息列表中的位置，移除旧分支
                 const index = this.currentMessages.findIndex(m => m.id === msg.id);
                 if (index !== -1) {
                     this.currentMessages.splice(index);
                 }
+                // 发起瞬间即置发送中，避免服务端返回前被重复点击
+                this.sending = true;
                 // 通过 WebSocket 发送 edit 请求
                 const request = {
                     mode: 'edit',

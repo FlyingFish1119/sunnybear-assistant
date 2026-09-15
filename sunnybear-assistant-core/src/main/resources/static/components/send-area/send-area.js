@@ -125,7 +125,7 @@ const SendArea = {
                 <button v-else
                         class="send-area-submit-button"
                         @click="submit"
-                        :disabled="sending || (!isStreaming && !inputText && uploadedFiles.length === 0)"
+                        :disabled="busy || (!isStreaming && !inputText && uploadedFiles.length === 0)"
                 >
                     <i data-lucide="send"></i>
                 </button>
@@ -171,6 +171,10 @@ const SendArea = {
         },
         sending: function () {
             return this.sessionStore ? this.sessionStore.sending : false;
+        },
+        // 本轮不可交互（send/edit/replace 在途或流式输出中）
+        busy: function () {
+            return this.sessionStore ? this.sessionStore.busy : false;
         },
         sessionId: function () {
             return this.sessionStore ? this.sessionStore.currentSessionId : '';
