@@ -196,4 +196,17 @@ public class CharacterAuthoringToolKit extends ToolKit {
         sb.append("\n").append(StringUtils.hasText(g.getContent()) ? g.getContent() : "(无内容)");
         return sb.toString();
     }
+
+    /** 把一批词条渲染成 Markdown（keyword + desc + 完整 content），供分页列表使用 */
+    static String describeGlossaryWithContent(List<CharacterGlossary> glossaries) {
+        StringBuilder sb = new StringBuilder();
+        for (CharacterGlossary g : glossaries) {
+            sb.append("### ").append(StringUtils.hasText(g.getKeyword()) ? g.getKeyword() : "(无关键词)").append("\n\n");
+            if (StringUtils.hasText(g.getDesc())) {
+                sb.append("> ").append(g.getDesc().replaceAll("\\s+", " ")).append("\n\n");
+            }
+            sb.append(StringUtils.hasText(g.getContent()) ? g.getContent() : "(无内容)").append("\n\n");
+        }
+        return sb.toString();
+    }
 }
