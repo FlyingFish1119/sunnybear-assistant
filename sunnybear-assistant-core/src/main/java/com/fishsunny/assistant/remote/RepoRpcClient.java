@@ -3,8 +3,8 @@ package com.fishsunny.assistant.remote;
 /*
  * @Usage 仓储 RPC 客户端 —— 本地把 Repository 调用经 WebSocket 发到云端，同步等结果
  *
- * 用完即走的短连接模型：连接惰性建立、断了下次调用自动重连，不做心跳保活
- * （单用户、几乎无并发，够用；要长期常驻再补 ping/pong）。
+ * 连接惰性建立、断了下次调用自动重连，另起一个守护线程按 keepAliveIntervalMs 发 ":keep-alive"
+ * 心跳把空闲长连接保活，并靠服务端回帧判定连接是否已成半死状态。
  * 并发安全：pending 用 ConcurrentMap，发送时 synchronized(session) 串行化，
  * 避免多线程同时写一个连接触发 TEXT_PARTIAL_WRITING（同 SynchronizedWebSocketSession 的思路）。
  *
@@ -39,6 +39,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -51,8 +53,15 @@ public class RepoRpcClient {
     private final ObjectMapper objectMapper;
     private final String url;
     private final long timeoutMs;
+    private final long keepAliveIntervalMs;
     private final WebSocketHttpHeaders handshakeHeaders = new WebSocketHttpHeaders();
     private final StandardWebSocketClient webSocketClient = createWebSocketClient();
+    private final ScheduledExecutorService heartbeatScheduler =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread thread = new Thread(r, "repo-rpc-heartbeat");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private static StandardWebSocketClient createWebSocketClient() {
         WebSocketContainer container = ContainerProvider.getWebSocketContainer();
@@ -66,11 +75,16 @@ public class RepoRpcClient {
 
     private volatile WebSocketSession session;
 
+    /** 最近一次收到 pong 的时间，用于识别半死连接 */
+    private volatile long lastPongAt = System.currentTimeMillis();
+
     public RepoRpcClient(ObjectMapper objectMapper, RemoteRepositoryProperties properties) {
         this.objectMapper = objectMapper;
         this.url = properties.getRemoteUrl();
         this.timeoutMs = properties.getTimeoutMs();
+        this.keepAliveIntervalMs = properties.getKeepAliveIntervalMs() == null ? 0 : properties.getKeepAliveIntervalMs();
         applyBasicAuth(properties.getUsername(), properties.getPassword());
+        startHeartbeat();
     }
 
     /** 把 basic auth 的 username/password 写进握手请求头，用户名或密码为空则不加。 */
@@ -81,6 +95,37 @@ public class RepoRpcClient {
         String token = Base64.getEncoder()
                 .encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
         handshakeHeaders.set("Authorization", "Basic " + token);
+    }
+
+    /** 按配置间隔启动心跳；间隔 <=0 表示关闭心跳。 */
+    private void startHeartbeat() {
+        if (keepAliveIntervalMs <= 0) {
+            return;
+        }
+        heartbeatScheduler.scheduleWithFixedDelay(
+                this::heartbeat, keepAliveIntervalMs, keepAliveIntervalMs, TimeUnit.MILLISECONDS);
+    }
+
+    /** 定时给空闲连接发心跳；连续两个周期没收到 pong 就判定连接半死，清掉等下次调用重连。 */
+    private void heartbeat() {
+        WebSocketSession current = session;
+        if (current == null || !current.isOpen()) {
+            return;
+        }
+        if (System.currentTimeMillis() - lastPongAt > keepAliveIntervalMs * 2) {
+            log.warn("仓储 RPC 心跳超时，丢弃旧连接: {}", url);
+            invalidate(current);
+            closeQuietly(current);
+            return;
+        }
+        try {
+            synchronized (current) {
+                current.sendMessage(new TextMessage(RepoRpcProtocol.KEEP_ALIVE));
+            }
+        } catch (IOException e) {
+            log.warn("仓储 RPC 心跳发送失败: {}", e.getMessage());
+            invalidate(current);
+        }
     }
 
     /**
@@ -148,6 +193,7 @@ public class RepoRpcClient {
             try {
                 session = webSocketClient.execute(new ClientHandler(), handshakeHeaders, URI.create(url))
                         .get(timeoutMs, TimeUnit.MILLISECONDS);
+                lastPongAt = System.currentTimeMillis();
                 log.info("仓储 RPC 已连接: {}", url);
                 return session;
             } catch (Exception e) {
@@ -164,19 +210,25 @@ public class RepoRpcClient {
         }
     }
 
-    /** 关闭长连接并让所有在途请求立即失败；之后再次 call() 会重新建连。 */
+    /** 关闭长连接与心跳线程，并让所有在途请求立即失败；之后再次 call() 会重新建连。 */
     public void close() {
+        heartbeatScheduler.shutdownNow();
         WebSocketSession current;
         synchronized (this) {
             current = session;
             session = null;
         }
-        if (current != null) {
-            try {
-                current.close();
-            } catch (IOException e) {
-                log.debug("关闭仓储 RPC 连接失败: {}", e.getMessage());
-            }
+        closeQuietly(current);
+    }
+
+    private void closeQuietly(WebSocketSession target) {
+        if (target == null) {
+            return;
+        }
+        try {
+            target.close();
+        } catch (IOException e) {
+            log.debug("关闭仓储 RPC 连接失败: {}", e.getMessage());
         }
     }
 
@@ -185,9 +237,15 @@ public class RepoRpcClient {
 
         @Override
         protected void handleTextMessage(@NonNull WebSocketSession session, @NonNull TextMessage message) {
+            String payload = message.getPayload();
+            if (RepoRpcProtocol.KEEP_ALIVE.equals(payload)) {
+                // 服务端的 pong，刷新存活时间即可
+                lastPongAt = System.currentTimeMillis();
+                return;
+            }
             RepoRpcResponse response;
             try {
-                response = objectMapper.readValue(message.getPayload(), RepoRpcResponse.class);
+                response = objectMapper.readValue(payload, RepoRpcResponse.class);
             } catch (Exception e) {
                 log.warn("解析仓储 RPC 响应失败: {}", e.getMessage());
                 return;

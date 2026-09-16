@@ -24,6 +24,9 @@ public class RemoteRepositoryProperties {
 
     private Long timeoutMs = 15000L;
 
+    /** 心跳保活间隔（毫秒）；<=0 表示关闭心跳 */
+    private Long keepAliveIntervalMs = 30000L;
+
     private String username = "username";
 
     private String password = "password";

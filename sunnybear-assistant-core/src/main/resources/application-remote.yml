@@ -2,6 +2,7 @@ assistant:
   remote-storage:
     mode: remote
     timeout-ms: 15000
+    keep-alive-interval-ms: 30000
     remote-url: ${REMOTE_URL:ws://127.0.0.1:11451/ws/repo}
     username: ${REMOTE_USERNAME:username}
     password: ${REMOTE_PASSWORD:password}

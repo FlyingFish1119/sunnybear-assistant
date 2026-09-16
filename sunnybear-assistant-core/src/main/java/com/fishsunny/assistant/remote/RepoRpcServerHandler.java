@@ -40,9 +40,20 @@ public class RepoRpcServerHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(@NonNull WebSocketSession session, @NonNull TextMessage message) {
+        String payload = message.getPayload();
+        // 心跳帧不是 JSON，先识别并回一帧 pong，避免客户端因空闲被中间设备掐断
+        if (RepoRpcProtocol.KEEP_ALIVE.equals(payload)) {
+            try {
+                session.sendMessage(new TextMessage(RepoRpcProtocol.KEEP_ALIVE));
+            } catch (IOException e) {
+                log.debug("回写仓储 RPC 心跳失败: {}", e.getMessage());
+            }
+            return;
+        }
+
         RepoRpcRequest request;
         try {
-            request = objectMapper.readValue(message.getPayload(), RepoRpcRequest.class);
+            request = objectMapper.readValue(payload, RepoRpcRequest.class);
         } catch (Exception e) {
             // 连请求都解析不出来就没有 id 可回，只能丢弃
             log.warn("解析仓储 RPC 请求失败: {}", e.getMessage());
