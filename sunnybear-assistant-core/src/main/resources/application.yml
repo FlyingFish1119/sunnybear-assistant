@@ -2,6 +2,8 @@
   port: 11451
 
 spring:
+  profiles:
+    active: remote
   application:
     name: assistant
   datasource:

@@ -36,6 +36,7 @@ import org.springframework.web.socket.WebSocketSession;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @ToolKitComponent(FlowToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.question.enable:true}")
@@ -59,7 +60,9 @@ public class QuestionTool implements ToolHandler {
                 .setName(NAME)
                 .setDescription("""
                         向用户提出结构化问题来澄清信息/推进对话。当需要用户对若干具体点做选择或给简短答复、\
-                        且不便让其完全自由发挥时使用：一次调用把全部问题平铺发出，每题可给出几个候选答案（用户可直接点选，也可自由输入）。\
+                        且不便让其完全自由发挥时使用：一次调用把全部问题平铺发出，每题可给出几个候选答案。\
+                        每个候选可带 text（选项主文案，说明"怎么做"）和 why（选择它的原因，可选）；\
+                        题目可用 multiple 声明多选还是单选；用户既可直接勾选候选，也可在候选之外追加自由输入，二者可并存。\
                         调用后当前对话会暂停，直到用户答完（或取消）。 \
                         在你准备执行任何任务之前，如果有不清楚的地方，或者用户的表达模糊时，优先询问和用户对齐，而不是闷头执行，错误的执行方向往往只会带来麻烦。\
                         询问问题优先调用此工具而不是直接自然对话询问用户，结构化的回答和建议能获得更好的对齐，除非用户明确只采用自然对话方式。
@@ -75,9 +78,15 @@ public class QuestionTool implements ToolHandler {
                                         "单个问题",
                                         List.of(
                                                 new ToolRegister.Parameters("q", "string", "问题文本"),
-                                                new ToolRegister.Parameters("options", "array",
-                                                        "候选答案，用户可直接点选；省略则只能自由输入。每题候选不超过 " + MAX_OPTIONS + " 个")
-                                                        .setItems(ToolRegister.Parameters.item("string", "候选答案"))),
+                                                new ToolRegister.Parameters("multiple", "boolean", "是否多选：true=用户可勾选多个候选；false 或省略=单选。"),
+                                                new ToolRegister.Parameters("options", "array", "候选答案，用户可勾选；省略则只能自由输入。每题候选不超过 " + MAX_OPTIONS + " 个")
+                                                        .setItems(ToolRegister.Parameters.object("单个候选", List.of(
+                                                                        new ToolRegister.Parameters("text", "string", "选项主文案（怎么做），一句话说清这个选项是什么"),
+                                                                        new ToolRegister.Parameters("why", "string", "推荐该选项的原因（可选），简短说明为什么")
+                                                                ),
+                                                                List.of("text"))
+                                                        )
+                                        ),
                                         List.of("q")))
                 ));
     }
@@ -104,11 +113,17 @@ public class QuestionTool implements ToolHandler {
 
         ToolQuestion payload = new ToolQuestion().loadInfo(NAME, arguments.getMessage(), null);
         for (int i = 0; i < arguments.getQuestions().size(); i++) {
+            QuestionArg arg = arguments.getQuestions().get(i);
             ToolQuestion.Question question = new ToolQuestion.Question()
                     .setKey(String.valueOf(i))
-                    .setQ(arguments.getQuestions().get(i).getQ());
-            if (arguments.getQuestions().get(i).getOptions() != null) {
-                question.setOptions(arguments.getQuestions().get(i).getOptions());
+                    .setQ(arg.getQ())
+                    .setMultiple(Boolean.TRUE.equals(arg.getMultiple()));
+            if (arg.getOptions() != null) {
+                question.setOptions(arg.getOptions().stream()
+                        .map(opt -> new ToolQuestion.Option()
+                                .setText(opt.getText())
+                                .setWhy(opt.getWhy()))
+                        .toList());
             }
             payload.getQuestions().add(question);
         }
@@ -152,16 +167,15 @@ public class QuestionTool implements ToolHandler {
         for (int i = 0; i < payload.getQuestions().size(); i++) {
             ToolQuestion.Question q = payload.getQuestions().get(i);
             String key = q.getKey();
-            String text = answer.getAnswers().stream()
-                    .filter(item -> key.equals(item.getKey()))
-                    .map(ToolQuestionAnswer.Item::getAnswer)
-                    .filter(StringUtils::hasText)
+            ToolQuestionAnswer.Item item = answer.getAnswers().stream()
+                    .filter(it -> key.equals(it.getKey()))
                     .findFirst()
                     .orElse(null);
+            String text = item == null ? null : mergeAnswer(item.getSelections(), item.getInput());
             String qText = StringUtils.hasText(q.getQ()) ? q.getQ() : "（无题面）";
             if (StringUtils.hasText(text)) {
                 answeredCount++;
-                sb.append("- **").append(qText).append("** → ").append(text.trim()).append("\n");
+                sb.append("- **").append(qText).append("** → ").append(text).append("\n");
             } else {
                 sb.append("- **").append(qText).append("** → （用户未作答）\n");
             }
@@ -170,6 +184,21 @@ public class QuestionTool implements ToolHandler {
             sb.append("\n（用户似乎没有留下有效回答，建议用自然对话的方式追问澄清。）");
         }
         return sb.toString();
+    }
+
+    /**
+     * 合并一道题的勾选项与自由输入：勾选在前、自输作为补充括注，二者可并存。
+     */
+    private String mergeAnswer(List<String> selections, String input) {
+        String picked = selections == null ? "" : selections.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .collect(Collectors.joining("、"));
+        String custom = StringUtils.hasText(input) ? input.trim() : "";
+        if (StringUtils.hasText(picked) && StringUtils.hasText(custom)) {
+            return picked + "（补充：" + custom + "）";
+        }
+        return StringUtils.hasText(picked) ? picked : custom;
     }
 
     // ==================== 校验 ====================
@@ -186,8 +215,17 @@ public class QuestionTool implements ToolHandler {
             if (question == null || !StringUtils.hasText(question.getQ())) {
                 throw new ToolExecutor.ToolExecuteException("第 " + (i + 1) + " 个问题的 q（题面）不能为空");
             }
-            if (question.getOptions() != null && question.getOptions().size() > MAX_OPTIONS) {
-                throw new ToolExecutor.ToolExecuteException("第 " + (i + 1) + " 个问题的候选回答不能超过 " + MAX_OPTIONS + " 个");
+            if (question.getOptions() != null) {
+                if (question.getOptions().size() > MAX_OPTIONS) {
+                    throw new ToolExecutor.ToolExecuteException("第 " + (i + 1) + " 个问题的候选回答不能超过 " + MAX_OPTIONS + " 个");
+                }
+                for (int j = 0; j < question.getOptions().size(); j++) {
+                    OptionArg option = question.getOptions().get(j);
+                    if (option == null || !StringUtils.hasText(option.getText())) {
+                        throw new ToolExecutor.ToolExecuteException(
+                                "第 " + (i + 1) + " 个问题的第 " + (j + 1) + " 个候选缺少 text（选项主文案）");
+                    }
+                }
             }
         }
     }
@@ -215,6 +253,16 @@ public class QuestionTool implements ToolHandler {
     @Accessors(chain = true)
     private static class QuestionArg {
         private String q;
-        private List<String> options;
+        private Boolean multiple;
+        private List<OptionArg> options;
+    }
+
+    @Data
+    @Accessors(chain = true)
+    private static class OptionArg {
+        /** 选项主文案（"怎么做"） */
+        private String text;
+        /** 选择该选项的原因（可选） */
+        private String why;
     }
 }

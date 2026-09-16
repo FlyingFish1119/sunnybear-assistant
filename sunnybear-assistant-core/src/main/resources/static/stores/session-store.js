@@ -207,7 +207,11 @@ const SessionStore = (function () {
             WsBus.emit('agent-log:clear');
             ui.clearTts();
             state.sessionSelectLoading = true;
+            // 切到不同会话时清空旧消息，让居中的加载态可见；
+            // 同会话重选（切换分支 / 删除消息后的刷新）保留消息，避免闪一下加载
+            const switched = !state.currentSession || state.currentSession.id !== session.id;
             state.currentSession = session;
+            if (switched) state.currentMessages = [];
             try {
                 const result = await API.message.getHistory(session.id);
                 if (result.status === 200) {

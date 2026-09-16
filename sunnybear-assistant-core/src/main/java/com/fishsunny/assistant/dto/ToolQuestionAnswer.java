@@ -48,7 +48,9 @@ public class ToolQuestionAnswer {
     public static class Item {
         /** 问题 key，对应 ToolQuestion.questions[].key */
         private String key;
-        /** 用户的选择 / 输入内容 */
-        private String answer;
+        /** 用户勾选的候选文案（多选题可多项；单选最多一项）；可为空 */
+        private List<String> selections = new ArrayList<>();
+        /** 用户在选项之外追加的自由输入（可与勾选共存）；可为空 */
+        private String input;
     }
 }

@@ -261,3 +261,13 @@
     border-radius: 6px;
     margin: 0.4em 0;
 }
+
+/* ---- 流式回复：新出现的块级元素淡入 + 轻微上移 ---- */
+.markdown-body.md-streaming > .md-fade-in {
+    animation: markdown-block-fade-in 0.25s ease-out;
+}
+
+@keyframes markdown-block-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}

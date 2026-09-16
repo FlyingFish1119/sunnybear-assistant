@@ -46,7 +46,18 @@ public class ToolQuestion {
         private String key;
         /** 问题内容 */
         private String q;
-        /** 候选回答（用户可直接点选，也可自由输入）；可为空 = 只能自由输入 */
-        private List<String> options = new ArrayList<>();
+        /** 是否多选；false=单选（再点取消），true=可勾选多个 */
+        private Boolean multiple = false;
+        /** 候选回答（用户可直接勾选，也可自由输入）；可为空 = 只能自由输入 */
+        private List<Option> options = new ArrayList<>();
+    }
+
+    @Data
+    @Accessors(chain = true)
+    public static class Option {
+        /** 选项主文案（"怎么做"），前端独占一行展示 */
+        private String text;
+        /** 选择该选项的原因/理由（可选），前端以小号淡色字展示在 text 下方 */
+        private String why;
     }
 }

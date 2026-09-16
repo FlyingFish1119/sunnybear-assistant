@@ -174,42 +174,102 @@
     word-break: break-word;
 }
 
-/* ---- 候选胶囊 ---- */
+/* ---- 候选列表（[✓] 勾选行） ---- */
 .tq-options {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-direction: column;
+    gap: 6px;
     margin-bottom: 10px;
 }
 
 .tq-option {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 6px 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 8px 10px;
     border: 1px solid #e5e5e5;
-    border-radius: 999px;
+    border-radius: 8px;
     background: #fafafa;
-    color: #555;
-    font-size: 13px;
-    font-family: inherit;
     cursor: pointer;
     transition: all 0.18s ease;
     user-select: none;
+    outline: none;
 }
 
 .tq-option:hover {
     border-color: var(--main-color, lightsalmon);
-    color: var(--main-color, lightsalmon);
     background: rgba(255, 160, 122, 0.05);
+}
+
+.tq-option:focus-visible {
+    border-color: var(--main-color, lightsalmon);
+    box-shadow: 0 0 0 3px rgba(255, 160, 122, 0.12);
 }
 
 .tq-option.is-active {
     border-color: var(--main-color, lightsalmon);
-    background: var(--main-color, lightsalmon);
+    background: rgba(255, 160, 122, 0.08);
+}
+
+/* [✓] 勾选框：未选为空框，选中显示对勾 */
+.tq-option-check {
+    flex-shrink: 0;
+    width: 17px;
+    height: 17px;
+    margin-top: 1px;
+    border: 1.5px solid #c8c8c8;
+    border-radius: 5px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    line-height: 1;
     color: #fff;
+    transition: all 0.15s ease;
+}
+
+.tq-option-check::after {
+    content: "✓";
+    opacity: 0;
+    transform: scale(0.6);
+    transition: all 0.15s ease;
+}
+
+.tq-option.is-active .tq-option-check {
+    border-color: var(--main-color, lightsalmon);
+    background: var(--main-color, lightsalmon);
+}
+.tq-option.is-active .tq-option-check::after {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.tq-option-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+
+.tq-option-text {
+    font-size: 13px;
+    line-height: 1.45;
+    color: #444;
+    word-break: break-word;
+}
+.tq-option.is-active .tq-option-text {
+    color: #333;
     font-weight: 500;
-    box-shadow: 0 2px 8px rgba(255, 160, 122, 0.3);
+}
+
+/* 原因：位于主文案下方，小一号、淡一点 */
+.tq-option-why {
+    font-size: 11.5px;
+    line-height: 1.4;
+    color: #9a9a9a;
+    word-break: break-word;
 }
 
 /* ---- 自由输入 ---- */

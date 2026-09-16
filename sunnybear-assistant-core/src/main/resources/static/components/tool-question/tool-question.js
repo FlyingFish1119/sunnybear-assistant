@@ -2,12 +2,14 @@
  * 结构化提问弹窗组件（自包含版）
  *
  * 后端 QuestionTool 通过 WebSocket 下发 ###TOOL_QUESTION### + ToolQuestion 对象：
- *   { id, toolName, message, timeout, questions: [ { key, q, options[] } ] }
+ *   { id, toolName, message, timeout,
+ *     questions: [ { key, q, multiple, options: [ { text, why } ] } ] }
  *
  * 本组件：
- *   - 平铺展示每道题：有候选则以"胶囊按钮"单选点选；每道题同时提供自由输入框。
- *   - 单选与自输互斥、自输优先：点候选 → 选中并清空自输框；输入内容 → 取消候选高亮。
- *   - 所有题都有回答后才能提交（单选或自输，不可跳过）。
+ *   - 平铺展示每道题：候选以 [✓] 勾选行展示；option.text 为主文案，option.why 为其下方小号淡色原因。
+ *   - 单选/多选由题目 multiple 决定：单选再点取消，多选可勾选多个。
+ *   - 勾选与自由输入并存、互不互斥：可在勾选候选之外再追加自定义输入，二者一起回传。
+ *   - 每题至少勾选一项或输入非空才可提交（不可跳过）。
  *   - 支持并发：多个提问排队，逐个展示（前一个作答完成后自动展示下一个）。
  *   - 取消 / Esc / 点遮罩 → 以 cancelled=true 回传，表示用户想自然聊这个话题。
  *   - timeout 秒数 > 0 时展示倒计时，超时自动按取消回传。
@@ -17,7 +19,7 @@
  * 收起状态下来的新提问不会自动展开，只累加角标；只有底部"取消·我想自由聊"才回传 cancelled=true。
  *
  * 作答状态统一存在组件顶层 data.answersByKey（keyed by 问题 key），
- * 候选高亮/输入框都从这里读取，确保点选与输入的视觉状态实时同步。
+ * 形如 { selections: [], input: '' }，候选高亮/输入框都从这里读取，确保勾选与输入的视觉状态实时同步。
  *
  * Props:
  *   mainColor — String  主题色
@@ -70,26 +72,35 @@ const ToolQuestion = {
               <span class="tq-question-text">{{ item.q }}</span>
             </div>
 
-            <!-- 候选胶囊（有则展示，单选点选） -->
+            <!-- 候选列表（有则展示；[✓] 勾选，单选/多选由题目 multiple 决定） -->
             <div v-if="item.options && item.options.length" class="tq-options">
-              <button v-for="opt in item.options"
-                      class="tq-option"
-                      :class="{'is-active': isChosen(item, opt)}"
-                      :style="isChosen(item, opt) ? {'--main-color': mainColor} : {}"
-                      type="button"
-                      @click="pickOption(item, opt)">
-                <span>{{ opt }}</span>
-              </button>
+              <div v-for="(opt, oi) in item.options"
+                   :key="oi"
+                   class="tq-option"
+                   :class="{'is-active': isChosen(item, opt)}"
+                   :style="{'--main-color': mainColor}"
+                   role="checkbox"
+                   :aria-checked="isChosen(item, opt)"
+                   tabindex="0"
+                   @click="pickOption(item, opt)"
+                   @keydown.space.prevent="pickOption(item, opt)"
+                   @keydown.enter.prevent="pickOption(item, opt)">
+                <span class="tq-option-check"></span>
+                <span class="tq-option-body">
+                  <span class="tq-option-text">{{ opt.text }}</span>
+                  <span v-if="opt.why" class="tq-option-why">{{ opt.why }}</span>
+                </span>
+              </div>
             </div>
 
-            <!-- 自由输入框 -->
+            <!-- 自由输入：与勾选并存，作为选项之外的补充 -->
             <div class="tq-custom">
               <input
                      class="tq-custom-input"
                      :class="{'has-text': isCustom(item)}"
                      type="text"
                      :value="customOf(item)"
-                     :placeholder="(item.options && item.options.length) ? '或输入自定义回答…' : '请输入你的回答…'"
+                     :placeholder="(item.options && item.options.length) ? '可补充说明（可选）…' : '请输入你的回答…'"
                      @input="onCustomInput(item, $event.target.value)" />
             </div>
           </div>
@@ -156,14 +167,14 @@ const ToolQuestion = {
             if (!this.active) return '';
             return this.titleMap[this.active.toolName] || '结构化提问';
         },
-        // 所有题都有回答才算可提交（点选候选 或 自定义输入非空）
+        // 所有题都有作答才算可提交（勾选至少一项 或 自由输入非空）
         allAnswered() {
             const a = this.active;
             if (!a) return false;
             return a.items.every(item => {
                 const s = this.answersByKey[item.key];
                 if (!s) return false;
-                return (s.chosen && s.chosen.trim()) || (s.custom && s.custom.trim());
+                return (s.selections && s.selections.length > 0) || (s.input && s.input.trim());
             });
         }
     },
@@ -190,11 +201,18 @@ const ToolQuestion = {
                 timeout: Number(toolQuestion.timeout),
                 hasTimeout: Number(toolQuestion.timeout) > 0,
                 total: Number(toolQuestion.timeout) > 0 ? Math.round(Number(toolQuestion.timeout)) : 0,
-                // 只读展示数据：候选点选/自由输入的状态存 data.answersByKey
+                // 只读展示数据：候选勾选/自由输入的状态存 data.answersByKey
                 items: (toolQuestion.questions || []).map(item => ({
                     key: item.key,
                     q: item.q || '',
-                    options: item.options || []
+                    multiple: !!item.multiple,
+                    options: (item.options || []).map(opt => {
+                        // 兼容旧格式：字符串候选 → { text, why:'' }
+                        if (typeof opt === 'string') {
+                            return { text: opt, why: '' };
+                        }
+                        return { text: opt.text || '', why: opt.why || '' };
+                    })
                 }))
             };
             this.queue.push(tq);
@@ -222,7 +240,7 @@ const ToolQuestion = {
             // 重置本题作答状态
             this.answersByKey = {};
             this.active.items.forEach(item => {
-                this.answersByKey[item.key] = { chosen: '', custom: '' };
+                this.answersByKey[item.key] = { selections: [], input: '' };
             });
             this.$nextTick(() => {
                 this.focusDialog();
@@ -261,46 +279,46 @@ const ToolQuestion = {
         },
         customOf(item) {
             const s = this.stateOf(item);
-            return s ? s.custom : '';
+            return s ? s.input : '';
         },
         isCustom(item) {
             const s = this.stateOf(item);
-            return !!(s && s.custom && s.custom.trim());
+            return !!(s && s.input && s.input.trim());
         },
         isChosen(item, opt) {
             const s = this.stateOf(item);
-            return !!(s && s.chosen && s.chosen === opt);
+            return !!(s && s.selections && s.selections.indexOf(this.optText(opt)) >= 0);
+        },
+        optText(opt) {
+            return typeof opt === 'string' ? opt : (opt && opt.text) || '';
         },
 
         /* ---- 交互 ---- */
-        // 点选候选：再次点已选中的候选 → 取消选中；点其它候选 → 选中并清空自输框
+        // 勾选候选：多选可任意增删；单选再点已选中的则取消，点其它则替换
+        // 注意：勾选与自由输入互不干扰，可在勾选之外追加自输
         pickOption(item, opt) {
             const s = this.stateOf(item);
             if (!s) return;
-            if (s.chosen === opt) {
-                s.chosen = '';
+            const text = this.optText(opt);
+            if (!text) return;
+            if (!s.selections) s.selections = [];
+            const i = s.selections.indexOf(text);
+            if (item.multiple) {
+                if (i >= 0) {
+                    s.selections.splice(i, 1);
+                } else {
+                    s.selections.push(text);
+                }
             } else {
-                s.chosen = opt;
-                s.custom = '';
+                s.selections = i >= 0 ? [] : [text];
             }
         },
 
-        // 自由输入：有内容则视为自定义回答（取消候选高亮）
+        // 自由输入：与勾选并存，不再清空已勾选候选
         onCustomInput(item, value) {
             const s = this.stateOf(item);
             if (!s) return;
-            s.custom = value;
-            if (value && value.trim()) {
-                s.chosen = '';
-            }
-        },
-
-        // 该题的有效作答：自输优先于点选
-        answerOf(item) {
-            const s = this.stateOf(item);
-            if (!s) return '';
-            const custom = s.custom && s.custom.trim();
-            return custom ? custom : (s.chosen || '');
+            s.input = value;
         },
 
         /* ---- 回传 ---- */
@@ -327,10 +345,14 @@ const ToolQuestion = {
                 return;
             }
             this.clearTimer();
-            const answers = a.items.map(item => ({
-                key: item.key,
-                answer: this.answerOf(item)
-            }));
+            const answers = a.items.map(item => {
+                const s = this.stateOf(item) || {};
+                return {
+                    key: item.key,
+                    selections: (s.selections || []).slice(),
+                    input: (s.input || '').trim()
+                };
+            });
             this.postAnswer(a, false, answers);
         },
 

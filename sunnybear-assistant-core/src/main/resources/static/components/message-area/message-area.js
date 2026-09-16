@@ -30,6 +30,9 @@ function getLast(arr) {
 /** 建议提问的图标：后端只回文本，前端按顺序轮换配图标 */
 const SUGGESTION_ICONS = ['pen-line', 'file-text', 'lightbulb', 'compass'];
 
+/** 流式块淡入时长（ms），需与 markdown.css 的 markdown-block-fade-in 保持一致 */
+const STREAM_FADE_MS = 250;
+
 const MessageArea = {
     name: 'MessageArea',
 
@@ -101,7 +104,7 @@ const MessageArea = {
                                 <i :class="['reasoning-chevron', { collapsed: isCollapsed(msg.id, 'thinking') }]" style="width: 14px; height: 14px" data-lucide="chevron-down"></i>
                             </div>
                             <div :class="['collapsible-content', { collapsed: isCollapsed(msg.id, 'thinking') }]" :data-collapse-key="msg.id + '_thinking'">
-                                <div class="message-area-reasoning markdown-body" v-html="$md.render(msg.reasoningContent)"></div>
+                                <div class="message-area-reasoning markdown-body" :class="{ 'md-streaming': isStreamingMsg(msg) }" v-html="$md.render(msg.reasoningContent)"></div>
                             </div>
                         </div>
                         <!-- 编辑模式：显示 textarea -->
@@ -118,7 +121,7 @@ const MessageArea = {
                         </div>
                         <!-- 正常模式：显示内容 -->
                         <div v-else v-for="(content, idx) in msg.contents" :key="idx">
-                            <div v-if="content.type === 'text'" class="markdown-body" v-html="$md.render(content.content)"></div>
+                            <div v-if="content.type === 'text'" class="markdown-body" :class="{ 'md-streaming': isStreamingMsg(msg) }" v-html="$md.render(content.content)"></div>
                             <div v-else-if="content.type === 'image'" class="message-attachment-image">
                                 <img :src="$fileUrl.proxy(content.url)" @click.stop="$fileUrl.previewImage(content.url)" />
                             </div>
@@ -793,6 +796,46 @@ const MessageArea = {
         },
 
         /**
+         * 是否为当前正在流式输出的助手消息（用于启用块级淡入）
+         * @param {object} msg - 消息对象
+         * @returns {boolean}
+         */
+        isStreamingMsg(msg) {
+            return this.isStreaming && msg.role === 'assistant'
+                && msg.id && String(msg.id).startsWith('streaming_');
+        },
+
+        /**
+         * 流式正文淡入：v-html 每个 chunk 都会重建全部子节点，元素级动画会被反复打断。
+         * 这里记录每个顶层块的首次出现时间，用负 animation-delay 让被重建的节点从
+         * 「已进行到的进度」继续，从而跨 chunk 连续完成一次淡入，而不是每帧闪一下。
+         */
+        applyStreamingFade() {
+            if (!this.isStreaming || !this.$el) return;
+            const now = performance.now();
+            const containers = this.$el.querySelectorAll('.markdown-body.md-streaming');
+            for (let c = 0; c < containers.length; c++) {
+                const el = containers[c];
+                const nodes = el.children;
+                const fadeAt = el.__mdFadeAt || [];
+                for (let i = 0; i < nodes.length; i++) {
+                    if (fadeAt[i] === undefined) fadeAt[i] = now;
+                    const elapsed = now - fadeAt[i];
+                    const node = nodes[i];
+                    if (elapsed < STREAM_FADE_MS) {
+                        node.style.animationDelay = (-elapsed) + 'ms';
+                        node.classList.add('md-fade-in');
+                    } else {
+                        node.style.animationDelay = '';
+                        node.classList.remove('md-fade-in');
+                    }
+                }
+                fadeAt.length = nodes.length;
+                el.__mdFadeAt = fadeAt;
+            }
+        },
+
+        /**
          * 判断指定消息的指定区域是否处于折叠状态
          * @param {string} msgId - 消息 ID
          * @param {string} section - 区域标识：'thinking' | 'tool' | 'toolcalls'
@@ -881,6 +924,7 @@ const MessageArea = {
     },
 
     updated: function () {
+        this.applyStreamingFade();
         if (typeof lucide !== 'undefined') {
             this.$nextTick(function () { lucide.createIcons(); });
         }

@@ -171,6 +171,7 @@ public class FileSearchTool implements ToolHandler {
             sb.append("（已达上限，可能有更多结果）");
         }
         sb.append("\n");
+        sb.append("````file-search").append("\n");
 
         boolean any = false;
         for (RipgrepRunner.FileResult file : result.files) {
@@ -191,7 +192,7 @@ public class FileSearchTool implements ToolHandler {
         if (!any) {
             sb.append("\n未找到匹配内容。\n");
         }
-        sb.append("\n");
+        sb.append("````");
 
         return new ToolExecutor.ToolExecuteResponse(name(), sb.toString());
     }
