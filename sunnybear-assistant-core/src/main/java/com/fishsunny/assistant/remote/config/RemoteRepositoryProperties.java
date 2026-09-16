@@ -17,7 +17,10 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "assistant.remote-storage")
 public class RemoteRepositoryProperties {
 
-    private String remoteUrl = "ws://127.0.0.1:11451/ws/repo";
+    private String remoteUrl = "ws://127.0.0.1:11451";
+    public String getRemoteUrl() {
+        return remoteUrl.endsWith("/ws/repo") ? remoteUrl : remoteUrl + "/ws/repo";
+    }
 
     private Long timeoutMs = 15000L;
 
