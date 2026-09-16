@@ -71,4 +71,17 @@ public class UserSettings {
     public Boolean getEnableAutoSwitchModel() {
         return Boolean.TRUE.equals(enableAutoSwitchModel);
     }
+
+    /**
+     * 上下文 token 上限：单轮请求里消息（不含 system）的估算总 token 超过该值时触发一次压缩。
+     * null 或 &lt;= 0 表示关闭该功能。
+     */
+    private Long contextTokenLimit;
+    public UserSettings setContextTokenLimit(Long contextTokenLimit) {
+        this.contextTokenLimit = contextTokenLimit;
+        return this;
+    }
+    public Long getContextTokenLimit() {
+        return contextTokenLimit;
+    }
 }

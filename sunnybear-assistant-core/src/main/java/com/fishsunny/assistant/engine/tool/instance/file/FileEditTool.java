@@ -127,7 +127,7 @@ public class FileEditTool implements ToolHandler {
             String modeDesc = isDelete ? "删除" : "替换";
 
             // 生成 diff 风格预览
-            String diffPreview = buildDiffResult(allLines, match, newContent, filePath);
+            String diffPreview = buildDiffResult(fileContent, allLines, match, newContent, filePath);
 
             switch (settings.getMode()) {
                 case NEVER_ASKED:
@@ -261,41 +261,61 @@ public class FileEditTool implements ToolHandler {
      * 构建 diff 风格的变更预览
      * <p>
      * 输出顺序：上下文前 → 删除行(-) → 添加行(+) → 上下文后
+     * <p>
+     * 预览基于"替换后的完整文件内容"与原文按行比对生成，因此当 oldContent 只覆盖
+     * 某一行的部分内容（部分行替换）时，删除/添加行都会展示完整的行内容，而不是
+     * 把整行误显示为被替换、或让添加行只显示替换片段。
      */
-    private String buildDiffResult(List<String> allLines, MatchResult match,
+    private String buildDiffResult(String fileContent, List<String> allLines, MatchResult match,
                                    String newContent, Path filePath) {
-        int totalLines = allLines.size();
-        int delStart = match.startLine;
-        int delEnd = match.endLine;
+        // 计算替换后的完整文件内容，作为 diff 的"新"侧
+        String newFileContent = fileContent.substring(0, match.startOffset)
+                + newContent
+                + fileContent.substring(match.endOffset);
+        List<String> newLines = splitLines(newFileContent);
 
-        List<String> addedLines = newContent.isEmpty()
-                ? List.of()
-                : splitLines(newContent);
+        int oldSize = allLines.size();
+        int newSize = newLines.size();
 
-        // 上下文窗口
-        int ctxStart = Math.max(0, delStart - CONTEXT_LINES);
-        int ctxEnd = Math.min(totalLines - 1, delEnd + CONTEXT_LINES);
+        // 计算公共前缀与公共后缀，定位真正发生变化的行区间
+        int prefix = 0;
+        while (prefix < oldSize && prefix < newSize
+                && allLines.get(prefix).equals(newLines.get(prefix))) {
+            prefix++;
+        }
+        int suffix = 0;
+        while (suffix < oldSize - prefix && suffix < newSize - prefix
+                && allLines.get(oldSize - 1 - suffix).equals(newLines.get(newSize - 1 - suffix))) {
+            suffix++;
+        }
+
+        int oldChangeStart = prefix;
+        int oldChangeEnd = oldSize - suffix; // 不包含
+        int newChangeStart = prefix;
+        int newChangeEnd = newSize - suffix; // 不包含
 
         StringBuilder sb = new StringBuilder();
 
         // 阶段1：上下文前（变更区域之前的未修改行）
-        for (int i = ctxStart; i < delStart; i++) {
+        int ctxBeforeStart = Math.max(0, oldChangeStart - CONTEXT_LINES);
+        for (int i = ctxBeforeStart; i < oldChangeStart; i++) {
             sb.append(formatLine(" ", i + 1, allLines.get(i)));
         }
 
-        // 阶段2：删除的行（- 标记）
-        for (int i = delStart; i <= delEnd; i++) {
+        // 阶段2：删除的行（- 标记，使用原文行号）
+        for (int i = oldChangeStart; i < oldChangeEnd; i++) {
             sb.append(formatLine("-", i + 1, allLines.get(i)));
         }
 
-        // 阶段3：添加的行（+ 标记，行号沿用删除起始行号）
-        for (int j = 0; j < addedLines.size(); j++) {
-            sb.append(formatLine("+", delStart + 1 + j, addedLines.get(j)));
+        // 阶段3：添加的行（+ 标记，使用新文件中的行号）
+        for (int i = newChangeStart; i < newChangeEnd; i++) {
+            sb.append(formatLine("+", i + 1, newLines.get(i)));
         }
 
-        // 阶段4：上下文后（变更区域之后的未修改行）
-        for (int i = delEnd + 1; i <= ctxEnd && i < totalLines; i++) {
-            sb.append(formatLine(" ", i + 1, allLines.get(i)));
+        // 阶段4：上下文后（变更区域之后的未修改行，使用新文件中的行号）
+        int ctxAfterEnd = Math.min(newSize, newChangeEnd + CONTEXT_LINES);
+        for (int i = newChangeEnd; i < ctxAfterEnd; i++) {
+            sb.append(formatLine(" ", i + 1, newLines.get(i)));
         }
 
         return "````" + ToolKit.inferLanguage(filePath) + "\n" + sb + "````";

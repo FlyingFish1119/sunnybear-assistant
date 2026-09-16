@@ -90,6 +90,11 @@ const UserSettings = {
                     <el-switch v-model="userForm.enableAutoSwitchModel" active-text="开启" inactive-text="关闭"></el-switch>
                     <span style="margin-left: 12px; color: #909399; font-size: 13px;">自动判断问题复杂度并切换高级模型</span>
                 </el-form-item>
+                <el-form-item label="上下文上限">
+                    <el-input-number v-model="userForm.contextTokenLimit" :min="0" :step="1000" :controls="false"
+                        placeholder="0 表示关闭" style="width: 200px"></el-input-number>
+                    <span style="margin-left: 12px; color: #909399; font-size: 13px;">上一轮请求的真实输入 token 超过该值时自动压缩历史，0 或留空关闭</span>
+                </el-form-item>
             </el-form>
             <template #footer>
                 <div class="dialog-footer">
@@ -106,7 +111,7 @@ const UserSettings = {
     data() {
         return {
             dialogs: { user: false },
-            userForm: { username: '', avatar: '', background: '', opacity: 0.3, mainColor: 'lightsalmon', enableAutoSwitchModel: false },
+            userForm: { username: '', avatar: '', background: '', opacity: 0.3, mainColor: 'lightsalmon', enableAutoSwitchModel: false, contextTokenLimit: null },
             predefineColors: [
                 'lightsalmon', '#409eff', '#67c23a', '#e6a23c', '#f56c6c',
                 '#e83e8c', '#6f42c1', '#20c997', '#17a2b8', '#6610f2',
@@ -140,7 +145,8 @@ const UserSettings = {
                 background: this.settings.background || '',
                 opacity: this.settings.opacity != null ? this.settings.opacity : 0.3,
                 mainColor: this.settings.mainColor || 'lightsalmon',
-                enableAutoSwitchModel: this.settings.enableAutoSwitchModel || false
+                enableAutoSwitchModel: this.settings.enableAutoSwitchModel || false,
+                contextTokenLimit: this.settings.contextTokenLimit != null ? this.settings.contextTokenLimit : null
             };
             this.dialogs.user = true;
             this.$nextTick(() => lucide.createIcons());
@@ -234,7 +240,8 @@ const UserSettings = {
                 username: this.userForm.username.trim(),
                 opacity: this.userForm.opacity,
                 mainColor: mainColor,
-                enableAutoSwitchModel: this.userForm.enableAutoSwitchModel
+                enableAutoSwitchModel: this.userForm.enableAutoSwitchModel,
+                contextTokenLimit: this.userForm.contextTokenLimit || null
             }, 'user').then(() => {
                 // 保存成功后立即同步主题色（父组件刷新时会再同步一次服务端值）
                 this.$emit('main-color-change', mainColor);

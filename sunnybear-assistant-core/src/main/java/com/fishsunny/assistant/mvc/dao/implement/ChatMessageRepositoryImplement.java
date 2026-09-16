@@ -244,17 +244,19 @@ public class ChatMessageRepositoryImplement implements ChatMessageRepository {
 
     @Override
     public List<ChatMessage> selectBySessionId(String sessionId) {
-        String sql = "SELECT * FROM chat_message WHERE session_id = ? AND active = true ORDER BY create_time";
+        // create_time 只有秒级精度，同秒内多条（如工具轮 assistant+tool）需用 rowid 兜底，
+        // 保证按写入顺序稳定返回（上下文压缩重建消息链时尤为关键）
+        String sql = "SELECT * FROM chat_message WHERE session_id = ? AND active = true ORDER BY create_time, rowid";
         return jdbcTemplate.query(sql, rowMapper, sessionId);
     }
 
     @Override
     public List<ChatMessage> selectSiblingsByParentId(String parentId, String sessionId) {
         if (parentId == null) {
-            String sql = "SELECT * FROM chat_message WHERE parent_id IS NULL AND session_id = ? ORDER BY create_time";
+            String sql = "SELECT * FROM chat_message WHERE parent_id IS NULL AND session_id = ? ORDER BY create_time, rowid";
             return jdbcTemplate.query(sql, rowMapper, sessionId);
         } else {
-            String sql = "SELECT * FROM chat_message WHERE parent_id = ? ORDER BY create_time";
+            String sql = "SELECT * FROM chat_message WHERE parent_id = ? ORDER BY create_time, rowid";
             return jdbcTemplate.query(sql, rowMapper, parentId);
         }
     }

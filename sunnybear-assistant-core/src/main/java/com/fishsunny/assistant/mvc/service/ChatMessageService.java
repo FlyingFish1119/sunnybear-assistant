@@ -109,4 +109,17 @@ public interface ChatMessageService {
      * @param content 新内容
      */
     public void editAssistantMessage(String id, String content);
+
+    /**
+     * 上下文压缩落库：在同一事务内先物理清空该会话全部消息，再按给定顺序重新插入成一条链
+     * （首条作为 root，parentId=null；后续依次挂到前一条上）。
+     * <p>
+     * 整体原子：任一步失败全部回滚，避免「删了却插不回去」导致会话消息丢失。
+     * 入参消息需已 makeInsertable（canInsert=true），本方法会覆盖其 sessionId/parentId。
+     *
+     * @param sessionId 会话 ID
+     * @param messages  重建后的消息链（顺序即父子顺序）
+     * @return 重新插入、带新 id 的消息链
+     */
+    public List<ChatMessage> replaceSessionMessages(String sessionId, List<ChatMessage> messages) throws Exception;
 }

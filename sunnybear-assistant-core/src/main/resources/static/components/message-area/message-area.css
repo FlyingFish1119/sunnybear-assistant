@@ -1062,3 +1062,45 @@
     color: var(--text-primary, #303133);
     font-variant-numeric: tabular-nums;
 }
+
+/* ============================================
+   上下文压缩卡片
+   ============================================ */
+/* 顶替流式空占位出现在消息尾部：说明长对话正在总结旧历史，避免「等待回复」处呆等 */
+.ctx-compress-card {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: min(520px, 86%);
+    margin: 0 0 2px var(--msg-rail-reserve, 36px);
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--main-color) 22%, transparent);
+    background: color-mix(in srgb, var(--main-color) 8%, transparent);
+    font-size: var(--text-sm, 12px);
+    line-height: 1.5;
+    color: var(--text-muted, #909399);
+    animation: ctx-compress-in 0.25s ease;
+}
+
+.ctx-compress-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--main-color, lightsalmon);
+}
+
+.ctx-compress-spin {
+    animation: loading-spin 1s linear infinite;
+}
+
+.ctx-compress-card.is-done .ctx-compress-icon {
+    color: #52c41a;
+}
+
+@keyframes ctx-compress-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+

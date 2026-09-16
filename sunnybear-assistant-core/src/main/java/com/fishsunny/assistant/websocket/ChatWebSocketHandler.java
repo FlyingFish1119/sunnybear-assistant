@@ -163,6 +163,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         if (eventPayload.startsWith(ControlSign.SIGN_TTS_AUDIO)) {
             return false;
         }
+        // 上下文压缩信号是实时刷新提示，重连时前端会自行重拉历史，无需重放
+        if (eventPayload.startsWith(ControlSign.SIGN_CONTEXT_COMPRESSING)
+                || eventPayload.startsWith(ControlSign.SIGN_CONTEXT_COMPRESS_END)
+                || eventPayload.startsWith(ControlSign.SIGN_CONTEXT_COMPRESSED)) {
+            return false;
+        }
         String sign = null;
         if (eventPayload.startsWith(ControlSign.SIGN_TOOL_ASK)) {
             sign = ControlSign.SIGN_TOOL_ASK;

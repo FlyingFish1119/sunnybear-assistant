@@ -288,6 +288,17 @@ const MessageArea = {
                     </div>
                 </div>
             </template>
+            <!-- 上下文压缩卡片：长对话总结旧历史期间顶替空占位，避免在「等待回复」处呆等 -->
+            <div v-if="compressState" :style="{'--main-color': mainColor}"
+                 class="ctx-compress-card" :class="{ 'is-done': compressState === 'done' }">
+                <i v-if="compressState === 'done'" class="ctx-compress-icon" data-lucide="check"></i>
+                <i v-else class="ctx-compress-icon ctx-compress-spin" data-lucide="loader-circle"></i>
+                <span class="ctx-compress-text">
+                    {{ compressState === 'done'
+                        ? '上下文已压缩，对话即将继续'
+                        : '正在压缩上下文，生成衔接摘要…' }}
+                </span>
+            </div>
         </div>
     </div>`,
 
@@ -354,6 +365,10 @@ const MessageArea = {
         },
         isStreaming: function () {
             return this.sessionStore.isStreaming;
+        },
+        // 当前会话的上下文压缩状态：'running' | 'done' | null
+        compressState: function () {
+            return this.sessionStore.compressState;
         },
         // 本轮不可交互（请求在途或流式输出中）：隐藏消息操作按钮，防止重复触发
         busy: function () {

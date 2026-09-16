@@ -76,6 +76,12 @@ const SessionStore = (function () {
         currentMessages: [],
         /** 流式标记表：key = sessionId，各会话只看自己的标记，互不影响 */
         streamingMap: {},
+        /**
+         * 上下文压缩状态表：key = sessionId，value = 'running' | 'done'。
+         * running：正在调用模型总结旧对话（START 之后的长空窗）；done：压缩完成、成功态短暂展示。
+         * 消息区据此渲染压缩卡片，避免前端在等待回复处呆等。
+         */
+        compressMap: {},
         /** 当前正在处理的 tool call id */
         currentToolCallId: null,
         /** 会话历史加载中 */
@@ -181,6 +187,8 @@ const SessionStore = (function () {
         get currentSessionId() { return currentSessionId(); },
         get isNewSession() { return currentSessionId() === undefined; },
         get isStreaming() { return !!state.streamingMap[currentSessionId()]; },
+        /** 当前会话的上下文压缩状态：'running' | 'done' | null */
+        get compressState() { return state.compressMap[currentSessionId()] || null; },
         get sessionSelectLoading() { return state.sessionSelectLoading; },
         get sending() { return state.sending; },
         /** 本轮是否处于不可交互状态：请求在途（send/edit/replace）或正在流式输出 */
@@ -211,7 +219,11 @@ const SessionStore = (function () {
             // 同会话重选（切换分支 / 删除消息后的刷新）保留消息，避免闪一下加载
             const switched = !state.currentSession || state.currentSession.id !== session.id;
             state.currentSession = session;
-            if (switched) state.currentMessages = [];
+            if (switched) {
+                state.currentMessages = [];
+                // 切走时丢弃上一个会话的压缩卡片（其信号不会再投递到当前连接）
+                state.compressMap = {};
+            }
             try {
                 const result = await API.message.getHistory(session.id);
                 if (result.status === 200) {
@@ -243,6 +255,7 @@ const SessionStore = (function () {
             WsBus.emit('agent-log:clear');
             state.currentSession = {};
             state.currentMessages = [];
+            state.compressMap = {};
         },
 
         /* ================= 会话列表 ================= */
@@ -727,9 +740,84 @@ const SessionStore = (function () {
             ui.enqueueTts(ttsFrame.audio);
         },
 
+        /**
+         * 上下文开始压缩（服务端在调用模型总结旧对话前推送）：
+         * 进入「压缩中」状态，移除空的流式占位，由消息区渲染压缩卡片。
+         */
+        handleContextCompressing(sessionId) {
+            if (sessionId !== currentSessionId()) {
+                return;
+            }
+            state.compressMap[sessionId] = 'running';
+            // 此时还未向模型发起本轮请求，占位为空：先撤掉，压缩完成后由 handleContextCompressed 补回
+            state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, sessionId));
+            ui.scrollToBottom(true);
+            Vue.nextTick(() => {
+                ui.renderMermaid();
+            });
+        },
+
+        /**
+         * 上下文已压缩（服务端删旧消息、摘要并入 root 用户消息后推送）：
+         * 重拉该会话最新历史；若本轮仍在流式中，补一个新的空占位承接后续 chunk。
+         */
+        async handleContextCompressed(sessionId) {
+            if (sessionId !== currentSessionId()) {
+                return;
+            }
+            // 同步置为完成态，避免紧随其后的 CONTEXT_COMPRESS_END 误判为「压缩未生效」
+            state.compressMap[sessionId] = 'done';
+            const wasStreaming = !!state.streamingMap[sessionId];
+            try {
+                const result = await API.message.getHistory(sessionId);
+                if (result.status === 200) {
+                    state.currentMessages = result.data;
+                }
+            } catch (e) {
+                console.error('上下文压缩后刷新历史失败:', e);
+            }
+            if (wasStreaming) {
+                state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, sessionId));
+                state.currentMessages.push(getDefaultAssistantMessage(sessionId));
+                state.currentToolCallId = null;
+            }
+            ui.scrollToBottom(true);
+            Vue.nextTick(() => {
+                ui.renderMermaid();
+            });
+            // 成功态短暂展示后自动收起
+            setTimeout(() => {
+                if (state.compressMap[sessionId] === 'done') {
+                    delete state.compressMap[sessionId];
+                }
+            }, 3200);
+        },
+
+        /**
+         * 压缩结束但未生效（总结失败/结果为空/异常）：关闭压缩卡片，
+         * 若本轮仍在流式中则补回空占位承接后续 chunk。
+         */
+        handleContextCompressEnd(sessionId) {
+            const wasRunning = state.compressMap[sessionId] === 'running';
+            if (state.compressMap[sessionId]) {
+                delete state.compressMap[sessionId];
+            }
+            if (sessionId !== currentSessionId()) {
+                return;
+            }
+            // 仅「压缩未生效」时需要补回流式落点；成功压缩已由 handleContextCompressed 处理
+            if (wasRunning && state.streamingMap[sessionId]) {
+                state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, sessionId));
+                state.currentMessages.push(getDefaultAssistantMessage(sessionId));
+                state.currentToolCallId = null;
+                ui.scrollToBottom(true);
+            }
+        },
+
         /** 断线重连：清空全部流式标记并清掉残留占位 */
         resetStreamingOnReconnect() {
             state.streamingMap = {};
+            state.compressMap = {};
             state.currentMessages = state.currentMessages.filter(m =>
                 !(m.role === 'assistant' && m.id && String(m.id).startsWith('streaming_')));
         },
@@ -831,6 +919,9 @@ const SessionStore = (function () {
         WsBus.on('REPLACE', payload => store.handleReplace(payload));
         WsBus.on('END', payload => store.handleEnd(payload));
         WsBus.on('TOOL_CALL_FINISH', payload => store.handleToolCallFinish(payload));
+        WsBus.on('CONTEXT_COMPRESSING', payload => store.handleContextCompressing(payload));
+        WsBus.on('CONTEXT_COMPRESSED', payload => store.handleContextCompressed(payload));
+        WsBus.on('CONTEXT_COMPRESS_END', payload => store.handleContextCompressEnd(payload));
         WsBus.on('UPDATE_SESSION', payload => {
             console.log('update session', payload);
             try {

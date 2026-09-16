@@ -40,4 +40,16 @@ public class ControlSign {
 
     // 前端需要重播消息
     public static final String SIGN_REQUIRE_REPLAY_MESSAGE = "###REQUIRE_REPLAY_MESSAGE###";
+
+    // 应携带一个 sessionId 字符串：上下文超限，开始压缩（正在调用模型总结旧对话）。
+    // 前端收到后展示「压缩中」状态，避免在 START 之后长时间空等。实时信号，不参与断线重放
+    public static final String SIGN_CONTEXT_COMPRESSING = "###CONTEXT_COMPRESSING###";
+
+    // 应携带一个 sessionId 字符串：上下文超限完成压缩（旧消息已删、摘要已并入 root 用户消息），
+    // 前端收到后重拉最新消息即可。实时信号，不参与断线重放
+    public static final String SIGN_CONTEXT_COMPRESSED = "###CONTEXT_COMPRESSED###";
+
+    // 应携带一个 sessionId 字符串：本次压缩结束但未改变消息（总结失败/结果为空等），
+    // 前端收到后关闭「压缩中」状态即可，无需重拉。实时信号，不参与断线重放
+    public static final String SIGN_CONTEXT_COMPRESS_END = "###CONTEXT_COMPRESS_END###";
 }

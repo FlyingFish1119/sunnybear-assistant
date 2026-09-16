@@ -291,4 +291,20 @@ public class ChatMessageServiceImplement implements ChatMessageService {
 
         chatMessageRepository.update(message);
     }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<ChatMessage> replaceSessionMessages(String sessionId, List<ChatMessage> messages) throws Exception {
+        chatMessageRepository.deleteBySessionId(sessionId);
+        List<ChatMessage> saved = new ArrayList<>();
+        String parentId = null;
+        for (ChatMessage message : messages) {
+            message.setSessionId(sessionId);
+            message.setParentId(parentId);
+            ChatMessage inserted = save(message);
+            saved.add(inserted);
+            parentId = inserted.getId();
+        }
+        return saved;
+    }
 }

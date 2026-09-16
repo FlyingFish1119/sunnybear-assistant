@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.constants.PromptReplaceVariable;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
+import com.fishsunny.assistant.utils.ContextCompressor;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
 import com.fishsunny.assistant.engine.protocol.TokenUsage;
@@ -76,6 +77,7 @@ public class ChatProcessor {
     private final TTSSettings ttsSettings;
     private final SessionFileManager sessionFileManager;
     private final ToolVisibilityPolicy toolVisibilityPolicy;
+    private final ContextCompressor contextCompressor;
 
     public ChatProcessor(ChatMessageService chatMessageService,
                             ChatSessionService chatSessionService,
@@ -91,7 +93,8 @@ public class ChatProcessor {
                             ChatHttpHandler chatHttpHandler,
                             TTSSettings ttsSettings,
                             SessionFileManager sessionFileManager,
-                            ToolVisibilityPolicy toolVisibilityPolicy
+                            ToolVisibilityPolicy toolVisibilityPolicy,
+                            ContextCompressor contextCompressor
                          ) {
         this.chatMessageService = chatMessageService;
         this.chatSessionService = chatSessionService;
@@ -108,6 +111,7 @@ public class ChatProcessor {
         this.ttsSettings = ttsSettings;
         this.sessionFileManager = sessionFileManager;
         this.toolVisibilityPolicy = toolVisibilityPolicy;
+        this.contextCompressor = contextCompressor;
     }
     /**
      * 核心对话处理逻辑
@@ -258,6 +262,8 @@ public class ChatProcessor {
                                String activeAssistantName,
                                boolean enableTts
     ) throws Exception {
+        // 上下文达到用户配置上限时压缩历史：总结旧对话、清库并重建 root 用户消息，然后继续本轮
+        contextCompressor.maybeCompress(request, chatSession, session);
         // 注入工具：按 kit 排除用户关掉的工具集与声明不开放的工具集，再按名字排除子 Agent 本体
         List<StandardToolRegister> toolRegisters = StandardToolRegister.buildToolRegisterExcluding(
                 toolExecutor, toolVisibilityPolicy.excludedKits(), toolVisibilityPolicy.excludedHandlers());
