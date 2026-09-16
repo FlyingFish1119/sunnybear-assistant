@@ -1,7 +1,0 @@
-assistant:
-  remote-storage:
-    mode: remote
-    timeout-ms: 15000
-    remote-url: ws://127.0.0.1:11451/ws/repo
-    username: username
-    password: password

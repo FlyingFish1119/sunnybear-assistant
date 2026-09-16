@@ -9,10 +9,12 @@ package com.fishsunny.assistant.plug.world.repository;
  */
 
 import com.fishsunny.assistant.plug.world.entity.WorldKnowledge;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
 import java.util.List;
 import java.util.Map;
 
+@RemoteRepository(repoCls = WorldKnowledgeRepository.class)
 public interface WorldKnowledgeRepository {
 
     WorldKnowledge insert(WorldKnowledge knowledge);

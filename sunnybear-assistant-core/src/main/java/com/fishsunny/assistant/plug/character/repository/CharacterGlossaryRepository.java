@@ -9,9 +9,11 @@ package com.fishsunny.assistant.plug.character.repository;
  */
 
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
 import java.util.List;
 
+@RemoteRepository(repoCls = CharacterGlossaryRepository.class)
 public interface CharacterGlossaryRepository {
 
     CharacterGlossary insert(CharacterGlossary glossary);

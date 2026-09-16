@@ -9,9 +9,11 @@ package com.fishsunny.assistant.plug.character.repository;
  */
 
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
 import java.util.List;
 
+@RemoteRepository(repoCls = CharacterInfoRepository.class)
 public interface CharacterInfoRepository {
 
     CharacterInfo insert(CharacterInfo characterInfo);

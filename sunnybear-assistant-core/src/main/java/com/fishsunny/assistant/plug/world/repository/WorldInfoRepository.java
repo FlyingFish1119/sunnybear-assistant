@@ -9,9 +9,11 @@ package com.fishsunny.assistant.plug.world.repository;
  */
 
 import com.fishsunny.assistant.plug.world.entity.WorldInfo;
+import com.fishsunny.assistant.remote.RemoteRepository;
 
 import java.util.List;
 
+@RemoteRepository(repoCls = WorldInfoRepository.class)
 public interface WorldInfoRepository {
 
     WorldInfo insert(WorldInfo worldInfo);

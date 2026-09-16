@@ -38,8 +38,6 @@ assistant:
       max-pool-size: 10
       queue-capacity: 100
       thread-name-prefix: chat-async-
-  remote-storage:
-    mode: local
 
 # QQ Bot（OneBot）配置
 plug:
