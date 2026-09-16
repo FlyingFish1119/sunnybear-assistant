@@ -95,6 +95,43 @@
 }
 
 /* ============================================
+   上下文用量环（离自动压缩还有多少）
+   ============================================ */
+.ctx-gauge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    cursor: default;
+}
+
+.ctx-gauge svg {
+    display: block;
+}
+
+.ctx-gauge-track {
+    fill: none;
+    stroke: rgba(128, 128, 128, 0.22);
+    stroke-width: 3;
+}
+
+.ctx-gauge-fill {
+    fill: none;
+    stroke: var(--main-color, lightsalmon);
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.5s ease, stroke 0.3s ease;
+}
+
+.ctx-gauge.is-warn .ctx-gauge-fill {
+    stroke: #faad14;
+}
+
+.ctx-gauge.is-danger .ctx-gauge-fill {
+    stroke: #ff4d4f;
+}
+
+/* ============================================
    移动端适配
    ============================================ */
 @media (max-width: 768px) {

@@ -38,6 +38,22 @@ const MessageTopbar = {
             </button>
             <span class="model-name-tag">{{ displayModel }} ·</span>
             <chat-session-name :main-color="mainColor"></chat-session-name>
+            <!-- 上下文用量环：显示离自动压缩还剩多少（已用比例越高越满） -->
+            <el-tooltip v-if="contextRatio !== null"
+                        effect="light"
+                        placement="bottom"
+                        :show-after="80"
+                        :content="contextTip">
+                <div class="ctx-gauge" :class="contextLevel" :style="{'--main-color': mainColor}">
+                    <svg viewBox="0 0 24 24" width="20" height="20">
+                        <circle class="ctx-gauge-track" cx="12" cy="12" r="9"></circle>
+                        <circle class="ctx-gauge-fill" cx="12" cy="12" r="9"
+                                :stroke-dasharray="ctxCircumference"
+                                :stroke-dashoffset="ctxDashOffset"
+                                transform="rotate(-90 12 12)"></circle>
+                    </svg>
+                </div>
+            </el-tooltip>
             <!-- 待确认工具请求入口：弹窗收起后从此处重新展开 -->
             <button v-if="pendingToolCount > 0"
                     class="pending-entry-btn"
@@ -80,7 +96,9 @@ const MessageTopbar = {
 
     props: {
         mainColor:      { type: String,  default: 'lightsalmon' },
-        wsUrl:          { type: String,  default: '' }
+        wsUrl:          { type: String,  default: '' },
+        // 上下文压缩阈值（token，来自用户设置）；为空/无效则隐藏用量环
+        contextTokenLimit: { type: [Number, String], default: null }
     },
 
     inject: {
@@ -99,7 +117,9 @@ const MessageTopbar = {
             pendingQuestionCount: 0,
             // 模型展示：chat / chat_pro 设置（启动时拉取）
             chatModel: null,
-            chatProModel: null
+            chatProModel: null,
+            // 用量环周长（半径 9），用于 stroke-dasharray/offset
+            ctxCircumference: 2 * Math.PI * 9
         };
     },
 
@@ -114,6 +134,59 @@ const MessageTopbar = {
                 return this.chatProModel || '?';
             }
             return this.chatModel || '?';
+        },
+
+        /** 压缩阈值（token）：非正数视为未配置 */
+        contextLimit: function () {
+            var v = Number(this.contextTokenLimit);
+            return isFinite(v) && v > 0 ? v : null;
+        },
+
+        /**
+         * 最近一次真实输入 token 数：取消息列表里最后一条带 extension.chat_usage.prompt_tokens
+         * 的 assistant 消息（与后端触发压缩的判定口径一致）。
+         */
+        contextUsed: function () {
+            var msgs = this.sessionStore ? this.sessionStore.state.currentMessages : null;
+            if (!msgs || !msgs.length) return null;
+            for (var i = msgs.length - 1; i >= 0; i--) {
+                var m = msgs[i];
+                if (m.role === 'assistant' && m.extension && m.extension.chat_usage) {
+                    var p = m.extension.chat_usage.prompt_tokens;
+                    if (p != null) return Number(p);
+                }
+            }
+            return null;
+        },
+
+        /** 上下文占用比例 [0,1]；无数据时 null（隐藏用量环） */
+        contextRatio: function () {
+            if (!this.contextLimit || this.contextUsed == null) return null;
+            return Math.min(1, Math.max(0, this.contextUsed / this.contextLimit));
+        },
+
+        /** 占用等级：接近阈值时变色警示 */
+        contextLevel: function () {
+            var r = this.contextRatio;
+            if (r === null) return '';
+            if (r >= 0.9) return 'is-danger';
+            if (r >= 0.6) return 'is-warn';
+            return '';
+        },
+
+        /** 环的描边偏移：按比例填充 */
+        ctxDashOffset: function () {
+            return this.ctxCircumference * (1 - (this.contextRatio || 0));
+        },
+
+        /** 悬浮提示：已用 / 总量 / 剩余 */
+        contextTip: function () {
+            if (this.contextUsed == null || !this.contextLimit) return '';
+            var used = this.formatTokens(this.contextUsed);
+            var limit = this.formatTokens(this.contextLimit);
+            var left = this.formatTokens(Math.max(0, this.contextLimit - this.contextUsed));
+            var percent = Math.round(this.contextRatio * 100);
+            return '上下文已用 ' + percent + '%（' + used + ' / ' + limit + '），剩余 ' + left + '，达上限将自动压缩';
         }
     },
 
@@ -142,6 +215,15 @@ const MessageTopbar = {
             if (this.wsBus) {
                 this.wsBus.emit('agent-log:toggle');
             }
+        },
+
+        /** token 数字压缩：1234 -> 1.2k，1048576 -> 1.0M */
+        formatTokens: function (n) {
+            if (n == null || isNaN(n)) return '-';
+            n = Number(n);
+            if (n < 1000) return String(n);
+            if (n < 1000000) return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'k';
+            return (n / 1000000).toFixed(1) + 'M';
         },
 
         /** 拉取 chat / chat_pro 模型设置，用于 displayModel 展示 */
