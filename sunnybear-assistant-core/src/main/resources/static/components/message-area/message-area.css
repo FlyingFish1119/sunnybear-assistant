@@ -144,6 +144,11 @@
     max-width: 1200px;
     display: flex;
     flex-direction: column;
+    /* 聊天内容最大宽度：气泡封顶，窗口变窄时先收缩气泡与对侧之间的空白，
+       留白耗尽后气泡才跟着变窄，避免 PC 窄窗下气泡被压得跟手机一样宽 */
+    --msg-content-width: 860px;
+    /* 助手组左侧导轨（头像 + 行间距）预留宽度；用户侧也预留同宽，保证两种气泡等宽 */
+    --msg-rail-reserve: 36px;
 }
 
 /* 新对话状态：落地页内容垂直居中 */
@@ -330,13 +335,15 @@
     width: 100%;
 }
 
-.message-area-row.assistant { width: 70%; justify-content: flex-start; gap: 8px; }
-.message-area-row.user      { justify-content: flex-end; }
+.message-area-row.assistant { width: 100%; justify-content: flex-start; gap: 8px; }
+.message-area-row.user      { width: 100%; justify-content: flex-end; padding-left: var(--msg-rail-reserve); box-sizing: border-box; }
 
 /* ---- 消息气泡（基础） ---- */
 .message-area-bubble {
     max-width: 70%;
     padding: 10px 14px;
+    /* 列宽 100% 时 padding 不再撑出容器导致左侧被 overflow 裁掉 */
+    box-sizing: border-box;
     border-radius: var(--radius-md, 10px);
     font-size: 15px;
     line-height: 1.6;
@@ -600,17 +607,19 @@
    头像 + 名称时间（消息上方，同一行）
    ============================================ */
 
-/* 消息列：header-row + 气泡垂直排列，固定宽度 70% */
+/* 消息列：header-row + 气泡垂直排列，宽度封顶，多余空间留在气泡与对侧之间 */
 .message-area-col {
     display: flex;
     flex-direction: column;
-    width: 70%;
+    width: 100%;
+    max-width: var(--msg-content-width);
 }
 
 .message-area-row.assistant .message-area-col {
     flex: 1;
     min-width: 0;
     width: auto;
+    max-width: var(--msg-content-width);
     align-items: flex-start;
     gap: 10px;
 }
@@ -749,6 +758,40 @@
 }
 
 /* ============================================
+   窄屏适配：导轨不再占位
+   气泡可用宽度不足时，收起助手左侧导轨（头像浮到名称行左侧、竖线隐藏），
+   免去 36px 预留，让用户与助手气泡都能占满可用宽度。
+   ============================================ */
+@media (max-width: 1024px) {
+    .message-area-panel {
+        --msg-rail-reserve: 0px;
+    }
+
+    .message-area-row.assistant {
+        position: relative;
+        width: 100%;
+    }
+
+    /* 头像脱离文档流，浮在名称行左侧，不再挤压气泡 */
+    .react-rail {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: auto;
+        align-self: auto;
+    }
+
+    .react-line {
+        display: none;
+    }
+
+    /* 名称时间让开浮起的头像 */
+    .message-area-row.assistant .message-header-row {
+        padding-left: 30px;
+    }
+}
+
+/* ============================================
    移动端适配
    ============================================ */
 @media (max-width: 768px) {
@@ -812,6 +855,7 @@
 
     .message-area-row.assistant .message-header-row {
         min-height: 24px;
+        padding-left: 26px;
     }
 
     .message-avatar-top {
