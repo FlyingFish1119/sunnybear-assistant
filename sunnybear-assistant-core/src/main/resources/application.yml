@@ -2,6 +2,8 @@
   port: 11451
 
 spring:
+  profiles:
+    active: remote
   application:
     name: assistant
   datasource:
@@ -66,9 +68,17 @@ engine:
       dir: tool-extension/
     mcp:
       clients:
-        - url: https://mcp.context7.com/mcp
+        # transport: http —— Streamable HTTP 远端服务；transport: stdio —— 本地子进程
+        - transport: http
+          url: https://mcp.context7.com/mcp
           server-name: Context7 v4.0.3
           timeout-s: 30
+        - transport: stdio
+          command: uvx
+          args:
+            - blender-mcp
+          server-name: Blender Mcp
+          timeout-s: 50
   chat:
     idle-timeout-s: 45
     connection-timeout-s: 30
