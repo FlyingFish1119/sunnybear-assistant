@@ -69,13 +69,23 @@ const SendArea = {
             @drag-over-change="isChange => $emit('drag-over-change', isChange)">
         </file-upload>
         <div class="send-area-composer">
-            <!-- 看板熊彩蛋：趴在输入卡右上沿（样式见 components/send-area/send-area.css）。
+            <!-- 看板熊彩蛋：坐在输入卡右上沿（位置/尺寸见 components/send-area/send-area.css，
+                 分层与动效见 components/send-area/mascot-live.js）。
                  连按 10 次 b 键召唤/送走，显隐状态记入 localStorage，刷新后保持。
-                 img 的 width 属性仅作 CSS 未加载时的兜底 -->
-            <div class="send-area-mascot" aria-hidden="true"
+                 .mascot-stage 里的分层由 SunnyBearMascot.create() 按几何数据生成，
+                 素材：icon/signboard_bear/live/（由 PSD 分层导出） -->
+            <div class="send-area-mascot"
                  :class="{ 'mascot-visible': mascotVisible }">
-                <img class="mascot-body" src="icon/signboard_bear/signboard_bear_2.png" alt="" width="100">
-                <img class="mascot-paws" src="icon/signboard_bear/signboard_bear_1.png" alt="" width="100">
+                <div class="mascot-holder">
+                    <div class="mascot-stage" ref="mascotStage" role="button" title="点阳阳一下"
+                         @click="onMascotClick"></div>
+                    <!-- 点一下熊冒出来的问候语气泡：文案取 GET greeting/random，几秒后自动收起 -->
+                    <transition name="mascot-bubble">
+                        <div v-if="mascotBubble" class="mascot-bubble" :style="{ '--main-color': mainColor }">
+                            {{ mascotBubble }}
+                        </div>
+                    </transition>
+                </div>
             </div>
             <div class="send-area-main">
                 <auto-resize-textarea
@@ -157,6 +167,8 @@ const SendArea = {
             ttsPlaying: false,
             // 看板熊彩蛋（连按 10 次 b 切换）显隐：状态持久化到 localStorage
             mascotVisible: localStorage.getItem('assistant-mascot-visible') === '1',
+            // 看板熊被点击后冒出的问候语气泡（空串 = 不显示）
+            mascotBubble: '',
             // 斜杠指令候选
             commandActiveIndex: 0,
             commandSubMode: null,      // null | 'sessions'  — 二级面板模式
@@ -219,6 +231,14 @@ const SendArea = {
     },
 
     mounted: function () {
+        // 看板熊 live：按几何数据搭出分层，并按当前显隐状态决定是否立刻开跑动效
+        this._mascotLive = (window.SunnyBearMascot && this.$refs.mascotStage)
+            ? window.SunnyBearMascot.create(this.$refs.mascotStage)
+            : null;
+        if (this._mascotLive && this.mascotVisible) {
+            this._mascotLive.start();
+        }
+
         // 看板熊彩蛋：连按 10 次 b → 召唤/送走（中间按了别的键就打断重计；长按连发不计）
         var self = this;
         this._mascotBKeyCount = 0;
@@ -253,9 +273,23 @@ const SendArea = {
         }
     },
 
+    watch: {
+        // 显隐切换时启停动效循环：藏起来就别空转，省 CPU
+        mascotVisible: function (val) {
+            if (!this._mascotLive) return;
+            if (val) {
+                this._mascotLive.start();
+            } else {
+                this._mascotLive.stop();
+            }
+        }
+    },
+
     beforeUnmount: function () {
         window.removeEventListener('keydown', this._onKeydown);
         if (this._unsubFill) { this._unsubFill(); this._unsubFill = null; }
+        if (this._mascotLive) { this._mascotLive.destroy(); this._mascotLive = null; }
+        clearTimeout(this._mascotBubbleTimer);
         clearTimeout(this._mascotPressTimer);
         if (this._ttsAudio) {
             this._ttsAudio.pause();
@@ -325,6 +359,36 @@ const SendArea = {
         toggleMascot: function () {
             this.mascotVisible = !this.mascotVisible;
             localStorage.setItem('assistant-mascot-visible', this.mascotVisible ? '1' : '0');
+        },
+
+        /**
+         * 点一下看板熊：随机取一条问候语冒气泡，几秒后自动收起。
+         * 文案直接复用新对话页那套接口（GET greeting/random），不另造一套话术；
+         * 接口失败或没数据时退回一句兜底，绝不弹空气泡。
+         */
+        onMascotClick: function () {
+            var self = this;
+            var BUBBLE_MS = 5000;
+            var FALLBACK = '老爸，阳阳在这儿呢～';
+
+            var show = function (text) {
+                self.mascotBubble = text || FALLBACK;
+                clearTimeout(self._mascotBubbleTimer);
+                self._mascotBubbleTimer = setTimeout(function () {
+                    self.mascotBubble = '';
+                }, BUBBLE_MS);
+            };
+
+            if (typeof API !== 'undefined' && API.greeting && API.greeting.random) {
+                API.greeting.random().then(function (result) {
+                    var text = (result && result.status === 200 && result.data) ? result.data.text : '';
+                    show(text);
+                }).catch(function () {
+                    show('');
+                });
+            } else {
+                show('');
+            }
         },
 
         /* ========== 键盘 / 指令面板 ========== */

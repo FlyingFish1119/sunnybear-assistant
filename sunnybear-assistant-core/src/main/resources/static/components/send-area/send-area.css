@@ -243,64 +243,90 @@
 .file-chip-add:hover { border-color: var(--main-color); color: var(--main-color); background: rgba(0,0,0,0.03); }
 
 /* ============================================
-   看板熊：趴在输入卡右上沿的装饰（icon/signboard_bear_2.png + icon/signboard_bear_1.png）
-   两张图从同一原图等比切出，等宽显示即可无缝拼上。
-   切割线 = 输入卡(.send-area-composer)顶边：
-     · 熊身 垫在卡片后面，从切割线向上探出  z:0
-     · 爪爪 搭在切割线上，垂在卡片前面        z:3
-   ⚠ .send-area-mascot 自身不要设 z-index / opacity / transform：
-     这些都会创建堆叠上下文，把整只熊关进一层，
-     爪爪(z:3)将永远盖不住输入卡控件(z:1)——下半截会消失。
-     彩蛋的显隐动画只能做在两张 img 上（见 .mascot-body/.mascot-paws 共用规则）
+   看板熊（live 版）：PSD 分层 + JS 拟态动效
+   ------------------------------------------------------------
+   素材：icon/signboard_bear/live/（从 PSD 分层导出，几何见 bear-geometry.js）
+   动效：呼吸 / 眨眼 / 眼仁跟随鼠标 / 耳朵抽动 / 刘海飘动 / 头部微转 + 上身轻摆
+         （逻辑在 components/send-area/mascot-live.js）
+   位置：坐在输入卡(.send-area-composer)右上沿，宽度 = 输入卡宽度的 1/4
+   彩蛋唤起方式不变：桌面连按 b×10、移动端长按发送键 3s
    ============================================ */
 .send-area-mascot {
-    /* 熊中心对准右侧发送竖块中心：竖块宽 64px，中心距右边 32px */
-    --cx: calc(100% - 32px);
     position: absolute;
     inset: 0;
+    /* 熊整体下沉量（相对自身高度）—— 这是唯一需要调的旋钮：
+       素材底部不是平的：腰部那条被桌面切断的边比最低的拳头高约 3.8%（原图 29px），
+       所以前 3.8% 只是把腰线压到卡片顶边、刚好抹平；
+       剩下的是"再往下压"的部分，用来让熊真的趴在卡片上、呼吸起伏也绝不露缝。
+       8% 偏保守（腰线只压进去 4%），13% 是"明显趴住"的手感，
+       15% 比 13% 再多压约 3~4px（桌面端换算），更稳。 */
+    --mascot-sink: 15%;
+    /* 层级：整只熊必须压在输入卡里那些 z-index:1 的控件之上。
+       ⚠ index.html 除了本文件还引入了插件页用的 css/send-area.css，
+       那份里也有 .send-area-mascot 规则（旧的两图拼接方案留下的），
+       这里把会影响层叠的属性全部显式覆盖掉，
+       否则熊会被关进低层，露出卡片外的脑袋没事、进到卡片区域的身体被控件盖没 */
+    z-index: 30;
+    opacity: 1;
+    transform: none;
+    overflow: visible;
     pointer-events: none; /* 纯装饰，绝不拦截输入框/按钮的点击 */
 }
 
-/* 熊身、爪爪同一宽度，等宽即无缝拼上。
-   彩蛋默认隐藏：透明 + 整体悬在卡片上方的待命位；
-   连按 10 次 b 加 .mascot-visible 落下趴好，再按 10 次抬升离开。
-   translateX(-50%) 是对齐中心的，显隐位移并进同一个 transform */
-.send-area-mascot .mascot-body,
-.send-area-mascot .mascot-paws {
+/* 显隐层：只负责"落下来 / 抬起来"这段过渡。
+   呼吸那种每帧都在改的 transform 写在 .mascot-stage 上，
+   两层分开，过渡动画和逐帧动画才不会互相覆盖 */
+.mascot-holder {
     position: absolute;
-    left: var(--cx);
-    width: 44px;
-    opacity: 0;
-    transform: translate(-50%, -80px);
-    transition: opacity 0.5s ease, transform 0.5s ease;
-}
-
-/* 召唤态：从上方落下，落在切割线上时轻轻回弹一下趴稳 */
-.send-area-mascot.mascot-visible .mascot-body,
-.send-area-mascot.mascot-visible .mascot-paws {
-    opacity: 1;
-    transform: translate(-50%, 0);
-    animation: mascot-drop-in 0.7s ease-out;
-}
-
-@keyframes mascot-drop-in {
-    0%   { opacity: 0; transform: translate(-50%, -80px); }
-    50%  { opacity: 1; transform: translate(-50%, 0); }
-    66%  { transform: translate(-50%, -9px); }
-    80%  { transform: translate(-50%, 0); }
-    100% { opacity: 1; transform: translate(-50%, 0); }
-}
-
-/* 熊身：垫在卡片后面，底边贴切割线从上面探出 */
-.send-area-mascot .mascot-body {
+    /* 离卡片右边留一点空，不贴着边缘（想更靠里就加大这个值；相对卡片宽度算） */
+    right: 3%;
     bottom: 100%;
-    z-index: 0;
+    width: 25%;    /* 宽度 = 输入卡宽度的 1/4：卡片变宽熊跟着变大，不用另调尺寸 */
+    z-index: 6;    /* 盖过消息区；熊整体在卡片之外，不参与卡片内容控件那套层叠 */
+    opacity: 0;
+    transform: translateY(-70px);
+    /* 末尾的过冲（y = 1.1）就是"落下来弹一下"的手感 */
+    transition: opacity 0.45s ease, transform 0.55s cubic-bezier(0.2, 1.1, 0.35, 1);
 }
 
-/* 爪爪：搭在切割线上，垂在卡片前面 */
-.send-area-mascot .mascot-paws {
-    top: 0;
-    z-index: 3;
+/* 召唤态：从上方落下来坐好。
+   落脚点 = 往下压 --mascot-sink（默认 8%）：先让腰部那条切边贴住卡片顶边，
+   再多压出去的作为呼吸余量，起伏时手掌和腰都不会和卡片之间露缝 */
+.send-area-mascot.mascot-visible .mascot-holder {
+    opacity: 1;
+    transform: translateY(var(--mascot-sink, 8%));
+}
+
+/* 舞台：宽高比锁定成素材内容比 1008×768（与 bear-geometry.js 的 contentSize 一致）。
+   用 padding-bottom 撑高度而不是 aspect-ratio，兼容性更稳 */
+.mascot-stage {
+    position: relative;
+    width: 100%;
+    height: 0;
+    padding-bottom: 76.1905%;    /* 768 / 1008 */
+    transform-origin: 50% 100%;  /* 呼吸从"坐着"的底部起，看起来才像在起伏 */
+    will-change: transform;
+}
+
+/* 身体组 / 头部组 / 眼睛组：都铺满舞台，内部的层用百分比绝对定位。
+   组只负责旋转、平移，不参与布局 —— 头部微转、上身轻摆、眨眼都作用在组上 */
+.mascot-group {
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+}
+
+/* 单层：位置尺寸全部来自 bear-geometry.js 的百分比几何，缩放天然自适应 */
+.mascot-layer {
+    position: absolute;
+    display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+    /* 点熊冒问候语：只有实际图层接住点击，组和空白区域都不拦。
+       ⚠ 熊下半身压进输入卡的那一小块也会接住点击 —— 视觉上它就是趴在卡片上，
+       点那里等于点熊，反馈只是冒个气泡，不会误触发别的操作 */
+    pointer-events: auto;
+    cursor: pointer;
 }
 
 /* 输入卡内的控件垫到熊身之上（爪爪 z:3 仍盖在最前） */
@@ -311,6 +337,55 @@
 .send-area-submit-button {
     position: relative;
     z-index: 1;
+}
+
+/* ============================================
+   看板熊的问候语气泡（点一下熊冒出来，几秒后自动收起）
+   文案取 GET greeting/random，与新对话页那句同一套话术；
+   样式沿用「问候语横幅」的语言：白 → 主色浅渐变 + 左侧主色条 + 圆角
+   ============================================ */
+.mascot-bubble {
+    position: absolute;
+    right: calc(100% + 10px);   /* 挂在熊的左边，不往屏幕右边顶 */
+    bottom: 58%;                /* 对着头部/脖子高度 */
+    /* ⚠ 绝对定位元素不写宽度时，宽度按「包含块宽度 − left − right」收缩，
+       而这里的 right 已经超过包含块宽度了，算出来是负的可用宽度 →
+       文字会被压成一条竖排细条。所以必须显式给宽度：按内容撑开、再由 max-width 截断换行 */
+    width: max-content;
+    max-width: min(280px, 46vw);
+    padding: 12px 16px;
+    border-radius: 14px;
+    border-left: 6px solid var(--main-color, lightsalmon);
+    background: linear-gradient(135deg, #fff 0%, color-mix(in srgb, var(--main-color, lightsalmon) 12%, white) 100%);
+    color: #555;
+    font-size: var(--text-sm, 13px);
+    line-height: 1.65;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.10);
+    pointer-events: none;       /* 气泡本身不吃点击，不挡住底下的东西 */
+}
+
+/* 气泡小尾巴，朝右指向熊 */
+.mascot-bubble::after {
+    content: '';
+    position: absolute;
+    right: -7px;
+    bottom: 16px;
+    width: 0;
+    height: 0;
+    border: 8px solid transparent;
+    border-right: 0;
+    border-left-color: #fff;
+}
+
+/* 淡入淡出（Vue transition） */
+.mascot-bubble-enter-active,
+.mascot-bubble-leave-active {
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.mascot-bubble-enter-from,
+.mascot-bubble-leave-to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
 }
 
 /* ============================================
@@ -354,13 +429,5 @@
         display: none;
     }
 
-    /* 熊中心：竖块宽 52px，中心距右边 26px */
-    .send-area-mascot {
-        --cx: calc(100% - 26px);
-    }
-
-    .send-area-mascot .mascot-body,
-    .send-area-mascot .mascot-paws {
-        width: 38px;
-    }
+    /* 看板熊：小屏保持 1/4 卡宽（卡片本身就只有 92% 屏宽），不再单独缩尺寸 */
 }
