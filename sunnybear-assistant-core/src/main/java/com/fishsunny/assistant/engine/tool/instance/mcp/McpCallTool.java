@@ -2,7 +2,8 @@ package com.fishsunny.assistant.engine.tool.instance.mcp;
 
 /*
  * @Usage 调用指定 MCP Server 上的远程工具，入参以 JSON 对象透传给 server，
- *        执行失败（isError=true）时通过 ToolExecuteException 上报错误详情
+ *        执行失败（isError=true）时通过 ToolExecuteException 上报错误详情。
+ *        文本内容作为结果文本返回；图片内容以多模态 content 数组交给上层模型直接查看。
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
@@ -11,8 +12,12 @@ package com.fishsunny.assistant.engine.tool.instance.mcp;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.constants.ContentTypeVariable;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.McpToolKit;
@@ -23,12 +28,14 @@ import lombok.Data;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @ToolKitComponent(McpToolKit.class)
 @ConditionalOnExpression("${engine.tool.mcp.enable:true} && ${engine.tool.mcp.call.enable:true}")
-public class McpCallTool implements ToolHandler {
+public class McpCallTool implements ToolHandler, MultimodalResultAble {
 
     public static final String NAME = "mcp_call_tool";
 
@@ -46,7 +53,8 @@ public class McpCallTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("调用指定 MCP Server 上的远程工具。" +
-                        "建议先用 mcp_list_tool 查询目标 server 的可用工具及入参 Schema。")
+                        "建议先用 mcp_list_tool 查询目标 server 的可用工具及入参 Schema。" +
+                        "工具返回的图片会以多模态内容直接提供给你查看。")
                 .setRequired(List.of("serverName", "toolName"))
                 .setTimeoutMs(TIMEOUT_MS);
 
@@ -68,7 +76,12 @@ public class McpCallTool implements ToolHandler {
         register.setParameters(List.of(serverNameParam, toolNameParam, argumentsParam));
     }
 
+    /**
+     * 需要 chatSession 上下文：图片等二进制结果由 ToolExecutor 统一落盘到会话文件目录，
+     * 落盘依赖 context 中的当前会话，缺失会直接失败。
+     */
     @Override
+    @ToolIncludeContext(key = "chatSession", type = ChatSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         Arguments arguments = parseArguments(argumentsJson);
 
@@ -82,12 +95,72 @@ public class McpCallTool implements ToolHandler {
                     "调用 MCP Server [" + arguments.getServerName() + "] 的工具 [" + arguments.getToolName() + "] 失败: " + e.getMessage());
         }
 
-        String content = extractContent(result);
+        StringBuilder text = new StringBuilder();
+        List<McpContentItem> images = new ArrayList<>();
+        collectContent(result, text, images);
+
+        String resultText = text.length() == 0 ? "(工具无文本返回)" : text.toString();
+
         if (Boolean.TRUE.equals(result.isError())) {
             throw new ToolExecutor.ToolExecuteException(
-                    "MCP 工具 [" + arguments.getToolName() + "] 执行失败: " + content);
+                    "MCP 工具 [" + arguments.getToolName() + "] 执行失败: " + resultText);
         }
-        return new ToolExecutor.ToolExecuteResponse(name(), StringUtils.hasText(content) ? content : "(工具无文本返回)");
+
+        ToolExecutor.ToolExecuteResponse response = new ToolExecutor.ToolExecuteResponse(name(), resultText);
+        for (McpContentItem image : images) {
+            String fileName = UUID.randomUUID() + "." + imageSuffix(image.mimeType());
+            response.modalContent(fileName, ContentTypeVariable.IMAGE, image.data().trim());
+        }
+        return response;
+    }
+
+    /** 拆分 MCP 返回的 content 数组：文本拼成结果文本，图片收集起来待落盘回传 */
+    private void collectContent(McpCallResult result, StringBuilder text, List<McpContentItem> images) {
+        if (result.content() == null) {
+            return;
+        }
+        for (McpContentItem item : result.content()) {
+            if ("text".equals(item.type()) && StringUtils.hasText(item.text())) {
+                appendLine(text, item.text());
+            } else if (isImage(item)) {
+                images.add(item);
+                appendLine(text, "[图片已附带，可直接查看]");
+            } else {
+                appendLine(text, "[非文本内容: " + (item.type() == null ? "?" : item.type()) + "]");
+            }
+        }
+    }
+
+    private boolean isImage(McpContentItem item) {
+        return "image".equals(item.type()) && StringUtils.hasText(item.data());
+    }
+
+    /** mimeType 映射为文件后缀；MCP 常见取值为 image/png、image/jpeg，缺省按 png 处理 */
+    private String imageSuffix(String mimeType) {
+        if (!StringUtils.hasText(mimeType)) {
+            return "png";
+        }
+        String lower = mimeType.toLowerCase();
+        if (lower.contains("jpeg") || lower.contains("jpg")) {
+            return "jpg";
+        }
+        if (lower.contains("gif")) {
+            return "gif";
+        }
+        if (lower.contains("webp")) {
+            return "webp";
+        }
+        if (lower.contains("bmp")) {
+            return "bmp";
+        }
+        return "png";
+    }
+
+    private void appendLine(StringBuilder text, String line) {
+        if (text.length() > 0) {
+            text.append("\n");
+        }
+        text.append(line);
     }
 
     /**
@@ -110,25 +183,6 @@ public class McpCallTool implements ToolHandler {
             }
         }
         throw new ToolExecutor.ToolExecuteException("参数 arguments 应为 JSON 对象，例如 {\"query\":\"天气\"}");
-    }
-
-    /** 拼接工具返回的多段 content；仅提取文本，其余类型以 type 占位标注 */
-    private String extractContent(McpCallResult result) {
-        if (result.content() == null || result.content().isEmpty()) {
-            return "";
-        }
-        StringBuilder content = new StringBuilder();
-        for (McpContentItem item : result.content()) {
-            if (content.length() > 0) {
-                content.append("\n");
-            }
-            if ("text".equals(item.type()) && StringUtils.hasText(item.text())) {
-                content.append(item.text());
-            } else {
-                content.append("[非文本内容: ").append(item.type() == null ? "?" : item.type()).append("]");
-            }
-        }
-        return content.toString();
     }
 
     private Arguments parseArguments(String argumentsJson) throws ToolExecutor.ToolExecuteException {
