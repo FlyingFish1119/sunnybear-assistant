@@ -3,6 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content, viewport-fit=cover">
+
+    <!-- ============================================================
+         加载态：铃铛 + 光。零外部依赖，必须放在 head 最前面。
+         为什么在这儿：head 后面那批同步脚本（element-plus / vue / mermaid …）
+         加起来 5MB 出头，会把 HTML 解析堵住好几秒。在它们之前如果不先把
+         背景和骨架定下来，用户看到的就是一片死白。
+         · html 自己铺暖光底 → 脚本下载期间就有东西看
+         · body 解析出 #in-loading 后 → 铃铛和涟漪接上
+         颜色全部从 --main-color 派生，主色由紧随其后的内联脚本从
+         localStorage 读出，和页面主题保持一致。
+         ★ 可调参数集中在 :root 最末几行。
+         ============================================================ -->
+    <style>
+        :root{
+            --main-color: lightsalmon;        /* 兜底值，稍后由内联脚本覆盖为缓存主色 */
+
+            /* 底色：主色混出的暖白，中心亮、四周淡 */
+            --inl-tint-a: color-mix(in srgb, var(--main-color) 15%, #FFFFFF);
+            --inl-tint-b: color-mix(in srgb, var(--main-color) 5%,  #FFFDFB);
+            --inl-tint-c: #FFFCFA;
+
+            /* 柔光与涟漪 */
+            --inl-glow: color-mix(in srgb, var(--main-color) 38%, transparent);
+            --inl-ring: color-mix(in srgb, var(--main-color) 52%, transparent);
+
+            /* 铃铛：主色可能很浅（lightsalmon 就是），压一点深棕才立得住 */
+            --inl-mark:    color-mix(in srgb, var(--main-color) 84%, #43332B);
+            --inl-mark-sh: color-mix(in srgb, var(--main-color) 38%, transparent);
+
+            /* ---- 可调参数 ---- */
+            --inl-beat: 2.4s;                     /* 统一呼吸周期：光 / 铃铛 / 涟漪共用一个节拍 */
+            --inl-halo-size: min(56vmin, 460px);  /* 柔光与涟漪的直径 */
+            --inl-mark-size: min(20vmin, 112px);  /* 铃铛宽度 */
+        }
+
+        /* 兜底底色挂在 html 上：head 里的同步脚本还没下完、body 还没解析时，
+           用户看到的就是这一层暖光，而不是白屏。 */
+        html{
+            height: 100%;
+            background: radial-gradient(circle at 50% 46%,
+                        var(--inl-tint-a) 0%, var(--inl-tint-b) 32%, var(--inl-tint-c) 64%) #FFFCFA;
+        }
+
+        #in-loading{
+            position: fixed;
+            inset: 0;
+            z-index: 9999;              /* 必须压过 #app —— 它也是 fixed，且在 DOM 里更靠后 */
+            transition: opacity .28s ease;
+        }
+        #in-loading .inl-stage{
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            padding-bottom: 6vh;        /* 内容整体抬高，让视觉中心和光源对齐 */
+            overflow: hidden;
+            animation: inl-stage-in .24s ease-out both;
+        }
+        #in-loading .inl-stage > *{ grid-area: 1 / 1; }
+
+        /* ---- 1. 柔光：整个画面的光源 ---- */
+        #in-loading .inl-halo{
+            width: var(--inl-halo-size);
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: radial-gradient(circle, var(--inl-glow) 0%, transparent 60%);
+            animation: inl-halo-breathe var(--inl-beat) ease-in-out infinite;
+        }
+
+        /* ---- 2. 涟漪：从中心极小的点荡开，一路淡出去 ----
+           两个坑记在这儿，别再踩：
+           a) 起点 scale 必须够小，否则第一帧就是个凭空出现的大圈；
+           b) 环带宽度是跟着 transform:scale 一起放大的 ——
+              色标拉太宽（比如 70%~100%）时，扩散后期环带能粗到 130px+，变成大胖圈。
+              所以色标收到 86%、扩散上限压到 .58，让它在小范围里荡。
+           （实际最大直径 = 460px × .58 ≈ 267px，环带约占半径的 14%） */
+        #in-loading .inl-ring{
+            width: var(--inl-halo-size);
+            aspect-ratio: 1;
+            border-radius: 50%;
+            background: radial-gradient(closest-side,
+                        transparent 86%,
+                        var(--inl-ring) 95%,
+                        transparent 100%);
+            /* backwards 是关键，别删：r2 要延迟半个周期才起跑，没有它的话，
+               延迟期间元素会脱掉动画效果「裸奔」—— opacity:1、未缩放，
+               就是一个 460px 的完整大圆凭空杵在那儿，然后突然开始播动画缩小消失。 */
+            opacity: 0;
+            animation: inl-ripple var(--inl-beat) linear infinite backwards;
+        }
+        #in-loading .inl-r2{ animation-delay: calc(var(--inl-beat) / 2); }
+
+        /* ---- 3. 铃铛 ---- */
+        #in-loading .inl-core{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #in-loading .inl-mark{
+            width: var(--inl-mark-size);
+            height: auto;
+            fill: var(--inl-mark);
+            filter: drop-shadow(0 8px 20px var(--inl-mark-sh));
+            animation: inl-mark-in .34s cubic-bezier(.34,1.4,.5,1) both,
+                       inl-mark-breathe var(--inl-beat) ease-in-out .34s infinite;
+        }
+
+        @keyframes inl-stage-in{
+            from{ opacity: 0; }
+            to  { opacity: 1; }
+        }
+        @keyframes inl-halo-breathe{
+            0%, 100%{ opacity: .62; transform: scale(1); }
+            50%     { opacity: 1;   transform: scale(1.05); }
+        }
+        @keyframes inl-ripple{
+            0%  { transform: scale(.05); opacity: 0; }
+            10% { opacity: .5; }
+            48% { opacity: 0; }
+            100%{ transform: scale(.58); opacity: 0; }
+        }
+        @keyframes inl-mark-in{
+            from{ opacity: 0; transform: scale(.86); }
+            to  { opacity: 1; transform: scale(1); }
+        }
+        @keyframes inl-mark-breathe{
+            0%, 100%{ transform: scale(1); }
+            50%     { transform: scale(1.035); }
+        }
+
+        /* 系统开了「减少动态效果」→ 只留静态画面 */
+        @media (prefers-reduced-motion: reduce){
+            #in-loading .inl-stage{ animation: none; }
+            #in-loading .inl-halo,
+            #in-loading .inl-mark{ animation: none !important; opacity: 1; }
+            #in-loading .inl-ring{ display: none; }
+        }
+    </style>
+    <script>
+        /* 把缓存主色提到 --main-color 上，越早越好：加载态的背景、柔光、铃铛
+           全都从它派生，晚了就会先闪一下默认色。
+           必须写在这儿 —— 再往后放就失效了：theme-color.js 只在
+           「--main-color 还没有值」时才去读缓存，而上一段 :root 已经给了
+           兜底值 lightsalmon，它会以为已经有人管了，直接跳过。 */
+        (function () {
+            try {
+                var c = localStorage.getItem('assistant-mainColor');
+                if (c) document.documentElement.style.setProperty('--main-color', c);
+            } catch (e) {}
+        })();
+    </script>
+
     <title>SunnyBear 助手</title>
     <link rel="icon" type="image/png" href="icon/icon.png">
     <!-- PWA：独立窗口 / 添加到主屏幕 -->
@@ -20,6 +172,8 @@
     <script src="lib/vue.global.prod.js"></script>
     <!-- Element Plus 组件库 -->
     <script src="lib/element-plus.full.min.js"></script>
+    <!-- 轻提示：接管 ElMessage（右上角信息卡式） -->
+    <script src="components/toast/toast.js"></script>
     <!-- lucide 图标 -->
     <script src="lib/lucide.min.js"></script>
     <script src="utils/lucide-safe.js"></script>
@@ -82,6 +236,28 @@
 </head>
 <body>
 <div id="in-loading">
+    <div class="inl-stage">
+        <div class="inl-halo"></div>
+        <div class="inl-ring inl-r1"></div>
+        <div class="inl-ring inl-r2"></div>
+
+        <div class="inl-core">
+            <!-- 看板熊脖子上的那只圆铃铛（不是服务铃那种钟形）：
+                 正圆铃身 + 中间一道腰缝 + 底部钥匙孔形发声口 + 顶部椭圆吊耳，全部 evenodd 挖空。
+                 拆成两个 path 是有原因的：evenodd 下同一 path 内子路径重叠处会被挖空，
+                 而吊耳本来就要压在铃身上、故意重叠，所以必须分开画。 -->
+            <svg class="inl-mark" viewBox="0 0 120 120" aria-hidden="true">
+                <g transform="rotate(-10 60 60)">
+                    <!-- 铃身：正圆挖掉腰缝与底部发声口。
+                         发声口的槽必须收在球体内部（槽底 y=107，球底 y=108），
+                         写到 118 的话多出的那截会戳出球外，像球上插了根棍子。 -->
+                    <path fill-rule="evenodd" d="M60 24a42 42 0 1 1 0 84a42 42 0 1 1 0-84ZM18 66h84v4H18ZM55 107V88a5 5 0 1 1 10 0v19Z"/>
+                    <!-- 顶部吊耳：椭圆环 -->
+                    <path fill-rule="evenodd" d="M60 6a11 12 0 1 1 0 24a11 12 0 1 1 0-24ZM60 12.5a5 5.5 0 1 1 0 11a5 5.5 0 1 1 0-11Z"/>
+                </g>
+            </svg>
+        </div>
+    </div>
 </div>
 <div id="app">
     <chat-sidebar
@@ -173,11 +349,19 @@
 
             inLoading() {
                 document.getElementById("app").style.display = "none";
-                document.getElementById("in-loading").style.display = "block";
+                var loadingEl = document.getElementById("in-loading");
+                loadingEl.style.display = "block";
+                loadingEl.style.opacity = "1";          // 复位，供二次进入加载态
+                loadingEl.style.pointerEvents = "";     // 同上
             },
 
             outLoading() {
-                document.getElementById("in-loading").style.display = "none";
+                // 加载态淡出，同时 #app 从 50dvw 向外展开 —— 两边交叉着走，
+                // 中间不会闪出一帧空白。（淡出时长写在内联样式的 transition 里）
+                var loadingEl = document.getElementById("in-loading");
+                loadingEl.style.opacity = "0";
+                loadingEl.style.pointerEvents = "none";
+                setTimeout(function () { loadingEl.style.display = "none"; }, 300);
                 let appStyle = document.getElementById("app").style;
                 appStyle.transition = "all 0.5s ease";
                 appStyle.opacity = "0";
@@ -197,8 +381,11 @@
 
             async init() {
                 this.inLoading();
-                await this.fetchUserSettings();
-                await this.fetchAssistantSettings();
+                // 两个请求互不依赖，并行发；串行等于白等一个来回
+                await Promise.all([
+                    this.fetchUserSettings(),
+                    this.fetchAssistantSettings()
+                ]);
                 this.outLoading();
             },
 

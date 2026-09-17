@@ -1076,11 +1076,14 @@
     margin: 0 0 2px var(--msg-rail-reserve, 36px);
     padding: 8px 12px;
     border-radius: 10px;
-    border: 1px solid color-mix(in srgb, var(--main-color) 22%, transparent);
-    background: color-mix(in srgb, var(--main-color) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--main-color) 30%, transparent);
+    /* 实底（不透明）：聊天背景图 + 半透明底会让这行字糊成一团，视线抓不住；
+       透明度只用来稀释主题色染色，不再让背景透上来 */
+    background: color-mix(in srgb, var(--main-color) 12%, #fff);
     font-size: var(--text-sm, 12px);
     line-height: 1.5;
-    color: var(--text-muted, #909399);
+    color: var(--text-secondary, #606266);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     animation: ctx-compress-in 0.25s ease;
 }
 

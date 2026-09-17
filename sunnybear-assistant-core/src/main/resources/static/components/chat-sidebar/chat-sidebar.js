@@ -37,24 +37,27 @@ const ChatSidebar = {
         </button>
         <div class="sidebar-session-list"
              ref="sessionList"
+             :class="{ 'sb-sess-leave': listLeaving, 'sb-sess-enter': listEntering }"
              v-infinite-scroll="loadMore">
-            <div v-if="sessions.length === 0" class="sidebar-empty">暂无对话</div>
-            <template v-for="group in sessionGroups" :key="group.key">
-                <div class="sidebar-session-divider">
-                    <span class="sidebar-session-divider-label">{{ group.label }}</span>
-                </div>
-                <div class="sidebar-session-item"
-                     v-for="session in group.sessions"
-                     :key="session.id"
-                     :class="{ pro: session.enablePro, unreviewed: session.unreviewed, active: currentSession.id === session.id, disabled: sessionSelectLoading }"
-                     @click="selectSession(session)"
-                     @contextmenu.prevent="showContextMenu($event, session)">
-                    <span class="sidebar-session-name">{{ session.name }}</span>
-                    <span v-if="sessionTokenTotal(session) != null"
+            <!-- 切换模式期间不显示空态：否则 store 清空的那一瞬间会闪一下「暂无对话」 -->
+            <div v-if="sessions.length === 0 && !listSwitching" class="sidebar-empty">暂无对话</div>
+            <!-- 分组已拍平成一维行数组，每个元素带着全局序号 --sb-i，用于连续错峰 -->
+            <div v-for="row in sessionRows"
+                 :key="row.key"
+                 :style="{ '--sb-i': row.i }"
+                 :class="row.kind === 'divider'
+                     ? 'sidebar-session-divider'
+                     : ['sidebar-session-item', { pro: row.session.enablePro, unreviewed: row.session.unreviewed, active: currentSession.id === row.session.id, disabled: sessionSelectLoading || listSwitching }]"
+                 @click="row.kind === 'item' && selectSession(row.session)"
+                 @contextmenu.prevent="row.kind === 'item' && showContextMenu($event, row.session)">
+                <span v-if="row.kind === 'divider'" class="sidebar-session-divider-label">{{ row.label }}</span>
+                <template v-else>
+                    <span class="sidebar-session-name">{{ row.session.name }}</span>
+                    <span v-if="sessionTokenTotal(row.session) != null"
                           class="sidebar-session-tokens"
-                          title="本会话累计 token 消耗">{{ formatTokens(sessionTokenTotal(session)) }}</span>
-                </div>
-            </template>
+                          title="本会话累计 token 消耗">{{ formatTokens(sessionTokenTotal(row.session)) }}</span>
+                </template>
+            </div>
             <div v-if="sessionsLoadingMore" class="sidebar-loading-more">加载中…</div>
         </div>
         <!-- 右键上下文菜单 -->
@@ -162,6 +165,18 @@ const ChatSidebar = {
     data: function () {
         return {
             sidebarOpen: false,
+            /** 列表模式切换进行中：既用来锁住连点，也用来抑制瞬间的空态闪现 */
+            listSwitching: false,
+            /** 旧列表正在逐条退场 */
+            listLeaving: false,
+            /** 新列表正在逐条进场 */
+            listEntering: false,
+            /**
+             * 切换过程中的模式预览值。store 里「切模式」和「清空重拉」是绑死的，
+             * 而我们要等退场动画播完再换数据；不加这层覆盖，点下去图标要等 250ms
+             * 才高亮，手感像没反应。
+             */
+            pendingListMode: null,
             contextMenu: {
                 visible: false,
                 x: 0,
@@ -202,6 +217,9 @@ const ChatSidebar = {
             window.removeEventListener('keydown', this._onGlobalKeydown);
             this._onGlobalKeydown = null;
         }
+        clearTimeout(this._leaveTimer);
+        clearTimeout(this._enterTimer);
+        clearTimeout(this._unlockTimer);
         if (this._unsubSidebarToggle) { this._unsubSidebarToggle(); this._unsubSidebarToggle = null; }
         if (this._unsubSidebarClose) { this._unsubSidebarClose(); this._unsubSidebarClose = null; }
     },
@@ -241,9 +259,9 @@ const ChatSidebar = {
             window.location.href = API.BASE_PATH + 'router.html';
         },
 
-        /** 点击会话：切换当前会话（委托 store；加载中直接忽略） */
+        /** 点击会话：切换当前会话（委托 store；加载中或切换模式动画期间直接忽略） */
         selectSession: function (session) {
-            if (this.sessionSelectLoading) return;
+            if (this.sessionSelectLoading || this.listSwitching) return;
             if (this.sessionStore) this.sessionStore.selectSession(session);
         },
 
@@ -253,9 +271,58 @@ const ChatSidebar = {
             if (this.sessionStore) this.sessionStore.createSession();
         },
 
-        /** 切换列表模式：chat ↔ cron（委托 store） */
+        /**
+         * 切换列表模式：chat ↔ cron（委托 store）。
+         *
+         * store 里的实现是「立刻清空 sessions + 重新拉取」，如果直接调，旧条目会被
+         * 瞬间抹掉，退场动画根本没机会播。所以这里接管时序：
+         *   1) 先给列表挂上退场动画，旧条目逐条收起；
+         *   2) 等退场播完，再让 store 换数据（期间 listSwitching 抑制空态闪现）；
+         *   3) 新数据到位后由 watch('sessions.length') 触发逐条进场。
+         */
         toggleListMode: function () {
-            if (this.sessionStore) this.sessionStore.toggleSessionListMode();
+            const self = this;
+            if (!this.sessionStore || this.listSwitching) return;
+
+            // 图标即时反馈：不等 store 换完数据
+            this.pendingListMode = this.listMode === 'chat' ? 'cron' : 'chat';
+
+            // 动画时长对齐 CSS 里的错峰节奏（每条 11ms，最多按 8 条算）
+            const staggered = Math.min(this.sessionRows.length, 8);
+            if (staggered === 0) {                      // 本来就空列表，没什么可收的，直接换
+                this.pendingListMode = null;
+                this.sessionStore.toggleSessionListMode();
+                return;
+            }
+
+            this.listSwitching = true;
+            this.listLeaving = true;
+
+            this._leaveTimer = setTimeout(function () {
+                self.listLeaving = false;
+                self.sessionStore.toggleSessionListMode();
+                // 兜底：新模式下一条都没有时不会触发进场，这里负责解锁
+                self._unlockTimer = setTimeout(function () {
+                    self.listSwitching = false;
+                    self.pendingListMode = null;
+                }, 900);
+            }, staggered * 11 + 170);
+        },
+
+        /**
+         * 播放新列表的进场动画，播完解锁（期间不允许再切）
+         */
+        playEnter: function () {
+            const self = this;
+            clearTimeout(this._enterTimer);
+            clearTimeout(this._unlockTimer);
+            this.listEntering = true;
+            // 动画时长 300ms + 最大错峰延迟 8*20ms，留点余量
+            this._enterTimer = setTimeout(function () {
+                self.listEntering = false;
+                self.listSwitching = false;
+                self.pendingListMode = null;
+            }, 490);
         },
 
         /** 触底加载更早一页（由 v-infinite-scroll 指令触发，委托 store） */
@@ -540,6 +607,24 @@ const ChatSidebar = {
             }
             return groups;
         },
+        /**
+         * 把「日期分隔行 + 会话条目」拍平成一维行数组，并给每行打上全局序号 i。
+         * 拍平的意义：动画要让整列表连续错峰，而分组结构下每个条目只知道自己组内的
+         * 序号，跨组就会同时开始、看着像几段各动各的。
+         */
+        sessionRows: function () {
+            var rows = [];
+            var groups = this.sessionGroups || [];
+            for (var g = 0; g < groups.length; g++) {
+                var group = groups[g];
+                // 序号封顶 8：长列表前 8 行依次错峰，剩下的跟着第 8 行一起走，免得拖太久
+                rows.push({ key: 'd:' + group.key, kind: 'divider', label: group.label, i: Math.min(rows.length, 8) });
+                for (var s = 0; s < group.sessions.length; s++) {
+                    rows.push({ key: group.sessions[s].id, kind: 'item', session: group.sessions[s], i: Math.min(rows.length, 8) });
+                }
+            }
+            return rows;
+        },
         sessionsHasMore: function () {
             return this.sessionStore ? this.sessionStore.sessionsHasMore : false;
         },
@@ -547,6 +632,8 @@ const ChatSidebar = {
             return this.sessionStore ? this.sessionStore.sessionsLoadingMore : false;
         },
         listMode: function () {
+            // 切换动画期间用预览值，让图标即时反馈
+            if (this.pendingListMode) return this.pendingListMode;
             return this.sessionStore ? this.sessionStore.sessionListMode : 'chat';
         },
         // 当前会话：优先取注入的 sessionStore，插件页无法注入时回退空对象
@@ -563,9 +650,11 @@ const ChatSidebar = {
     },
 
     watch: {
-        // 列表长度变化（刷新/翻页）后确保容器可滚动
-        'sessions.length': function () {
+        // 列表长度变化（刷新/翻页/换模式）后确保容器可滚动
+        'sessions.length': function (len) {
             this.ensureScrollable();
+            // 切换模式后新数据到位：播逐条进场
+            if (len > 0 && this.listSwitching) this.playEnter();
         }
     },
 
