@@ -10,11 +10,13 @@ package com.fishsunny.assistant.engine.tool.instance.file;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -52,14 +54,17 @@ public class FileWriteTool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final Settings settings;
     private final SecurityService securityService;
+    private final SessionFileManager sessionFileManager;
 
     public FileWriteTool(ObjectMapper objectMapper,
                          @Qualifier(SETTINGS) Settings settings,
-                         SecurityService securityService
+                         SecurityService securityService,
+                         SessionFileManager sessionFileManager
                          ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
         this.securityService = securityService;
+        this.sessionFileManager = sessionFileManager;
     }
 
     @Override
@@ -76,35 +81,51 @@ public class FileWriteTool implements ToolHandler {
                 throw new ToolExecutor.ToolExecuteException("参数 content 不能为空");
             }
 
-            // 路径规范化
-            Path filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
+            // 是否为会话文件模式：写入当前会话的沙箱目录，path 只能相对于该目录
+            boolean sessionFile = Boolean.TRUE.equals(arguments.getSessionFile());
 
-            switch (settings.getMode()) {
-                case NEVER_ASKED:
-                    break;
-                case ALWAYS_ASKED:
-                    ask(context, arguments, filePath, null);
-                    break;
-                case AUTO: {
-                    ReviewResult review = isDanger(arguments, filePath, context);
-                    if (review.isDanger()) {
-                        ask(context, arguments, filePath, review.reason());
-                    }
-                    break;
+            // 路径解析
+            Path filePath;
+            if (sessionFile) {
+                ChatSession chatSession = (ChatSession) context.get("chatSession");
+                if (chatSession == null || !StringUtils.hasText(chatSession.getId())) {
+                    throw new ToolExecutor.ToolExecuteException("sessionFile 模式需要当前会话信息，但上下文中缺少 chatSession 或 sessionId");
                 }
-                case ALWAYS_REJECT_DANGER: {
-                    ReviewResult review = isDanger(arguments, filePath, context);
-                    if (review.isDanger()) {
-                        throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件写入操作存在危险", review.reason()));
-                    }
-                    break;
-                }
-                default:
-                    throw new ToolExecutor.ToolExecuteException("FileWrite 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                Path sessionDir = sessionFileManager.buildSessionDirPath(chatSession.getId());
+                filePath = resolveSessionFilePath(sessionDir, arguments.getPath());
+            } else {
+                filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
             }
 
-            if (!session.isOpen()) {
-                throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
+            // 会话文件目录是当前会话的沙箱，直接写入，跳过 AI 审核与用户确认
+            if (!sessionFile) {
+                switch (settings.getMode()) {
+                    case NEVER_ASKED:
+                        break;
+                    case ALWAYS_ASKED:
+                        ask(context, arguments, filePath, null);
+                        break;
+                    case AUTO: {
+                        ReviewResult review = isDanger(arguments, filePath, context);
+                        if (review.isDanger()) {
+                            ask(context, arguments, filePath, review.reason());
+                        }
+                        break;
+                    }
+                    case ALWAYS_REJECT_DANGER: {
+                        ReviewResult review = isDanger(arguments, filePath, context);
+                        if (review.isDanger()) {
+                            throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件写入操作存在危险", review.reason()));
+                        }
+                        break;
+                    }
+                    default:
+                        throw new ToolExecutor.ToolExecuteException("FileWrite 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
+                }
+
+                if (!session.isOpen()) {
+                    throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
+                }
             }
 
             // 执行文件写入
@@ -129,6 +150,7 @@ public class FileWriteTool implements ToolHandler {
 
             StringBuilder sb = new StringBuilder();
             sb.append("文件写入成功\n\n");
+            sb.append("写入位置: ").append(sessionFile ? "会话文件目录（沙箱）" : "绝对路径").append("\n");
             sb.append("文件路径: ").append(filePath).append("\n");
             sb.append("文件大小: ").append(ToolKit.formatSize(fileSize)).append("（").append(fileSize).append(" 字节）\n");
             sb.append("写入行数: ").append(lineCount).append("\n");
@@ -150,6 +172,34 @@ public class FileWriteTool implements ToolHandler {
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }
+    }
+
+    /**
+     * 解析会话文件模式下的目标路径。
+     * <p>path 必须相对于会话文件目录：不允许绝对路径、盘符路径或从根目录开始，
+     * 也不允许通过 {@code ..} 跳出该目录。
+     *
+     * @param sessionDir 会话文件目录
+     * @param rawPath    模型传入的原始 path
+     * @return 归一化后的绝对路径，保证位于 {@code sessionDir} 之内
+     */
+    private Path resolveSessionFilePath(Path sessionDir, String rawPath) throws ToolExecutor.ToolExecuteException {
+        String relative = rawPath.trim();
+        boolean startsFromRoot = relative.startsWith("/") || relative.startsWith("\\")
+                || relative.matches("^[A-Za-z]:.*");
+        if (startsFromRoot || Paths.get(relative).isAbsolute()) {
+            throw new ToolExecutor.ToolExecuteException(
+                    "sessionFile 模式下 path 不能是绝对路径或从根目录开始，必须相对于当前会话文件目录，"
+                            + "例如 test.txt 或 tmp/demo.js。当前值: " + rawPath);
+        }
+
+        Path baseDir = sessionDir.toAbsolutePath().normalize();
+        Path resolved = baseDir.resolve(relative).toAbsolutePath().normalize();
+        if (!resolved.startsWith(baseDir)) {
+            throw new ToolExecutor.ToolExecuteException(
+                    "sessionFile 模式下 path 不能跳出会话文件目录（禁止 .. 回溯）。当前值: " + rawPath);
+        }
+        return resolved;
     }
 
     /**
@@ -208,8 +258,13 @@ public class FileWriteTool implements ToolHandler {
                 .setDescription("创建或覆写文件时使用此工具（比执行 echo/重定向命令更安全可靠）。父目录不存在会自动创建，返回写入文件的元信息。" + modeDesc)
                 .setRequired(List.of("path", "content"))
                 .setParameters(List.of(
-                        new ToolRegister.Parameters("path", "string", "文件路径，包含文件名，例如 D:\\projects\\test.txt"),
-                        new ToolRegister.Parameters("content", "string", "要写入的文件内容")
+                        new ToolRegister.Parameters("path", "string",
+                                "文件路径。sessionFile 为 false 时为绝对路径（如 D:\\projects\\test.txt）；" +
+                                "为 true 时必须相对于当前会话文件目录，不能是绝对路径、不能从根目录开始。"),
+                        new ToolRegister.Parameters("content", "string", "要写入的文件内容"),
+                        new ToolRegister.Parameters("sessionFile", "boolean",
+                                "是否写入当前会话的沙箱文件目录，适合临时文件、测试文件等。默认为 false。" +
+                                "为 true 时 path 只能是相对路径，且跳过安全审核与用户确认。")
                 ));
     }
 
@@ -217,6 +272,8 @@ public class FileWriteTool implements ToolHandler {
     private static class Arguments {
         private String path;
         private String content;
+        /** 是否写入当前会话的沙箱文件目录（临时文件/测试文件），默认 false */
+        private Boolean sessionFile;
     }
 
     @Data

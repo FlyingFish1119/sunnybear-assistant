@@ -40,11 +40,6 @@ public class ToolExecutor {
     Map<String, ToolHandler> toolMap = new HashMap<>();
     Map<Class<? extends ToolKit>, ToolKit> toolKitMap = new HashMap<>();
 
-    /**
-     * 运行时覆盖层：工具名 → 顶替本机实现的处理器（引擎代理接入时写入）。
-     * 与 toolMap 并存而非直接改写，是为了执行端断开后能无痕还原本机实现。
-     */
-    private final Map<String, ToolHandler> overrides = new ConcurrentHashMap<>();
 
     private final ExecutorService executorService;
     private final ObjectMapper objectMapper;
@@ -75,16 +70,6 @@ public class ToolExecutor {
     /** 按名字取本机工具处理器，不存在返回 null。只读查询用，不走任何过滤/覆盖 */
     public ToolHandler getTool(String toolName) {
         return toolMap.get(toolName);
-    }
-
-    /** 本机最终生效的工具视图。无覆盖时直接复用 toolMap，避免每次调用都复制 */
-    private Map<String, ToolHandler> resolvedTools() {
-        if (overrides.isEmpty()) {
-            return toolMap;
-        }
-        Map<String, ToolHandler> merged = new LinkedHashMap<>(toolMap);
-        merged.putAll(overrides);
-        return merged;
     }
 
     public List<ToolExecuteResponse> executeAdapter(List<AIAdapter.ToolCall> toolCalls, Map<String, Object> context) {
@@ -278,7 +263,7 @@ public class ToolExecutor {
 
     public <T> List<T> buildTool(Function<ToolRegister, T> function) {
         List<T> tools = new ArrayList<>();
-        for (ToolHandler tool : resolvedTools().values()) {
+        for (ToolHandler tool : toolMap.values()) {
             tools.add(function.apply(tool.getRegister()));
         }
         return tools;
@@ -371,7 +356,7 @@ public class ToolExecutor {
         if (CollectionUtils.isEmpty(includeHandlers)) {
             return tools;
         }
-        for (ToolHandler tool : resolvedTools().values()) {
+        for (ToolHandler tool : toolMap.values()) {
             if (!includeHandlers.contains(tool.name())) {
                 continue;
             }

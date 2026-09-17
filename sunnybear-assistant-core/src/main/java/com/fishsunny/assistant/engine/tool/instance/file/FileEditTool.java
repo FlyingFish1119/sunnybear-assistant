@@ -120,7 +120,7 @@ public class FileEditTool implements ToolHandler {
             int totalLines = allLines.size();
 
             // 在文件中查找 oldContent 的唯一匹配
-            MatchResult match = findUniqueMatch(fileContent, allLines, oldContent);
+            MatchResult match = findUniqueMatch(fileContent, allLines, oldContent, newContent);
 
             // 判断操作类型
             boolean isDelete = newContent.isEmpty();
@@ -195,10 +195,11 @@ public class FileEditTool implements ToolHandler {
      * @param fileContent 归一化后的文件全文
      * @param allLines    按行拆分后的文件内容
      * @param oldContent  要查找的原始内容
+     * @param newContent  替换后的新内容（仅在匹配失败时用于回显，便于定位问题）
      * @return 匹配结果（包含偏移量和行号）
      * @throws ToolExecutor.ToolExecuteException 未找到或找到多处匹配时抛出
      */
-    private MatchResult findUniqueMatch(String fileContent, List<String> allLines, String oldContent)
+    private MatchResult findUniqueMatch(String fileContent, List<String> allLines, String oldContent, String newContent)
             throws ToolExecutor.ToolExecuteException {
 
         // 收集所有匹配位置
@@ -213,8 +214,12 @@ public class FileEditTool implements ToolHandler {
 
         if (matchPositions.isEmpty()) {
             throw new ToolExecutor.ToolExecuteException(
-                    "在文件中未找到 oldContent 的匹配内容。" +
-                    "请确认内容是否正确（注意空白字符、缩进和换行符的差异）。");
+                    "在文件中未找到 oldContent 的匹配内容，请确认内容是否正确" +
+                    "（注意空白字符、缩进和换行符的差异）。\n\n" +
+                    "本次传入的内容如下（换行符已归一化为 \\n）：\n" +
+                    describeContents(oldContent, newContent) + "\n\n" +
+                    "请核对 oldContent 是否与文件中的实际内容完全一致，修正后重试本工具；" +
+                    "不要改用 file_write 直接覆盖整个文件。");
         }
 
         if (matchPositions.size() > 1) {
@@ -226,7 +231,9 @@ public class FileEditTool implements ToolHandler {
                 int line = offsetToLine(fileContent, pos);
                 sb.append("  - 匹配 ").append(i + 1).append(": 第 ").append(line + 1).append(" 行\n");
             }
-            sb.append("请增加更多上下文使 oldContent 能够唯一匹配。");
+            sb.append("\n本次传入的内容如下（换行符已归一化为 \\n）：\n")
+              .append(describeContents(oldContent, newContent)).append("\n\n")
+              .append("请增加更多上下文使 oldContent 能够唯一匹配。");
             throw new ToolExecutor.ToolExecuteException(sb.toString());
         }
 
@@ -238,6 +245,17 @@ public class FileEditTool implements ToolHandler {
         int endLine = offsetToLine(fileContent, Math.max(0, endOffset - 1));
 
         return new MatchResult(startOffset, endOffset, startLine, endLine);
+    }
+
+    /**
+     * 回显本次编辑传入的 oldContent 与 newContent，便于在匹配失败时定位差异。
+     */
+    private String describeContents(String oldContent, String newContent) {
+        return "---------------- oldContent（要匹配的原始内容）----------------\n"
+                + oldContent
+                + "\n---------------- newContent（替换后的新内容）----------------\n"
+                + newContent
+                + "\n--------------------------------------------------------------";
     }
 
     /**

@@ -30,8 +30,8 @@ function getLast(arr) {
 /** 建议提问的图标：后端只回文本，前端按顺序轮换配图标 */
 const SUGGESTION_ICONS = ['pen-line', 'file-text', 'lightbulb', 'compass'];
 
-/** 流式块淡入时长（ms），需与 markdown.css 的 markdown-block-fade-in 保持一致 */
-const STREAM_FADE_MS = 250;
+/** 换行符常量：拼装工具调用参数的 markdown 时用，避免在字符串里写转义符 */
+const NL = String.fromCharCode(10);
 
 const MessageArea = {
     name: 'MessageArea',
@@ -104,7 +104,11 @@ const MessageArea = {
                                 <i :class="['reasoning-chevron', { collapsed: isCollapsed(msg.id, 'thinking') }]" style="width: 14px; height: 14px" data-lucide="chevron-down"></i>
                             </div>
                             <div :class="['collapsible-content', { collapsed: isCollapsed(msg.id, 'thinking') }]" :data-collapse-key="msg.id + '_thinking'">
-                                <div class="message-area-reasoning markdown-body" :class="{ 'md-streaming': isStreamingMsg(msg) }" v-html="$md.render(msg.reasoningContent)"></div>
+                                <!-- 流式期间按块渲染：已闭合的块 HTML 不再变化，DOM 不重建 -->
+                                <div v-if="isStreamingMsg(msg)" class="message-area-reasoning markdown-body md-streaming">
+                                    <div v-for="(block, bi) in $md.streamBlocks(msg.reasoningContent)" :key="bi" class="md-block" v-html="block.html"></div>
+                                </div>
+                                <div v-else class="message-area-reasoning markdown-body" v-html="$md.render(msg.reasoningContent)"></div>
                             </div>
                         </div>
                         <!-- 编辑模式：显示 textarea -->
@@ -121,7 +125,12 @@ const MessageArea = {
                         </div>
                         <!-- 正常模式：显示内容 -->
                         <div v-else v-for="(content, idx) in msg.contents" :key="idx">
-                            <div v-if="content.type === 'text'" class="markdown-body" :class="{ 'md-streaming': isStreamingMsg(msg) }" v-html="$md.render(content.content)"></div>
+                            <!-- 流式期间按块渲染：已闭合的代码块 / 表格 / 列表不会再被重建，
+                                 复制按钮、滚动位置、文本选中都不会被打断 -->
+                            <div v-if="content.type === 'text' && isStreamingMsg(msg)" class="markdown-body md-streaming">
+                                <div v-for="(block, bi) in $md.streamBlocks(content.content)" :key="bi" class="md-block" v-html="block.html"></div>
+                            </div>
+                            <div v-else-if="content.type === 'text'" class="markdown-body" v-html="$md.render(content.content)"></div>
                             <div v-else-if="content.type === 'image'" class="message-attachment-image">
                                 <img :src="$fileUrl.proxy(content.url)" @click.stop="$fileUrl.previewImage(content.url)" />
                             </div>
@@ -144,7 +153,10 @@ const MessageArea = {
                                 <span class="markdown-body" v-html="$md.render(msg.toolCalls.map(t => '\`' + t.name + '\`').join(', '))"></span>
                             </div>
                             <div :class="['message-area-bubble-tools-wrap', { collapsed: isCollapsed(msg.id, 'toolcalls') }]" :data-collapse-key="msg.id + '_toolcalls'">
-                                <div class="message-area-bubble-tools markdown-body" v-html="$md.render(msg.toolCalls.map(t => '\`\`\`' + t.name + '\\n' + (t.arguments ? $md.beautify(t.arguments) : '') + '\\n\`\`\`').join('\\n\\n'))">
+                                <div v-if="isStreamingMsg(msg)" class="message-area-bubble-tools markdown-body md-streaming">
+                                    <div v-for="(block, bi) in $md.streamBlocks(toolCallsMarkdown(msg))" :key="bi" class="md-block" v-html="block.html"></div>
+                                </div>
+                                <div v-else class="message-area-bubble-tools markdown-body" v-html="$md.render(toolCallsMarkdown(msg))">
                                 </div>
                             </div>
                         </div>
@@ -811,7 +823,7 @@ const MessageArea = {
         },
 
         /**
-         * 是否为当前正在流式输出的助手消息（用于启用块级淡入）
+         * 是否为当前正在流式输出的助手消息（为 true 时正文 / 思考过程 / 工具参数改走按块渲染）
          * @param {object} msg - 消息对象
          * @returns {boolean}
          */
@@ -821,33 +833,44 @@ const MessageArea = {
         },
 
         /**
-         * 流式正文淡入：v-html 每个 chunk 都会重建全部子节点，元素级动画会被反复打断。
-         * 这里记录每个顶层块的首次出现时间，用负 animation-delay 让被重建的节点从
-         * 「已进行到的进度」继续，从而跨 chunk 连续完成一次淡入，而不是每帧闪一下。
+         * 工具调用参数的 markdown 文本：流式分块渲染与非流式整段渲染共用同一份拼装逻辑。
+         * @param {object} msg - 消息对象
+         * @returns {string} markdown 文本
          */
-        applyStreamingFade() {
-            if (!this.isStreaming || !this.$el) return;
-            const now = performance.now();
-            const containers = this.$el.querySelectorAll('.markdown-body.md-streaming');
-            for (let c = 0; c < containers.length; c++) {
-                const el = containers[c];
-                const nodes = el.children;
-                const fadeAt = el.__mdFadeAt || [];
-                for (let i = 0; i < nodes.length; i++) {
-                    if (fadeAt[i] === undefined) fadeAt[i] = now;
-                    const elapsed = now - fadeAt[i];
-                    const node = nodes[i];
-                    if (elapsed < STREAM_FADE_MS) {
-                        node.style.animationDelay = (-elapsed) + 'ms';
-                        node.classList.add('md-fade-in');
-                    } else {
-                        node.style.animationDelay = '';
-                        node.classList.remove('md-fade-in');
-                    }
+        toolCallsMarkdown(msg) {
+            return msg.toolCalls.map(t => [
+                '```' + t.name,
+                t.arguments ? this.$md.beautify(t.arguments) : '',
+                '```'
+            ].join(NL)).join(NL + NL);
+        },
+
+        /**
+         * 合并同一帧内的多次图标刷新：流式期间每个 chunk 都会更新组件，
+         * 直接调 lucide.createIcons() 会在同一帧里反复全量扫描 DOM。
+         */
+        scheduleIconRefresh() {
+            if (this._iconRefreshPending) return;
+            this._iconRefreshPending = true;
+            requestAnimationFrame(() => {
+                this._iconRefreshPending = false;
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
                 }
-                fadeAt.length = nodes.length;
-                el.__mdFadeAt = fadeAt;
-            }
+            });
+        },
+
+        /**
+         * 合并同一帧内的多次 mermaid 重渲染请求。
+         * mermaid 异步渲染完成后调用，触发组件重渲染以把源码占位换成 SVG。
+         */
+        scheduleMermaidRefresh() {
+            if (this._mermaidRefreshPending) return;
+            this._mermaidRefreshPending = true;
+            requestAnimationFrame(() => {
+                this._mermaidRefreshPending = false;
+                this.$forceUpdate();
+            });
         },
 
         /**
@@ -930,18 +953,22 @@ const MessageArea = {
             }
         };
         document.addEventListener('click', this._onDocClick);
+        // mermaid 异步渲染成功后重渲染，把流式中的源码占位替换成 SVG（合并到一帧）
+        this._offMermaid = this.$md.onMermaidRendered(() => this.scheduleMermaidRefresh());
     },
 
     beforeUnmount: function () {
         if (this._onDocClick) {
             document.removeEventListener('click', this._onDocClick);
         }
+        if (this._offMermaid) {
+            this._offMermaid();
+            this._offMermaid = null;
+        }
     },
 
     updated: function () {
-        this.applyStreamingFade();
-        if (typeof lucide !== 'undefined') {
-            this.$nextTick(function () { lucide.createIcons(); });
-        }
+        // 流式期间图标只可能出现在刚重建的最后一块里，同一帧合并成一次刷新
+        this.scheduleIconRefresh();
     }
 };
