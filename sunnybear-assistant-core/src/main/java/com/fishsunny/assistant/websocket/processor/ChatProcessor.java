@@ -41,6 +41,7 @@ import com.fishsunny.assistant.utils.SessionFileManager;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.websocket.ChatProvider;
+import com.fishsunny.assistant.websocket.SessionMessageBus;
 import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandExecutor;
 import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandHandler;
 import lombok.extern.slf4j.Slf4j;
@@ -78,6 +79,7 @@ public class ChatProcessor {
     private final SessionFileManager sessionFileManager;
     private final ToolVisibilityPolicy toolVisibilityPolicy;
     private final ContextCompressor contextCompressor;
+    private final SessionMessageBus sessionMessageBus;
 
     public ChatProcessor(ChatMessageService chatMessageService,
                             ChatSessionService chatSessionService,
@@ -94,7 +96,8 @@ public class ChatProcessor {
                             TTSSettings ttsSettings,
                             SessionFileManager sessionFileManager,
                             ToolVisibilityPolicy toolVisibilityPolicy,
-                            ContextCompressor contextCompressor
+                            ContextCompressor contextCompressor,
+                            SessionMessageBus sessionMessageBus
                          ) {
         this.chatMessageService = chatMessageService;
         this.chatSessionService = chatSessionService;
@@ -112,6 +115,7 @@ public class ChatProcessor {
         this.sessionFileManager = sessionFileManager;
         this.toolVisibilityPolicy = toolVisibilityPolicy;
         this.contextCompressor = contextCompressor;
+        this.sessionMessageBus = sessionMessageBus;
     }
     /**
      * 核心对话处理逻辑
@@ -496,7 +500,12 @@ public class ChatProcessor {
 
     private ChatMessage appendAssistantMessage(ChatMessage chatMessage) throws Exception {
         try {
-            return chatMessageService.save(chatMessage);
+            ChatMessage saved = chatMessageService.save(chatMessage);
+            // 助手消息落库后清空总线缓冲：已落库内容由历史兜底，缓冲只需保留此后产生的在途事件，
+            // 使重连 replay 从最近一条落库消息开始，而不是从上一轮 user 重放整轮。
+            // 注意：只在落助手时清空——工具是并发执行的，落工具时清空会误删其它工具尚未消费完的事件。
+            sessionMessageBus.clearBuffer(saved.getSessionId());
+            return saved;
         } catch (UserException e) {
             throw new UserException("保存助手消息失败: " + e.getMessage());
         } catch (Exception e) {

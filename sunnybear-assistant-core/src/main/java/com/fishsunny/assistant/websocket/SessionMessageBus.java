@@ -131,6 +131,22 @@ public class SessionMessageBus {
         }
     }
 
+    /**
+     * 仅清空当前轮缓存，保留订阅者与 active 状态。
+     * <p>消息落库后调用：已落库内容由历史/DB 兜底，缓冲区只需保留「最近一条落库消息之后」的
+     * 在途事件。这样重连 replay 从最后一条落库消息开始，而不是从上一轮 user 重放整轮，
+     * 长工具链也不会累积出巨大的 replay 缓冲。
+     */
+    public void clearBuffer(String sessionId) {
+        Bus bus = buses.get(sessionId);
+        if (bus == null) {
+            return;
+        }
+        synchronized (bus) {
+            bus.buffer.clear();
+        }
+    }
+
     /** 清空当前轮缓存（错误/中断路径用），无订阅者时移除总线条目 */
     public void reset(String sessionId) {
         Bus bus = buses.get(sessionId);

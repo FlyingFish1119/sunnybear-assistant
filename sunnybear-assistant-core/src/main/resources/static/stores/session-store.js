@@ -157,10 +157,19 @@ const SessionStore = (function () {
      */
     function replaceToolPlaceholder(resultMsg) {
         if (!resultMsg || !resultMsg.toolCallId) return;
-        const idx = state.currentMessages.findIndex(m =>
+        // 优先替换"执行中"占位
+        let idx = state.currentMessages.findIndex(m =>
             m.role === 'tool'
             && m.extension && m.extension.status === 'executing'
             && m.toolCallId === resultMsg.toolCallId);
+        // 重放场景：占位可能已被历史里的落库消息取代，按 id / toolCallId 定位，避免重复追加
+        if (idx === -1 && resultMsg.id) {
+            idx = state.currentMessages.findIndex(m => m.id === resultMsg.id);
+        }
+        if (idx === -1) {
+            idx = state.currentMessages.findIndex(m =>
+                m.role === 'tool' && m.toolCallId === resultMsg.toolCallId);
+        }
         if (idx !== -1) {
             state.currentMessages.splice(idx, 1, resultMsg);
         } else {
@@ -557,7 +566,10 @@ const SessionStore = (function () {
         /* ================= 流式帧数据处理 ================= */
 
         /**
-         * 处理 REPLAY 帧：截断到最后一条 user 消息（连同残留的流式占位）。
+         * 处理 REPLAY 帧：后端只回放「最近一条落库的助手消息之后」的在途事件，
+         * 此前的已落库消息都在历史里（selectSession / 重连补拉已提供）。
+         * 因此不再截断到上一条 user 重放整轮，只清掉上次连接残留的流式占位，
+         * 等待随后的 START / chunk 帧在历史之上增量重建当前在途消息。
          * @returns {boolean} 是否命中当前会话（未命中则不应继续处理）
          */
         handleReplay(sessionId) {
@@ -565,10 +577,7 @@ const SessionStore = (function () {
                 return false;
             }
             state.streamingMap[sessionId] = false;
-            const lastUserIndex = state.currentMessages.findLastIndex(m => m.role === 'user');
-            if (lastUserIndex !== -1) {
-                state.currentMessages.splice(lastUserIndex);
-            }
+            state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, sessionId));
             return true;
         },
 
@@ -615,6 +624,13 @@ const SessionStore = (function () {
 
         /** 处理 init_user 帧：确认用户消息、校正编辑重发、补会话引用 */
         async handleInitUser(response) {
+            // 重放场景：用户消息通常已随历史加载进来，按 id 去重。
+            // 直接跳过，避免重复插入，也避免误触发清空输入框等副作用。
+            const incoming = response.messages && response.messages[0];
+            if (incoming && incoming.id
+                    && state.currentMessages.some(m => m.id === incoming.id)) {
+                return;
+            }
             // 编辑/重发场景：按 parentId 定位旧用户消息并掐掉它及之后的所有内容
             let cutIndex = -1;
             for (const message of response.messages) {
@@ -648,6 +664,11 @@ const SessionStore = (function () {
             if (response.sessionId === currentSessionId()
                     && response.messages && response.messages.length > 0) {
                 const placeholder = response.messages[0];
+                // 重放场景：历史里可能已有该工具的落库消息，避免重复插入占位
+                if (placeholder.toolCallId && state.currentMessages.some(m =>
+                        m.role === 'tool' && m.toolCallId === placeholder.toolCallId)) {
+                    return;
+                }
                 placeholder.extension = placeholder.extension || {};
                 placeholder.extension.status = 'executing';
                 state.currentMessages.push(placeholder);
@@ -682,10 +703,17 @@ const SessionStore = (function () {
 
         /** 处理 init_assistant 帧：只同步元数据，保留已累积内容 */
         handleInitAssistant(streamingMessage, response) {
+            const serverMsg = response.messages && response.messages[0];
             if (!streamingMessage) {
+                // 重放兜底：历史里可能没有这条已落库的助手消息（断线窗口内落库），补插
+                if (serverMsg && serverMsg.id
+                        && response.sessionId === currentSessionId()
+                        && !state.currentMessages.some(m => m.id === serverMsg.id)) {
+                    state.currentMessages.push(serverMsg);
+                }
                 return;
             }
-            const serverMsg = response.messages[0];
+            if (!serverMsg) return;
             if (serverMsg.id) streamingMessage.id = serverMsg.id;
             if (serverMsg.sessionId) streamingMessage.sessionId = serverMsg.sessionId;
             if (serverMsg.parentId) streamingMessage.parentId = serverMsg.parentId;
@@ -829,13 +857,29 @@ const SessionStore = (function () {
 
         /* ================= WS 帧路由 ================= */
 
-        /** 连接建立/重连后调用：清残留流式占位，并请求当前会话续传 */
-        onSocketConnected() {
-            if (!currentSessionId()) return;
+        /**
+         * 连接建立/重连后调用：清残留流式占位 → 补拉历史 → 请求当前会话续传。
+         * 断线期间落库的消息不在总线缓冲里（落助手消息即清空缓冲），必须靠历史补齐；
+         * 随后总线只回放「最后一条落库助手消息之后」的在途事件，前端在历史之上增量重建即可。
+         */
+        async onSocketConnected() {
+            const sessionId = currentSessionId();
+            if (!sessionId) return;
             this.resetStreamingOnReconnect();
+            try {
+                const result = await API.message.getHistory(sessionId);
+                if (currentSessionId() !== sessionId) return;
+                if (result && result.status === 200) {
+                    state.currentMessages = result.data;
+                }
+            } catch (e) {
+                console.error('重连补拉历史失败:', e);
+            }
+            // 补拉期间可能已切走会话，过期结果直接丢弃
+            if (currentSessionId() !== sessionId) return;
             const ws = WsBus.getSocket();
-            if (ws) {
-                ws.send("###REQUIRE_REPLAY_MESSAGE###" + currentSessionId());
+            if (ws && ws.readyState === 1) {
+                ws.send("###REQUIRE_REPLAY_MESSAGE###" + sessionId);
             }
         },
 
