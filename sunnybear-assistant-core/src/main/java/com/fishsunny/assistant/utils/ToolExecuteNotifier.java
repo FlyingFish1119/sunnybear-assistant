@@ -68,24 +68,49 @@ public final class ToolExecuteNotifier {
             }
         };
 
-        Consumer<ToolExecutor.ToolExecuteResponse> afterExec = response -> {
-            try {
-                String toolName = response.getName();
-                // 携带多模态 content 分片：工具结果含图片/音频时，实时 tool_response 帧即带上该分片，
-                // 前端 tool 气泡可立刻渲染媒体，无需等待 init_tool 落库帧
-                ChatMessage resultMsg = new ChatMessage()
-                        .setId(UUID.randomUUID().toString())
-                        .tool(response.getToolCallId(), objectMapper.writeValueAsString(response),
-                                MessageContent.toMessageContents(response.getMultimodalContents()))
-                        .makeInsertable(chatSessionId, null, toolName)
-                        .setCreateTime(LocalDateTime.now());
-                ChatResponse push = new ChatResponse().afterToolCall(List.of(resultMsg));
-                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(push)));
-            } catch (Exception e) {
-                log.warn("推送工具结果失败: {}", e.getMessage());
-            }
-        };
+        Consumer<ToolExecutor.ToolExecuteResponse> afterExec = response ->
+                pushToolResult(session, chatSessionId, objectMapper, response);
 
         return new ToolExecutor.ToolProvider(beforeExec, afterExec);
+    }
+
+    /**
+     * 构建后置处理链的回调 provider：链改写工具结果后，按同一 toolCallId 补推一帧，
+     * 前端据此覆盖已渲染的工具气泡，实时看到追加内容。
+     *
+     * @return 构建好的 provider；无法推送时返回 null（调用方按无回调处理）
+     */
+    public static ToolExecutor.ToolResponseHandleProvider buildResponseHandleProvider(WebSocketSession session,
+                                                                                      String chatSessionId,
+                                                                                      ObjectMapper objectMapper) {
+        if (session == null || chatSessionId == null) {
+            return null;
+        }
+        return changed -> {
+            for (ToolExecutor.ToolExecuteResponse response : changed) {
+                pushToolResult(session, chatSessionId, objectMapper, response);
+            }
+        };
+    }
+
+    /**
+     * 推送单条工具结果（tool_response 帧）。携带多模态 content 分片：工具结果含图片/音频时，
+     * 实时帧即带上该分片，前端 tool 气泡可立刻渲染媒体，无需等待 init_tool 落库帧。
+     */
+    private static void pushToolResult(WebSocketSession session, String chatSessionId,
+                                       ObjectMapper objectMapper, ToolExecutor.ToolExecuteResponse response) {
+        try {
+            String toolName = response.getName();
+            ChatMessage resultMsg = new ChatMessage()
+                    .setId(UUID.randomUUID().toString())
+                    .tool(response.getToolCallId(), objectMapper.writeValueAsString(response),
+                            MessageContent.toMessageContents(response.getMultimodalContents()))
+                    .makeInsertable(chatSessionId, null, toolName)
+                    .setCreateTime(LocalDateTime.now());
+            ChatResponse push = new ChatResponse().afterToolCall(List.of(resultMsg));
+            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(push)));
+        } catch (Exception e) {
+            log.warn("推送工具结果失败: {}", e.getMessage());
+        }
     }
 }

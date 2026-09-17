@@ -400,7 +400,8 @@ public class ChatProcessor {
                 // 附带本轮的完整 messages 快照，供 AI 安全审查等消费方自行提取上下文（如判断用户意图），其它工具无感
                 context.put(SecurityService.CTX_MESSAGES, new ArrayList<>(request.getMessages()));
                 List<ToolExecutor.ToolExecuteResponse> toolResults = toolExecutor.executeAdapter(toolCalls, context,
-                        ToolExecuteNotifier.buildProvider(session, chatSession.getId(), objectMapper));
+                        ToolExecuteNotifier.buildProvider(session, chatSession.getId(), objectMapper),
+                        ToolExecuteNotifier.buildResponseHandleProvider(session, chatSession.getId(), objectMapper));
                 // 构建工具消息
                 List<ChatMessage> toolMessages = new ArrayList<>();
                 for (int i = 0; i < toolCalls.size(); i++) {

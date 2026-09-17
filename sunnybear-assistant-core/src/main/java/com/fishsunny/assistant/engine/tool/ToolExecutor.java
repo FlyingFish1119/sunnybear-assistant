@@ -65,7 +65,17 @@ public class ToolExecutor {
         }
     }
 
+    /** 工具执行生命周期回调：beforeExec 调度前触发，afterExec 每次工具执行完成后「恰好一次」 */
     public record ToolProvider(Consumer<ToolRequest> beforeExec, Consumer<ToolExecuteResponse> afterExec) {}
+
+    /**
+     * 后置处理链回调 —— 与 {@link ToolProvider#afterExec()} 解耦，避免复用 afterExec 导致其被重复调用。
+     * 每批工具执行完、链处理结束后回调一次，仅携带被链改写过的响应（未改写则不回调）。
+     */
+    @FunctionalInterface
+    public interface ToolResponseHandleProvider {
+        void afterHandle(List<ToolExecuteResponse> changedResponses);
+    }
 
 
     /** 按名字取本机工具处理器，不存在返回 null。只读查询用，不走任何过滤/覆盖 */
@@ -79,16 +89,30 @@ public class ToolExecutor {
     }
 
     public List<ToolExecuteResponse> executeAdapter(List<AIAdapter.ToolCall> toolCalls, Map<String, Object> context, ToolProvider provider) {
+        return executeAdapter(toolCalls, context, provider, null);
+    }
+
+    public List<ToolExecuteResponse> executeAdapter(List<AIAdapter.ToolCall> toolCalls,
+                                                    Map<String, Object> context,
+                                                    ToolProvider provider,
+                                                    ToolResponseHandleProvider responseHandleProvider) {
         List<ToolRequest> requests = ToolRequest.convert(toolCalls);
-        return execute(requests, context, provider);
+        return execute(requests, context, provider, responseHandleProvider);
     }
 
     public List<ToolExecuteResponse> execute(List<ToolRequest> requests, Map<String, Object> context) {
-        return execute(requests, context, new ToolProvider(null, null));
+        return execute(requests, context, new ToolProvider(null, null), null);
     }
 
     // ======================== 异步版本（已备注，使用线程池+CompletableFuture） ========================
     public List<ToolExecuteResponse> execute(List<ToolRequest> requests, Map<String, Object> context, ToolProvider provider) {
+        return execute(requests, context, provider, null);
+    }
+
+    public List<ToolExecuteResponse> execute(List<ToolRequest> requests,
+                                             Map<String, Object> context,
+                                             ToolProvider provider,
+                                             ToolResponseHandleProvider responseHandleProvider) {
         if (requests == null || requests.isEmpty()) {
             return new ArrayList<>();
         }
@@ -115,18 +139,19 @@ public class ToolExecutor {
             }
         }
         if (!toolResponseHandleChains.isEmpty()) {
-            applyResponseHandleChains(responses, context, safeProvider);
+            applyResponseHandleChains(responses, context, responseHandleProvider);
         }
         return responses;
     }
 
     /**
      * 依次执行后置处理链；任一链异常只影响自身。
-     * 链执行完对被改写的响应通过 afterExec 补推一帧（同一 toolCallId），保证前端实时看到追加内容。
+     * 链执行完通过独立的 {@link ToolResponseHandleProvider#afterHandle} 回调一次被改写的响应，
+     * 与 execute 生命周期回调 afterExec 解耦，保证 afterExec 始终「恰好一次」。
      */
     private void applyResponseHandleChains(List<ToolExecuteResponse> responses,
                                            Map<String, Object> context,
-                                           ToolProvider provider) {
+                                           ToolResponseHandleProvider responseHandleProvider) {
         Map<ToolExecuteResponse, String> originResults = new IdentityHashMap<>();
         for (ToolExecuteResponse response : responses) {
             originResults.put(response, response.getResult());
@@ -144,19 +169,22 @@ public class ToolExecutor {
                 log.warn(errorMessage);
             }
         }
-        Consumer<ToolExecuteResponse> afterExec = provider.afterExec();
-        if (afterExec == null) {
+        if (responseHandleProvider == null) {
             return;
         }
+        List<ToolExecuteResponse> changed = new ArrayList<>();
         for (ToolExecuteResponse response : responses) {
-            if (Objects.equals(originResults.get(response), response.getResult())) {
-                continue;
+            if (!Objects.equals(originResults.get(response), response.getResult())) {
+                changed.add(response);
             }
-            try {
-                afterExec.accept(response);
-            } catch (Exception e) {
-                log.warn("补推工具结果失败 [{}]: {}", response.getName(), e.getMessage());
-            }
+        }
+        if (changed.isEmpty()) {
+            return;
+        }
+        try {
+            responseHandleProvider.afterHandle(changed);
+        } catch (Exception e) {
+            log.warn("后置处理链回调失败: {}", e.getMessage());
         }
     }
 
