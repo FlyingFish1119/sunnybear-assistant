@@ -43,6 +43,35 @@ const SLASH_COMMANDS = [
  *   toggleMascot()       — 切换看板熊显隐
  *   getUploadedFiles()   — 读取当前已上传文件（供父级读取，避免父级持有状态）
  */
+
+/* ========== 看板熊（阳阳）进出场台词 ==========
+ * 召唤 / 送走时随机抽一条冒气泡，营造一只黏人的小阳阳；想加词直接往数组里塞。
+ */
+const MASCOT_ENTER_LINES = [
+    '来咯来咯，想我没得嘛～',
+    '咚！阳阳登场，巴适得很！',
+    '就位咯，贴贴要得不～',
+    '悄悄咪咪爬上来看哈你～',
+    '报告！我归位咯，今天也稀罕你得很哈～',
+    '莫忙莫忙，先看我一眼嘛～',
+    '阳阳来咯，乖乖莫慌～',
+    '闪亮登场！掌声在哪里嘛～',
+    '爬上来咯，陪你耍一哈～',
+    '我来咯～今天也要巴心巴肝喜欢你哈～'
+];
+const MASCOT_EXIT_LINES = [
+    '先撤咯，你要记到我哈～',
+    '溜咯溜咯，去充电咯～',
+    '莫怄气嘛，我还会回来嘞～',
+    '阳阳躲起来咯，喊一声就出来～',
+    '拜拜咯～去梦里等你哈～',
+    '下班咯，回头再耍哈～',
+    '我走咯，不许偷偷难过哦～',
+    '撤咯撤咯，下回见嘛～',
+    '咪一哈儿，去去就回～',
+    '溜了哈，想我就喊一声～'
+];
+
 const SendArea = {
     name: 'SendArea',
 
@@ -291,6 +320,7 @@ const SendArea = {
         if (this._mascotLive) { this._mascotLive.destroy(); this._mascotLive = null; }
         clearTimeout(this._mascotBubbleTimer);
         clearTimeout(this._mascotPressTimer);
+        clearTimeout(this._mascotToggleTimer);
         if (this._ttsAudio) {
             this._ttsAudio.pause();
             this._ttsAudio.removeAttribute('src');
@@ -354,11 +384,52 @@ const SendArea = {
         },
 
         /**
+         * 冒一句气泡，几秒后自动收起（点熊 / 召唤 / 送走共用）。
+         * @param {string} text 气泡文案
+         * @param {number} durationMs 展示时长
+         */
+        showMascotBubble: function (text, durationMs) {
+            var self = this;
+            var ms = durationMs || 5000;
+            this.mascotBubble = text || '';
+            clearTimeout(this._mascotBubbleTimer);
+            this._mascotBubbleTimer = setTimeout(function () {
+                self.mascotBubble = '';
+            }, ms);
+        },
+
+        /**
          * 切换看板熊显隐并持久化（长按 3s / 连按 b×10 共用）。
+         * 召唤/送走时各随机冒一句台词：送走要先让熊把话说完再收起，
+         * 否则气泡会跟着 holder 一起淡出、根本来不及看。
          */
         toggleMascot: function () {
-            this.mascotVisible = !this.mascotVisible;
-            localStorage.setItem('assistant-mascot-visible', this.mascotVisible ? '1' : '0');
+            if (this._mascotToggleTimer) return;   // 进出场过渡中，忽略连点，避免状态打架
+            var self = this;
+            if (this.mascotVisible) {
+                // 送走：先冒告别语，停顿一下再沉降收起
+                this.showMascotBubble(this.pickMascotLine(MASCOT_EXIT_LINES), 1500);
+                this._mascotToggleTimer = setTimeout(function () {
+                    self._mascotToggleTimer = null;
+                    self.mascotVisible = false;
+                    localStorage.setItem('assistant-mascot-visible', '0');
+                    self.mascotBubble = '';
+                }, 1400);
+            } else {
+                // 召唤：先落下来，落稳后再冒欢迎语
+                this.mascotVisible = true;
+                localStorage.setItem('assistant-mascot-visible', '1');
+                this._mascotToggleTimer = setTimeout(function () {
+                    self._mascotToggleTimer = null;
+                    self.showMascotBubble(self.pickMascotLine(MASCOT_ENTER_LINES), 3400);
+                }, 420);
+            }
+        },
+
+        /** 从台词表里随机抽一条 */
+        pickMascotLine: function (lines) {
+            if (!lines || !lines.length) return '';
+            return lines[Math.floor(Math.random() * lines.length)];
         },
 
         /**
@@ -369,25 +440,17 @@ const SendArea = {
         onMascotClick: function () {
             var self = this;
             var BUBBLE_MS = 5000;
-            var FALLBACK = '老爸，阳阳在这儿呢～';
-
-            var show = function (text) {
-                self.mascotBubble = text || FALLBACK;
-                clearTimeout(self._mascotBubbleTimer);
-                self._mascotBubbleTimer = setTimeout(function () {
-                    self.mascotBubble = '';
-                }, BUBBLE_MS);
-            };
+            var FALLBACK = '老爸，阳阳在这儿哈～';
 
             if (typeof API !== 'undefined' && API.greeting && API.greeting.random) {
                 API.greeting.random().then(function (result) {
                     var text = (result && result.status === 200 && result.data) ? result.data.text : '';
-                    show(text);
+                    self.showMascotBubble(text || FALLBACK, BUBBLE_MS);
                 }).catch(function () {
-                    show('');
+                    self.showMascotBubble(FALLBACK, BUBBLE_MS);
                 });
             } else {
-                show('');
+                self.showMascotBubble(FALLBACK, BUBBLE_MS);
             }
         },
 

@@ -346,21 +346,29 @@
    ============================================ */
 .mascot-bubble {
     position: absolute;
-    right: calc(100% + 10px);   /* 挂在熊的左边，不往屏幕右边顶 */
+    /* 贴近熊的左侧：只留很小的尾巴缝，不再飘出一截 */
+    right: calc(100% + 4px);
     bottom: 58%;                /* 对着头部/脖子高度 */
     /* ⚠ 绝对定位元素不写宽度时，宽度按「包含块宽度 − left − right」收缩，
        而这里的 right 已经超过包含块宽度了，算出来是负的可用宽度 →
        文字会被压成一条竖排细条。所以必须显式给宽度：按内容撑开、再由 max-width 截断换行 */
     width: max-content;
     max-width: min(280px, 46vw);
-    padding: 12px 16px;
+    padding: 10px 14px;
     border-radius: 14px;
-    border-left: 6px solid var(--main-color, lightsalmon);
-    background: linear-gradient(135deg, #fff 0%, color-mix(in srgb, var(--main-color, lightsalmon) 12%, white) 100%);
-    color: #555;
+    /* 简约：极淡的主色底 + 一层细主色描边；边缘用主色叠多层外发光做出"炫光" */
+    background: color-mix(in srgb, var(--main-color, lightsalmon) 9%, rgba(255, 255, 255, 0.94));
+    border: 1px solid color-mix(in srgb, var(--main-color, lightsalmon) 42%, rgba(255, 255, 255, 0.9));
+    color: #4a4a4a;
     font-size: var(--text-sm, 13px);
-    line-height: 1.65;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.10);
+    line-height: 1.6;
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--main-color, lightsalmon) 16%, transparent),
+        0 0 10px color-mix(in srgb, var(--main-color, lightsalmon) 48%, transparent),
+        0 0 20px color-mix(in srgb, var(--main-color, lightsalmon) 24%, transparent),
+        0 8px 20px rgba(0, 0, 0, 0.08);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     pointer-events: none;       /* 气泡本身不吃点击，不挡住底下的东西 */
 }
 
@@ -374,7 +382,8 @@
     height: 0;
     border: 8px solid transparent;
     border-right: 0;
-    border-left-color: #fff;
+    border-left-color: rgba(255, 255, 255, 0.94);
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--main-color, lightsalmon) 45%, transparent));
 }
 
 /* 淡入淡出（Vue transition） */
