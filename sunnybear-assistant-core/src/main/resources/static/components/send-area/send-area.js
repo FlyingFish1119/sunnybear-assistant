@@ -147,6 +147,22 @@ const MASCOT_DELETED_LINES = [
     '删就删嘛，你莫回头看我，怪尴尬的。'
 ];
 
+/* ========== 新建对话台词 ==========
+ * 每次开新对话都冒一句——不抖：开新对话是平和的开始，不是"被惊到"。
+ */
+const MASCOT_NEW_LINES = [
+    '哟，又开一个新的咯——来嘛。',
+    '新本子翻开咯，这次写点啥子？',
+    '好咯，前头那些一笔勾销，从头来。',
+    '空白的哦，你可莫浪费咯。',
+    '来咯来咯，我精神得很！',
+    '新对话，新气象——你想聊啥子？',
+    '翻篇咯，这次聊点正经的……或者不正经的。',
+    '哦哟，又一张白纸，压力给到你咯。',
+    '要得，坐好咯，我听到起的。',
+    '新开一局，来嘛，莫客气。'
+];
+
 const SendArea = {
     name: 'SendArea',
 
@@ -385,6 +401,10 @@ const SendArea = {
                 // 删会话：删哪一个都吭声（就爱凑这个热闹）
                 this.wsBus.on('session:deleted', function () {
                     self.speakAsBear(MASCOT_DELETED_LINES, true);
+                }),
+                // 新开一个对话：不抖（平和的开始，不是"被惊到"），只搭句话
+                this.wsBus.on('session:created', function () {
+                    self.speakAsBear(MASCOT_NEW_LINES, false);
                 })
             ];
         }

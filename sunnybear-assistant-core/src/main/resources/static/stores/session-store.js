@@ -333,6 +333,8 @@ const SessionStore = (function () {
             state.currentSession = {};
             state.currentMessages = [];
             state.compressMap = {};
+            // 广播"用户开了个新对话"（放在 return 之后：没真开成就不吭声）
+            WsBus.emit('session:created');
         },
 
         /* ================= 会话列表 ================= */
