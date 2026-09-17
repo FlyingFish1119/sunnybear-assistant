@@ -118,6 +118,16 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
 }
 
+/* 会话加载中：条目整体禁用，提示这期间不能切换 */
+.sidebar-session-item.disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.sidebar-session-item.disabled:hover {
+    background: transparent;
+}
+
 /* ---- 按天分隔线 ---- */
 .sidebar-session-divider {
     display: flex;

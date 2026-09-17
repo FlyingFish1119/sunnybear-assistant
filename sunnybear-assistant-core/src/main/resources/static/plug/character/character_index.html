@@ -784,6 +784,8 @@
             },
 
             selectSession(session) {
+                // 已有会话正在加载：忽略后续切换，避免历史请求互相覆盖
+                if (this.sessionSelectLoading) return;
                 this.closeSidebar();
                 this.$md.clearCache();
                 this.sessionSelectLoading = true;
@@ -1081,8 +1083,10 @@
                         return;
                     }
                     // 后端只回放「最近一条落库助手消息之后」的在途事件，历史里已包含此前消息，
-                    // 因此不截断到上一条 user，只清残留流式占位，等待后续帧增量重建
-                    this.streamingMap[sessionId] = false;
+                    // 因此不截断到上一条 user，只清残留流式占位，等待后续帧增量重建。
+                    // 能收到 REPLAY_MESSAGE 说明本轮仍在进行（缓冲为空不会发），置流式标记，
+                    // 让发送键显示为「停止」而不是灰掉的纸飞机
+                    this.streamingMap[sessionId] = true;
                     this.currentMessages = this.currentMessages.filter(m =>
                         !(m.sessionId === sessionId && m.role === 'assistant' && m.id && m.id.startsWith('streaming_')));
                     return;
@@ -1411,6 +1415,8 @@
              * 创建会话
              */
             createSession() {
+                // 会话仍在加载时不允许新建，否则会与在途的历史请求竞态
+                if (this.sessionSelectLoading) return;
                 this.closeSidebar();
                 this.$md.clearCache();
                 this.currentSession = {};

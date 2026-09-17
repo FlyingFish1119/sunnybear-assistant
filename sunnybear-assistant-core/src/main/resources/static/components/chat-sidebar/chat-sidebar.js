@@ -30,7 +30,7 @@ const ChatSidebar = {
          :class="{ 'mobile-open': sidebarOpen, 'collapsed': collapsed }"
          :style="{backgroundColor: mainColor}">
         <button class="sidebar-new-chat-button"
-                :disabled="isNewSession"
+                :disabled="isNewSession || sessionSelectLoading"
                 @click="createSession">
             <i data-lucide="square-plus"></i>
             <span>新对话</span>
@@ -46,7 +46,7 @@ const ChatSidebar = {
                 <div class="sidebar-session-item"
                      v-for="session in group.sessions"
                      :key="session.id"
-                     :class="{ pro: session.enablePro, unreviewed: session.unreviewed, active: currentSession.id === session.id }"
+                     :class="{ pro: session.enablePro, unreviewed: session.unreviewed, active: currentSession.id === session.id, disabled: sessionSelectLoading }"
                      @click="selectSession(session)"
                      @contextmenu.prevent="showContextMenu($event, session)">
                     <span class="sidebar-session-name">{{ session.name }}</span>
@@ -241,13 +241,15 @@ const ChatSidebar = {
             window.location.href = API.BASE_PATH + 'router.html';
         },
 
-        /** 点击会话：切换当前会话（委托 store） */
+        /** 点击会话：切换当前会话（委托 store；加载中直接忽略） */
         selectSession: function (session) {
+            if (this.sessionSelectLoading) return;
             if (this.sessionStore) this.sessionStore.selectSession(session);
         },
 
-        /** 点击"新对话"（委托 store） */
+        /** 点击"新对话"（委托 store；加载中直接忽略） */
         createSession: function () {
+            if (this.sessionSelectLoading) return;
             if (this.sessionStore) this.sessionStore.createSession();
         },
 
@@ -553,6 +555,10 @@ const ChatSidebar = {
         },
         isNewSession: function () {
             return this.currentSession && !this.currentSession.id;
+        },
+        // 当前会话历史是否加载中：加载期间禁止切换会话 / 新建对话
+        sessionSelectLoading: function () {
+            return this.sessionStore ? this.sessionStore.sessionSelectLoading : false;
         }
     },
 

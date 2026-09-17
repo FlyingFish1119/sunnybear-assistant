@@ -219,6 +219,8 @@ const SessionStore = (function () {
          * @param {object} session 会话对象
          */
         async selectSession(session) {
+            // 已有会话正在加载：忽略后续切换，避免两次请求的历史互相覆盖，出现串台
+            if (state.sessionSelectLoading) return;
             WsBus.emit('sidebar:close');
             ui.clearMdCache();
             WsBus.emit('agent-log:clear');
@@ -259,6 +261,8 @@ const SessionStore = (function () {
 
         /** 新建会话：清空当前会话与消息 */
         createSession() {
+            // 会话仍在加载时不允许新建，否则会与在途的历史请求竞态
+            if (state.sessionSelectLoading) return;
             WsBus.emit('sidebar:close');
             ui.clearMdCache();
             WsBus.emit('agent-log:clear');
@@ -576,7 +580,10 @@ const SessionStore = (function () {
             if (currentSessionId() !== sessionId) {
                 return false;
             }
-            state.streamingMap[sessionId] = false;
+            // 能收到 REPLAY_MESSAGE 说明后端还有在途事件（缓冲为空时根本不发这个帧），
+            // 即本轮仍在进行：置流式标记，让发送键显示为「停止」，而不是灰掉的纸飞机。
+            // 之前置 false 是因为旧缓冲一定含 START 帧会再置 true；缓冲按落库清空后 START 可能已被清掉。
+            state.streamingMap[sessionId] = true;
             state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, sessionId));
             return true;
         },
