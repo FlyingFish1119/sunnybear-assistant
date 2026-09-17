@@ -202,9 +202,19 @@
 
     injectBaseStyles();
 
+    /**
+     * @param {object} [options]
+     * @param {Element|Document} [options.root=document] 在该根节点的后代中查找
+     * @param {NodeList|Array} [options.nodes] 直接指定待渲染的宿主节点（优先于 root）
+     */
     lucide.createIcons = function (options) {
-        var root = (options && options.root) || document;
-        var nodes = root.querySelectorAll ? root.querySelectorAll('[data-lucide]') : [];
+        var nodes;
+        if (options && options.nodes) {
+            nodes = options.nodes;
+        } else {
+            var root = (options && options.root) || document;
+            nodes = root.querySelectorAll ? root.querySelectorAll('[data-lucide]') : [];
+        }
         for (var i = 0; i < nodes.length; i++) {
             renderInto(nodes[i]);
         }

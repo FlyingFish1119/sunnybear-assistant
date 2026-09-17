@@ -33,6 +33,37 @@ const SUGGESTION_ICONS = ['pen-line', 'file-text', 'lightbulb', 'compass'];
 /** 换行符常量：拼装工具调用参数的 markdown 时用，避免在字符串里写转义符 */
 const NL = String.fromCharCode(10);
 
+/**
+ * 消息渲染缓存：按「对象 + 源文本」记忆 Markdown 结果。
+ * 历史消息内容不变，组件重渲染时直接复用，避免每次 chunk 都重新 marked.parse。
+ * 用 WeakMap（不挂到 reactive 对象上，避免污染响应式并额外触发更新）。
+ */
+const _htmlCache = new WeakMap();
+
+/** 含 mermaid 围栏的文本不走对象缓存：其 HTML 会随异步出图被全局缓存失效，需每次重算 */
+const MERMAID_FENCE_RE = /(^|\n)\s{0,3}(`{3,}|~{3,})mermaid/;
+
+/**
+ * 按「对象 + 字段槽 + 源文本」记忆渲染结果。同一个对象上可能并存多个渲染字段
+ * （如消息的思考过程与工具调用参数），必须分槽存储，否则会互相覆盖、每帧重算。
+ */
+function memoHtml(obj, slot, text, render) {
+    // mermaid 渲染完成后 $md 会清全局缓存并通知重渲染，对象缓存会挡住这次替换，故直接走 $md
+    if (text && MERMAID_FENCE_RE.test(text)) {
+        return render(text);
+    }
+    let store = _htmlCache.get(obj);
+    if (!store) {
+        store = {};
+        _htmlCache.set(obj, store);
+    }
+    const hit = store[slot];
+    if (hit && hit.src === text) return hit.html;
+    const html = render(text);
+    store[slot] = { src: text, html: html };
+    return html;
+}
+
 const MessageArea = {
     name: 'MessageArea',
 
@@ -65,8 +96,11 @@ const MessageArea = {
                 <span class="loading-text">加载中</span>
                 <span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>
             </div>
-            <template v-for="group in messageGroups" :key="'group-' + group.messages[0].id">
-                <div class="message-area-row" :class="group.role">
+            <div v-for="group in messageGroups"
+                 :key="'group-' + group.messages[0].id"
+                 v-memo="group.memo"
+                 class="message-area-row"
+                 :class="[group.role, { 'is-active-group': group.active }]">
                     <!-- 助手组左侧导轨：头像（仅组第一条）+ 主色淡竖线 -->
                     <div v-if="group.role !== 'user'" class="react-rail">
                         <img v-if="getMessageAvatar(group.messages[0])"
@@ -108,7 +142,7 @@ const MessageArea = {
                                 <div v-if="isStreamingMsg(msg)" class="message-area-reasoning markdown-body md-streaming">
                                     <div v-for="(block, bi) in $md.streamBlocks(msg.reasoningContent)" :key="bi" class="md-block" v-html="block.html"></div>
                                 </div>
-                                <div v-else class="message-area-reasoning markdown-body" v-html="$md.render(msg.reasoningContent)"></div>
+                                <div v-else class="message-area-reasoning markdown-body" v-html="renderReasoning(msg)"></div>
                             </div>
                         </div>
                         <!-- 编辑模式：显示 textarea -->
@@ -130,7 +164,7 @@ const MessageArea = {
                             <div v-if="content.type === 'text' && isStreamingMsg(msg)" class="markdown-body md-streaming">
                                 <div v-for="(block, bi) in $md.streamBlocks(content.content)" :key="bi" class="md-block" v-html="block.html"></div>
                             </div>
-                            <div v-else-if="content.type === 'text'" class="markdown-body" v-html="$md.render(content.content)"></div>
+                            <div v-else-if="content.type === 'text'" class="markdown-body" v-html="renderContent(content)"></div>
                             <div v-else-if="content.type === 'image'" class="message-attachment-image">
                                 <img :src="$fileUrl.proxy(content.url)" @click.stop="$fileUrl.previewImage(content.url)" />
                             </div>
@@ -156,7 +190,7 @@ const MessageArea = {
                                 <div v-if="isStreamingMsg(msg)" class="message-area-bubble-tools markdown-body md-streaming">
                                     <div v-for="(block, bi) in $md.streamBlocks(toolCallsMarkdown(msg))" :key="bi" class="md-block" v-html="block.html"></div>
                                 </div>
-                                <div v-else class="message-area-bubble-tools markdown-body" v-html="$md.render(toolCallsMarkdown(msg))">
+                                <div v-else class="message-area-bubble-tools markdown-body" v-html="renderToolCalls(msg)">
                                 </div>
                             </div>
                         </div>
@@ -275,7 +309,7 @@ const MessageArea = {
                                         <i style="width: 12px; height: 12px; color: #ff4d4f" data-lucide="circle-x"></i>
                                         <div style="padding: 0 0 1px 4px; color: #ff4d4f">[{{msg.name}}]执行失败</div>
                                     </div>
-                                    <div class="markdown-body" v-html="$md.render($toolParsed(content).result)"></div>
+                                    <div class="markdown-body" v-html="renderToolResult(content)"></div>
                                 </template>
                             </div>
                             <div v-else-if="content.type === 'image'" class="message-attachment-image">
@@ -299,7 +333,6 @@ const MessageArea = {
                         </template>
                     </div>
                 </div>
-            </template>
             <!-- 上下文压缩卡片：长对话总结旧历史期间顶替空占位，避免在「等待回复」处呆等 -->
             <div v-if="compressState" :style="{'--main-color': mainColor}"
                  class="ctx-compress-card" :class="{ 'is-done': compressState === 'done' }">
@@ -346,7 +379,12 @@ const MessageArea = {
             editDraft: '',
             editTargetRole: null,
             // 折叠状态：key = msgId_section, value = true(折叠)/false(展开)
-            collapsedState: {}
+            collapsedState: {},
+            // v-memo 依赖：折叠态是组件局部状态，vue 不会因 memo 命中而重新读取，
+            // 故用自增计数把「折叠态变化」显式暴露给分组依赖
+            collapseNonce: 0,
+            // 同上：mermaid 异步出图完成时需要让分组重建（$forceUpdate 会被 v-memo 挡住）
+            mermaidNonce: 0
         };
     },
 
@@ -369,6 +407,36 @@ const MessageArea = {
                     }
                     current.messages.push(msg);
                 }
+            }
+            // v-memo 依赖：组内每条消息的渲染键 + 影响全局渲染的状态。
+            // 流式期间只有当前消息的键变化 → 只有它所在分组重建 DOM，历史分组保持不动。
+            const globalDeps = [
+                this.busy ? 1 : 0,
+                this.isStreaming ? 1 : 0,
+                // 编辑中才纳入草稿/角色：受控 textarea 需要每次输入都下发新值，
+                // 非编辑态恒为空串，不引入额外依赖
+                this.currentEditId
+                    ? (this.currentEditId + '|' + this.editTargetRole + '|' + this.editDraft)
+                    : '',
+                this.collapseNonce,
+                this.mermaidNonce,
+                this.userAvatarError ? 1 : 0,
+                this.assistantAvatarError ? 1 : 0,
+                this.mainColor,
+                this.userSettings.avatar,
+                this.assistantSettings.avatar,
+                this.userSettings.username,
+                this.assistantSettings.assistantName
+            ];
+            for (const group of groups) {
+                const deps = globalDeps.slice();
+                let active = false;
+                for (const msg of group.messages) {
+                    deps.push(this.messageMemoKey(msg));
+                    if (this.isStreamingMsg(msg)) active = true;
+                }
+                group.active = active;
+                group.memo = deps;
             }
             return groups;
         },
@@ -497,6 +565,59 @@ const MessageArea = {
             if (usage.reasoning_tokens != null) add('思考', usage.reasoning_tokens);
             add('合计', usage.total_tokens);
             return rows;
+        },
+
+        /**
+         * 生成一条消息的 v-memo 依赖键：任何会影响该消息渲染输出的字段变化都会让键变化，
+         * 从而只重建该消息所在分组。长度类字段覆盖流式追加；id / 状态 / 分支 / 显式 _v
+         * 覆盖结构性变更（历史消息的这两项不变 → 分组被 memo 掉，不参与每帧重渲染）。
+         * @param {object} msg - 消息对象
+         * @returns {string} 依赖键
+         */
+        messageMemoKey(msg) {
+            let key = (msg.role || '') + '#' + (msg.id || '') + '#' + (msg._v || 0) + '#';
+            key += (msg.name || '') + '#' + (msg.createTime || '') + '#';
+            key += msg.reasoningContent ? msg.reasoningContent.length : 0;
+            if (msg.contents) {
+                for (let i = 0; i < msg.contents.length; i++) {
+                    const c = msg.contents[i];
+                    key += '|' + (c.type || '') + ':' + (c.content ? String(c.content).length : 0)
+                        + ':' + (c.url || '');
+                }
+            }
+            if (msg.toolCalls) {
+                for (let i = 0; i < msg.toolCalls.length; i++) {
+                    const t = msg.toolCalls[i];
+                    key += '|' + t.name + ':' + (t.arguments ? t.arguments.length : 0);
+                }
+            }
+            if (msg.extension) {
+                key += '|' + (msg.extension.status || '') + ':' + (msg.extension.ttsAudio ? 1 : 0);
+            }
+            key += '|' + (msg.siblingIndex != null ? msg.siblingIndex : '')
+                 + ':' + (msg.siblingCount != null ? msg.siblingCount : '');
+            return key;
+        },
+
+        /** 正文 Markdown（缓存到 content 对象的 text 槽：历史消息只解析一次） */
+        renderContent(content) {
+            return memoHtml(content, 'text', content.content, this.$md.render);
+        },
+
+        /** 思考过程 Markdown（缓存到 message 对象的 reasoning 槽） */
+        renderReasoning(msg) {
+            return memoHtml(msg, 'reasoning', msg.reasoningContent, this.$md.render);
+        },
+
+        /** 工具结果 Markdown（缓存到 content 对象的 tool 槽） */
+        renderToolResult(content) {
+            const parsed = this.$toolParsed(content);
+            return memoHtml(content, 'tool', parsed ? parsed.result : '', this.$md.render);
+        },
+
+        /** 工具调用参数 Markdown（非流式整段渲染；缓存到 message 对象的 calls 槽） */
+        renderToolCalls(msg) {
+            return memoHtml(msg, 'calls', this.toolCallsMarkdown(msg), this.$md.render);
         },
 
         /**
@@ -708,6 +829,8 @@ const MessageArea = {
                         } else {
                             targetMsg.contents.push({ type: 'text', content: this.editDraft });
                         }
+                        // 编辑可能等长替换（长度键检测不到），显式标记以触发该分组重建
+                        targetMsg._v = (targetMsg._v || 0) + 1;
                     }
                     this.$nextTick(() => {
                         MermaidUtils.renderAll();
@@ -854,8 +977,21 @@ const MessageArea = {
             this._iconRefreshPending = true;
             requestAnimationFrame(() => {
                 this._iconRefreshPending = false;
-                if (typeof lucide !== 'undefined') {
-                    lucide.createIcons();
+                if (typeof lucide === 'undefined') return;
+                // 流式期间避免全量扫描（会随消息数线性变慢，是掉帧主因之一）：
+                //   1) 只重扫当前活动分组，覆盖工具状态图标等动态变化；
+                //   2) 再补扫本轮新出现、尚未渲染的图标（整列表重建时用）。
+                if (this.isStreaming) {
+                    const active = this.$el.querySelectorAll('.is-active-group');
+                    for (let i = 0; i < active.length; i++) {
+                        lucide.createIcons({ root: active[i] });
+                    }
+                    const fresh = this.$el.querySelectorAll('[data-lucide]:not([data-lucide-rendered])');
+                    if (fresh.length) {
+                        lucide.createIcons({ nodes: fresh });
+                    }
+                } else {
+                    lucide.createIcons({ root: this.$el });
                 }
             });
         },
@@ -869,7 +1005,9 @@ const MessageArea = {
             this._mermaidRefreshPending = true;
             requestAnimationFrame(() => {
                 this._mermaidRefreshPending = false;
-                this.$forceUpdate();
+                // 计数变化 → 所有分组依赖变化 → 含 mermaid 的块用新 SVG 替换源码占位
+                // （不能再用 $forceUpdate：v-memo 命中时它不会重建被 memo 的分组）
+                this.mermaidNonce++;
             });
         },
 
@@ -894,6 +1032,8 @@ const MessageArea = {
          * @param {string} section - 区域标识
          */
         toggleCollapse(msgId, section) {
+            // 折叠态是组件局部状态；v-memo 命中时 Vue 不会重读它，靠计数显式触发分组重建
+            this.collapseNonce++;
             const key = msgId + '_' + section;
             const currentlyCollapsed = this.isCollapsed(msgId, section);
 

@@ -162,6 +162,51 @@ const SessionStore = (function () {
         return arr[arr.length - 1];
     }
 
+    /* ================= 流式文本合帧 ================= */
+    /**
+     * chunk / done 文本帧缓冲。后端可能在单个动画帧内下发多帧，逐帧写 reactive
+     * 会让消息区每帧多次整列重渲染；这里攒到下一次 rAF 一次性应用，把渲染频率
+     * 压到屏幕刷新率以内，并让同一批内容只触发一次更新。
+     * 其它类型的帧到达时必须先 flush，以保证文本与工具/结束帧的先后顺序。
+     */
+    const pendingChunks = [];
+    let chunkFlushHandle = null;
+
+    /** 立刻应用缓冲区内的全部 chunk/done 帧（顺序处理，最后只滚动一次） */
+    function flushPendingChunks() {
+        if (chunkFlushHandle !== null) {
+            cancelAnimationFrame(chunkFlushHandle);
+            chunkFlushHandle = null;
+        }
+        if (pendingChunks.length === 0) return;
+        const batch = pendingChunks.splice(0, pendingChunks.length);
+        let appended = false;
+        for (const response of batch) {
+            const streamingMessage = store.findStreamingMessage(response.sessionId);
+            if (!streamingMessage) continue;
+            store.appendChunk(streamingMessage, response);
+            appended = true;
+        }
+        if (appended) ui.scrollToBottom();
+    }
+
+    /** 缓冲一帧 chunk/done，并在下一次 rAF 统一应用 */
+    function queueChunk(response) {
+        pendingChunks.push(response);
+        if (chunkFlushHandle === null) {
+            chunkFlushHandle = requestAnimationFrame(flushPendingChunks);
+        }
+    }
+
+    /** 丢弃未应用的缓冲（断线/重建消息等场景，避免把过期内容写到新消息上） */
+    function discardPendingChunks() {
+        if (chunkFlushHandle !== null) {
+            cancelAnimationFrame(chunkFlushHandle);
+            chunkFlushHandle = null;
+        }
+        pendingChunks.length = 0;
+    }
+
     /**
      * 用真实工具结果替换对应的"执行中"占位消息（按 toolCallId 精确匹配）。
      * 找不到占位时（如页面刷新后）直接追加。
@@ -238,6 +283,8 @@ const SessionStore = (function () {
             // 已有会话正在加载：忽略后续切换，避免两次请求的历史互相覆盖，出现串台
             if (state.sessionSelectLoading) return;
             WsBus.emit('sidebar:close');
+            // 切走时丢弃尚未落盘的缓冲：其目标消息即将被历史覆盖，避免写到新会话上
+            discardPendingChunks();
             ui.clearMdCache();
             WsBus.emit('agent-log:clear');
             ui.clearTts();
@@ -280,6 +327,7 @@ const SessionStore = (function () {
             // 会话仍在加载时不允许新建，否则会与在途的历史请求竞态
             if (state.sessionSelectLoading) return;
             WsBus.emit('sidebar:close');
+            discardPendingChunks();
             ui.clearMdCache();
             WsBus.emit('agent-log:clear');
             state.currentSession = {};
@@ -534,6 +582,12 @@ const SessionStore = (function () {
         /** 用真实工具结果替换对应的"执行中"占位消息（见文件顶部 replaceToolPlaceholder） */
         replaceToolPlaceholder,
 
+        /** 立即应用缓冲的 chunk/done 帧（其它类型的帧处理前调用，保证顺序） */
+        flushPendingChunks,
+
+        /** 丢弃缓冲的 chunk/done 帧（断线/重连场景） */
+        discardPendingChunks,
+
         /** 查找当前会话（或指定会话）最后一条在途流式 assistant 消息 */
         findStreamingMessage(sessionId) {
             const sid = sessionId || currentSessionId();
@@ -581,6 +635,8 @@ const SessionStore = (function () {
                     }
                 }
             }
+            // 标记内容已变化：消息区据此只重渲染该消息所在分组（v-memo 依赖）
+            streamingMessage._v = (streamingMessage._v || 0) + 1;
         },
 
         /* ================= 流式帧数据处理 ================= */
@@ -593,6 +649,7 @@ const SessionStore = (function () {
          * @returns {boolean} 是否命中当前会话（未命中则不应继续处理）
          */
         handleReplay(sessionId) {
+            flushPendingChunks();
             if (currentSessionId() !== sessionId) {
                 return false;
             }
@@ -606,6 +663,7 @@ const SessionStore = (function () {
 
         /** 处理 START 帧：置流式标记、清残留占位、插入新的 assistant 占位 */
         handleStart(sessionId) {
+            flushPendingChunks();
             ui.clearTts();
             // 新会话发送时在途标记挂在空串上，拿到真实 sessionId 后迁移过去，避免遗留锁
             if (state.sendingMap['']) {
@@ -622,6 +680,7 @@ const SessionStore = (function () {
 
         /** 处理 REPLACE 帧：截断到指定消息（含）之前 */
         handleReplace(messageId) {
+            flushPendingChunks();
             const index = state.currentMessages.findIndex(m => m.id === messageId);
             console.log('replace:', index);
             if (index !== -1) {
@@ -631,6 +690,8 @@ const SessionStore = (function () {
 
         /** 处理 END 帧：清流式标记与残留占位，触发 Mermaid 渲染 */
         handleEnd(sessionId) {
+            // 先把缓冲的文本全部落盘，避免最后一帧 chunk 被结束帧丢掉
+            flushPendingChunks();
             // 本轮结束：解除该会话的请求在途锁（出错/断线时另有 handleError/clearSending 兜底）
             clearSendingKey(sessionId);
             state.streamingMap[sessionId] = false;
@@ -642,6 +703,7 @@ const SessionStore = (function () {
 
         /** 处理 TOOL_CALL_FINISH 帧：推进流式占位到下一轮 AI 回复 */
         handleToolCallFinish(sessionId) {
+            flushPendingChunks();
             state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, sessionId));
             const assistantMessage = getDefaultAssistantMessage(sessionId);
             if (sessionId === currentSessionId()) {
@@ -724,6 +786,7 @@ const SessionStore = (function () {
                         if (m.id) localMsg.id = m.id;
                         if (m.parentId) localMsg.parentId = m.parentId;
                         if (m.createTime) localMsg.createTime = m.createTime;
+                        localMsg._v = (localMsg._v || 0) + 1;
                     }
                 }
             }
@@ -761,6 +824,7 @@ const SessionStore = (function () {
                     lastContent.content = response.text;
                 }
             }
+            streamingMessage._v = (streamingMessage._v || 0) + 1;
         },
 
         /** 处理 error 帧：复位发送态、清理流式消息与标记、返回错误文本 */
@@ -792,6 +856,7 @@ const SessionStore = (function () {
                     ttsStreamingMessage.extension.audios = [];
                 }
                 ttsStreamingMessage.extension.audios.push(ttsFrame.audio);
+                ttsStreamingMessage._v = (ttsStreamingMessage._v || 0) + 1;
             }
             ui.enqueueTts(ttsFrame.audio);
         },
@@ -801,6 +866,7 @@ const SessionStore = (function () {
          * 进入「压缩中」状态，移除空的流式占位，由消息区渲染压缩卡片。
          */
         handleContextCompressing(sessionId) {
+            flushPendingChunks();
             if (sessionId !== currentSessionId()) {
                 return;
             }
@@ -818,6 +884,7 @@ const SessionStore = (function () {
          * 重拉该会话最新历史；若本轮仍在流式中，补一个新的空占位承接后续 chunk。
          */
         async handleContextCompressed(sessionId) {
+            flushPendingChunks();
             if (sessionId !== currentSessionId()) {
                 return;
             }
@@ -854,6 +921,7 @@ const SessionStore = (function () {
          * 若本轮仍在流式中则补回空占位承接后续 chunk。
          */
         handleContextCompressEnd(sessionId) {
+            flushPendingChunks();
             const wasRunning = state.compressMap[sessionId] === 'running';
             if (state.compressMap[sessionId]) {
                 delete state.compressMap[sessionId];
@@ -872,6 +940,7 @@ const SessionStore = (function () {
 
         /** 断线重连：清空全部流式标记并清掉残留占位 */
         resetStreamingOnReconnect() {
+            discardPendingChunks();
             state.streamingMap = {};
             state.compressMap = {};
             state.currentMessages = state.currentMessages.filter(m =>
@@ -929,7 +998,15 @@ const SessionStore = (function () {
             } catch (e) {
                 return;
             }
-            const streamingMessage = this.findStreamingMessage(response.sessionId);
+
+            // 文本增量帧先缓冲，攒到下一次 rAF 统一应用，避免逐帧整列重渲染
+            if (response.status === 'chunk' || response.status === 'done') {
+                queueChunk(response);
+                return;
+            }
+
+            // 其它帧必须建立在已应用的文本之上，先把缓冲冲刷干净（保证先后顺序）
+            flushPendingChunks();
 
             switch (response.status) {
                 case 'init_user': {
@@ -952,18 +1029,8 @@ const SessionStore = (function () {
                     this.handleInitTool(response);
                     break;
                 }
-                case 'done':
-                case 'chunk': {
-                    if (!streamingMessage) {
-                        console.warn('未找到对应的 streamingMessage, sessionId:', response.sessionId);
-                        return;
-                    }
-                    this.appendChunk(streamingMessage, response);
-                    ui.scrollToBottom();
-                    break;
-                }
                 case 'init_assistant': {
-                    this.handleInitAssistant(streamingMessage, response);
+                    this.handleInitAssistant(this.findStreamingMessage(response.sessionId), response);
                     break;
                 }
                 case 'error': {
@@ -1012,7 +1079,10 @@ const SessionStore = (function () {
         WsBus.on('*', raw => store.handleWsMessage(raw));
         // 连接生命周期：由 chat-connection 经 WsBus.setSocket / clearSocket 广播
         WsBus.on('ws:connected', () => store.onSocketConnected());
-        WsBus.on('ws:disconnected', () => store.clearSending());
+        WsBus.on('ws:disconnected', () => {
+            store.discardPendingChunks();
+            store.clearSending();
+        });
     })();
 
     return store;
