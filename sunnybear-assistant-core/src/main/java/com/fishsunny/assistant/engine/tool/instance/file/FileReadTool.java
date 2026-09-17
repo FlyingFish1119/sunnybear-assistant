@@ -29,6 +29,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * 文件读取工具
@@ -44,6 +45,12 @@ public class FileReadTool implements ToolHandler {
             .ofPattern("yyyy-MM-dd HH:mm:ss")
             .withZone(ZoneId.systemDefault());
 
+    /** 安全模式下允许直接读取正文的文件大小上限（字节），超过则只返回基础信息 */
+    private static final long SAFE_MAX_BYTES = 128 * 1024L;
+
+    /** 统计行数时允许扫描的最大文件大小，超过则不统计（避免为大文件长时间扫描） */
+    private static final long LINE_COUNT_MAX_BYTES = 64 * 1024 * 1024L;
+
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
 
@@ -52,7 +59,8 @@ public class FileReadTool implements ToolHandler {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("读取文件内容的首选工具（比执行 cat/type 命令更安全，无输出限制）。支持多文件并行读取，各文件可独立指定行范围，单文件失败不影响其他文件。")
+                .setDescription("读取文件内容的首选工具（比执行 cat/type 命令更安全，无输出限制）。支持多文件并行读取，各文件可独立指定行范围，单文件失败不影响其他文件。" +
+                        "默认开启安全模式（safe=true）：读取大文件时只返回文件基础信息而不返回正文，避免撑爆上下文；确需读取正文时显式设置 safe=false。")
                 .setRequired(List.of("paths"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("paths", "array",
@@ -63,7 +71,11 @@ public class FileReadTool implements ToolHandler {
                                                 new ToolRegister.Parameters("path", "string", "文件路径"),
                                                 new ToolRegister.Parameters("startLine", "integer", "起始行，从 1 开始，不填则从头读"),
                                                 new ToolRegister.Parameters("endLine", "integer", "结束行，包含该行，不填则读到结尾")),
-                                        List.of("path")))
+                                        List.of("path"))),
+                        new ToolRegister.Parameters("safe", "boolean",
+                                "安全模式，默认 true。开启时读取大文件（超过 " + ToolKit.formatSize(SAFE_MAX_BYTES)
+                                        + "）只返回文件基础信息（路径、大小、行数等），不返回正文；"
+                                        + "确需读取文件正文时设为 false")
                 ));
     }
 
@@ -80,9 +92,12 @@ public class FileReadTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("参数 paths 不能为空，请至少提供一个文件描述");
         }
 
+        // safe 默认开启：大文件只返回基础信息，避免撑爆上下文
+        boolean safe = arguments.getSafe() == null || arguments.getSafe();
+
         // 并行读取所有文件，每个文件使用自己的行范围
         List<FileResult> results = arguments.getPaths().parallelStream()
-                .map(this::readFileSafe)
+                .map(spec -> readFileSafe(spec, safe))
                 .toList();
 
         return assembleResults(results);
@@ -91,7 +106,7 @@ public class FileReadTool implements ToolHandler {
     /**
      * 安全读取单个文件描述，捕获异常返回失败结果而不抛出
      */
-    private FileResult readFileSafe(FileSpec spec) {
+    private FileResult readFileSafe(FileSpec spec, boolean safe) {
         String pathStr = spec.getPath();
         try {
             if (!StringUtils.hasText(pathStr)) {
@@ -107,7 +122,7 @@ public class FileReadTool implements ToolHandler {
             if (!Files.isReadable(filePath)) {
                 return FileResult.error(pathStr, "文件不可读: " + filePath);
             }
-            String content = readFileContent(filePath, spec);
+            String content = readFileContent(filePath, spec, safe);
             return FileResult.success(pathStr, content);
         } catch (Exception e) {
             return FileResult.error(pathStr, "读取异常: " + e.getMessage());
@@ -115,9 +130,17 @@ public class FileReadTool implements ToolHandler {
     }
 
     /**
-     * 读取单个文件的文本内容（含元数据头），使用 FileSpec 中的行范围
+     * 读取单个文件的文本内容（含元数据头），使用 FileSpec 中的行范围。
+     * safe 为 true 时，超过体积上限的文件只返回基础信息。
      */
-    private String readFileContent(Path filePath, FileSpec spec) throws Exception {
+    private String readFileContent(Path filePath, FileSpec spec, boolean safe) throws Exception {
+        BasicFileAttributes attrs = Files.readAttributes(filePath, BasicFileAttributes.class);
+
+        // 安全模式：文件超过体积上限时直接返回元信息，避免大文件正文进入上下文
+        if (safe && attrs.size() > SAFE_MAX_BYTES) {
+            return buildSafeModeNotice(filePath, attrs, countLines(filePath, attrs.size()));
+        }
+
         List<String> allLines = Files.readAllLines(filePath);
         int totalLines = allLines.size();
 
@@ -154,16 +177,8 @@ public class FileReadTool implements ToolHandler {
         // 根据文件扩展名推断语言标识
         String language = ToolKit.inferLanguage(filePath);
 
-        // 读取文件元数据
-        BasicFileAttributes attrs = Files.readAttributes(filePath, BasicFileAttributes.class);
-        String languageInfo = !language.isEmpty() ? language : "未知";
-
         StringBuilder sb = new StringBuilder();
-        sb.append("文件路径: ").append(filePath).append("\n");
-        sb.append("文件大小: ").append(ToolKit.formatSize(attrs.size())).append("（").append(attrs.size()).append(" 字节）\n");
-        sb.append("总行数: ").append(totalLines).append("\n");
-        sb.append("最后修改: ").append(formatTime(attrs.lastModifiedTime())).append("\n");
-        sb.append("语言类型: ").append(languageInfo).append("\n");
+        appendMetadata(sb, filePath, attrs, totalLines);
         sb.append("\n");
         sb.append("内容（第 ").append(startLine).append(" ~ ").append(endLine)
                 .append(" 行，共 ").append(totalLines).append(" 行）:\n");
@@ -176,6 +191,46 @@ public class FileReadTool implements ToolHandler {
 
         sb.append("````").append("\n");
         return sb.toString();
+    }
+
+    /**
+     * 拼接文件基础信息（路径、大小、行数、修改时间、语言类型）
+     */
+    private void appendMetadata(StringBuilder sb, Path filePath, BasicFileAttributes attrs, long totalLines) {
+        String language = ToolKit.inferLanguage(filePath);
+        sb.append("文件路径: ").append(filePath).append("\n");
+        sb.append("文件大小: ").append(ToolKit.formatSize(attrs.size())).append("（").append(attrs.size()).append(" 字节）\n");
+        sb.append("总行数: ").append(totalLines >= 0 ? String.valueOf(totalLines) : "未统计（文件过大）").append("\n");
+        sb.append("最后修改: ").append(formatTime(attrs.lastModifiedTime())).append("\n");
+        sb.append("语言类型: ").append(language.isEmpty() ? "未知" : language).append("\n");
+    }
+
+    /**
+     * 安全模式拦截大文件时返回的提示（仅基础信息，不含正文）
+     */
+    private String buildSafeModeNotice(Path filePath, BasicFileAttributes attrs, long totalLines) {
+        StringBuilder sb = new StringBuilder();
+        appendMetadata(sb, filePath, attrs, totalLines);
+        sb.append("\n");
+        sb.append("⚠️ 安全模式已开启：文件超过安全读取上限（超过 ")
+                .append(ToolKit.formatSize(SAFE_MAX_BYTES))
+                .append("），未返回正文内容。\n");
+        sb.append("如确需读取文件正文，请显式设置 safe=false 后重试。\n");
+        return sb.toString();
+    }
+
+    /**
+     * 统计文件行数；文件过大或统计失败时返回 -1（未统计）。
+     */
+    private long countLines(Path filePath, long size) {
+        if (size > LINE_COUNT_MAX_BYTES) {
+            return -1;
+        }
+        try (Stream<String> lines = Files.lines(filePath)) {
+            return lines.count();
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
     /**
@@ -263,6 +318,7 @@ public class FileReadTool implements ToolHandler {
     @Data
     private static class Arguments {
         private List<FileSpec> paths;
+        private Boolean safe;
     }
 
     @Data

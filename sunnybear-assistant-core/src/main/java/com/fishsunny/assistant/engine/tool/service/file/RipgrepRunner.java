@@ -48,8 +48,13 @@ public class RipgrepRunner {
     /** 跳过超过该大小的文件 */
     private static final String DEFAULT_MAX_FILESIZE = "50M";
 
-    /** 匹配行超过该字节数后截断，避免超长单行撑爆 LLM 上下文 */
-    private static final int MAX_COLUMNS = 500;
+    /**
+     * 单行内容超过该字符数后截断，避免超长单行撑爆 LLM 上下文。
+     * <p>
+     * 注意：rg 的 {@code --max-columns} 对 {@code --json} 输出无效（官方文档明确说明），
+     * 因此必须在解析 JSON 时自行截断。
+     */
+    private static final int MAX_LINE_CHARS = 500;
 
     private final ObjectMapper objectMapper;
     private final Path cacheRoot;
@@ -301,9 +306,6 @@ public class RipgrepRunner {
         args.add(String.valueOf(req.depth));
         args.add("--max-filesize");
         args.add(DEFAULT_MAX_FILESIZE);
-        args.add("--max-columns");
-        args.add(String.valueOf(MAX_COLUMNS));
-        args.add("--max-columns-preview");
         if (!req.caseSensitive) {
             args.add("-i");
         }
@@ -378,7 +380,7 @@ public class RipgrepRunner {
                         }
                         MatchLine matchLine = new MatchLine();
                         matchLine.lineNumber = data.path("line_number").asInt(0);
-                        matchLine.content = stripLineEnd(data.path("lines").path("text").asText(""));
+                        matchLine.content = truncateLine(stripLineEnd(data.path("lines").path("text").asText("")));
                         matchLine.match = true;
                         current.lines.add(matchLine);
                         result.totalMatches++;
@@ -389,7 +391,7 @@ public class RipgrepRunner {
                         }
                         MatchLine contextLine = new MatchLine();
                         contextLine.lineNumber = data.path("line_number").asInt(0);
-                        contextLine.content = stripLineEnd(data.path("lines").path("text").asText(""));
+                        contextLine.content = truncateLine(stripLineEnd(data.path("lines").path("text").asText("")));
                         contextLine.match = false;
                         current.lines.add(contextLine);
                     }
@@ -418,5 +420,13 @@ public class RipgrepRunner {
             end--;
         }
         return s.substring(0, end);
+    }
+
+    /** 截断超长单行，避免一行内容撑爆 LLM 上下文 */
+    private static String truncateLine(String s) {
+        if (s == null || s.length() <= MAX_LINE_CHARS) {
+            return s;
+        }
+        return s.substring(0, MAX_LINE_CHARS) + "…[单行过长，已截断 " + (s.length() - MAX_LINE_CHARS) + " 字符]";
     }
 }

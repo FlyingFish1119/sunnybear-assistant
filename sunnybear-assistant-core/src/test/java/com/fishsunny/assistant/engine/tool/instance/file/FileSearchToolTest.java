@@ -121,4 +121,26 @@ class FileSearchToolTest {
             Files.deleteIfExists(searchRoot);
         }
     }
+
+    @Test
+    void longLineTruncatedInSearchResult() throws Exception {
+        Path searchRoot = Files.createTempDirectory("rg-longline-test");
+        Path file = searchRoot.resolve("long.txt");
+        // 单行 2000 字符，命中 needle 后应被截断到 MAX_LINE_CHARS(500)
+        Files.writeString(file, "needle-" + "z".repeat(1993));
+        String rootPath = searchRoot.toString().replace("\\", "\\\\");
+        try {
+            ToolExecutor.ToolExecuteResponse resp = search(
+                    "{\"path\":\"" + rootPath + "\",\"pattern\":\"needle\"}");
+            String result = resp.getResult();
+            System.out.println("===== longLineTruncatedInSearchResult =====");
+            System.out.println(result);
+            assertTrue(result.contains("单行过长，已截断"), result);
+            assertTrue(result.contains("已截断 1500 字符"), result);
+            assertFalse(result.contains("z".repeat(1000)), "超长单行不应整行进入结果");
+        } finally {
+            Files.deleteIfExists(file);
+            Files.deleteIfExists(searchRoot);
+        }
+    }
 }
