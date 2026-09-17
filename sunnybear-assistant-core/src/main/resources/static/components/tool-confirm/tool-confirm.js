@@ -177,6 +177,9 @@ const ToolConfirm = {
                 _timer: null
             };
             this.asks.push(tab);
+            // 新请求到达 → 响一声把人叫回来（正低头刷手机的时候这声有用）。
+            // 没加载 alert-sound.js 的页面拿不到 AlertSound，静默跳过即可。
+            if (window.AlertSound) window.AlertSound.play();
             // 浏览器行为：新标签自动激活，但收起状态下来新请求只累加角标、不打扰用户
             if (!this.collapsed) {
                 this.activeIndex = this.asks.length - 1;

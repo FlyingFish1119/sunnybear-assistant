@@ -7,6 +7,7 @@
  * 动效清单：
  *   呼吸     整体缩放 + 上下起伏（正弦，永续）
  *   眨眼     眼白+眼仁+睫毛纵向压缩，随机间隔（睫毛在 face 之上，单独同步）
+ *   抖一下   被惊到时整体哆嗦一下：高频摆动 + 微转 + 缩一缩，顺带抽一次耳朵（pulse）
  *   瞳孔跟随 鼠标位置驱动 —— 只动眼仁，眼白保持不动
  *   耳朵抽动 随机弹性抖动，左右错开方向
  *   刘海飘动 缓慢旋转 + 斜切
@@ -17,6 +18,7 @@
  *   var bear = SunnyBearMascot.create(stageEl);
  *   bear.start();   // 可见时才跑，省 CPU
  *   bear.stop();
+ *   bear.pulse();   // 让它哆嗦一下（无审查模式切换等）
  *   bear.destroy();
  * ============================================================ */
 (function (global) {
@@ -40,7 +42,9 @@
         // 耳朵抽动
         ear: { gapMinMs: 3800, gapMaxMs: 9500, ampDeg: 7, durMs: 380 },
         // 刘海飘动
-        hair: { periodMs: 5600, angleDeg: 1.8, skewDeg: 0.65 }
+        hair: { periodMs: 5600, angleDeg: 1.8, skewDeg: 0.65 },
+        // 抖一下：高频左右摆（3 个来回）+ 微转 + 缩一缩，全部随时间衰减到 0
+        pulse: { durMs: 480, shiftPx: 8, angleDeg: 1.6, squeeze: 0.04 }
     };
 
     /* 绘制顺序（从底到顶）：沿用 PSD 图层顺序；
@@ -203,7 +207,8 @@
             lastBlinkScaleY: 1,
             twitchStart: 0,
             nextTwitch: 0,
-            lastEarAmp: null
+            lastEarAmp: null,
+            pulseStart: 0             // 抖一下的起始时刻（0 = 没在抖）
         };
 
         function refreshScale() {
@@ -233,11 +238,27 @@
             state.head.y += (t.y - state.head.y) * CFG.headFollow.ease;
             state.body.x += (t.x - state.body.x) * CFG.bodyFollow.ease;
 
-            // 呼吸：整体起伏 + 极轻微缩放
+            // 抖一下：高频摆动 + 缩一缩，都乘 (1 - 进度) 衰减，收尾自然归零
+            var shake = 0;
+            var squeeze = 0;
+            if (state.pulseStart) {
+                var pp = (now - state.pulseStart) / CFG.pulse.durMs;
+                if (pp >= 1) {
+                    state.pulseStart = 0;
+                } else {
+                    var decay = 1 - pp;
+                    shake = Math.sin(pp * Math.PI * 6) * decay;
+                    squeeze = Math.sin(pp * Math.PI) * decay;
+                }
+            }
+
+            // 呼吸：整体起伏 + 极轻微缩放（抖一下叠加在同一层 transform 上，两者互不打架）
             var bp = Math.sin(now / CFG.breath.periodMs * Math.PI * 2);
             stage.style.transform =
-                'translateY(' + (-bp * CFG.breath.liftPx * s).toFixed(3) + 'px)' +
-                ' scale(' + (1 + bp * CFG.breath.scale).toFixed(5) + ')';
+                'translate(' + (shake * CFG.pulse.shiftPx * s).toFixed(3) + 'px,' +
+                                (-bp * CFG.breath.liftPx * s).toFixed(3) + 'px)' +
+                ' rotate(' + (shake * CFG.pulse.angleDeg).toFixed(3) + 'deg)' +
+                ' scale(' + ((1 + bp * CFG.breath.scale) * (1 - squeeze * CFG.pulse.squeeze)).toFixed(5) + ')';
 
             // 头部：跟随鼠标微转 + 呼吸的细微带动
             headGroup.style.transform =
@@ -342,6 +363,18 @@
 
         var instance = {
             stage: stage,
+
+            /**
+             * 抖一下：被惊到时整体哆嗦（摆动 + 微转 + 缩一缩），顺带让耳朵抽一次。
+             * 效果全在 frame 里按时间算，这里只负责"点火"，重复调用会重新从头抖。
+             */
+            pulse: function () {
+                var now = (global.performance || Date).now();
+                state.pulseStart = now;
+                state.twitchStart = 0;      // 打断正在抽的耳朵，跟着一起重来
+                state.nextTwitch = now;
+            },
+
             start: function () {
                 if (state.running) return;
                 state.running = true;

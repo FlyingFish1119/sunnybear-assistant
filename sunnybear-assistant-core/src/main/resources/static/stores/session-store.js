@@ -438,14 +438,18 @@ const SessionStore = (function () {
                 const result = await API.session.delete(session.id);
                 if (result.status === 200) {
                     ElementPlus.ElMessage.success('会话已删除');
+                    // 先记下"删的是不是当前会话"：清空之后 currentSessionId() 就查不出来了
+                    const wasCurrent = state.currentSession === session || currentSessionId() === session.id;
                     const idx = state.sessions.findIndex(s => s.id === session.id);
                     if (idx !== -1) {
                         state.sessions.splice(idx, 1);
                     }
-                    if (state.currentSession === session || currentSessionId() === session.id) {
+                    if (wasCurrent) {
                         state.currentSession = {};
                         state.currentMessages = [];
                     }
+                    // 删掉哪一个都广播（不分是不是当前会话）：看板熊就爱凑这个热闹
+                    WsBus.emit('session:deleted');
                     return true;
                 }
                 ElementPlus.ElMessage.error(result.message || '删除会话失败');
@@ -459,6 +463,7 @@ const SessionStore = (function () {
 
         /** 切换会话 Pro 模式（普通 ↔ 高级），并同步列表与当前会话对象 */
         async toggleSessionPro(session) {
+            const enabling = !session.enablePro;
             try {
                 const result = await API.session.togglePro(session.id);
                 if (result.status === 200) {
@@ -467,6 +472,8 @@ const SessionStore = (function () {
                     if (currentSessionId() === session.id) {
                         Object.assign(state.currentSession, result.data);
                     }
+                    // 广播"用户主动拨的 Pro 开关"（同无审查：切会话/加载数据不该被当成切换）
+                    WsBus.emit('session:pro-toggled', { sessionId: session.id, enabling: enabling });
                 } else {
                     ElementPlus.ElMessage.error(result.message || '切换模式失败');
                 }
@@ -488,6 +495,9 @@ const SessionStore = (function () {
                         Object.assign(state.currentSession, result.data);
                     }
                     ElementPlus.ElMessage.success(enabling ? '已开启无审查模式' : '已关闭无审查模式');
+                    // 广播"这是用户主动拨的开关"：看板熊靠它区分"切模式"和"切会话"——
+                    // 换会话/加载数据同样会改 unreviewed 的值，那种不该当成切换
+                    WsBus.emit('session:unreviewed-toggled', { sessionId: session.id, enabling: enabling });
                 } else {
                     ElementPlus.ElMessage.error(result.message || '切换无审查模式失败');
                 }

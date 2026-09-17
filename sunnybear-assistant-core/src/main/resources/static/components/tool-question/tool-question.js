@@ -216,6 +216,9 @@ const ToolQuestion = {
                 }))
             };
             this.queue.push(tq);
+            // 新提问到达 → 响一声。和工具确认共用同一个音、同一套节流，
+            // 两者几乎同时来时只会响一次，不会叠在一起吵。
+            if (window.AlertSound) window.AlertSound.play();
             // 若当前没有展示中的提问 → 弹出第一个
             if (!this.active) {
                 this.loadNext();

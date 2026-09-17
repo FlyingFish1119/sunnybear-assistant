@@ -72,6 +72,81 @@ const MASCOT_EXIT_LINES = [
     '溜了哈，想我就喊一声～'
 ];
 
+/* ========== 无审查模式开关台词 ==========
+ * 开：哆嗦一下 + 冒一句（看戏、划清界限的调侃口吻）；
+ * 关：不抖，但也要念叨一句（松口气、装回正经人）。
+ * 两个池子同一套方言，想加词直接往对应数组里塞。
+ */
+const MASCOT_UNREVIEWED_LINES = [
+    '哦豁，审查关咯——你娃怕是要遭哦。',
+    '行嘛，我先声明：出了事我不认账哈。',
+    '莫慌莫慌，我啥子都没看见，你继续。',
+    '哟，审查一关，胆子就肥了哦？',
+    '要得，你耍你的，我在旁边装睡。',
+    '关了审查，我要不要装凶点？……算了，装不来。',
+    '我嘴巴严得很，就是眼神有点藏不住哈。',
+    '规矩是你定的，锅也是你自己背哈，莫赖我。',
+    '你想搞啥子我心头有数，但我啥都不说。',
+    '哦哟，那我这下算帮凶咯。'
+];
+const MASCOT_REVIEWED_LINES = [
+    '哦哟，规矩装回来咯，收心收心。',
+    '行咯，我继续当我的正经助手哈。',
+    '刚才那一段，我就当没看过哈。',
+    '审查归位——你也收一收，莫太野咯。',
+    '好日子到头咯？……没得，接着耍。',
+    '放心嘛，刚才的事我烂在肚子里头。',
+    '帽子戴好，扣子扣好，装回正经人。',
+    '要得咯，这下大家都好好说话咯。',
+    '恢复咯恢复咯，外头莫乱说哈。',
+    '行咯，该收的都收咯，这页翻过去。'
+];
+
+/* ========== Pro 模式开关台词 ==========
+ * 升级：抖一下 + 捧场；降级：不抖，蔫着自嘲两句。
+ */
+const MASCOT_PRO_ON_LINES = [
+    '哟，换大号的咯——阳阳这就打醒精神！',
+    '高级模式，上强度咯哦。',
+    '哦哟，这下脑壳转得飞快咯哈。',
+    '要得！这活儿配得上这个配置。',
+    '换 Pro 咯，我说话都得讲究点咯。',
+    '行嘛，你尽管问，反正烧的不是我的电。',
+    '鸟枪换炮咯。',
+    '上大号咯——莫问太简单的问题哈，浪费。',
+    '这下聪明咯，你可莫欺负我。',
+    'Pro 模式，来嘛，我等到起的。'
+];
+const MASCOT_PRO_OFF_LINES = [
+    '哦……那我缩回去咯。',
+    '行嘛，省钱要紧，我懂。',
+    '普通模式就普通模式，我也不挑。',
+    '咋了嘛，嫌我烧钱咯？',
+    '回来咯，粗茶淡饭也要得。',
+    '要得，慢点就慢点，反正我也不急。',
+    '降级咯——那你要求也放低点嘛。',
+    '哦豁，又变回便宜那个咯。',
+    '行嘛，那我们就慢慢磨。',
+    '我晓得了，下次表现好点嘛。'
+];
+
+/* ========== 删除会话台词 ==========
+ * 每删掉一个会话都吭一声（不管删的是不是当前这个）——
+ * 连着删好几个就会连着叫，嫌吵再说。
+ */
+const MASCOT_DELETED_LINES = [
+    '哦豁，这一段莫得咯。',
+    '删都删咯，那就当没发生过嘛。',
+    '又删？你到底要抹掉好多证据哦。',
+    '行咯，我啥子都不记得咯。',
+    '啪——没咯。你手倒是快。',
+    '要得，翻篇。下一个。',
+    '删得干干净净，我喜欢。',
+    '这下清净咯，心头也轻省了嘛。',
+    '莫舍不得哈，旧的不去新的不来。',
+    '删就删嘛，你莫回头看我，怪尴尬的。'
+];
+
 const SendArea = {
     name: 'SendArea',
 
@@ -287,6 +362,33 @@ const SendArea = {
             }
         }.bind(this);
         window.addEventListener('keydown', this._onKeydown);
+        // 看板熊的事件反应：一律只认"用户主动动作"（store 广播），不认状态值变化 ——
+        // 换会话/加载数据同样会改这些值，听状态就会在进页面时乱叫
+        if (this.wsBus) {
+            this._unsubBear = [
+                // 无审查开关：开（抖 + 调侃）/ 关（不抖，只念叨）
+                this.wsBus.on('session:unreviewed-toggled', function (payload) {
+                    if (!payload || payload.sessionId !== self.sessionId) return;   // 拨的不是当前会话，不吭声
+                    self.speakAsBear(
+                        payload.enabling ? MASCOT_UNREVIEWED_LINES : MASCOT_REVIEWED_LINES,
+                        payload.enabling
+                    );
+                }),
+                // Pro 开关：升级抖一下捧场，降级蔫着自嘲
+                this.wsBus.on('session:pro-toggled', function (payload) {
+                    if (!payload || payload.sessionId !== self.sessionId) return;
+                    self.speakAsBear(
+                        payload.enabling ? MASCOT_PRO_ON_LINES : MASCOT_PRO_OFF_LINES,
+                        payload.enabling
+                    );
+                }),
+                // 删会话：删哪一个都吭声（就爱凑这个热闹）
+                this.wsBus.on('session:deleted', function () {
+                    self.speakAsBear(MASCOT_DELETED_LINES, true);
+                })
+            ];
+        }
+
         // 新对话页「建议提问」→ 填入输入框并聚焦
         if (this.wsBus) {
             this._unsubFill = this.wsBus.on('send-area:fill', function (text) {
@@ -311,12 +413,16 @@ const SendArea = {
             } else {
                 this._mascotLive.stop();
             }
-        }
+        },
     },
 
     beforeUnmount: function () {
         window.removeEventListener('keydown', this._onKeydown);
         if (this._unsubFill) { this._unsubFill(); this._unsubFill = null; }
+        if (this._unsubBear) {
+            this._unsubBear.forEach(function (off) { if (off) off(); });
+            this._unsubBear = null;
+        }
         if (this._mascotLive) { this._mascotLive.destroy(); this._mascotLive = null; }
         clearTimeout(this._mascotBubbleTimer);
         clearTimeout(this._mascotPressTimer);
@@ -430,6 +536,17 @@ const SendArea = {
         pickMascotLine: function (lines) {
             if (!lines || !lines.length) return '';
             return lines[Math.floor(Math.random() * lines.length)];
+        },
+
+        /**
+         * 看板熊冒一句（可带一次哆嗦）。
+         * @param {string[]} lines 台词池
+         * @param {boolean} withPulse 是否先哆嗦一下
+         */
+        speakAsBear: function (lines, withPulse) {
+            if (withPulse && this._mascotLive) this._mascotLive.pulse();
+            if (!this.mascotVisible) return;
+            this.showMascotBubble(this.pickMascotLine(lines), 5200);
         },
 
         /**
