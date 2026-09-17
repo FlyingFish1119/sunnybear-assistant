@@ -8,7 +8,7 @@
  * 负责：
  *   - 状态：sessions / sessionsHasMore / sessionsLoadingMore / sessionListMode /
  *           currentSession / currentMessages / streamingMap / currentToolCallId /
- *           sessionSelectLoading / sending
+ *           sessionSelectLoading / sendingMap
  *   - 派生：currentSessionId / isStreaming / isNewSession
  *   - 数据方法：会话列表（分页/刷新/增删/sort/Pro/无审查）、会话切换、消息增删、
  *     流式标记、工具占位替换、各类 WS 帧的数据处理
@@ -87,11 +87,11 @@ const SessionStore = (function () {
         /** 会话历史加载中 */
         sessionSelectLoading: false,
         /**
-         * 本轮请求在途标记：send / edit / replace 发起时立即置 true，
-         * 直到服务端 END 帧（本轮结束）或出错/断线才复位。
-         * 用于在「点击 → 服务端返回」的整个空窗期内禁止重复提交。
+         * 各会话的「请求在途」标记：key = sessionId（新会话未定 id 时用 '' 占位），
+         * send / edit / replace 发起时立即置 true，直到该会话 END 帧（本轮结束）或出错/断线才复位。
+         * 按会话隔离，避免在 A 会话发送时把 B 会话的发送按钮也锁死。
          */
-        sending: false
+        sendingMap: {}
     });
 
     /** 判断某条消息是否为「在途流式占位」（以 streaming_ 前缀标识 id） */
@@ -121,10 +121,22 @@ const SessionStore = (function () {
         return state.currentSession.id;
     }
 
+    /** 在途标记的 key：新会话尚未拿到 id 时统一用空串，避免 undefined 键 */
+    function sendingKey(sessionId) {
+        return sessionId == null ? '' : sessionId;
+    }
+
+    /** 清除某会话的在途标记（同时兜底清掉新会话的空串占位） */
+    function clearSendingKey(sessionId) {
+        delete state.sendingMap[sendingKey(sessionId)];
+        delete state.sendingMap[''];
+    }
+
     /** 标记开始发送（本轮结束前禁止重复提交），返回是否成功占位 */
     function beginSend() {
-        if (state.sending) return false;
-        state.sending = true;
+        const key = sendingKey(currentSessionId());
+        if (state.sendingMap[key]) return false;
+        state.sendingMap[key] = true;
         ui.clearTts();
         return true;
     }
@@ -199,9 +211,13 @@ const SessionStore = (function () {
         /** 当前会话的上下文压缩状态：'running' | 'done' | null */
         get compressState() { return state.compressMap[currentSessionId()] || null; },
         get sessionSelectLoading() { return state.sessionSelectLoading; },
-        get sending() { return state.sending; },
-        /** 本轮是否处于不可交互状态：请求在途（send/edit/replace）或正在流式输出 */
-        get busy() { return state.sending || !!state.streamingMap[currentSessionId()]; },
+        /** 当前会话是否有请求在途（仅看当前会话，不影响其它会话的发送状态） */
+        get sending() { return !!state.sendingMap[sendingKey(currentSessionId())]; },
+        /** 当前会话本轮是否不可交互：请求在途（send/edit/replace）或正在流式输出 */
+        get busy() {
+            const sid = currentSessionId();
+            return !!state.sendingMap[sendingKey(sid)] || !!state.streamingMap[sid];
+        },
 
         /**
          * 注册 UI 副作用钩子（页面主组件在 mounted 时调用一次）。
@@ -591,6 +607,11 @@ const SessionStore = (function () {
         /** 处理 START 帧：置流式标记、清残留占位、插入新的 assistant 占位 */
         handleStart(sessionId) {
             ui.clearTts();
+            // 新会话发送时在途标记挂在空串上，拿到真实 sessionId 后迁移过去，避免遗留锁
+            if (state.sendingMap['']) {
+                delete state.sendingMap[''];
+                state.sendingMap[sendingKey(sessionId)] = true;
+            }
             state.streamingMap[sessionId] = true;
             state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, sessionId));
             const assistantMessage = getDefaultAssistantMessage(sessionId);
@@ -610,8 +631,8 @@ const SessionStore = (function () {
 
         /** 处理 END 帧：清流式标记与残留占位，触发 Mermaid 渲染 */
         handleEnd(sessionId) {
-            // 本轮结束：解除请求在途锁（出错/断线时另有 handleError/clearSending 兜底）
-            state.sending = false;
+            // 本轮结束：解除该会话的请求在途锁（出错/断线时另有 handleError/clearSending 兜底）
+            clearSendingKey(sessionId);
             state.streamingMap[sessionId] = false;
             state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, sessionId));
             Vue.nextTick(() => {
@@ -744,8 +765,8 @@ const SessionStore = (function () {
 
         /** 处理 error 帧：复位发送态、清理流式消息与标记、返回错误文本 */
         handleError(response) {
-            state.sending = false;
             const errSessionId = response.sessionId || currentSessionId();
+            clearSendingKey(errSessionId);
             if (errSessionId) {
                 state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, errSessionId));
             }
@@ -857,9 +878,9 @@ const SessionStore = (function () {
                 !(m.role === 'assistant' && m.id && String(m.id).startsWith('streaming_')));
         },
 
-        /** 中止流式时的发送态复位 */
+        /** 断线等场景下的发送态复位：清空所有会话的在途标记 */
         clearSending() {
-            state.sending = false;
+            state.sendingMap = {};
         },
 
         /* ================= WS 帧路由 ================= */

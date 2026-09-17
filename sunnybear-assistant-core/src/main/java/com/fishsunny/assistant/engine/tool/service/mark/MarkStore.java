@@ -17,6 +17,8 @@ import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.Mark;
 import com.fishsunny.assistant.dto.MarkPayload;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
+import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.engine.tool.framework.ToolResponseHandleChain;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -25,16 +27,20 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 @Slf4j
 @Component
-public class MarkStore {
+public class MarkStore implements ToolResponseHandleChain {
 
     /** ChatSession.extension 中本模块占用的 namespace 键 */
     public static final String EXTENSION_KEY = "chat_mark";
+
+    /** 维护步骤清单的工具名：其响应本身已含全量清单，后置处理链跳过它 */
+    public static final String TOOL_NAME = "mark_upsert_tool";
 
     private final ChatSessionService chatSessionService;
     private final ObjectMapper objectMapper;
@@ -77,33 +83,76 @@ public class MarkStore {
         }
     }
 
-    // ==================== 内部 ====================
+    // ==================== 后置处理链 ====================
 
-    private Map<String, Object> parseMap(String extension) {
-        if (!StringUtils.hasText(extension)) {
-            return new LinkedHashMap<>();
+    /**
+     * 工具响应后置处理：把会话中「进行中 + 待处理」的步骤追加到本批次最后一条工具结果里，
+     * 提醒 AI 继续推进清单；本批次调用了 mark 工具时不追加（其响应已含全量清单），
+     * 清单清空或全部完成/取消时也不追加。只追加一条避免同轮重复。
+     */
+    @Override
+    public void handle(List<ToolExecutor.ToolExecuteResponse> batchResponses, Map<String, Object> context) {
+        if (batchResponses == null || batchResponses.isEmpty() || context == null) {
+            return;
         }
-        try {
-            Map<String, Object> map = objectMapper.readValue(extension, new TypeReference<>() {
-            });
-            return map == null ? new LinkedHashMap<>() : map;
-        } catch (Exception e) {
-            log.warn("解析会话 extension 失败，按空对象处理: {}", e.getMessage());
-            return new LinkedHashMap<>();
+        for (ToolExecutor.ToolExecuteResponse response : batchResponses) {
+            if (response != null && TOOL_NAME.equals(response.getName())) {
+                return;
+            }
         }
+        ChatSession session = context.get("chatSession") instanceof ChatSession cs ? cs : null;
+        List<Mark> unfinished = load(session).stream()
+                .filter(mark -> !Mark.STATUS_COMPLETED.equals(mark.getStatus())
+                        && !Mark.STATUS_CANCELLED.equals(mark.getStatus()))
+                .sorted(Comparator.comparingInt((Mark mark) -> Mark.STATUS_IN_PROGRESS.equals(mark.getStatus()) ? 0 : 1))
+                .toList();
+        if (unfinished.isEmpty()) {
+            return;
+        }
+        ToolExecutor.ToolExecuteResponse last = batchResponses.getLast();
+        if (last == null) {
+            return;
+        }
+        last.setResult(last.getResult() + "\n\n" + buildReminder(unfinished));
     }
 
-    private List<Mark> parse(String extension) {
-        Object raw = parseMap(extension).get(EXTENSION_KEY);
+    @Override
+    public int getOrder() {
+        return 0;
+    }
+
+    // ==================== 读取 ====================
+
+    /** 从会话内存 extension 读取步骤清单，读不到/解析失败一律按空清单处理 */
+    public List<Mark> load(ChatSession session) {
+        if (session == null || session.getExtension() == null) {
+            return new ArrayList<>();
+        }
+        Object raw = session.getExtension().get(EXTENSION_KEY);
         if (raw == null) {
             return new ArrayList<>();
         }
         try {
-            return objectMapper.convertValue(raw, new TypeReference<List<Mark>>() {
-            });
+            return objectMapper.convertValue(raw, new TypeReference<>() {});
         } catch (Exception e) {
             log.warn("解析步骤清单失败: {}", e.getMessage());
             return new ArrayList<>();
         }
+    }
+
+    // ==================== 内部 ====================
+
+    /** 未完成清单提醒文本：进行中在前，待处理在后 */
+    private String buildReminder(List<Mark> unfinished) {
+        StringBuilder sb = new StringBuilder("当前步骤清单：\n");
+        for (Mark mark : unfinished) {
+            boolean inProgress = Mark.STATUS_IN_PROGRESS.equals(mark.getStatus());
+            sb.append("- ").append(inProgress ? "[~]" : "[ ]").append(" ").append(mark.getContent());
+            if (inProgress) {
+                sb.append("  ← 当前聚焦");
+            }
+            sb.append("\n");
+        }
+        return sb.toString();
     }
 }

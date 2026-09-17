@@ -38,7 +38,7 @@ import java.util.Set;
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.mark-upsert.enable:true}")
 public class MarkUpsertTool implements ToolHandler {
 
-    public static final String NAME = "mark_upsert_tool";
+    public static final String NAME = MarkStore.TOOL_NAME;
 
     private static final Logger log = LoggerFactory.getLogger(MarkUpsertTool.class);
 

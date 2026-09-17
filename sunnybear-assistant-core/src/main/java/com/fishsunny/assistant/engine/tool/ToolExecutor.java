@@ -12,16 +12,13 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
-import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
-import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
-import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolKit;
-import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
+import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import jakarta.annotation.PreDestroy;
 import lombok.Data;
 import lombok.Getter;
 import lombok.experimental.Accessors;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -32,20 +29,23 @@ import java.util.concurrent.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
+@Slf4j
 @Component
 public class ToolExecutor {
-
-    private static final Logger log = LoggerFactory.getLogger(ToolExecutor.class);
 
     Map<String, ToolHandler> toolMap = new HashMap<>();
     Map<Class<? extends ToolKit>, ToolKit> toolKitMap = new HashMap<>();
 
+    private final List<ToolResponseHandleChain> toolResponseHandleChains = new ArrayList<>();
 
     private final ExecutorService executorService;
     private final ObjectMapper objectMapper;
     private final SessionFileManager sessionFileManager;
 
-    public ToolExecutor(List<ToolKit> toolKits, ObjectMapper objectMapper, SessionFileManager sessionFileManager) {
+    public ToolExecutor(List<ToolKit> toolKits,
+                        List<ToolResponseHandleChain> toolResponseHandleChains,
+                        ObjectMapper objectMapper,
+                        SessionFileManager sessionFileManager) {
         this.objectMapper = objectMapper;
         this.sessionFileManager = sessionFileManager;
         for (ToolKit toolKit : toolKits) {
@@ -54,6 +54,7 @@ public class ToolExecutor {
                 toolMap.put(tool.name(), tool);
             }
         }
+        this.toolResponseHandleChains.addAll(toolResponseHandleChains.stream().sorted(Comparator.comparingInt(ToolResponseHandleChain::getOrder)).toList());
         this.executorService = Executors.newVirtualThreadPerTaskExecutor();
     }
 
@@ -101,6 +102,8 @@ public class ToolExecutor {
                     doExecute(request, context, safeProvider.afterExec()), executorService);
             futures.add(future);
         }
+        // 先全部 join 收集，保证后置处理链看到的是本批次最终状态（如 mark 工具可能同时修改了会话清单），
+        // 避免边 join 边处理时读到中间态
         List<ToolExecuteResponse> responses = new ArrayList<>(requests.size());
         for (int i = 0; i < futures.size(); i++) {
             try {
@@ -111,7 +114,50 @@ public class ToolExecutor {
                         "工具[" + request.getToolName() + "]执行异常，原因是：" + e.getMessage()).setSucceed(false));
             }
         }
+        if (!toolResponseHandleChains.isEmpty()) {
+            applyResponseHandleChains(responses, context, safeProvider);
+        }
         return responses;
+    }
+
+    /**
+     * 依次执行后置处理链；任一链异常只影响自身。
+     * 链执行完对被改写的响应通过 afterExec 补推一帧（同一 toolCallId），保证前端实时看到追加内容。
+     */
+    private void applyResponseHandleChains(List<ToolExecuteResponse> responses,
+                                           Map<String, Object> context,
+                                           ToolProvider provider) {
+        Map<ToolExecuteResponse, String> originResults = new IdentityHashMap<>();
+        for (ToolExecuteResponse response : responses) {
+            originResults.put(response, response.getResult());
+        }
+        Map<String, Object> safeContext = context == null ? new HashMap<>() : context;
+        for (ToolResponseHandleChain chain : toolResponseHandleChains) {
+            try {
+                chain.handle(responses, safeContext);
+            } catch (Exception e) {
+                String errorMessage = "处理链" + chain.getClass().getSimpleName() + "处理失败，原因是：" + e.getMessage();
+                ToolExecuteResponse last = responses.isEmpty() ? null : responses.get(responses.size() - 1);
+                if (last != null) {
+                    last.setResult(last.getResult() + "\n\n" + errorMessage);
+                }
+                log.warn(errorMessage);
+            }
+        }
+        Consumer<ToolExecuteResponse> afterExec = provider.afterExec();
+        if (afterExec == null) {
+            return;
+        }
+        for (ToolExecuteResponse response : responses) {
+            if (Objects.equals(originResults.get(response), response.getResult())) {
+                continue;
+            }
+            try {
+                afterExec.accept(response);
+            } catch (Exception e) {
+                log.warn("补推工具结果失败 [{}]: {}", response.getName(), e.getMessage());
+            }
+        }
     }
 
     private ToolExecuteResponse doExecute(ToolRequest toolRequest, Map<String, Object> context, Consumer<ToolExecuteResponse> afterExec) {
