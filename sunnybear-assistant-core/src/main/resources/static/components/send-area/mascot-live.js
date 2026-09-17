@@ -28,19 +28,19 @@
     /* 动效参数：手感都集中在这里，想调只改这块 */
     var CFG = {
         // 呼吸
-        breath: { periodMs: 4600, scale: 0.007, liftPx: 2.4 },
+        breath: { periodMs: 4600, scale: 0.007, liftPx: 1.8 },
         // 头部跟随鼠标
-        headFollow: { maxAngle: 2.2, maxShift: 1.6, ease: 0.085 },
+        headFollow: { maxAngle: 3.6, maxShift: 1.9, ease: 0.085 },
         // 上身轻摆
-        bodyFollow: { maxAngle: 0.55, ease: 0.07 },
+        bodyFollow: { maxAngle: 0.3, ease: 0.07 },
         // 眼仁跟随（range = 眼白内可用的最大偏移比例）
-        iris: { range: 1.1, ease: 0.15 },
+        iris: { range: 1.4, ease: 0.15 },
         // 眨眼
         blink: { gapMinMs: 2600, gapMaxMs: 6400, closeMs: 70, openMs: 120, closedScaleY: 0.06 },
         // 耳朵抽动
         ear: { gapMinMs: 3800, gapMaxMs: 9500, ampDeg: 7, durMs: 380 },
         // 刘海飘动
-        hair: { periodMs: 5600, angleDeg: 1.5, skewDeg: 0.65 }
+        hair: { periodMs: 5600, angleDeg: 1.8, skewDeg: 0.65 }
     };
 
     /* 绘制顺序（从底到顶）：沿用 PSD 图层顺序；
