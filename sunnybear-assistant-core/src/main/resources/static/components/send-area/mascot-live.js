@@ -6,7 +6,7 @@
  *
  * 动效清单：
  *   呼吸     整体缩放 + 上下起伏（正弦，永续）
- *   眨眼     眼组（眼白+眼仁+睫毛）纵向压缩，随机间隔
+ *   眨眼     眼白+眼仁+睫毛纵向压缩，随机间隔（睫毛在 face 之上，单独同步）
  *   瞳孔跟随 鼠标位置驱动 —— 只动眼仁，眼白保持不动
  *   耳朵抽动 随机弹性抖动，左右错开方向
  *   刘海飘动 缓慢旋转 + 斜切
@@ -46,7 +46,14 @@
     /* 绘制顺序（从底到顶）：沿用 PSD 图层顺序；
        眼睛单独成组，方便"眨眼整组压缩"与"只动眼仁"两件事分开做 */
     var BODY_ORDER = ['topwear', 'neck', 'neckwear', 'handwear-l', 'handwear-r'];
-    var HEAD_ORDER = ['ears-r', 'ears-l', 'face', 'mouth', 'nose'];
+    /* 头部绘制顺序（从底到顶），严格按 PSD 图层排列：
+         ears → 眼窝底(face-r-eye / face-l-eye) → 眼睛(眼白+眼仁)
+         → face / mouth / nose → 睫毛 → headwear / front hair / eyebrow
+       face 盖在眼睛上面，它的两个眼窝是透明的 —— 眼睛只从洞里露出来；
+       眼仁偏到眼白之外的部分会被 face 直接挡掉，不会溢出到脸上 */
+    var HEAD_BASE = ['ears-r', 'ears-l'];
+    var HEAD_SOCKET = ['face-l-eye', 'face-r-eye'];
+    var HEAD_FACE = ['face', 'mouth', 'nose'];
     var HEAD_TAIL = ['headwear', 'front hair', 'eyebrow-l', 'eyebrow-r'];
     var EYES = [
         { key: 'r', white: 'eyewhite-r', iris: 'irides-r', lash: 'eyelash-r' },
@@ -112,22 +119,30 @@
         var headOriginY = neckGeo ? (neckGeo.px[1] + neckGeo.px[3] * 0.7) / contentH : 0.36;
         headGroup.style.transformOrigin = (headOriginX * 100).toFixed(2) + '% ' + (headOriginY * 100).toFixed(2) + '%';
 
-        HEAD_ORDER.forEach(function (n) { var i = makeLayer(n); if (i) headGroup.appendChild(i); });
+        HEAD_BASE.forEach(function (n) { var i = makeLayer(n); if (i) headGroup.appendChild(i); });
+
+        // 眼窝底：垫在眼睛下面（PSD 里这两层就在最底层）
+        HEAD_SOCKET.forEach(function (n) { var i = makeLayer(n); if (i) headGroup.appendChild(i); });
 
         var eyeGroups = [];
+        var eyeLashes = [];
+
         EYES.forEach(function (spec) {
             var whiteGeo = byName[spec.white];
             var irisGeo = byName[spec.iris];
             if (!whiteGeo || !irisGeo) return;
 
-            var g = document.createElement('div');
-            g.className = 'mascot-group mascot-eye mascot-eye-' + spec.key;
             // 眨眼的压缩轴心：眼白中心
             var ox = (whiteGeo.px[0] + whiteGeo.px[2] / 2) / contentW;
             var oy = (whiteGeo.px[1] + whiteGeo.px[3] / 2) / contentH;
-            g.style.transformOrigin = (ox * 100).toFixed(2) + '% ' + (oy * 100).toFixed(2) + '%';
+            var origin = (ox * 100).toFixed(2) + '% ' + (oy * 100).toFixed(2) + '%';
 
-            [spec.white, spec.iris, spec.lash].forEach(function (n) {
+            // 眼白 + 眼仁：压在 face 底下，从 face 的透明眼窝里露出来
+            var g = document.createElement('div');
+            g.className = 'mascot-group mascot-eye mascot-eye-' + spec.key;
+            g.style.transformOrigin = origin;
+
+            [spec.white, spec.iris].forEach(function (n) {
                 var i = makeLayer(n);
                 if (i) g.appendChild(i);
             });
@@ -140,7 +155,27 @@
                 maxX: (whiteGeo.px[2] - irisGeo.px[2]) / 2 * CFG.iris.range,
                 maxY: (whiteGeo.px[3] - irisGeo.px[3]) / 2 * CFG.iris.range
             });
+
+            // 睫毛在 PSD 里画在 face 之上（它本来就在眼白轮廓外），
+            // 跟着眼白沉到 face 底下会被脸皮整条吃掉，所以单独拎出来
+            var lash = makeLayer(spec.lash);
+            if (lash) {
+                // ⚠ 睫毛已经是 headGroup 的直接子元素，transform-origin 的百分比是相对
+                //   "它自己的小框"算的，不能直接套眼组那个 origin（那是相对整个舞台算的）。
+                //   这里换算成"眼白中心相对睫毛左上角"的比例，眨眼才会和眼白同轴同步。
+                var lashGeo = byName[spec.lash];
+                lash.style.transformOrigin =
+                    ((whiteGeo.px[0] + whiteGeo.px[2] / 2 - lashGeo.px[0]) / lashGeo.px[2] * 100).toFixed(2) + '% ' +
+                    ((whiteGeo.px[1] + whiteGeo.px[3] / 2 - lashGeo.px[1]) / lashGeo.px[3] * 100).toFixed(2) + '%';
+                eyeLashes.push(lash);
+            }
         });
+
+        // face 盖在眼睛之上：它的两个眼窝是透明的，眼睛正好从洞里露出来
+        HEAD_FACE.forEach(function (n) { var i = makeLayer(n); if (i) headGroup.appendChild(i); });
+
+        // 睫毛层（在 face 之上、刘海之下）
+        eyeLashes.forEach(function (i) { headGroup.appendChild(i); });
 
         HEAD_TAIL.forEach(function (n) { var i = makeLayer(n); if (i) headGroup.appendChild(i); });
 
@@ -247,6 +282,10 @@
                 state.lastBlinkScaleY = scaleY;
                 for (var j = 0; j < eyeGroups.length; j++) {
                     eyeGroups[j].el.style.transform = 'scaleY(' + scaleY.toFixed(4) + ')';
+                }
+                // 睫毛是独立元素，眨眼要单独同步一次（不然只有眼睛闭合、睫毛不动）
+                for (var k = 0; k < eyeLashes.length; k++) {
+                    eyeLashes[k].style.transform = 'scaleY(' + scaleY.toFixed(4) + ')';
                 }
             }
 

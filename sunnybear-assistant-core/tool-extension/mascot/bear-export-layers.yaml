@@ -1,0 +1,23 @@
+name: bear-export-layers
+description: 从看板熊 PSD 导出分层 PNG 素材（PSD 默认取桌面最新的 .psd），存到 static/icon/signboard_bear/live/，并打印可直接粘进 bear-geometry.js 的几何记录。导出 face 这类有低 alpha 杂点的层要加 --trim-thr 32 --expand 1；只预览不写文件加 --dry-run
+type: powershell
+parameters:
+  - name: args
+    type: string
+    description: 透传给导出脚本的参数，例如 "--dry-run" 或 "--layers face-l-eye face-r-eye" 或 "--layers face --trim-thr 32 --expand 1"
+    required: false
+script: |
+  chcp 65001 > $null
+  $py = "E:\project\sunnybear-assistant\sunnybear-assistant-core\tool-extension\mascot\export_bear_layers.py"
+  if (-not (Test-Path $py)) {
+    Write-Host "找不到脚本: $py"
+    exit 1
+  }
+  $extra = "{{args}}"
+  $argv = @()
+  if ($extra -and ($extra -notmatch '\{\{')) {
+    $argv = $extra -split '\s+' | Where-Object { $_ }
+  }
+  Write-Host "> python export_bear_layers.py $extra"
+  Write-Host ""
+  & python $py @argv 2>&1

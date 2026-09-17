@@ -11,6 +11,8 @@ window.SUNNY_BEAR_GEOMETRY = {
         { name: "handwear-l", file: "live/handwear_l.png", group: "body", x: 51.3889, y: 72.5260, w: 37.5000, h: 27.4740, px: [518, 557, 378, 211] },
         { name: "ears-r", file: "live/ears_r.png", group: "head", x: 23.6111, y: 11.1979, w: 7.0437, h: 12.8906, px: [238, 86, 71, 99] },
         { name: "ears-l", file: "live/ears_l.png", group: "head", x: 44.0476, y: 0.2604, w: 8.9286, h: 12.5000, px: [444, 2, 90, 96] },
+        { name: "face-l-eye", file: "live/face_l_eye.png", group: "head", x: 44.2460, y: 20.0521, w: 4.4643, h: 4.9479, px: [446, 154, 45, 38] },
+        { name: "face-r-eye", file: "live/face_r_eye.png", group: "head", x: 33.9286, y: 26.3021, w: 4.2659, h: 4.9479, px: [342, 202, 43, 38] },
         { name: "face", file: "live/face.png", group: "head", x: 28.8690, y: 5.7292, w: 28.9683, h: 37.3698, px: [291, 44, 292, 287] },
         { name: "mouth", file: "live/mouth.png", group: "head", x: 44.1468, y: 37.6302, w: 2.5794, h: 1.3021, px: [445, 289, 26, 10] },
         { name: "nose", file: "live/nose.png", group: "head", x: 39.2857, y: 27.6042, w: 5.8532, h: 6.5104, px: [396, 212, 59, 50] },
