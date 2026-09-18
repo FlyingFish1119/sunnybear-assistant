@@ -329,6 +329,14 @@
     cursor: pointer;
 }
 
+/* 送走之后：整只熊退出命中测试。
+   ⚠ 隐藏靠的是 opacity + 位移，元素本身还在 DOM 里、也还占着位置 ——
+   不显式关掉的话，鼠标扫过那块空白照样变手型，title 也照样弹。
+   必须落在这层上：.mascot-layer 自己写了 pointer-events: auto，只关父容器拦不住 */
+.send-area-mascot:not(.mascot-visible) .mascot-layer {
+    pointer-events: none;
+}
+
 /* 输入卡内的控件垫到熊身之上（爪爪 z:3 仍盖在最前） */
 .send-area-main,
 .send-area-textarea,

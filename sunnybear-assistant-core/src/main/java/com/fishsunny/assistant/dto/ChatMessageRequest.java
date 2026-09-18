@@ -29,6 +29,7 @@ public class ChatMessageRequest {
     public static final String MODE_APPEND = "append";
     public static final String MODE_REPLACE = "replace";
     public static final String MODE_EDIT = "edit";
+
     public static final String MODE_TEMP_WHAT_IS_THIS = TEMP + "what_is_this";
 
     private String sessionId;

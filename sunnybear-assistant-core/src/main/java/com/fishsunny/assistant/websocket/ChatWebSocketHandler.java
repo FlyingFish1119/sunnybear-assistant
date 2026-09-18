@@ -293,6 +293,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 session.getId(), status, activeTaskCount.getOrDefault(session.getId(), 0));
         activeTaskCount.remove(session.getId());
         sessionMessageBus.unsubscribeAll(session);
+        // 该连接名下的 temp 在途登记一并清掉：正常情况下请求结束就自己摘了，
+        // 这里兜的是「AI 卡住没返回、连接先断」的情况
+        tempChatProcessor.clearSession(session.getId());
     }
 
     @Override
@@ -300,6 +303,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         log.error("WebSocket 传输错误 [{}]: {}", session.getId(), exception.getMessage());
         activeTaskCount.remove(session.getId());
         sessionMessageBus.unsubscribeAll(session);
+        tempChatProcessor.clearSession(session.getId());
         super.handleTransportError(session, exception);
     }
 }

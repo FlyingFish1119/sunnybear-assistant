@@ -1,0 +1,90 @@
+/* ============================================================
+   Context Menu —— 全局右键菜单
+   ------------------------------------------------------------
+   白毛玻璃卡片 + 主题色点缀，与 toast 同一套视觉语言。
+
+   层级 9600：盖住图片查看器(9000)，压在确认弹窗(10000)之下 ——
+   弹窗是模态的，右键菜单不该浮到它上面去。
+
+   位置由 JS 渲染后量出真实尺寸再夹回视口内，所以这里不能用
+   transition 里的 transform 做入场位移动画（会和 scale 打架），
+   只做透明度 + 轻微缩放。
+   ============================================================ */
+
+.sb-cm {
+    position: fixed;
+    z-index: 9600;
+    min-width: 168px;
+    padding: 5px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(17, 24, 39, 0.07);
+    box-shadow: 0 1px 2px rgba(17, 24, 39, 0.05),
+                0 18px 44px -12px rgba(17, 24, 39, 0.3);
+    user-select: none;
+    /* 先透明挂在鼠标位置，量完尺寸夹回视口内再加 .is-ready 淡入，
+       否则贴边右键时会看到菜单从屏幕外「跳」进来 */
+    opacity: 0;
+    transform: scale(0.96);
+    transform-origin: top left;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.sb-cm.is-ready {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* ---- 菜单项 ---- */
+.sb-cm-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #1F2937;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.13s ease, color 0.13s ease;
+}
+
+.sb-cm-item svg {
+    width: 15px;
+    height: 15px;
+    flex: none;
+    opacity: 0.72;
+}
+
+/* hover 走主题色浅底，与 toast 的 success 图标块一个调子 */
+.sb-cm-item:hover:not(.is-disabled) {
+    background: color-mix(in srgb, var(--main-color, #FFA07A) 14%, white);
+}
+
+.sb-cm-item:active:not(.is-disabled) {
+    background: color-mix(in srgb, var(--main-color, #FFA07A) 22%, white);
+}
+
+/* 置灰项：disabled 的 button 照样会匹配 :hover，所以显式排除掉 */
+.sb-cm-item.is-disabled {
+    opacity: 0.38;
+    cursor: default;
+}
+
+/* 主打鼠标操作，但焦点环还是留一个，别把键盘用户堵死 */
+.sb-cm-item:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--main-color, #FFA07A) 60%, transparent);
+    outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-cm,
+    .sb-cm-item { transition: none; }
+}

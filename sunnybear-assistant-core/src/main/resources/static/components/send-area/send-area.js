@@ -197,7 +197,9 @@ const SendArea = {
             <div class="send-area-mascot"
                  :class="{ 'mascot-visible': mascotVisible }">
                 <div class="mascot-holder">
-                    <div class="mascot-stage" ref="mascotStage" role="button" title="点阳阳一下"
+                    <!-- title 跟着显隐走：送走之后元素还在 DOM 里，静态 title 会照弹不误 -->
+                    <div class="mascot-stage" ref="mascotStage" role="button"
+                         :title="mascotVisible ? '点阳阳一下' : null"
                          @click="onMascotClick"></div>
                     <!-- 点一下熊冒出来的问候语气泡：文案取 GET greeting/random，几秒后自动收起 -->
                     <transition name="mascot-bubble">

@@ -49,6 +49,7 @@ const ChatSidebar = {
                      ? 'sidebar-session-divider'
                      : ['sidebar-session-item', { pro: row.session.enablePro, unreviewed: row.session.unreviewed, active: currentSession.id === row.session.id, disabled: sessionSelectLoading || listSwitching }]"
                  @click="row.kind === 'item' && selectSession(row.session)"
+                 :data-own-menu="row.kind === 'item' ? '' : null"
                  @contextmenu.prevent="row.kind === 'item' && showContextMenu($event, row.session)">
                 <span v-if="row.kind === 'divider'" class="sidebar-session-divider-label">{{ row.label }}</span>
                 <template v-else>
