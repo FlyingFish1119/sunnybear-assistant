@@ -129,7 +129,10 @@ const MessageArea = {
                             <span class="message-header-meta">{{ group.messages[0].name }} · {{ group.messages[0].createTime }}</span>
                         </div>
                         <template v-for="msg in group.messages" :key="msg.id">
-                        <div v-if="msg.role !== 'tool'" class="message-area-bubble" :style="msg.role === 'user' ? {'background-color': userBubbleBg} : {}">
+                        <!-- data-msg-id：全局右键菜单靠它从 store 反查这条消息的原始 Markdown（复制为 Markdown） -->
+                        <div v-if="msg.role !== 'tool'" class="message-area-bubble"
+                             :data-msg-id="msg.id"
+                             :style="msg.role === 'user' ? {'background-color': userBubbleBg} : {}">
                         <div v-if="msg.reasoningContent !== null && msg.reasoningContent.length > 0">
                             <div class="message-area-bubble-meta reasoning-header" @click="toggleCollapse(msg.id, 'thinking')">
                                 <i style="width: 10px; height: 10px" data-lucide="sparkle"></i>
