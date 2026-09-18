@@ -37,13 +37,6 @@ public class CronJobRepositoryImplement implements CronJobRepository {
 
     public CronJobRepositoryImplement(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
-        // 自动迁移：为旧数据库添加 unreviewed 列（无审查模式）
-        try {
-            jdbcTemplate.execute("ALTER TABLE cron_job ADD COLUMN unreviewed INTEGER NOT NULL DEFAULT 0");
-            log.info("Migration: added unreviewed column to cron_job");
-        } catch (Exception e) {
-            log.debug("Migration: unreviewed column may already exist, skipping. {}", e.getMessage());
-        }
     }
 
     private final RowMapper<CronJob> rowMapper = new RowMapper<>() {

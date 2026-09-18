@@ -10,8 +10,6 @@ package com.fishsunny.assistant.mvc.dao.implement;
 
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskPrompt;
 import com.fishsunny.assistant.mvc.dao.TaskPromptRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -28,8 +26,6 @@ import java.util.List;
 @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
 public class TaskPromptRepositoryImplement implements TaskPromptRepository {
 
-    private static final Logger log = LoggerFactory.getLogger(TaskPromptRepositoryImplement.class);
-
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final JdbcTemplate jdbcTemplate;
@@ -37,19 +33,6 @@ public class TaskPromptRepositoryImplement implements TaskPromptRepository {
     @Autowired
     public TaskPromptRepositoryImplement(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
-        // 自动迁移：为旧数据库添加 create_time / update_time 列
-        try {
-            jdbcTemplate.execute("ALTER TABLE task_prompt ADD COLUMN create_time TEXT NOT NULL DEFAULT ''");
-            log.info("Migration: added create_time column to task_prompt");
-        } catch (Exception e) {
-            log.debug("Migration: create_time column may already exist, skipping. {}", e.getMessage());
-        }
-        try {
-            jdbcTemplate.execute("ALTER TABLE task_prompt ADD COLUMN update_time TEXT NOT NULL DEFAULT ''");
-            log.info("Migration: added update_time column to task_prompt");
-        } catch (Exception e) {
-            log.debug("Migration: update_time column may already exist, skipping. {}", e.getMessage());
-        }
     }
 
     private final RowMapper<TaskPrompt> rowMapper = new RowMapper<>() {

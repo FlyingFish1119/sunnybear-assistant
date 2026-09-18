@@ -19,8 +19,6 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
@@ -162,7 +160,7 @@ public class ToolExecutor {
                 chain.handle(responses, safeContext);
             } catch (Exception e) {
                 String errorMessage = "处理链" + chain.getClass().getSimpleName() + "处理失败，原因是：" + e.getMessage();
-                ToolExecuteResponse last = responses.isEmpty() ? null : responses.get(responses.size() - 1);
+                ToolExecuteResponse last = responses.isEmpty() ? null : responses.getLast();
                 if (last != null) {
                     last.setResult(last.getResult() + "\n\n" + errorMessage);
                 }

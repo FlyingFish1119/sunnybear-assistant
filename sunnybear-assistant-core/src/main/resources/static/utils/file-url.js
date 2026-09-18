@@ -22,6 +22,13 @@ const FileUrlUtils = {
 
     previewImage: function (url) {
         var proxyUrl = this.proxy(url);
-        window.open(proxyUrl, '_blank');
+        // 交给图片查看器组件（components/image-viewer）：在本页浮层里打开，
+        // 支持缩放 / 拖动 / 旋转，不再另开标签页。
+        // 兜底：万一某页面漏引了组件脚本，退回原来的新标签页行为，不至于点了没反应。
+        if (window.ImageViewer) {
+            window.ImageViewer.open(proxyUrl);
+        } else {
+            window.open(proxyUrl, '_blank');
+        }
     }
 };

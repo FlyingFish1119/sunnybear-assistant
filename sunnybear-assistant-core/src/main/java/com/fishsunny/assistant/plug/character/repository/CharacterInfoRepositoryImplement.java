@@ -9,7 +9,6 @@ package com.fishsunny.assistant.plug.character.repository;
  */
 
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,7 +21,7 @@ import java.util.List;
 
 @Repository
 @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
-public class CharacterInfoRepositoryImplement implements CharacterInfoRepository, InitializingBean {
+public class CharacterInfoRepositoryImplement implements CharacterInfoRepository {
 
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -99,22 +98,6 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
         );
 
         return selectById(characterInfo.getId());
-    }
-
-    @Override
-    public void afterPropertiesSet() {
-        // 安全迁移：为存量数据库添加 tools 列（如果不存在）
-        try {
-            jdbcTemplate.execute("ALTER TABLE character_info ADD COLUMN tools TEXT NOT NULL DEFAULT '{}'");
-        } catch (Exception ignored) {
-            // 列已存在，后续启动时忽略错误
-        }
-        // 安全迁移：为存量数据库添加 chat_select 列（如果不存在）
-        try {
-            jdbcTemplate.execute("ALTER TABLE character_info ADD COLUMN chat_select TEXT NOT NULL DEFAULT '{}'");
-        } catch (Exception ignored) {
-            // 列已存在，后续启动时忽略错误
-        }
     }
 
     @Override

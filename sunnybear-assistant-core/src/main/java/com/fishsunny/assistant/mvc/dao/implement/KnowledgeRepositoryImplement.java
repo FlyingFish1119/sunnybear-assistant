@@ -10,8 +10,6 @@ package com.fishsunny.assistant.mvc.dao.implement;
 
 import com.fishsunny.assistant.engine.protocol.project.entity.KnowledgeRecord;
 import com.fishsunny.assistant.mvc.dao.KnowledgeRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -29,22 +27,12 @@ import java.util.Objects;
 @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
 public class KnowledgeRepositoryImplement implements KnowledgeRepository {
 
-    private static final Logger log = LoggerFactory.getLogger(KnowledgeRepositoryImplement.class);
-
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final JdbcTemplate jdbcTemplate;
 
     public KnowledgeRepositoryImplement(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
-        // 自动迁移：旧库删除 embedding 向量列（向量检索已下线）。
-        // 新库由 schema.sql 直接按无 embedding 列建表（此处 DROP 因列不存在被吞，无需处理）。
-        try {
-            jdbcTemplate.execute("ALTER TABLE knowledge_entry DROP COLUMN embedding");
-            log.info("Migration: dropped embedding column from knowledge_entry");
-        } catch (Exception e) {
-            log.debug("Migration: knowledge_entry embedding column may not exist, skipping. {}", e.getMessage());
-        }
     }
 
     private final RowMapper<KnowledgeRecord> rowMapper = new RowMapper<>() {

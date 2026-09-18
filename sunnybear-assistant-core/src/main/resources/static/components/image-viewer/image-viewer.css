@@ -1,0 +1,210 @@
+/* ============================================================
+   Image Viewer —— 图片查看器（灯箱）
+   ------------------------------------------------------------
+   一层深色毛玻璃遮罩 + 一张可缩放平移的图 + 一套悬浮控件。
+   视觉与项目其它浮层保持一致：白毛玻璃圆角块、主色只做点缀、
+   遮罩沿用 confirm-overlay 那套 blur 语言（这里压得更暗，图片才是主角）。
+
+   层级：9000 —— 压在 toast(4000) 之上、确认弹窗(10000) 之下，
+   万一灯箱开着时弹出确认框，弹窗仍然在最前面。
+   ============================================================ */
+
+.sb-iv-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(16, 16, 20, 0.82);
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    user-select: none;
+    /* 手势全部自己处理，别让浏览器抢去做页面滚动 / 双指缩放 */
+    touch-action: none;
+}
+
+/* ---- 遮罩淡入淡出（配合 <transition name="sb-iv-fade">） ---- */
+.sb-iv-fade-enter-active { transition: opacity 0.2s ease; }
+.sb-iv-fade-leave-active { transition: opacity 0.16s ease; }
+.sb-iv-fade-enter-from,
+.sb-iv-fade-leave-to     { opacity: 0; }
+
+/* ---- 舞台：铺满视口的居中容器，也是坐标换算的参考系 ---- */
+.sb-iv-stage {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+/* ---- 图片本体 ---- */
+.sb-iv-img {
+    /* 大图自适应缩进窗口，小图保持原始尺寸（不主动放大） */
+    max-width: 92vw;
+    max-height: 88vh;
+    border-radius: 10px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    transform-origin: center center;
+    will-change: transform;
+    cursor: grab;
+    touch-action: none;
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
+    -webkit-user-drag: none;
+}
+
+.sb-iv-img.is-ready { opacity: 1; }
+
+/* 拖动必须零延迟：留着过渡的话图片会追着鼠标跑，手感拖泥带水 */
+.sb-iv-img.is-dragging {
+    cursor: grabbing;
+    transition: none;
+}
+
+/* ---- 加载中 / 加载失败 ---- */
+.sb-iv-hint {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 12px;
+    background: rgba(28, 28, 34, 0.62);
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 13px;
+    pointer-events: none;
+}
+
+.sb-iv-hint svg { width: 18px; height: 18px; }
+.sb-iv-hint.is-error { color: #ffb4b4; }
+
+.sb-iv-spin { animation: sb-iv-spin 1s linear infinite; }
+@keyframes sb-iv-spin { to { transform: rotate(360deg); } }
+
+/* ---- 悬浮按钮（关闭 / 工具条通用） ----
+   底色一律给深色：按钮会飘在图片上方，而图片可能是纯白的（截图、文档扫描件），
+   白底 + 白图标叠上去就是「隐形」——实测过，必须用暗底把这层对比度焊死。 */
+.sb-iv-btn {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: none;
+    border-radius: 11px;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease;
+}
+
+.sb-iv-btn:hover {
+    background: color-mix(in srgb, var(--main-color, #FFA07A) 45%, rgba(255, 255, 255, 0.18));
+}
+
+.sb-iv-btn:active { transform: scale(0.93); }
+.sb-iv-btn svg { width: 18px; height: 18px; }
+
+/* ---- 关闭按钮：右上角 ---- */
+.sb-iv-close {
+    position: fixed;
+    top: 18px;
+    right: 20px;
+    width: 38px;
+    height: 38px;
+    background: rgba(28, 28, 34, 0.62);
+    backdrop-filter: blur(14px) saturate(150%);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.sb-iv-close:hover { background: rgba(48, 48, 56, 0.78); }
+.sb-iv-close svg { width: 20px; height: 20px; }
+
+/* ---- 底部工具条 ---- */
+.sb-iv-toolbar {
+    position: fixed;
+    left: 50%;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 7px 10px;
+    border-radius: 16px;
+    /* 烟熏玻璃而不是白玻璃：工具条会浮在图片上方，图片若是纯白的，
+       白底 + 白图标叠上去等于消失（同 .sb-iv-btn 那段的原因） */
+    background: rgba(28, 28, 34, 0.58);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42);
+    animation: sb-iv-rise 0.24s cubic-bezier(0.22, 1.1, 0.36, 1) both;
+}
+
+@keyframes sb-iv-rise {
+    from { opacity: 0; transform: translate(-50%, 10px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.sb-iv-ratio {
+    min-width: 54px;
+    text-align: center;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255, 255, 255, 0.88);
+    user-select: none;
+}
+
+.sb-iv-sep {
+    width: 1px;
+    height: 20px;
+    margin: 0 4px;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+/* ============================================================
+   markdown 正文图：可点击放大
+   （行为在 image-viewer.js 的 document 级委托里，这里只给光标提示）
+   ============================================================ */
+.markdown-body img { cursor: zoom-in; }
+
+/* ============================================================
+   移动端适配
+   ============================================================ */
+@media (max-width: 768px) {
+    .sb-iv-img {
+        max-width: 96vw;
+        max-height: 82vh;
+    }
+
+    .sb-iv-toolbar {
+        gap: 2px;
+        padding: 6px 8px;
+    }
+
+    .sb-iv-btn {
+        width: 34px;
+        height: 34px;
+    }
+
+    .sb-iv-close {
+        top: 12px;
+        right: 12px;
+    }
+}
+
+/* 系统开了「减少动态效果」→ 只保留必要的状态切换 */
+@media (prefers-reduced-motion: reduce) {
+    .sb-iv-img { transition: none; }
+    .sb-iv-toolbar { animation: none; }
+    .sb-iv-spin { animation: none; }
+    .sb-iv-fade-enter-active,
+    .sb-iv-fade-leave-active { transition: none; }
+}

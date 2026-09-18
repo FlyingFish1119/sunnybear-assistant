@@ -46,34 +46,6 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
     public ChatSessionRepositoryImplement(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
-        // 自动迁移：为旧数据库添加 enable_pro 列
-        try {
-            jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN enable_pro INTEGER NOT NULL DEFAULT 0");
-            log.info("Migration: added enable_pro column to chat_session");
-        } catch (Exception e) {
-            log.debug("Migration: enable_pro column may already exist, skipping. {}", e.getMessage());
-        }
-        // 自动迁移：为旧数据库添加 type 列
-        try {
-            jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN type TEXT NOT NULL DEFAULT 'chat'");
-            log.info("Migration: added type column to chat_session");
-        } catch (Exception e) {
-            log.debug("Migration: type column may already exist, skipping. {}", e.getMessage());
-        }
-        // 自动迁移：为旧数据库添加 unreviewed 列（无审查模式）
-        try {
-            jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN unreviewed INTEGER NOT NULL DEFAULT 0");
-            log.info("Migration: added unreviewed column to chat_session");
-        } catch (Exception e) {
-            log.debug("Migration: unreviewed column may already exist, skipping. {}", e.getMessage());
-        }
-        // 自动迁移：为旧数据库添加 extension 列（插件扩展字段，语义由各插件自行约定）
-        try {
-            jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN extension TEXT");
-            log.info("Migration: added extension column to chat_session");
-        } catch (Exception e) {
-            log.debug("Migration: extension column may already exist, skipping. {}", e.getMessage());
-        }
     }
 
     private final RowMapper<ChatSession> rowMapper = (resultSet, i) -> {

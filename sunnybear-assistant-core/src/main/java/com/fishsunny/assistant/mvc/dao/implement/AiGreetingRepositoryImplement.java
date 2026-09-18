@@ -39,13 +39,6 @@ public class AiGreetingRepositoryImplement implements AiGreetingRepository {
 
     public AiGreetingRepositoryImplement(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
-        // 自动迁移：为旧数据库添加 suggestions 列（JSON 数组字符串）
-        try {
-            jdbcTemplate.execute("ALTER TABLE ai_greeting ADD COLUMN suggestions TEXT NOT NULL DEFAULT '[]'");
-            log.info("Migration: added suggestions column to ai_greeting");
-        } catch (Exception e) {
-            log.debug("Migration: suggestions column may already exist, skipping. {}", e.getMessage());
-        }
     }
 
     private final RowMapper<AiGreeting> rowMapper = new RowMapper<>() {
