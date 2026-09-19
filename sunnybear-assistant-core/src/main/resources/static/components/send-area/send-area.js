@@ -349,6 +349,17 @@ const SendArea = {
                 this.commandSubMode = null;
                 this.commandParentCmd = null;
             }
+        },
+        // 显隐切换时启停动效循环：藏起来就别空转，省 CPU
+        // ⚠ 必须和上面两个 watcher 待在同一个 watch 块里：
+        //   JS 对象字面量同名键后者覆盖前者，另起一个 watch 块会把本块整体顶掉。
+        mascotVisible: function (val) {
+            if (!this._mascotLive) return;
+            if (val) {
+                this._mascotLive.start();
+            } else {
+                this._mascotLive.stop();
+            }
         }
     },
 
@@ -424,18 +435,6 @@ const SendArea = {
                 });
             });
         }
-    },
-
-    watch: {
-        // 显隐切换时启停动效循环：藏起来就别空转，省 CPU
-        mascotVisible: function (val) {
-            if (!this._mascotLive) return;
-            if (val) {
-                this._mascotLive.start();
-            } else {
-                this._mascotLive.stop();
-            }
-        },
     },
 
     beforeUnmount: function () {
