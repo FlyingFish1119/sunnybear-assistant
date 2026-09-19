@@ -82,6 +82,13 @@ const SessionStore = (function () {
          * 消息区据此渲染压缩卡片，避免前端在等待回复处呆等。
          */
         compressMap: {},
+        /**
+         * 本轮「请求模型」状态表：key = sessionId，value = 'connecting' | 'thinking'。
+         * connecting：正在与模型建连（REQUEST_CONNECTING，connect 返回前，网络/网关慢时会停留）；
+         * thinking：连上了、模型还没吐出第一条内容（REQUEST_THINKING）；
+         * 首个产出帧到达（或本轮结束/出错/断线）即清除，消息区据此在在途气泡上显示状态。
+         */
+        requestStateMap: {},
         /** 当前正在处理的 tool call id */
         currentToolCallId: null,
         /** 会话历史加载中 */
@@ -255,6 +262,8 @@ const SessionStore = (function () {
         get isStreaming() { return !!state.streamingMap[currentSessionId()]; },
         /** 当前会话的上下文压缩状态：'running' | 'done' | null */
         get compressState() { return state.compressMap[currentSessionId()] || null; },
+        /** 当前会话的本轮请求状态：'connecting' | 'thinking' | null */
+        get requestState() { return state.requestStateMap[currentSessionId()] || null; },
         get sessionSelectLoading() { return state.sessionSelectLoading; },
         /** 当前会话是否有请求在途（仅看当前会话，不影响其它会话的发送状态） */
         get sending() { return !!state.sendingMap[sendingKey(currentSessionId())]; },
@@ -295,8 +304,9 @@ const SessionStore = (function () {
             state.currentSession = session;
             if (switched) {
                 state.currentMessages = [];
-                // 切走时丢弃上一个会话的压缩卡片（其信号不会再投递到当前连接）
+                // 切走时丢弃上一个会话的压缩卡片与请求状态（其信号不会再投递到当前连接）
                 state.compressMap = {};
+                state.requestStateMap = {};
             }
             try {
                 const result = await API.message.getHistory(session.id);
@@ -333,6 +343,7 @@ const SessionStore = (function () {
             state.currentSession = {};
             state.currentMessages = [];
             state.compressMap = {};
+            state.requestStateMap = {};
             // 广播"用户开了个新对话"（放在 return 之后：没真开成就不吭声）
             WsBus.emit('session:created');
         },
@@ -609,6 +620,14 @@ const SessionStore = (function () {
 
         /** 追加思维过程 / 正文 / 工具调用（chunk / done 帧） */
         appendChunk(streamingMessage, response) {
+            // 出现实质产出（思考 / 正文 / 工具调用）才结束「连接中 / 思考中」状态。
+            // 不能只看 messages 是否存在：空数组在 JS 里是真值，仅带 role 的握手帧会把状态在首帧就抹掉
+            const produced = response.reasoningContent || response.text
+                || (Array.isArray(response.messages)
+                    && response.messages.some(m => m.toolCalls && m.toolCalls.length > 0));
+            if (produced) {
+                this.clearRequestState(streamingMessage.sessionId);
+            }
             if (response.reasoningContent) {
                 streamingMessage.reasoningContent += response.reasoningContent;
             }
@@ -706,6 +725,7 @@ const SessionStore = (function () {
             flushPendingChunks();
             // 本轮结束：解除该会话的请求在途锁（出错/断线时另有 handleError/clearSending 兜底）
             clearSendingKey(sessionId);
+            this.clearRequestState(sessionId);
             state.streamingMap[sessionId] = false;
             state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, sessionId));
             Vue.nextTick(() => {
@@ -843,6 +863,7 @@ const SessionStore = (function () {
         handleError(response) {
             const errSessionId = response.sessionId || currentSessionId();
             clearSendingKey(errSessionId);
+            this.clearRequestState(errSessionId);
             if (errSessionId) {
                 state.currentMessages = state.currentMessages.filter(m => !isStreamingPlaceholder(m, errSessionId));
             }
@@ -950,11 +971,42 @@ const SessionStore = (function () {
             }
         },
 
+        /**
+         * 本轮请求正在与模型建连（服务端在 adapter.connect 之前推送）：
+         * 在途气泡显示「连接中」，等 THINKING 或首个产出帧接手。
+         */
+        handleRequestConnecting(sessionId) {
+            // 新会话首轮的窗口期：init_user 里 refreshSessions 是 await 的，currentSession 尚未落定时本信号可能先到。
+            // 此时没有「当前会话」可比，直接放行——状态按真实 sessionId 存，currentSession 落定后自然就读出来了
+            if (currentSessionId() && sessionId !== currentSessionId()) {
+                return;
+            }
+            state.requestStateMap[sessionId] = 'connecting';
+        },
+
+        /**
+         * 连接已建立、模型尚未产出第一条内容（服务端收到响应头之后、首帧数据之前推送）：
+         * 在途气泡把「连接中」换成「思考中」。
+         */
+        handleRequestThinking(sessionId) {
+            // 同 CONNECTING：新会话首轮可能早于 currentSession 落定到达，无当前会话时放行
+            if (currentSessionId() && sessionId !== currentSessionId()) {
+                return;
+            }
+            state.requestStateMap[sessionId] = 'thinking';
+        },
+
+        /** 清除某会话的本轮请求状态（首个产出帧到达 / 本轮结束 / 出错 / 断线时调用） */
+        clearRequestState(sessionId) {
+            delete state.requestStateMap[sessionId];
+        },
+
         /** 断线重连：清空全部流式标记并清掉残留占位 */
         resetStreamingOnReconnect() {
             discardPendingChunks();
             state.streamingMap = {};
             state.compressMap = {};
+            state.requestStateMap = {};
             state.currentMessages = state.currentMessages.filter(m =>
                 !(m.role === 'assistant' && m.id && String(m.id).startsWith('streaming_')));
         },
@@ -1073,6 +1125,8 @@ const SessionStore = (function () {
         WsBus.on('CONTEXT_COMPRESSING', payload => store.handleContextCompressing(payload));
         WsBus.on('CONTEXT_COMPRESSED', payload => store.handleContextCompressed(payload));
         WsBus.on('CONTEXT_COMPRESS_END', payload => store.handleContextCompressEnd(payload));
+        WsBus.on('REQUEST_CONNECTING', payload => store.handleRequestConnecting(payload));
+        WsBus.on('REQUEST_THINKING', payload => store.handleRequestThinking(payload));
         WsBus.on('UPDATE_SESSION', payload => {
             console.log('update session', payload);
             try {

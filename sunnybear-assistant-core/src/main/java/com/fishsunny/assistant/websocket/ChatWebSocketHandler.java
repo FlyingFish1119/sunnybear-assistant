@@ -169,6 +169,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 || eventPayload.startsWith(ControlSign.SIGN_CONTEXT_COMPRESSED)) {
             return false;
         }
+        // 本轮请求状态（连接中/思考中）是瞬时提示：重连时前端靠随后的 chunk 帧重建在途气泡，
+        // 重放旧状态只会让一个已经过期的「连接中」闪一下
+        if (eventPayload.startsWith(ControlSign.SIGN_REQUEST_CONNECTING)
+                || eventPayload.startsWith(ControlSign.SIGN_REQUEST_THINKING)) {
+            return false;
+        }
         String sign = null;
         if (eventPayload.startsWith(ControlSign.SIGN_TOOL_ASK)) {
             sign = ControlSign.SIGN_TOOL_ASK;

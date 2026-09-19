@@ -296,6 +296,24 @@ public class ChatProcessor {
             }
 
             /**
+             * 本轮建连中：connect 之前推送，前端在在途气泡上显示「连接中」。
+             * 走 session（总线包装）发送 → 广播给该会话所有连接，重连客户端也能收到。
+             */
+            @Override
+            public void onRequestConnecting() {
+                sendRequestState(session, ControlSign.SIGN_REQUEST_CONNECTING, chatSession.getId());
+            }
+
+            /**
+             * 连接已建立、模型尚未产出第一条内容：前端把「连接中」换成「思考中」。
+             * 本回调在收流泵线程上执行，但一定早于首个内容帧，帧序仍由总线锁保证。
+             */
+            @Override
+            public void onRequestThinking() {
+                sendRequestState(session, ControlSign.SIGN_REQUEST_THINKING, chatSession.getId());
+            }
+
+            /**
              * TTS 逐句音频：包成带 sessionId 的帧走同一 WS（总线），与文本帧同序。
              * 前端拦截 ###TTS_AUDIO### 写入当前 streaming assistant 消息的 extension 并播放；
              * 帧不参与断线重放（shouldReplay 排除）。
@@ -459,6 +477,18 @@ public class ChatProcessor {
         ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler(translate, complete);
 
         chatHttpHandler.translate(data, translateHandler, option);
+    }
+
+    /**
+     * 推送本轮请求状态信号（###REQUEST_CONNECTING### / ###REQUEST_THINKING### + sessionId）。
+     * 发送失败只告警：状态提示是增强信息，不能因为推不出去而中断本轮对话。
+     */
+    private void sendRequestState(WebSocketSession session, String sign, String sessionId) {
+        try {
+            session.sendMessage(new TextMessage(sign + sessionId));
+        } catch (Exception e) {
+            log.warn("推送请求状态信号失败: {}", e.getMessage());
+        }
     }
 
     /**

@@ -121,8 +121,13 @@ public class ChatHttpHandler {
         AtomicBoolean cancelled = new AtomicBoolean();
         AtomicReference<Stream<String>> streamRef = new AtomicReference<>();
         BlockingQueue<StreamEvent> queue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
+        // 状态 hook：建连（connect）在泵线程内执行，这里先通知调用方「即将建连」，前端展示「连接中」。
+        // 在主线程触发，先于本轮任何内容帧，与帧的先后顺序天然确定
+        if (inTranslate != null) {
+            notifyHook(inTranslate::onRequestConnecting);
+        }
         Thread pump = new Thread(
-                () -> pumpLines(adapter, request, cancelled, streamRef, queue),
+                () -> pumpLines(adapter, request, inTranslate, cancelled, streamRef, queue),
                 "stream-pump" + (StringUtils.hasText(passId) ? "-" + passId : ""));
         pump.setDaemon(true);
         pump.start();
@@ -253,8 +258,7 @@ public class ChatHttpHandler {
      * 从队列取下一个事件。启用空闲超时时等待不会超过剩余时限，超时抛出
      * {@link StreamIdleTimeoutException}；关闭保护（idleMillis <= 0）时无限等待，与旧行为一致。
      */
-    private static StreamEvent waitEvent(BlockingQueue<StreamEvent> queue, long idleMillis,
-                                         long deadline, String adapterName)
+    private static StreamEvent waitEvent(BlockingQueue<StreamEvent> queue, long idleMillis, long deadline, String adapterName)
             throws InterruptedException, StreamIdleTimeoutException {
         if (idleMillis <= 0) {
             return queue.take();
@@ -317,15 +321,32 @@ public class ChatHttpHandler {
     }
 
     /**
+     * 触发请求状态 hook。hook 由调用方实现（如推送 WS 状态信号），其异常不应影响本轮收流，只记录。
+     */
+    private static void notifyHook(Runnable hook) {
+        if (hook == null) {
+            return;
+        }
+        try {
+            hook.run();
+        } catch (Exception e) {
+            log.warn("请求状态 hook 执行失败: {}", e.getMessage());
+        }
+    }
+
+    /**
      * 泵线程主循环：负责建连与读取底层流，把原始行推给主线程解析。流耗尽时投递结束事件；
      * 异常时投递错误事件（除非连接已被主线程放弃）。
      */
-    private static void pumpLines(AIAdapter adapter, AIRequest request,
+    private static void pumpLines(AIAdapter adapter, AIRequest request, InTranslateCallback inTranslate,
                                   AtomicBoolean cancelled, AtomicReference<Stream<String>> streamRef,
                                   BlockingQueue<StreamEvent> queue) {
         try {
             Stream<String> lines = adapter.connect(request);
             streamRef.set(lines);
+            // 连接已建立（响应头已到）、第一条消息推给主线程之前：通知调用方「思考中」。
+            // 必须早于第一次 queue.put，否则主线程会先拿到首帧，状态反而晚于内容到达
+            notifyHook(inTranslate != null ? inTranslate::onRequestThinking : null);
             try (lines) {
                 Iterator<String> it = lines.iterator();
                 while (!cancelled.get() && it.hasNext()) {
@@ -431,6 +452,23 @@ public class ChatHttpHandler {
 
     public interface InTranslateCallback {
         void onTranslate(AIResponse response);
+
+        /**
+         * 请求状态 hook：本轮即将向模型建连（connect 之前）触发，供调用方展示「连接中」。
+         * 在 translate 的调用线程上触发，先于本轮任何内容帧，与帧的先后顺序天然确定。
+         * 默认 no-op；由持有输出通道（如 WebSocket 会话）的调用方覆写决定怎么推。
+         */
+        default void onRequestConnecting() {
+        }
+
+        /**
+         * 请求状态 hook：连接已建立（connect 返回、响应头已到）、第一条消息交还调用方之前触发，
+         * 供调用方把「连接中」切换为「思考中」。
+         * 注意：建连发生在收流泵线程内，故本回调也在泵线程上执行，但一定早于首个内容帧。
+         * 默认 no-op；由持有输出通道（如 WebSocket 会话）的调用方覆写决定怎么推。
+         */
+        default void onRequestThinking() {
+        }
 
         /**
          * 朗读音频回调，与 {@link #onTranslate} 同节奏逐句触发（配合 enableTTS 使用）。

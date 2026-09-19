@@ -52,4 +52,12 @@ public class ControlSign {
     // 应携带一个 sessionId 字符串：本次压缩结束但未改变消息（总结失败/结果为空等），
     // 前端收到后关闭「压缩中」状态即可，无需重拉。实时信号，不参与断线重放
     public static final String SIGN_CONTEXT_COMPRESS_END = "###CONTEXT_COMPRESS_END###";
+
+    // 应携带一个 sessionId 字符串：本轮请求正在与模型建立连接（请求已发出、响应头未返回）。
+    // 前端收到后在在途气泡上显示「连接中」，直到收到 THINKING 或首个产出帧。实时信号，不参与断线重放
+    public static final String SIGN_REQUEST_CONNECTING = "###REQUEST_CONNECTING###";
+
+    // 应携带一个 sessionId 字符串：连接已建立（响应头已到）、模型尚未产出第一条内容。
+    // 前端收到后把「连接中」切换为「思考中」，首个产出帧到达即清除。实时信号，不参与断线重放
+    public static final String SIGN_REQUEST_THINKING = "###REQUEST_THINKING###";
 }

@@ -133,6 +133,15 @@ const MessageArea = {
                         <div v-if="msg.role !== 'tool'" class="message-area-bubble"
                              :data-msg-id="msg.id"
                              :style="msg.role === 'user' ? {'background-color': userBubbleBg} : {}">
+                        <!-- 本轮请求状态：连接中 / 思考中（后端 REQUEST_CONNECTING / REQUEST_THINKING 驱动，
+                             首个产出帧到达即清除）。只在在途气泡上出现，历史消息不会带出残留状态 -->
+                        <div v-if="isStreamingMsg(msg) && requestState" class="request-state">
+                            <i class="request-state-icon"
+                               :class="{ 'request-state-spin': requestState === 'connecting' }"
+                               :data-lucide="requestState === 'connecting' ? 'loader-circle' : 'sparkle'"></i>
+                            <span class="request-state-text">{{ requestState === 'connecting' ? '连接中' : '思考中' }}</span>
+                            <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+                        </div>
                         <div v-if="msg.reasoningContent !== null && msg.reasoningContent.length > 0">
                             <div class="message-area-bubble-meta reasoning-header" @click="toggleCollapse(msg.id, 'thinking')">
                                 <i style="width: 10px; height: 10px" data-lucide="sparkle"></i>
@@ -453,6 +462,10 @@ const MessageArea = {
         compressState: function () {
             return this.sessionStore.compressState;
         },
+        // 当前会话的本轮请求状态：'connecting' | 'thinking' | null
+        requestState: function () {
+            return this.sessionStore.requestState;
+        },
         // 本轮不可交互（请求在途或流式输出中）：隐藏消息操作按钮，防止重复触发
         busy: function () {
             return this.sessionStore.busy;
@@ -579,6 +592,11 @@ const MessageArea = {
          */
         messageMemoKey(msg) {
             let key = (msg.role || '') + '#' + (msg.id || '') + '#' + (msg._v || 0) + '#';
+            // 本轮请求状态（连接中/思考中）只渲染在在途气泡上：并入在途消息的键，
+            // 状态切换只重建这一条所在分组，历史分组仍被 memo 挡住
+            if (this.isStreamingMsg(msg)) {
+                key += '#' + (this.requestState || '') + '#';
+            }
             key += (msg.name || '') + '#' + (msg.createTime || '') + '#';
             key += msg.reasoningContent ? msg.reasoningContent.length : 0;
             if (msg.contents) {
