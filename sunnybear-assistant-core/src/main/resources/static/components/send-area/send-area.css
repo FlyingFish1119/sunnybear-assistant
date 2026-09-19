@@ -337,10 +337,14 @@
     pointer-events: none;
 }
 
-/* 输入卡内的控件垫到熊身之上（爪爪 z:3 仍盖在最前） */
-.send-area-main,
+/* 输入卡内的控件垫到熊身之上（爪爪 z:3 仍盖在最前）。
+   ⚠ .send-area-main / .send-area-toolbar 不准回到这一组里 ——
+   定位元素只要拿到非 auto 的 z-index，自己就建出一个堆叠上下文，
+   挂在工具栏里的步骤清单浮层（.mark-tracker-panel，z-index: 60）会被锁进那一层，
+   从此翻不过看板熊（.send-area-mascot，z: 30），也翻不过同层后置的发送块。
+   浮层要盖住熊，靠的是两个数在同一层里比大小（60 > 30），
+   所以这两层必须保持 z-index: auto —— 也就是不给它们写 z-index。 */
 .send-area-textarea,
-.send-area-toolbar,
 .send-area-submit-wrap,
 .send-area-submit-button {
     position: relative;

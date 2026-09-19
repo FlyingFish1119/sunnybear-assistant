@@ -26,6 +26,19 @@
  *
  * 范围：只给 index.html 引。插件页自包含，不引。
  */
+/**
+ * 触摸设备（手机 / 平板）上，菜单往下让开的距离，单位 px。
+ *
+ * 为什么让：长按选字后，选区两端那两个拖动手柄（小水滴）正好贴在选中行的下沿，
+ * 菜单若照着手指位置原样弹出，手柄就落在菜单卡片上 —— 手指想按住手柄扩选，
+ * 摸到的是菜单，等于选不了。让开一行多一点正文的高度，手柄就重新露出来。
+ *
+ * 只对「以触摸为主」的设备生效（pointer: coarse），桌面鼠标不受影响。
+ * 数值按手感调：24 ≈ 一行正文（14px 字号 × 1.6 行高 ≈ 22px），
+ * 再往上加菜单会跟手指脱节，太远反而不好按。
+ */
+const TOUCH_MENU_OFFSET_Y = 24;
+
 const ContextMenu = {
     name: 'ContextMenu',
 
@@ -192,6 +205,14 @@ const ContextMenu = {
     methods: {
         /* ==================== 开关 ==================== */
 
+        /**
+         * 是不是「以触摸为主」的设备（手机 / 平板）。
+         * 用 pointer: coarse 判 —— 带触摸屏的笔记本一般还能报 fine（有鼠标），不算在内。
+         */
+        isTouchPrimary() {
+            return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+        },
+
         /** @param {MouseEvent} e contextmenu 事件（open 时立刻把选区读下来） */
         open(e) {
             this.selectedText = this.readSelection();
@@ -202,7 +223,8 @@ const ContextMenu = {
             if (!this.items.length) return;
 
             this.x = e.clientX;
-            this.y = e.clientY;
+            // 触摸设备上往下让开一段，别压住选区手柄（原因与数值见 TOUCH_MENU_OFFSET_Y）
+            this.y = e.clientY + (this.isTouchPrimary() ? TOUCH_MENU_OFFSET_Y : 0);
             this.visible = true;
             this.ready = false;
             this.$nextTick(() => {
