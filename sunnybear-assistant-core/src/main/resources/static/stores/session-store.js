@@ -859,7 +859,7 @@ const SessionStore = (function () {
             streamingMessage._v = (streamingMessage._v || 0) + 1;
         },
 
-        /** 处理 error 帧：复位发送态、清理流式消息与标记、返回错误文本 */
+        /** 处理 error 帧：复位发送态、清理流式消息与标记、补拉历史、返回错误文本 */
         handleError(response) {
             const errSessionId = response.sessionId || currentSessionId();
             clearSendingKey(errSessionId);
@@ -870,10 +870,41 @@ const SessionStore = (function () {
             if (errSessionId) {
                 state.streamingMap[errSessionId] = false;
             }
+            // 本轮失败时界面可能已按 REPLACE 帧截断过（旧助手消息被删掉），
+            // 而服务端此刻已把那条分支回滚为活跃 —— 必须重拉历史把消息补回来。
+            // 成功路径不会走到这里，所以正常轮次只多一次 filter，没有额外请求
+            this.refreshHistoryOnError(errSessionId);
             const errText = (response.messages && response.messages.length > 0)
                 ? response.messages[0].contents?.map(c => c.content).join('')
                 : 'AI 服务返回了一个错误，请稍后重试';
             return errText || '未知错误';
+        },
+
+        /**
+         * 出错后补拉当前会话历史：服务端在错误路径上会回滚 replace 停用的旧分支，
+         * 前端手里那份被 ###REPLACE### 截断过的列表已经过期，不重拉就看不到恢复后的分支。
+         * <p>
+         * 仅当错误帧指向当前会话时才拉（别的会话的错误由它自己切过去时再拉）；
+         * 请求返回时会话可能已被切走，过期结果直接丢弃。
+         * @param {string} sessionId 出错帧携带的会话 id
+         */
+        async refreshHistoryOnError(sessionId) {
+            if (!sessionId || sessionId !== currentSessionId()) {
+                return;
+            }
+            try {
+                const result = await API.message.getHistory(sessionId);
+                if (currentSessionId() !== sessionId) return;
+                if (result && result.status === 200) {
+                    state.currentMessages = result.data;
+                    ui.scrollToBottom(true);
+                    Vue.nextTick(() => {
+                        ui.renderMermaid();
+                    });
+                }
+            } catch (e) {
+                console.error('出错后补拉历史失败:', e);
+            }
         },
 
         /** 处理 TTS_AUDIO 帧：把音频注入流式消息的 extension（保序）并实时入队播放 */
