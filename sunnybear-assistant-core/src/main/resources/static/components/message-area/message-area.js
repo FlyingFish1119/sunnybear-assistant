@@ -409,6 +409,10 @@ const MessageArea = {
             const groups = [];
             let current = null;
             for (const msg of this.currentMessages) {
+                // 三无助手消息整条跳过：渲染出来只剩头像和操作按钮，是空壳
+                if (this.isEmptyAssistantMessage(msg)) {
+                    continue;
+                }
                 if (msg.role === 'user') {
                     groups.push({ role: 'user', messages: [msg] });
                     current = null;
@@ -964,6 +968,23 @@ const MessageArea = {
             const lastContent = getLast(msg.contents);
             const bodyStarted = lastContent && lastContent.content && lastContent.content.length > 0;
             return hasReasoning && !bodyStarted;
+        },
+
+        /**
+         * 是否为「三无」助手消息：既没有思考过程、也没有正文内容、也没有工具调用。
+         * 这类消息渲染出来只剩头像、名字和操作按钮，是空壳，消息列表里整条跳过不显示。
+         * 流式中的消息不算 —— 此刻内容本就还没到，气泡要留着承载「连接中 / 思考中」提示。
+         * @param {object} msg - 消息对象
+         * @returns {boolean}
+         */
+        isEmptyAssistantMessage(msg) {
+            if (msg.role !== 'assistant' || this.isStreamingMsg(msg)) {
+                return false;
+            }
+            const hasReasoning = !!msg.reasoningContent;
+            const hasContent = !!(msg.contents && msg.contents.length > 0);
+            const hasToolCalls = !!(msg.toolCalls && msg.toolCalls.length > 0);
+            return !hasReasoning && !hasContent && !hasToolCalls;
         },
 
         /**

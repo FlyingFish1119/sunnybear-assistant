@@ -76,6 +76,12 @@ public class WaitFlowTool implements ToolHandler {
             return new ToolExecutor.ToolExecuteResponse(name(), result);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
+        } catch (InterruptedException e) {
+            // 用户中止：取消令牌 interrupt 了本线程。恢复中断标志让上层能识别，
+            // 并给出可读原因 —— InterruptedException 自带 message 是 null，
+            // 原样透传会让前端显示「执行失败，原因是：null」
+            Thread.currentThread().interrupt();
+            throw new ToolExecutor.ToolExecuteException("等待被用户中止");
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }

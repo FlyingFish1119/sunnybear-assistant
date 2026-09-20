@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.constants.PromptReplaceVariable;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
+import com.fishsunny.assistant.engine.cancel.ChatCancelContext;
 import com.fishsunny.assistant.utils.ContextCompressor;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
@@ -257,15 +258,21 @@ public class ChatProcessor {
     /**
      * 工具调用循环
      */
-    private void toolCallCycle(List<ChatMessage> collector,
-                               AISettings effectiveAISettings,
-                               ChatRequest request,
-                               ChatSession chatSession,
-                               WebSocketSession session,
-                               ChatProvider chatProvider,
-                               String activeAssistantName,
-                               boolean enableTts
+    private void toolCallCycle(
+            List<ChatMessage> collector,
+            AISettings effectiveAISettings,
+            ChatRequest request,
+            ChatSession chatSession,
+            WebSocketSession session,
+            ChatProvider chatProvider,
+            String activeAssistantName,
+            boolean enableTts
     ) throws Exception {
+        // 本轮已被用户中止：不再发起新的模型请求与工具调用。
+        // 最外层调用时尚未绑定令牌，isCancelled 返回 false，不影响正常流程
+        if (ChatCancelContext.isCancelled()) {
+            return;
+        }
         // 上下文达到用户配置上限时压缩历史：总结旧对话、清库并重建 root 用户消息，然后继续本轮
         contextCompressor.maybeCompress(request, chatSession, session);
         // 注入工具：按 kit 排除用户关掉的工具集与声明不开放的工具集，再按名字排除子 Agent 本体
@@ -417,9 +424,13 @@ public class ChatProcessor {
                 }
                 // 附带本轮的完整 messages 快照，供 AI 安全审查等消费方自行提取上下文（如判断用户意图），其它工具无感
                 context.put(SecurityService.CTX_MESSAGES, new ArrayList<>(request.getMessages()));
-                List<ToolExecutor.ToolExecuteResponse> toolResults = toolExecutor.executeAdapter(toolCalls, context,
-                        ToolExecuteNotifier.buildProvider(session, chatSession.getId(), objectMapper),
-                        ToolExecuteNotifier.buildResponseHandleProvider(session, chatSession.getId(), objectMapper));
+                // 已中止：不真正执行工具，但必须为每个 tool_call 补占位响应并落库 ——
+                // assistant 消息里的 tool_calls 若没有对应回话，下一轮请求会被模型直接拒绝
+                List<ToolExecutor.ToolExecuteResponse> toolResults = ChatCancelContext.isCancelled()
+                        ? ToolExecutor.cancelledResponses(toolCalls)
+                        : toolExecutor.executeAdapter(toolCalls, context,
+                                ToolExecuteNotifier.buildProvider(session, chatSession.getId(), objectMapper),
+                                ToolExecuteNotifier.buildResponseHandleProvider(session, chatSession.getId(), objectMapper));
                 // 构建工具消息
                 List<ChatMessage> toolMessages = new ArrayList<>();
                 for (int i = 0; i < toolCalls.size(); i++) {
@@ -453,6 +464,11 @@ public class ChatProcessor {
                 } catch (Exception e) {
                     log.error("保存工具消息失败: {}", e.getMessage());
                     throw new RuntimeException("保存工具消息失败: " + e.getMessage());
+                }
+                // 本轮已被中止：工具结果已落库，不再进入下一轮模型请求
+                if (ChatCancelContext.isCancelled()) {
+                    log.info("本轮对话已被用户中止，停止工具调用循环: sessionId={}", chatSession.getId());
+                    return;
                 }
                 // 递归调用
                 try {
