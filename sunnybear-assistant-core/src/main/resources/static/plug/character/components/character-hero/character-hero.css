@@ -1,0 +1,149 @@
+/* ============================================
+   Character Hero — 角色扮演页的「新对话开场」
+   ------------------------------------------------------------
+   未选择会话时的落地页：角色头像 + 角色名（横向并排成一条）。
+
+   设计意图（刻意区别于主页的 .new-chat-hero「工具型」开场）：
+     · 主角是「角色本人」——头像在左、名字在右，像一条登场横幅；
+     · 卡片用半透明毛玻璃，让消息区的角色背景图透上来，不挡画面；
+     · 未选角色时头像位留成虚线空圈，暗示「这里本该有个角色」。
+
+   ⚠ 类名统一 char-hero-* 前缀，与主页 .new-chat-hero / .hero-* 各走各的；
+     world 页仍在用旧的 .greeting-banner（css/message-area.css），
+     那套样式本文件不碰，改这里不会影响 world。
+   ============================================ */
+
+.char-hero {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 20px;
+    text-align: left;
+    /* 父级 .message-area-panel 是 flex column，这里水平居中即可 */
+    align-self: center;
+    max-width: min(92%, 460px);
+    padding: 22px 30px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.07);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    animation: char-hero-in 0.55s ease both;
+}
+
+/* ---- 头像 ---- */
+.char-hero-avatar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    overflow: hidden;
+    color: var(--main-color, lightsalmon);
+    background: color-mix(in srgb, var(--main-color, lightsalmon) 16%, #fff);
+    /* 内圈细环 + 外圈柔光：给头像一点「登场」的分量 */
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--main-color, lightsalmon) 45%, transparent),
+                0 0 0 9px color-mix(in srgb, var(--main-color, lightsalmon) 11%, transparent),
+                0 6px 18px rgba(0, 0, 0, 0.10);
+}
+
+.char-hero-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.char-hero-avatar-icon {
+    width: 34px;
+    height: 34px;
+}
+
+/* ---- 右侧文字区：名字（+ 未选角色时的引导语）纵向堆叠 ---- */
+.char-hero-text {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0; /* 允许名字换行，不撑破卡片 */
+}
+
+/* ---- 角色名（主角） ---- */
+.char-hero-name {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+    color: var(--text-primary, #333);
+    /* 名字过长时正常换行，不撑破卡片 */
+    overflow-wrap: anywhere;
+}
+
+/* ---- 引导语（未选角色时才出现，次要） ---- */
+.char-hero-line {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-secondary, #666);
+}
+
+/* ============================================
+   未选角色：头像位留空（虚线圈），引导去设置页
+   ============================================ */
+.char-hero.is-empty .char-hero-avatar {
+    color: color-mix(in srgb, var(--main-color, lightsalmon) 70%, #999);
+    background: rgba(255, 255, 255, 0.5);
+    box-shadow: none;
+    border: 2px dashed color-mix(in srgb, var(--main-color, lightsalmon) 45%, #ccc);
+}
+
+.char-hero.is-empty .char-hero-name {
+    font-size: 20px;
+    color: var(--text-secondary, #666);
+}
+
+/* ============================================
+   入场动画
+   ============================================ */
+@keyframes char-hero-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 跟随系统的「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce) {
+    .char-hero {
+        animation: none;
+    }
+}
+
+/* ============================================
+   移动端
+   ============================================ */
+@media (max-width: 768px) {
+    .char-hero {
+        gap: 15px;
+        padding: 18px 22px;
+        border-radius: 18px;
+    }
+
+    .char-hero-avatar {
+        width: 58px;
+        height: 58px;
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--main-color, lightsalmon) 45%, transparent),
+                    0 0 0 7px color-mix(in srgb, var(--main-color, lightsalmon) 11%, transparent);
+    }
+
+    .char-hero-avatar-icon {
+        width: 28px;
+        height: 28px;
+    }
+
+    .char-hero-name {
+        font-size: 20px;
+    }
+
+    .char-hero-line {
+        font-size: 13px;
+    }
+}

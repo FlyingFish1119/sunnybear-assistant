@@ -39,20 +39,27 @@
     <script src="components/battle-panel/battle-panel.js"></script>
     <script src="../../components/confirm-dialog/confirm-dialog.js"></script>
     <script src="../component/session-name/session-name.js"></script>
+    <!-- token 用量展示口径（与主页侧边栏共用，避免各写一份） -->
+    <script src="../../utils/token-format.js"></script>
     <script src="components/character-sidebar/character-sidebar.js"></script>
     <script src="../../components/file-upload/file-upload.js"></script>
     <script src="../component/connection-indicator/connection-indicator.js"></script>
     <script src="../../components/auto-resize-textarea/auto-resize-textarea.js"></script>
     <script src="../../components/command-suggest/command-suggest.js"></script>
+    <!-- 步骤清单（发送区组件内部用到 <mark-tracker>）与发送区组件 -->
+    <script src="../../components/mark-tracker/mark-tracker.js"></script>
+    <script src="../../components/send-area/send-area.js"></script>
     <script src="components/character-db-panel/character-db-panel.js"></script>
     <!-- 样式 -->
     <link rel="stylesheet" href="../../css/scrollbar.css"/>
     <link rel="stylesheet" href="../../css/layout.css"/>
     <!-- 三大板块样式：侧边栏 | 消息栏 | 发送栏 -->
     <link rel="stylesheet" href="components/character-sidebar/character-sidebar.css"/>
+    <link rel="stylesheet" href="components/character-hero/character-hero.css"/>
     <link rel="stylesheet" href="../../css/message-area.css"/>
     <link rel="stylesheet" href="../component/session-name/session-name.css"/>
-    <link rel="stylesheet" href="../../css/send-area.css"/>
+    <link rel="stylesheet" href="../../css/attachment.css"/>
+    <link rel="stylesheet" href="../../components/send-area/send-area.css"/>
     <link rel="stylesheet" href="../../components/file-upload/file-upload.css"/>
     <link rel="stylesheet" href="../../css/markdown.css"/>
     <!-- 图片查看器（灯箱） -->
@@ -63,6 +70,7 @@
     <link rel="stylesheet" href="../component/connection-indicator/connection-indicator.css"/>
     <link rel="stylesheet" href="../../components/auto-resize-textarea/auto-resize-textarea.css"/>
     <link rel="stylesheet" href="../../components/command-suggest/command-suggest.css"/>
+    <link rel="stylesheet" href="../../components/mark-tracker/mark-tracker.css"/>
     <link rel="stylesheet" href="components/character-db-panel/character-db-panel.css"/>
     <!-- highlight.js 代码高亮样式 -->
     <link rel="stylesheet" href="../../lib/highlight-github.min.css">
@@ -121,17 +129,24 @@
             </div>
         </div>
         <div class="message-area-panel" :class="{ 'is-new-chat': !currentSessionId && currentMessages.length === 0 }">
-            <!-- 新对话时的问候语横幅 -->
-            <div v-if="!currentSessionId && currentMessages.length === 0" class="greeting-banner" :style="{'--main-color': mainColor}">
-                <template v-if="characterInfo">
-                    <img v-if="characterInfo.avatar" :src="characterInfo.avatar" class="greeting-icon" style="width:48px;height:48px;border-radius:50%;object-fit:cover" />
-                    <i v-else :data-lucide="greetingIcon" class="greeting-icon"></i>
-                    <span>{{ characterInfo.name }} · {{ greetingText || '输入内容开始对话' }}</span>
-                </template>
-                <template v-else>
-                    <i data-lucide="users" class="greeting-icon"></i>
-                    <span>请从角色设置中选择一个角色开始对话</span>
-                </template>
+            <!-- 新对话开场：角色登场（样式见 components/character-hero/character-hero.css） -->
+            <div v-if="!currentSessionId && currentMessages.length === 0"
+                 class="char-hero"
+                 :class="{ 'is-empty': !characterInfo }"
+                 :style="{'--main-color': mainColor}">
+                <div class="char-hero-avatar">
+                    <img v-if="characterInfo && characterInfo.avatar"
+                         :src="characterInfo.avatar"
+                         :alt="characterInfo.name" />
+                    <i v-else :data-lucide="characterInfo ? greetingIcon : 'users'" class="char-hero-avatar-icon"></i>
+                </div>
+                <!-- 头像与文字横向并排；文字区纵向堆叠「名字 +（未选角色时的）引导语」 -->
+                <div class="char-hero-text">
+                    <div class="char-hero-name">{{ characterInfo ? characterInfo.name : '还没有选择角色' }}</div>
+                    <!-- 只有未选角色时才提示。选了角色就只剩「头像 + 名字」——
+                         greeting/random 那套通用问候语是助手口吻，放在角色扮演里很出戏，已去掉 -->
+                    <div v-if="!characterInfo" class="char-hero-line">去角色设置里挑一个角色，回来就能开始对话</div>
+                </div>
             </div>
             <!-- 消息列表：新对话时隐藏 -->
             <div v-show="currentSessionId || currentMessages.length > 0" class="message-area-list" v-auto-follow>
@@ -342,59 +357,14 @@
             :main-color="mainColor"
             @toggle="dbPanelVisible = !dbPanelVisible">
         </character-db-panel>
-        <div class="send-area-container" :style="{'--main-color': mainColor}" style="position: relative;">
-            <command-suggest
-                :commands="filteredCommands"
-                :active-index="commandActiveIndex"
-                :visible="commandSuggestVisible"
-                :main-color="mainColor"
-                :sub-options="subOptions"
-                :sub-title="'选择一个会话'"
-                @select="onCommandSelect"
-                @sub-select="onSubSelect"
-                @back="onCommandBack"
-                @update:active-index="idx => commandActiveIndex = idx"
-            ></command-suggest>
-            <file-upload ref="fileUpload"
-                drop-zone=".message-area-wrapper"
-                :files="uploadedFiles"
-                :enable-paste="true"
-                :main-color="mainColor"
-                @update-files="files => uploadedFiles = files"
-                @drag-over-change="isChange => dragOver = isChange">
-            </file-upload>
-            <div class="send-area-input-row">
-                <button class="send-area-attach-button" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
-                    <i data-lucide="paperclip" style="width:18px;height:18px"></i>
-                </button>
-                <auto-resize-textarea
-                    class="send-area-textarea"
-                    :main-color="mainColor"
-                    v-model="inputText"
-                    :placeholder="characterId ? '输入消息，Ctrl+Enter 发送，Enter 换行' : '请先从角色设置中选择一个角色'"
-                    :max-height="180"
-                    :min-height="85"
-                    @submit="sendMessage"
-                    @cancel="onTextareaCancel"
-                    @keydown="onTextareaKeydown"
-                ></auto-resize-textarea>
-                <!-- 这里不要合并两个按钮，否则icon会出现问题 -->
-                <button v-if="isStreaming"
-                    class="send-area-submit-button"
-                    @click="stopStreaming()"
-                    :disabled="isStreaming && !currentSessionId"
-                >
-                    <i style="margin-top: 5px; margin-left: -5px" data-lucide="square"></i>
-                </button>
-                <button v-else
-                        class="send-area-submit-button"
-                        @click="sendMessage()"
-                        :disabled="!characterId || sending || (!isStreaming && !inputText && uploadedFiles.length === 0)"
-                >
-                    <i style="margin-top: 5px; margin-left: -5px" data-lucide="send"></i>
-                </button>
-            </div>
-        </div>
+        <send-area
+            ref="sendArea"
+            :main-color="mainColor"
+            :commands="slashCommands"
+            @send="handleSend"
+            @stop="stopStreaming"
+            @drag-over-change="v => dragOver = v">
+        </send-area>
 
         <!-- 工具确认对话框（组件） -->
         <tool-confirm
@@ -436,14 +406,23 @@
         }
     }
 
-    /* ========== 斜杠指令注册表 ==========
-     * 每项: { name, desc, usage, icon }
-     * icon 使用 lucide 图标名，见 https://lucide.dev/icons/
-     * 添加新指令只需在此数组中追加一项即可，框架自动生效。
+    /* ========== 发送区组件的仓库适配层 ==========
+     * <send-area> 组件从 inject('sessionStore') 读会话/流式状态；
+     * 插件页没有 SessionStore，这里用一个 reactive 适配对象把页面自己的状态
+     * 转发过去（getter 惰性求值，依赖照样收集得到），组件侧一行都不用改。
+     * ⚠ vmRef 要等 app.mount 之后才有值，所以必须先声明再赋值。
      */
-    const SLASH_COMMANDS = [
-        // TODO 后续构思角色专用指令
-    ];
+    let vmRef = null;
+    const characterStore = Vue.reactive({
+        get currentSessionId() { return vmRef ? vmRef.currentSessionId : undefined; },
+        get sessions()       { return (vmRef && vmRef.$refs.sidebar) ? (vmRef.$refs.sidebar.sessions || []) : []; },
+        get currentSession() { return vmRef ? vmRef.currentSession : null; },
+        get isStreaming()    { return vmRef ? vmRef.isStreaming : false; },
+        get sending()        { return vmRef ? vmRef.sending : false; },
+        get busy()           { return vmRef ? vmRef.busy : false; },
+        sendMessage(payload) { return vmRef && vmRef.handleSend(payload); },
+        stopStreaming()      { return vmRef && vmRef.stopStreaming(); }
+    });
 
     const app = Vue.createApp({
         data() {
@@ -462,8 +441,6 @@
                 ws: null,
                 chatModel: null,
 
-                // 输入框内容
-                inputText: '',
                 // 已发送但尚未收到服务端 init_user 确认 —— 防止窗口期内重复点击发送重复消息
                 sending: false,
                 // 当前正在处理的 session，对象应该直接引用 sessions 里的对象
@@ -480,19 +457,15 @@
                 currentEditId: null,
                 editDraft: '',
                 editTargetRole: null,
-                // 问候语
-                greetingText: '',
                 // 桌面端侧边栏折叠
                 sidebarCollapsed: false,
                 // 折叠状态：key = msgId_section, value = true(折叠)/false(展开)
                 collapsedState: {},
-                // 文件上传
-                // 斜杠指令候选
-                commandActiveIndex: 0,
-                commandSubMode: null,
-                commandParentCmd: null,
-                uploadedFiles: [],   // [{name, data}] — 对应后端 FileData
+                // 拖拽上传悬停状态（由发送区组件上抛，控制消息区遮罩）
                 dragOver: false,
+                // 角色页专属斜杠指令表：交给 <send-area> 组件渲染候选面板
+                // TODO 后续构思角色专用指令；为空数组时指令面板不出现
+                slashCommands: [],
                 // 数据库面板
                 dbPanelVisible: false,
             }
@@ -537,29 +510,7 @@
                 if (hour >= 18 && hour < 22) return 'sunset';
                 return 'moon';
             },
-            // 斜杠指令候选面板是否可见
-            commandSuggestVisible() {
-                if (this.commandSubMode && this.subOptions.length > 0) return true;
-                return this.inputText.startsWith('/') && this.filteredCommands.length > 0;
-            },
-            // 根据当前输入过滤匹配的指令
-            filteredCommands() {
-                if (!this.inputText || !this.inputText.startsWith('/')) return [];
-                const lower = this.inputText.toLowerCase().split(' ')[0];
-                return SLASH_COMMANDS.filter(c => c.name.startsWith(lower) || c.name.includes(lower));
-            },
-            // 二级选项（如会话列表）
-            subOptions() {
-                if (this.commandSubMode === 'sessions') {
-                    const sessions = this.$refs.sidebar ? (this.$refs.sidebar.sessions || []) : [];
-                    return sessions.map(s => ({
-                        id: s.id,
-                        label: s.name || s.id,
-                        desc: ''
-                    }));
-                }
-                return [];
-            },
+            // 斜杠指令的候选/键盘导航状态已移交 <send-area> 组件（指令表经 :commands 传入）
             // 用户消息气泡背景色：跟随主色自动变浅
             userBubbleBg() {
                 return ColorUtils.lighten(this.mainColor, 0.25);
@@ -710,7 +661,6 @@
                 }
                 await this.fetchUserSettings();
                 await this.getChatSettings();
-                await this.fetchGreeting();
                 // characterId 加载完成后刷新侧边栏会话列表
                 if (this.characterId) {
                     this.$refs.sidebar.refresh();
@@ -770,22 +720,6 @@
                 } catch (error) {
                     ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
                     console.error('获取聊天设置失败:', error);
-                }
-            },
-
-            /**
-             * 获取随机问候语
-             */
-            async fetchGreeting() {
-                try {
-                    const result = await API.greeting.random();
-                    if (result.status === 200 && result.data) {
-                        this.greetingText = result.data.text;
-                    } else {
-                        this.greetingText = '你好！今天有什么可以帮你的吗？';
-                    }
-                } catch (error) {
-                    console.error('获取问候语失败:', error);
                 }
             },
 
@@ -874,114 +808,21 @@
             onChatSelectClick(msg, content) {
                 if (!content) return;
                 if (msg) msg.chatSelect = null; // 选项消费后消失，防止重复点击
-                this.inputText = content;
-                this.sendMessage();
-            },
-
-            /**
-             * 斜杠指令面板键盘导航。
-             * 由 auto-resize-textarea 的 @keydown 事件触发。
-             */
-            /** Esc 键：优先关闭指令面板，否则走默认行为 */
-            onTextareaCancel(event) {
-                if (this.commandSubMode) {
-                    this.onCommandBack();
-                    return;
-                }
-                if (this.commandSuggestVisible) {
-                    this.inputText = '';
-                    return;
-                }
-                this.currentEditId = null;
-                this.editDraft = '';
-                this.editTargetRole = null;
-            },
-
-            onTextareaKeydown(event) {
-                if (!this.commandSuggestVisible) return;
-
-                // 二级面板模式
-                if (this.commandSubMode) {
-                    const len = this.subOptions.length;
-                    if (event.key === 'ArrowDown') {
-                        event.preventDefault();
-                        this.commandActiveIndex = (this.commandActiveIndex + 1) % len;
-                    } else if (event.key === 'ArrowUp') {
-                        event.preventDefault();
-                        this.commandActiveIndex = (this.commandActiveIndex - 1 + len) % len;
-                    } else if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey) {
-                        event.preventDefault();
-                        const opt = this.subOptions[this.commandActiveIndex];
-                        if (opt) this.onSubSelect(opt);
-                    } else if (event.key === 'Escape') {
-                        event.preventDefault();
-                        this.onCommandBack();
-                    }
-                    return;
-                }
-
-                // 一级面板模式
-                const len = this.filteredCommands.length;
-                if (event.key === 'ArrowDown') {
-                    event.preventDefault();
-                    this.commandActiveIndex = (this.commandActiveIndex + 1) % len;
-                } else if (event.key === 'ArrowUp') {
-                    event.preventDefault();
-                    this.commandActiveIndex = (this.commandActiveIndex - 1 + len) % len;
-                } else if (event.key === 'Enter' && !event.ctrlKey && !event.shiftKey) {
-                    event.preventDefault();
-                    const cmd = this.filteredCommands[this.commandActiveIndex];
-                    if (cmd) this.onCommandSelect(cmd);
-                } else if (event.key === 'Escape') {
-                    event.preventDefault();
-                    this.inputText = '';
-                }
-            },
-
-            /**
-             * 选中一级指令：有 subCommand 则进入二级面板，否则直接替换输入框。
-             */
-            onCommandSelect(cmd) {
-                this.inputText = cmd.name + ' ';
-                if (cmd.subCommand) {
-                    this.commandSubMode = cmd.subCommand;
-                    this.commandParentCmd = cmd;
-                    this.commandActiveIndex = 0;
-                    return;
-                }
-                this.commandActiveIndex = 0;
-                this.$nextTick(() => {
-                    const ta = document.querySelector('.send-area-textarea');
-                    if (ta) ta.focus();
+                // 输入框/已上传文件由发送区组件持有，这里取它的当前值一并发出（与原行为一致）
+                const sendArea = this.$refs.sendArea;
+                this.handleSend({
+                    content: content,
+                    files: sendArea ? sendArea.getUploadedFiles() : [],
+                    tts: sendArea ? sendArea.isTtsEnabled() : false
                 });
             },
 
-            /** 选中二级选项（如会话） → 拼出最终指令 */
-            onSubSelect(opt) {
-                if (this.commandParentCmd && this.commandParentCmd.name === '/look') {
-                    this.inputText = '/look ' + opt.id + ' ';
-                }
-                this.commandSubMode = null;
-                this.commandParentCmd = null;
-                this.commandActiveIndex = 0;
-                this.$nextTick(() => {
-                    const ta = document.querySelector('.send-area-textarea');
-                    if (ta) ta.focus();
-                });
-            },
-
-            /** 从二级面板返回一级 */
-            onCommandBack() {
-                this.commandSubMode = null;
-                this.commandParentCmd = null;
-                this.commandActiveIndex = 0;
-            },
-
             /**
-             * 发送消息
+             * 发送消息（由 <send-area> 组件的 send 事件触发）
+             * payload: { content, files, tts } —— 输入框内容与已上传文件由组件自己持有
              * 根据是否已选中会话自动选择 create / append 模式
              */
-            async sendMessage() {
+            async handleSend(payload) {
                 if (!this.characterId) {
                     ElementPlus.ElMessage.warning('请先从角色设置中选择一个角色');
                     return;
@@ -990,21 +831,22 @@
                     return; // 等待服务端 init_user 确认期间禁止重复发送
                 }
                 this.sending = true;
-                let mode = this.currentSessionId ? 'append' : 'create';
-                let request = {
+                const mode = this.currentSessionId ? 'append' : 'create';
+                const request = {
                     mode: mode,
                     sessionId: this.currentSessionId,
-                    content: this.inputText
+                    content: payload.content,
+                    tts: payload.tts
                 };
                 if (mode === 'create') {
                     // 一次性注册：新会话随首条消息携带角色 ID 扩展字段，服务端落库即完成绑定匹配，无需再二次 bind
                     request.extension = { characterId: this.characterId };
                 }
-                if (this.uploadedFiles.length > 0) {
-                    request.files = this.uploadedFiles;
+                if (payload.files && payload.files.length > 0) {
+                    request.files = payload.files;
                 }
                 this.ws.send(JSON.stringify(request));
-                // 不在这里清空 inputText/uploadedFiles，改为在收到服务端 init_user 确认后再清空
+                // 不在这里清空输入框/文件，改为在收到服务端 init_user 确认后调 sendArea.clear()
                 // 避免移动端 WebSocket 假连接导致消息丢失
             },
 
@@ -1155,6 +997,20 @@
                     }
                     return;
                 }
+                // TTS 逐句音频帧：交给发送区组件的播放队列（开关未开时直接忽略，避免队列堆积）
+                if (event.data.startsWith('###TTS_AUDIO###')) {
+                    try {
+                        const ttsFrame = JSON.parse(event.data.split('###TTS_AUDIO###')[1]);
+                        if (ttsFrame.sessionId === this.currentSessionId
+                                && this.$refs.sendArea
+                                && this.$refs.sendArea.isTtsEnabled()) {
+                            this.$refs.sendArea.enqueueTtsAudio(ttsFrame.audio);
+                        }
+                    } catch (e) {
+                        console.error('解析 TTS_AUDIO 失败:', e);
+                    }
+                    return;
+                }
                 if (event.data.startsWith('###TOOL_CALL_FINISH###')) {
                     let sessionId = event.data.split('###TOOL_CALL_FINISH###')[1];
                     // 本轮全部工具执行完毕（空 messages 的轮次边界）→ 推进流式占位到下一轮 AI 回复
@@ -1211,9 +1067,8 @@
                             this.currentSession = this.$refs.sidebar.get(session);
                         }
 
-                        // 服务端已确认收到消息，此时清空输入框和已上传文件
-                        this.inputText = '';
-                        this.uploadedFiles = [];
+                        // 服务端已确认收到消息，此时清空输入框和已上传文件（状态由发送区组件持有）
+                        if (this.$refs.sendArea) this.$refs.sendArea.clear();
 
                         this.scrollToBottom(true);
                         // 用户消息中可能包含 mermaid 图表，收到确认后立即渲染（无需等流结束）
@@ -1843,15 +1698,6 @@
                     document.documentElement.style.setProperty('--el-color-primary', val);
                 },
                 immediate: true
-            },
-            filteredCommands() {
-                this.commandActiveIndex = 0;
-            },
-            inputText(val) {
-                if (!val || !val.startsWith('/')) {
-                    this.commandSubMode = null;
-                    this.commandParentCmd = null;
-                }
             }
         },
 
@@ -1875,9 +1721,14 @@
     app.component('auto-resize-textarea', AutoResizeTextarea);
     app.component('command-suggest', CommandSuggest);
     app.component('character-db-panel', CharacterDbPanel);
+    // 发送区（内部含步骤清单 <mark-tracker>）：发送栏已换成该组件
+    app.component('send-area', SendArea);
+    app.component('mark-tracker', MarkTracker);
 
     app.use(ElementPlus);
-    app.mount('#app');
+    // 发送区组件通过 inject('sessionStore') 取状态，插件页用上面的适配层顶上
+    app.provide('sessionStore', characterStore);
+    vmRef = app.mount('#app');
 </script>
 </body>
 </html>

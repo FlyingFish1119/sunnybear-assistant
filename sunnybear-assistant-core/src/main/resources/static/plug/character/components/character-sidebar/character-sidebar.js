@@ -30,22 +30,24 @@ const CharacterSidebar = {
     <div class="app-sidebar"
          :class="{ 'mobile-open': sidebarOpen, 'collapsed': collapsed }"
          :style="{backgroundColor: mainColor}">
-        <el-button :disabled="isNewSession"
-                   class="sidebar-new-chat-button"
-                   :color="mainColor"
-                   plain
-                   @click="$emit('create-session')">
+        <button class="sidebar-new-chat-button"
+                :disabled="isNewSession"
+                @click="$emit('create-session')">
             <i data-lucide="square-plus"></i>
-            <span style="margin-left: 10px">新对话</span>
-        </el-button>
+            <span>新对话</span>
+        </button>
         <div class="sidebar-session-list">
+            <div v-if="sessions.length === 0" class="sidebar-empty">暂无对话</div>
             <div class="sidebar-session-item"
                  v-for="session in sessions"
                  :key="session.id"
-                 :style="currentSession.id === session.id ? {backgroundColor: 'white', borderRadius: '10px', padding: '5px 5px 15px 5px',  borderBottomColor: 'white'} : {}"
+                 :class="{ active: currentSession.id === session.id }"
                  @click="$emit('select-session', session)"
                  @contextmenu.prevent="showContextMenu($event, session)">
-                {{ session.name }}
+                <span class="sidebar-session-name">{{ session.name }}</span>
+                <span v-if="sessionTokenTotal(session) != null"
+                      class="sidebar-session-tokens"
+                      title="本会话累计 token 消耗">{{ formatTokens(sessionTokenTotal(session)) }}</span>
             </div>
         </div>
         <!-- 右键上下文菜单 -->
@@ -63,20 +65,14 @@ const CharacterSidebar = {
             </div>
         </div>
         <div class="sidebar-footer">
-            <el-button class="sidebar-settings"
-                       @click="goSettings"
-                       style="color: #333"
-                       type="text"
-                       title="设置">
-                <i ref="settings" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="settings"></i>
-            </el-button>
-            <el-button class="sidebar-settings"
-                       @click="goRouter"
-                       style="color: #333"
-                       type="text"
-                       title="页面导航">
-                <i ref="router" style="width: 25px; height: 25px" class="sidebar-settings-icon" data-lucide="layout-grid"></i>
-            </el-button>
+            <div class="sidebar-footer-left">
+                <button class="sidebar-icon-btn" @click="goSettings" title="设置">
+                    <i data-lucide="settings"></i>
+                </button>
+                <button class="sidebar-icon-btn" @click="goRouter" title="页面导航">
+                    <i data-lucide="layout-grid"></i>
+                </button>
+            </div>
         </div>
     </div>
     <!-- 移动端侧边栏遮罩 -->
@@ -195,6 +191,16 @@ const CharacterSidebar = {
         },
 
         /* ---- 内部方法 ---- */
+
+        /** 会话累计 token（口径见 utils/token-format.js，与主页侧边栏一致） */
+        sessionTokenTotal: function (session) {
+            return TokenFormat.total(session);
+        },
+
+        /** token 数字压缩：1234 → 1.2k */
+        formatTokens: function (n) {
+            return TokenFormat.short(n);
+        },
 
         /**
          * 关闭移动端抽屉（由遮罩点击触发）

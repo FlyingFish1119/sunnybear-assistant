@@ -26,6 +26,8 @@ const SLASH_COMMANDS = [
  *
  * Props:
  *   mainColor    — String   主题色
+ *   commands     — Array    斜杠指令表（不传则用模块内置的 SLASH_COMMANDS；
+ *                           插件页可传入自己的指令，如角色页的角色专属指令）
  *
  * Injects:
  *   sessionStore — 会话/消息仓库（可选）；isStreaming / sending / sessionId / sessions 取自仓库
@@ -266,7 +268,10 @@ const SendArea = {
     </div>`,
 
     props: {
-        mainColor:   { type: String,   default: 'lightsalmon' }
+        mainColor:   { type: String,   default: 'lightsalmon' },
+        // 斜杠指令表：插件页可传入自己的指令（如角色页的角色专属指令）；
+        // 不传则用模块内置的通用指令表 SLASH_COMMANDS
+        commands:    { type: Array,    default: () => SLASH_COMMANDS }
     },
 
     emits: ['send', 'stop', 'drag-over-change'],
@@ -318,11 +323,11 @@ const SendArea = {
             if (this.commandSubMode && this.subOptions.length > 0) return true;
             return this.inputText.startsWith('/') && this.filteredCommands.length > 0;
         },
-        // 根据当前输入过滤匹配的指令
+        // 根据当前输入过滤匹配的指令（指令表由 commands prop 提供，默认内置表）
         filteredCommands: function () {
             if (!this.inputText || !this.inputText.startsWith('/')) return [];
             const lower = this.inputText.toLowerCase().split(' ')[0];
-            return SLASH_COMMANDS.filter(function (c) {
+            return this.commands.filter(function (c) {
                 return c.name.startsWith(lower) || c.name.includes(lower);
             });
         },

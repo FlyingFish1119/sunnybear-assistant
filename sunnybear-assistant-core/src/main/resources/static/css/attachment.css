@@ -1,0 +1,83 @@
+/* ============================================
+   Attachment & Drag Overlay — 消息内附件 / 拖拽遮罩
+   ------------------------------------------------------------
+   从 css/send-area.css 拆出：这两块与发送栏无关，属于页面级公共
+   样式（消息内附件渲染 + 拖拽上传遮罩），凡引用了它们的页面都要
+   引本文件。
+
+   ⚠ 定义只此一处：css/send-area.css 里对应的规则已删除，
+     以后维护请改这里，不要再往那份发送栏样式里加。
+   ============================================ */
+
+/* ---- 消息内附件 ---- */
+.message-attachment-image img {
+    max-width: min(100%, 600px);
+    max-height: 70vh;
+    border-radius: 8px;
+    cursor: pointer;
+    margin: 4px 0;
+}
+.message-attachment-audio audio,
+.message-attachment-video video {
+    max-width: 100%;
+    max-height: 480px;
+    border-radius: 8px;
+    margin: 4px 0;
+}
+.message-attachment-file a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(0,0,0,0.04);
+    border-radius: 8px;
+    text-decoration: none;
+    color: #333;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+.message-attachment-file a:hover { background: rgba(0,0,0,0.08); }
+
+/* ---- 拖拽遮罩 ---- */
+.drag-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.12);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+.drag-overlay-content {
+    background: #fff;
+    border: 3px dashed var(--main-color, lightsalmon);
+    border-radius: 16px;
+    padding: 40px 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--main-color, lightsalmon);
+    font-size: 18px;
+    font-weight: 600;
+}
+.drag-overlay-content i { width: 48px; height: 48px; }
+
+/* ============================================
+   移动端适配
+   ============================================ */
+@media (max-width: 768px) {
+    .drag-overlay-content {
+        padding: 24px 32px;
+        font-size: 16px;
+    }
+
+    .drag-overlay-content i { width: 36px; height: 36px; }
+
+    .message-attachment-image img {
+        max-width: 100%;
+        max-height: 40vh;
+    }
+}

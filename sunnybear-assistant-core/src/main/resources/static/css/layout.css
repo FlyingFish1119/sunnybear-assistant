@@ -100,3 +100,44 @@ html, body {
     background: #f8f9fa;
     border-radius: var(--radius-sm);
 }
+
+/* ============================================
+   侧边栏公共件
+   （侧边栏组件与消息区顶部共用，定义只此一处）
+   ============================================ */
+
+/* ---- 侧边栏切换按钮（全端可见） ---- */
+.sidebar-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin-left: -6px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #555;
+    transition: all var(--transition-fast, 0.2s);
+    flex-shrink: 0;
+}
+
+.sidebar-toggle-btn:hover {
+    background: #f0f0f0;
+    color: var(--text-primary, #333);
+}
+
+/* ---- 侧边栏遮罩（仅移动端，由侧边栏组件渲染） ---- */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 999;
+    transition: opacity var(--transition-normal, 0.3s ease);
+}
+
+.sidebar-overlay.visible {
+    display: block;
+}

@@ -358,44 +358,7 @@
     white-space: nowrap;
 }
 
-/* ============================================
-   侧边栏切换按钮（全端可见）
-   ============================================ */
-
-.sidebar-toggle-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    margin-left: -6px;
-    border: none;
-    background: transparent;
-    border-radius: 8px;
-    cursor: pointer;
-    color: #555;
-    transition: all var(--transition-fast, 0.2s);
-    flex-shrink: 0;
-}
-
-.sidebar-toggle-btn:hover {
-    background: #f0f0f0;
-    color: var(--text-primary, #333);
-}
-
-/* ---- 侧边栏遮罩（仅移动端） ---- */
-.sidebar-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.35);
-    z-index: 999;
-    transition: opacity var(--transition-normal, 0.3s ease);
-}
-
-.sidebar-overlay.visible {
-    display: block;
-}
+/* ---- 侧边栏切换按钮 / 移动端遮罩：已收敛到 css/layout.css（一处定义） ---- */
 
 /* ============================================
    桌面端 — 侧边栏折叠/展开

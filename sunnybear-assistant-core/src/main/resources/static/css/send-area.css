@@ -1,6 +1,9 @@
 /* ============================================
-   Send Area — 发送区
+   Send Area — 发送区（旧版三段式布局，当前仅插件页 world 在用）
    容器、输入框、提交按钮、响应式
+   ------------------------------------------------------------
+   ⚠ 消息内附件 / 拖拽遮罩已拆到 css/attachment.css（页面级公共样式）；
+     本文件待 world 页迁到 components/send-area 组件后整体删除。
    ============================================ */
 
 /* ---- 底部发送区容器（wrapper 直接子元素，固定于底部） ---- */
@@ -187,61 +190,7 @@
 }
 .file-chip-add:hover { border-color: var(--main-color); color: var(--main-color); background: rgba(0,0,0,0.03); }
 
-/* ---- 拖拽遮罩 ---- */
-.drag-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 100;
-    background: rgba(0, 0, 0, 0.12);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-}
-.drag-overlay-content {
-    background: #fff;
-    border: 3px dashed var(--main-color, lightsalmon);
-    border-radius: 16px;
-    padding: 40px 60px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    color: var(--main-color, lightsalmon);
-    font-size: 18px;
-    font-weight: 600;
-}
-.drag-overlay-content i { width: 48px; height: 48px; }
-
-/* ---- 消息内附件 ---- */
-.message-attachment-image img {
-    max-width: min(100%, 600px);
-    max-height: 70vh;
-    border-radius: 8px;
-    cursor: pointer;
-    margin: 4px 0;
-}
-.message-attachment-audio audio,
-.message-attachment-video video {
-    max-width: 100%;
-    max-height: 480px;
-    border-radius: 8px;
-    margin: 4px 0;
-}
-.message-attachment-file a {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: rgba(0,0,0,0.04);
-    border-radius: 8px;
-    text-decoration: none;
-    color: #333;
-    font-size: 13px;
-    transition: background 0.2s;
-}
-.message-attachment-file a:hover { background: rgba(0,0,0,0.08); }
+/* ---- 拖拽遮罩 / 消息内附件：已拆到 css/attachment.css ---- */
 
 /* ============================================
    看板熊：趴在“发送按钮”顶沿上的装饰（icon/signboard_bear_2.png + icon/signboard_bear_1.png）
@@ -359,15 +308,5 @@
         --cx: calc(85% + 34px);
     }
 
-    .drag-overlay-content {
-        padding: 24px 32px;
-        font-size: 16px;
-    }
-
-    .drag-overlay-content i { width: 36px; height: 36px; }
-
-    .message-attachment-image img {
-        max-width: 100%;
-        max-height: 40vh;
-    }
+    /* 拖拽遮罩 / 消息内附件的移动端适配：已拆到 css/attachment.css */
 }
