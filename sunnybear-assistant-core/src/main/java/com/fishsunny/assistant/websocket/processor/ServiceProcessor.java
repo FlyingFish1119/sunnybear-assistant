@@ -259,15 +259,21 @@ public class ServiceProcessor {
 
         try {
             AtomicBoolean result = new AtomicBoolean(false);
-            chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(),
-                    request, cubAISettings.getStream(), null,
-                    (trResult, lastRes) -> {
+            ChatHttpHandler.TranslateData translateData = new ChatHttpHandler.TranslateData(
+                    UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request
+            );
+            ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler()
+                    .complete((trResult, lastRes) -> {
                         String content = trResult.content();
                         if (content != null) {
                             result.set(content.trim().toLowerCase().contains("true"));
                         }
-                    }
-            );
+                    });
+            ChatHttpHandler.TranslateOption translateOption = new ChatHttpHandler.TranslateOption()
+                    .setStream(cubAISettings.getStream())
+                    .setEnableTTS(false);
+
+            chatHttpHandler.translate(translateData, translateHandler, translateOption);
             return result.get();
         } catch (Exception e) {
             log.warn("模型复杂度判断失败，默认使用标准模型: {}", e.getMessage());
@@ -288,11 +294,16 @@ public class ServiceProcessor {
 
         ChatRequest request = new ChatRequest().quickJsonBuild(TITLE_PROMPT, prompt, cubAISettings);
         try {
-            ChatHttpHandler.CompleteCallback onComplete = (result, lastRes) -> {
-                chatSession.setName(parseTitle(result.content()));
-            };
-            chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request, cubAISettings.getStream(),
-                    null, onComplete);
+            ChatHttpHandler.TranslateData translateData = new ChatHttpHandler.TranslateData(
+                    UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request
+            );
+            ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler()
+                    .complete((result, lastRes) -> chatSession.setName(parseTitle(result.content())));
+            ChatHttpHandler.TranslateOption translateOption = new ChatHttpHandler.TranslateOption()
+                    .setStream(cubAISettings.getStream())
+                    .setEnableTTS(false);
+
+            chatHttpHandler.translate(translateData, translateHandler, translateOption);
             chatSessionService.update(chatSession);
             sessionMessageBus.publish(chatSession.getId(), ControlSign.UPDATE_SESSION + objectMapper.writeValueAsString(chatSession));
         } catch (Exception e) {
