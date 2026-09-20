@@ -10,23 +10,20 @@ package com.fishsunny.assistant.engine.tool.instance.agent;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.constants.ControlSign;
-import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
+import com.fishsunny.assistant.engine.protocol.project.processor.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
-import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
-import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -36,7 +33,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.util.StringUtils;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.*;
@@ -58,18 +54,18 @@ public class NetExploreTool implements SubAgentToolHandler {
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
     private final AISettings missionAISettings;
-    private final ToolCallLoop toolCallLoop;
+    private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
     private final SecurityService securityService;
 
     public NetExploreTool(ObjectMapper objectMapper,
                           @Qualifier(AISettings.MISSION) AISettings missionAISettings,
-                          ToolCallLoop toolCallLoop,
+                          EasyReActProcessor easyReActProcessor,
                           SecurityService securityService,
                           @Lazy ToolExecutor toolExecutor) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
-        this.toolCallLoop = toolCallLoop;
+        this.easyReActProcessor = easyReActProcessor;
         this.securityService = securityService;
         this.toolExecutor = toolExecutor;
 
@@ -124,7 +120,7 @@ public class NetExploreTool implements SubAgentToolHandler {
                     .setTools(subAgentTools);
 
             // ========== 执行循环，捕获 AI 的最终报告 ==========
-            String finalReport = toolCallLoop.execute(missionAISettings, request, context, null );
+            String finalReport = easyReActProcessor.execute(missionAISettings, request, context, null );
 
             // ========== 组装返回结果 ==========
             return new ToolExecutor.ToolExecuteResponse(name(), finalReport);

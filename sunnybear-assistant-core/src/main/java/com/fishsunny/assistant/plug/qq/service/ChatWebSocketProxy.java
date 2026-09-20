@@ -11,7 +11,7 @@ package com.fishsunny.assistant.plug.qq.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ChatMessageRequest;
-import com.fishsunny.assistant.engine.ChatHttpHandler;
+import com.fishsunny.assistant.engine.cancel.ChatCancelRegistry;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
@@ -47,13 +47,15 @@ public class ChatWebSocketProxy {
 
     private final ChatWebSocketHandler handler;
     private final ObjectMapper objectMapper;
+    private final ChatCancelRegistry cancelRegistry;
 
     /** QQ 用户标识 → 网页端 ChatSession ID */
     private final Map<String, String> sessionMap = new ConcurrentHashMap<>();
 
-    public ChatWebSocketProxy(ChatWebSocketHandler handler, ObjectMapper objectMapper) {
+    public ChatWebSocketProxy(ChatWebSocketHandler handler, ObjectMapper objectMapper, ChatCancelRegistry cancelRegistry) {
         this.handler = handler;
         this.objectMapper = objectMapper;
+        this.cancelRegistry = cancelRegistry;
     }
 
     /**
@@ -104,8 +106,8 @@ public class ChatWebSocketProxy {
     public void stop(String qqUserId) {
         String sessionId = sessionMap.get(qqUserId);
         if (sessionId != null) {
-            // 新语义：STOP_SIGN 中存在该 sessionId 即表示"需要停止"（与 ChatController.stopStreaming 一致）
-            ChatHttpHandler.getPASS_SIGN().remove(sessionId);
+            // 与 ChatController.stopStreaming 统一走会话级取消注册表：一次停止覆盖该会话所有在途轮次
+            cancelRegistry.cancel(sessionId);
         }
     }
 

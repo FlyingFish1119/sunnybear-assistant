@@ -4,11 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
+import com.fishsunny.assistant.engine.protocol.project.processor.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.plug.comfyui.dto.HistoryEntry;
@@ -47,20 +47,20 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler {
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
     private final AISettings missionAISettings;
-    private final ToolCallLoop toolCallLoop;
+    private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
     private final ComfyUIBridgeService bridgeService;
     private final SessionFileManager sessionFileManager;
 
     public ComfyUISubAgentTool(ObjectMapper objectMapper,
                                 @Qualifier(AISettings.MISSION) AISettings missionAISettings,
-                                ToolCallLoop toolCallLoop,
+                                EasyReActProcessor easyReActProcessor,
                                 @Lazy ToolExecutor toolExecutor,
                                 ComfyUIBridgeService bridgeService,
                                 SessionFileManager sessionFileManager) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
-        this.toolCallLoop = toolCallLoop;
+        this.easyReActProcessor = easyReActProcessor;
         this.toolExecutor = toolExecutor;
         this.bridgeService = bridgeService;
         this.sessionFileManager = sessionFileManager;
@@ -106,8 +106,8 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler {
             // ========== 收集器 ==========
             List<String> generatedFiles = new ArrayList<>();
 
-            ToolCallLoop.ToolResultHook hook = (roundResults, aiText) -> {
-                for (ToolCallLoop.RoundResult r : roundResults) {
+            EasyReActProcessor.ToolResultHook hook = (roundResults, aiText) -> {
+                for (EasyReActProcessor.RoundResult r : roundResults) {
                     // 从 generate 结果中提取 output 文件名
                     if (ComfyUIGenerateTool.NAME.equals(r.toolName())) {
                         extractFilenames(r.result(), generatedFiles);
@@ -130,8 +130,8 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler {
                     .setTools(subAgentTools);
 
             // ========== 执行循环 ==========
-            String finalReport = toolCallLoop.execute(missionAISettings, request, context,
-                    new ToolCallLoop.AgentLoopHook(null, hook));
+            String finalReport = easyReActProcessor.execute(missionAISettings, request, context,
+                    new EasyReActProcessor.AgentLoopHook(null, hook));
 
             // ========== 拉取图片并存到 session ==========
             List<String> imageMarkdowns = fetchAndSaveImages(generatedFiles, sessionId);

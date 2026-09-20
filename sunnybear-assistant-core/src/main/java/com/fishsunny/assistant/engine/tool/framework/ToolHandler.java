@@ -6,7 +6,7 @@ import java.util.Map;
 
 public interface ToolHandler {
 
-    public ToolExecutor.ToolExecuteResponse action(String arguments, Map<String, Object> context) throws ToolExecutor.ToolExecuteException;
+    public ToolExecutor.ToolExecuteResponse action(String arguments, Map<String, Object> context) throws Exception;
 
     public String name();
 

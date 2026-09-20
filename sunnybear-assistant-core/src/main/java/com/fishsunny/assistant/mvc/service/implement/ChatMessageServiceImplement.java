@@ -248,6 +248,21 @@ public class ChatMessageServiceImplement implements ChatMessageService {
         return chatMessageRepository.batchUpdateActive(ids, false);
     }
 
+    @Override
+    @Transactional
+    public int reactivateBranch(String messageId) throws Exception {
+        ChatMessage message = chatMessageRepository.selectById(messageId);
+        if (message == null) {
+            throw new IllegalArgumentException("消息不存在: " + messageId);
+        }
+
+        List<String> ids = new ArrayList<>();
+        collectDescendantIds(messageId, ids);
+        ids.add(messageId);
+
+        return chatMessageRepository.batchUpdateActive(ids, true);
+    }
+
     /**
      * 递归收集某个消息的所有子孙消息 ID
      */

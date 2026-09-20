@@ -11,10 +11,9 @@ package com.fishsunny.assistant.engine.tool.instance.flow;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FlowToolKit;
-import com.fishsunny.assistant.engine.tool.instance.TestToolKit;
 import lombok.Data;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 
@@ -74,8 +73,7 @@ public class WaitFlowTool implements ToolHandler {
                     .replace("${startTime}", startTime.format(DATE_TIME_FORMATTER))
                     .replace("${endTime}", LocalDateTime.now().format(DATE_TIME_FORMATTER));
             return new ToolExecutor.ToolExecuteResponse(name(), result);
-        } catch (ToolExecutor.ToolExecuteException e) {
-            throw e;
+
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }

@@ -12,12 +12,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.HandleTTSAble;
 import com.fishsunny.assistant.engine.adapter.factory.AIAdapterFactory;
+import com.fishsunny.assistant.engine.cancel.ChatCancelContext;
+import com.fishsunny.assistant.engine.cancel.ChatCancelRegistry;
+import com.fishsunny.assistant.engine.cancel.ChatCancelToken;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
 import com.fishsunny.assistant.engine.protocol.TokenUsage;
 import com.fishsunny.assistant.engine.protocol.UsageSource;
 import lombok.Data;
-import lombok.Getter;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,7 +29,6 @@ import org.springframework.util.StringUtils;
 
 import java.util.Iterator;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -39,6 +40,7 @@ public class ChatHttpHandler {
 
     private final ObjectMapper objectMapper;
     private final AIAdapterFactory adapterFactory;
+    private final ChatCancelRegistry cancelRegistry;
 
     /**
      * 空闲超时毫秒数：对端超过该时长没有发送有效消息（完全静默或只发 keep-alive 等保活事件）
@@ -55,14 +57,13 @@ public class ChatHttpHandler {
      */
     private static final long USAGE_DRAIN_GRACE_MILLIS = 800;
 
-    @Getter
-    private static final Set<String> PASS_SIGN = ConcurrentHashMap.newKeySet();
-
     @Autowired
     public ChatHttpHandler(ObjectMapper objectMapper, AIAdapterFactory adapterFactory,
+                           ChatCancelRegistry cancelRegistry,
                            @Value("${engine.chat.idle-timeout-s:30}") long idleTimeoutSeconds) {
         this.objectMapper = objectMapper;
         this.adapterFactory = adapterFactory;
+        this.cancelRegistry = cancelRegistry;
         this.idleTimeoutMillis = idleTimeoutSeconds > 0 ? idleTimeoutSeconds * 1000L : 0;
     }
 
@@ -74,10 +75,19 @@ public class ChatHttpHandler {
     ) {
     }
 
-    public record TranslateHandler(
-            InTranslateCallback inTranslate,
-            CompleteCallback complete
-    ) {
+    @Data
+    @Accessors(chain = true, fluent = true)
+    public static class TranslateHandler{
+        InTranslateCallback inTranslate;
+        CompleteCallback complete;
+
+        public TranslateHandler(InTranslateCallback inTranslate, CompleteCallback complete) {
+            this.inTranslate = inTranslate;
+            this.complete = complete;
+        }
+
+        public TranslateHandler() {
+        }
     }
 
     /**
@@ -103,7 +113,15 @@ public class ChatHttpHandler {
         AIRequest request = data.request();
         InTranslateCallback inTranslate = handler.inTranslate();
         CompleteCallback onComplete = handler.complete();
-        PASS_SIGN.add(passId);
+
+        // 取消令牌：顶层调用从注册表开启一轮；子调用（工具内部再发起的请求）继承父令牌，
+        // 让一次「停止」覆盖整条链路。只有顶层负责注册与注销，子调用不碰 ThreadLocal 的归属
+        ChatCancelToken parentToken = ChatCancelContext.current();
+        boolean cancelOwner = parentToken == null;
+        ChatCancelToken token = cancelOwner ? cancelRegistry.begin(passId) : parentToken;
+        if (cancelOwner) {
+            ChatCancelContext.bind(token);
+        }
 
         boolean safeStream = stream != null && stream;
         AIAdapter adapter = adapterFactory.getAdapter(adapterName, safeStream);
@@ -118,35 +136,50 @@ public class ChatHttpHandler {
         // 泵线程把底层流的行按顺序推入有界队列：对端完全静默时主线程仍能按空闲超时醒来
         // 并放弃连接，而不是无限阻塞在流的迭代器上（Stream.iterator().hasNext() 不支持超时）。
         // connect 也放进泵线程，响应头迟迟不返回时主线程同样会被超时释放。
-        AtomicBoolean cancelled = new AtomicBoolean();
+        AtomicBoolean pumpStop = new AtomicBoolean();
         AtomicReference<Stream<String>> streamRef = new AtomicReference<>();
         BlockingQueue<StreamEvent> queue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
+
+        // 取消时立即唤醒收流循环：清空队列保证 offer 必成功，再投一个取消事件让主线程退出阻塞等待。
+        // 幂等（重复执行只是再清一次空队列），故不惧 onCancel 的并发补跑
+        Runnable wakeup = () -> {
+            queue.clear();
+            if (queue.offer(StreamEvent.ofCancel())) {
+                log.warn("Stream event queue is full, cancel event may be dropped.");
+            }
+        };
+        token.onCancel(wakeup);
+
         // 状态 hook：建连（connect）在泵线程内执行，这里先通知调用方「即将建连」，前端展示「连接中」。
         // 在主线程触发，先于本轮任何内容帧，与帧的先后顺序天然确定
         if (inTranslate != null) {
             notifyHook(inTranslate::onRequestConnecting);
         }
         Thread pump = new Thread(
-                () -> pumpLines(adapter, request, inTranslate, cancelled, streamRef, queue),
+                () -> pumpLines(adapter, request, inTranslate, pumpStop, streamRef, queue),
                 "stream-pump" + (StringUtils.hasText(passId) ? "-" + passId : ""));
         pump.setDaemon(true);
         pump.start();
 
         long deadline = idleMillis > 0 ? System.currentTimeMillis() + idleMillis : 0;
         AIResponse lastRes = null;
+
         // token 用量：由携带 usage 的响应帧不断刷新，取整轮最后一次有效值
         TokenUsage usage = null;
+
         // 流正常走完（最后一个 chunk finished=true）才合成整轮完整音频；
         // 中断/流早断/出错时不做（避免把半截回复的语音塞进消息）
         boolean streamCompleted = false;
         try {
             while (true){
-                // 如果 ID 存在，则认为被中断
-                if (!PASS_SIGN.contains(passId)) {
+                if (token.isCancelled()) {
                     break; // 用户中断：TTS 收尾统一走 finally 的 cancelTTS
                 }
 
                 StreamEvent event = waitEvent(queue, idleMillis, deadline, adapterName);
+                if (event.cancelled()) {
+                    break; // 取消唤醒事件：作用同上，用于打破 waitEvent 的阻塞等待
+                }
                 if (event.error() != null) {
                     // 泵线程建连/读取失败，抛给调用方（与旧的同步抛错语义一致）
                     throw new RuntimeException(event.error());
@@ -154,30 +187,9 @@ public class ChatHttpHandler {
                 if (event.line() == null) {
                     break; // 流正常结束
                 }
-                String line = event.line();
-                if (!StringUtils.hasText(line) || line.equals("\n")) {
-                    continue;
-                }
-                if (line.startsWith(":")) {
-                    continue;
-                }
-                // Anthropic SSE 使用 event: 行标记事件类型，实际数据在 data: 行中。
-                // 冒号后的空格按 SSE 规范可省略，所以两种写法都认；只认带空格的写法时，
-                // 无空格网关的 data:{...} 会带着前缀交给 Jackson 并在下面解析失败
-                if (line.startsWith("event:")) {
-                    continue;
-                }
-                if (line.startsWith("data:")) {
-                    line = line.substring("data:".length()).stripLeading();
-                }
-                // 去前缀后为空（如空 keepalive），跳过
-                if (!StringUtils.hasText(line)) {
-                    continue;
-                }
-                // Chat Completions 形状的流末哨兵，不是 JSON。不跳过会在下一行解析时抛异常，
-                // 而异常逃出本方法后，已经收集到的内容会连同整轮一起丢掉
-                if ("[DONE]".equals(line)) {
-                    continue;
+                String line = normalizeSseLine(event.line());
+                if (line == null) {
+                    continue; // 空行/注释行/事件类型行/空 keepalive/流末哨兵，均非有效数据
                 }
                 AIResponse response = objectMapper.readValue(line, adapter.getTargetRespCls());
                 lastRes = response;
@@ -244,14 +256,49 @@ public class ChatHttpHandler {
         } finally {
             // 结束/中断/超时都通知泵线程停止并尽力关闭底层流，Stream.close() 会取消订阅
             // 释放连接与 JDK HttpClient 的 Direct ByteBuffer
-            stopPump(cancelled, streamRef, pump);
+            stopPump(pumpStop, streamRef, pump);
             // TTS 兜底收尾：正常收流已在最后一个 chunk（finished=true）冲刷过缓冲；
             // 中断/异常/流早断路径靠它丢弃残留缓冲。幂等，无副作用
             if (ttsAble != null) {
                 ttsAble.cancelTTS();
             }
-            PASS_SIGN.remove(passId);
+            token.offCancel(wakeup);
+            // 只有顶层注销注册表与线程上下文；子调用继承的是父令牌，动它会误伤父链路
+            if (cancelOwner) {
+                cancelRegistry.end(passId, token);
+                ChatCancelContext.unbind();
+            }
         }
+    }
+
+    /**
+     * 把一行原始 SSE 数据规整为可直接交给 Jackson 的 JSON 文本，返回 null 表示这行应跳过。
+     * 收流主循环与用量尾帧排空共用本方法，SSE 协议规则只此一份。
+     * <p>
+     * 跳过：空行、以 {@code :} 开头的注释行、Anthropic 的 {@code event:} 事件类型行、
+     * 剥掉 {@code data:} 前缀后为空的空 keepalive、以及 Chat Completions 的流末哨兵 {@code [DONE]}
+     * （它不是 JSON，不跳过会在解析时抛异常，异常逃出调用方后已收集的内容会连同整轮一起丢掉）。
+     * <p>
+     * {@code data:} 冒号后的空格按 SSE 规范可省略，两种写法都认 —— 只认带空格的写法时，
+     * 无空格网关的 {@code data:{...}} 会带着前缀交给 Jackson 并解析失败。
+     */
+    private static String normalizeSseLine(String line) {
+        if (!StringUtils.hasText(line) || line.equals("\n")) {
+            return null;
+        }
+        if (line.startsWith(":") || line.startsWith("event:")) {
+            return null;
+        }
+        if (line.startsWith("data:")) {
+            line = line.substring("data:".length()).stripLeading();
+        }
+        if (!StringUtils.hasText(line)) {
+            return null;
+        }
+        if ("[DONE]".equals(line)) {
+            return null;
+        }
+        return line;
     }
 
     /**
@@ -296,14 +343,8 @@ public class ChatHttpHandler {
             if (event == null || event.error() != null || event.line() == null) {
                 return null;
             }
-            String line = event.line();
-            if (!StringUtils.hasText(line) || line.startsWith(":") || line.startsWith("event:")) {
-                continue;
-            }
-            if (line.startsWith("data:")) {
-                line = line.substring("data:".length()).stripLeading();
-            }
-            if (!StringUtils.hasText(line) || "[DONE]".equals(line)) {
+            String line = normalizeSseLine(event.line());
+            if (line == null) {
                 continue;
             }
             try {
@@ -339,7 +380,7 @@ public class ChatHttpHandler {
      * 异常时投递错误事件（除非连接已被主线程放弃）。
      */
     private static void pumpLines(AIAdapter adapter, AIRequest request, InTranslateCallback inTranslate,
-                                  AtomicBoolean cancelled, AtomicReference<Stream<String>> streamRef,
+                                  AtomicBoolean pumpStop, AtomicReference<Stream<String>> streamRef,
                                   BlockingQueue<StreamEvent> queue) {
         try {
             Stream<String> lines = adapter.connect(request);
@@ -349,19 +390,19 @@ public class ChatHttpHandler {
             notifyHook(inTranslate != null ? inTranslate::onRequestThinking : null);
             try (lines) {
                 Iterator<String> it = lines.iterator();
-                while (!cancelled.get() && it.hasNext()) {
+                while (!pumpStop.get() && it.hasNext()) {
                     queue.put(StreamEvent.ofLine(it.next()));
                 }
             }
-            // 正常耗尽：通知主线程结束（已被取消则主线程已离开，无需投递）
-            if (!cancelled.get()) {
+            // 正常耗尽：通知主线程结束（泵已停止则主线程已离开，无需投递）
+            if (!pumpStop.get()) {
                 queue.put(StreamEvent.ofEnd());
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Throwable t) {
             // 建连失败或读取中断（如连接被服务端掐断），尽力投递错误事件
-            if (!cancelled.get() && !queue.offer(StreamEvent.ofError(t))) {
+            if (!pumpStop.get() && !queue.offer(StreamEvent.ofError(t))) {
                 log.error("Failed to offer error event to queue", t);
             }
         }
@@ -371,8 +412,8 @@ public class ChatHttpHandler {
      * 通知泵线程停止并尽力关闭底层流。泵线程是守护线程：即使对端静默到连中断都无法唤醒它
      * （极端情况，如 connect 阶段就挂死），最多泄漏一个线程，不会拖住聊天线程池。
      */
-    private static void stopPump(AtomicBoolean cancelled, AtomicReference<Stream<String>> streamRef, Thread pump) {
-        cancelled.set(true);
+    private static void stopPump(AtomicBoolean pumpStop, AtomicReference<Stream<String>> streamRef, Thread pump) {
+        pumpStop.set(true);
         Stream<String> lines = streamRef.get();
         if (lines != null) {
             lines.close();
@@ -382,20 +423,25 @@ public class ChatHttpHandler {
 
     /**
      * 泵线程与主线程之间的传输单元：line 为一行原始数据；error 为建连/读取异常；
-     * 两者皆空表示流正常结束。
+     * 两者皆空表示流正常结束；cancelled 为取消唤醒标记（由令牌的唤醒动作投递）。
      */
-    private record StreamEvent(String line, Throwable error) {
+    private record StreamEvent(String line, Throwable error, boolean cancelled) {
 
         static StreamEvent ofLine(String line) {
-            return new StreamEvent(line, null);
+            return new StreamEvent(line, null, false);
         }
 
         static StreamEvent ofError(Throwable error) {
-            return new StreamEvent(null, error);
+            return new StreamEvent(null, error, false);
         }
 
         static StreamEvent ofEnd() {
-            return new StreamEvent(null, null);
+            return new StreamEvent(null, null, false);
+        }
+
+        /** 取消唤醒事件：用于立即打破收流循环在队列上的阻塞等待 */
+        static StreamEvent ofCancel() {
+            return new StreamEvent(null, null, true);
         }
     }
 

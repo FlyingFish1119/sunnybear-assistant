@@ -13,6 +13,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.*;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
@@ -269,8 +271,7 @@ public class CommandTool implements ToolHandler {
             }
 
             return new ToolExecutor.ToolExecuteResponse(name(), wrapHtmlCodeBlockIfNeeded(result));
-        } catch (ToolExecutor.ToolExecuteException e) {
-            throw e;
+
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }

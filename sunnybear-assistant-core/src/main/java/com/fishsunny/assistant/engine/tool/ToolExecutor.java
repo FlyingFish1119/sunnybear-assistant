@@ -11,6 +11,8 @@ package com.fishsunny.assistant.engine.tool;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
+import com.fishsunny.assistant.engine.cancel.ChatCancelContext;
+import com.fishsunny.assistant.engine.cancel.ChatCancelToken;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.utils.SessionFileManager;
@@ -21,15 +23,23 @@ import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 @Slf4j
 @Component
 public class ToolExecutor {
+
+    /**
+     * 取消后等待工具收尾的窗口：响应中断的工具会在这段时间内退出；
+     * 不响应中断的（native 调用、死循环等）到点即放弃等待，用占位响应收场，避免「停止」被拖成卡死。
+     */
+    private static final long CANCEL_DRAIN_TIMEOUT_MILLIS = 3000;
 
     Map<String, ToolHandler> toolMap = new HashMap<>();
     Map<Class<? extends ToolKit>, ToolKit> toolKitMap = new HashMap<>();
@@ -115,23 +125,31 @@ public class ToolExecutor {
             return new ArrayList<>();
         }
         ToolProvider safeProvider = provider == null ? new ToolProvider(null, null) : provider;
+
+        // 捕获本轮取消令牌并绑到每个工具任务线程上：工具内部再发起的 translate 会自动继承它，
+        // 「停止」因此覆盖整条链路（含子请求），而不只是收流那一段
+        ChatCancelToken token = ChatCancelContext.current();
         List<CompletableFuture<ToolExecuteResponse>> futures = new ArrayList<>(requests.size());
         for (ToolRequest request : requests) {
-            if (safeProvider.beforeExec() != null) {
-                safeProvider.beforeExec().accept(request);
+            // 已中止：不再推「开始执行」通知。任务仍照常提交，因为占位响应必须产出并触发 afterExec 契约
+            if (token == null || !token.isCancelled()) {
+                if (safeProvider.beforeExec() != null) {
+                    safeProvider.beforeExec().accept(request);
+                }
             }
             CompletableFuture<ToolExecuteResponse> future = CompletableFuture.supplyAsync(() ->
-                    doExecute(request, context, safeProvider.afterExec()), executorService);
+                    runWithCancelContext(token, request, context, safeProvider.afterExec()), executorService);
             futures.add(future);
         }
+
         // 先全部 join 收集，保证后置处理链看到的是本批次最终状态（如 mark 工具可能同时修改了会话清单），
         // 避免边 join 边处理时读到中间态
         List<ToolExecuteResponse> responses = new ArrayList<>(requests.size());
         for (int i = 0; i < futures.size(); i++) {
+            ToolRequest request = requests.get(i);
             try {
-                responses.add(futures.get(i).join());
+                responses.add(awaitResult(futures.get(i), request, token));
             } catch (Exception e) {
-                ToolRequest request = requests.get(i);
                 responses.add(new ToolExecuteResponse(request.getToolName(),
                         "工具[" + request.getToolName() + "]执行异常，原因是：" + e.getMessage()).setSucceed(false));
             }
@@ -200,23 +218,44 @@ public class ToolExecutor {
                 // 无超时限制，直接同步执行
                 response = executeNow(handler, toolName, arguments, context);
             } else {
-                // 有超时限制，通过 CompletableFuture 做硬超时
-                CompletableFuture<ToolExecuteResponse> future = CompletableFuture.supplyAsync(
-                        () -> executeNow(handler, toolName, arguments, context), executorService);
+                // 有超时限制：工具逻辑丢到独立任务上跑，本线程只负责限时等待
+                ChatCancelToken token = ChatCancelContext.current();
+                AtomicReference<Thread> workerRef = new AtomicReference<>();
+                CompletableFuture<ToolExecuteResponse> future = CompletableFuture.supplyAsync(() -> {
+                    workerRef.set(Thread.currentThread());
+                    if (token != null) {
+                        ChatCancelContext.bind(token);
+                        token.registerThread(Thread.currentThread());
+                    }
+                    try {
+                        return executeNow(handler, toolName, arguments, context);
+                    } finally {
+                        if (token != null) {
+                            token.unregisterThread(Thread.currentThread());
+                            ChatCancelContext.unbind();
+                        }
+                    }
+                }, executorService);
                 try {
                     response = future.get(timeoutMs, TimeUnit.MILLISECONDS);
                 } catch (TimeoutException e) {
-                    future.cancel(true);
-                    log.warn("工具[{}]执行超时（{}ms），已强制中断", toolName, timeoutMs);
-                    response = new ToolExecuteResponse(toolName,
-                            "工具[" + toolName + "]执行超时（" + timeoutMs + "ms），已强制中断").setSucceed(false);
+                    workerRef.get().interrupt();
+                    log.warn("工具[{}]执行超时（{}ms），已中断执行线程", toolName, timeoutMs);
+                    response = new ToolExecuteResponse(toolName, "工具[" + toolName + "]执行超时（" + timeoutMs + "ms），已强制中断").setSucceed(false);
                 } catch (Exception e) {
-                    response = new ToolExecuteResponse(toolName,
-                            "工具[" + toolName + "]执行异常，原因是：" + e.getMessage()).setSucceed(false);
+                    response = new ToolExecuteResponse(toolName, "工具[" + toolName + "]执行异常，原因是：" + e.getMessage()).setSucceed(false);
                 }
             }
         }
         response.setToolCallId(toolRequest.getToolCallId());
+        // 工具「安静地失败」：子 Agent 内部的 translate 被取消后不抛异常、只返回空结果，
+        // 走到这里就会被当成「执行成功」却没有任何内容。已取消时统一改写状态；
+        if (response.isSucceed() && ChatCancelContext.isCancelled()) {
+            response.setSucceed(false);
+            response.setResult(StringUtils.hasText(response.getResult())
+                    ? response.getResult() + "\n\n（工具[" + toolName + "]执行中途被用户中止，以上内容可能不完整）"
+                    : "工具[" + toolName + "]已被用户中止");
+        }
         // afterExec 在所有完成路径都触发（成功/失败/超时/工具不存在/无超时），保证 hook 不遗漏
         if (afterExec != null) {
             afterExec.accept(response);
@@ -242,10 +281,94 @@ public class ToolExecutor {
             }
             return response;
         } catch (ToolExecuteException e) {
-            return new ToolExecuteResponse(toolName, "工具[" + toolName + "]执行失败，原因是：" + e.getMessage()).setSucceed(false);
+            // 中止导致的原因常常是 null（InterruptedException 不带 message，被工具原样透传上来），
+            // 识别中断状态给出可读文案，否则前端会显示「执行失败，原因是：null」
+            if (ChatCancelContext.isCancelled()) {
+                return new ToolExecuteResponse(toolName, "工具[" + toolName + "]已被用户中止").setSucceed(false);
+            }
+            String reason = StringUtils.hasText(e.getMessage()) ? e.getMessage() : "未知原因";
+            return new ToolExecuteResponse(toolName, "工具[" + toolName + "]执行失败，原因是：" + reason).setSucceed(false);
         } catch (Exception e) {
+            if (ChatCancelContext.isCancelled()) {
+                return new ToolExecuteResponse(toolName, "工具[" + toolName + "]已被用户中止").setSucceed(false);
+            }
             return new ToolExecuteResponse(toolName, "工具[" + toolName + "]执行异常，原因是：" + e.getMessage()).setSucceed(false);
         }
+    }
+
+    // ======================== 取消支持 ========================
+
+    /**
+     * 在工具任务线程内继承父令牌并登记线程：工具内部再发起的 translate 因此自动落在同一轮取消范围内，
+     * 取消时本线程会被 interrupt，让响应中断的工具（子进程、MCP、阻塞 IO）立刻退出。
+     */
+    private ToolExecuteResponse runWithCancelContext(ChatCancelToken token, ToolRequest request,
+                                                     Map<String, Object> context,
+                                                     Consumer<ToolExecuteResponse> afterExec) {
+        if (token == null) {
+            return doExecute(request, context, afterExec);
+        }
+        ChatCancelContext.bind(token);
+        token.registerThread(Thread.currentThread());
+        try {
+            // 已中止：不真正执行工具，直接给占位响应。afterExec 仍要触发，保持「每次执行恰好一次」的契约
+            if (token.isCancelled()) {
+                ToolExecuteResponse response = cancelledResponse(request);
+                if (afterExec != null) {
+                    afterExec.accept(response);
+                }
+                return response;
+            }
+            return doExecute(request, context, afterExec);
+        } finally {
+            token.unregisterThread(Thread.currentThread());
+            ChatCancelContext.unbind();
+        }
+    }
+
+    /**
+     * 等待单个工具结果。未取消时保持原有的无限等待语义；
+     * 已取消时只给一个收尾窗口，超时就放弃等待 —— 工具不响应中断（native 调用、死循环）时
+     * 「停止」不能被它拖住，但仍要产出响应，保证 assistant 的 tool_call 有回话可落库。
+     */
+    private ToolExecuteResponse awaitResult(CompletableFuture<ToolExecuteResponse> future,
+                                            ToolRequest request, ChatCancelToken token) throws Exception {
+        if (token == null) {
+            return future.join();
+        }
+        try {
+            return future.get(CANCEL_DRAIN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw e;
+        } catch (TimeoutException e) {
+            if (token.isCancelled()) {
+                log.warn("工具[{}]未在 {}ms 内响应中止，已放弃等待", request.getToolName(), CANCEL_DRAIN_TIMEOUT_MILLIS);
+                return cancelledResponse(request);
+            }
+            return future.join();
+        }
+    }
+
+    /**
+     * 取消占位响应：不保留工具输出，但必须存在 —— assistant 的 tool_call 没有对应回话时，
+     * 下一轮把历史发给模型会被直接拒绝，整个会话都发不出消息。
+     */
+    private static ToolExecuteResponse cancelledResponse(ToolRequest request) {
+        return new ToolExecuteResponse(request.getToolName(), "用户已中止本次操作，工具未执行完成。")
+                .setSucceed(false)
+                .setToolCallId(request.getToolCallId());
+    }
+
+    /** 同上，供工具调用循环在「还没提交执行就已中止」时批量补占位响应 */
+    public static List<ToolExecuteResponse> cancelledResponses(List<AIAdapter.ToolCall> toolCalls) {
+        List<ToolExecuteResponse> responses = new ArrayList<>(toolCalls.size());
+        for (AIAdapter.ToolCall toolCall : toolCalls) {
+            responses.add(new ToolExecuteResponse(toolCall.getFunction().getName(), "用户已中止本次操作，工具未执行。")
+                    .setSucceed(false)
+                    .setToolCallId(toolCall.getId()));
+        }
+        return responses;
     }
 
     // ======================== JSON 修复 ========================

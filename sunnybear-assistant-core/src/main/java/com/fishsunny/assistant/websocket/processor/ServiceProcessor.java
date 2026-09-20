@@ -259,15 +259,21 @@ public class ServiceProcessor {
 
         try {
             AtomicBoolean result = new AtomicBoolean(false);
-            chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(),
-                    request, cubAISettings.getStream(), null,
-                    (trResult, lastRes) -> {
+            ChatHttpHandler.TranslateData translateData = new ChatHttpHandler.TranslateData(
+                    UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request
+            );
+            ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler()
+                    .complete((trResult, lastRes) -> {
                         String content = trResult.content();
                         if (content != null) {
                             result.set(content.trim().toLowerCase().contains("true"));
                         }
-                    }
-            );
+                    });
+            ChatHttpHandler.TranslateOption translateOption = new ChatHttpHandler.TranslateOption()
+                    .setStream(cubAISettings.getStream())
+                    .setEnableTTS(false);
+
+            chatHttpHandler.translate(translateData, translateHandler, translateOption);
             return result.get();
         } catch (Exception e) {
             log.warn("模型复杂度判断失败，默认使用标准模型: {}", e.getMessage());
@@ -288,11 +294,16 @@ public class ServiceProcessor {
 
         ChatRequest request = new ChatRequest().quickJsonBuild(TITLE_PROMPT, prompt, cubAISettings);
         try {
-            ChatHttpHandler.CompleteCallback onComplete = (result, lastRes) -> {
-                chatSession.setName(parseTitle(result.content()));
-            };
-            chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request, cubAISettings.getStream(),
-                    null, onComplete);
+            ChatHttpHandler.TranslateData translateData = new ChatHttpHandler.TranslateData(
+                    UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request
+            );
+            ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler()
+                    .complete((result, lastRes) -> chatSession.setName(parseTitle(result.content())));
+            ChatHttpHandler.TranslateOption translateOption = new ChatHttpHandler.TranslateOption()
+                    .setStream(cubAISettings.getStream())
+                    .setEnableTTS(false);
+
+            chatHttpHandler.translate(translateData, translateHandler, translateOption);
             chatSessionService.update(chatSession);
             sessionMessageBus.publish(chatSession.getId(), ControlSign.UPDATE_SESSION + objectMapper.writeValueAsString(chatSession));
         } catch (Exception e) {
@@ -374,6 +385,52 @@ public class ServiceProcessor {
 
         // 返回当前活跃的历史消息（旧分支已停用，历史会截止到父用户消息）
         return chatMessageService.getConversationHistory(request.getSessionId());
+    }
+
+    /**
+     * replace 失败回滚：把 {@link #handleReplace} 停用的旧助手分支重新点亮。
+     * <p>
+     * 停用是落库动作，一旦本轮生成失败（建连报错/超时/流中断），活跃链就永远断在父消息上 ——
+     * 父消息是 tool 时链尾变成 tool，用户后续的消息会顺势挂到它后面，坏状态就此固化。
+     * 这里把状态修回去，让「重开这一轮」失败后表现得像什么都没发生过。
+     * <p>
+     * 仅在父消息下已无活跃子消息时才回滚：有活跃子说明新助手回复已经落库，
+     * 此时再点亮旧分支会让同一层出现两条活跃助手消息，历史出现分叉，是更糟的坏状态
+     * （覆盖「工具链跑到一半才失败」这种已有产出的情况）。
+     * <p>
+     * 本方法自行吞掉异常：它跑在失败路径上，不能反过来盖掉原始错误。
+     *
+     * @param request   本轮请求（仅 replace 模式生效）
+     * @param sessionId 会话 ID
+     */
+    public void rollbackReplacedBranch(ChatMessageRequest request, String sessionId) {
+        if (request == null || !ChatMessageRequest.MODE_REPLACE.equals(request.getMode())) {
+            return;
+        }
+        String replaceMessageId = request.getReplaceMessageId();
+        if (!StringUtils.hasText(replaceMessageId) || !StringUtils.hasText(sessionId)) {
+            return;
+        }
+        try {
+            ChatMessage replaced = chatMessageService.findById(replaceMessageId);
+            if (replaced == null || Boolean.TRUE.equals(replaced.getActive())) {
+                // 消息不存在，或它还是活跃的（本轮压根没走到停用那一步）—— 无需回滚
+                return;
+            }
+            String parentId = replaced.getParentId();
+            boolean hasActiveSibling = chatMessageService.findBySessionId(sessionId).stream()
+                    .anyMatch(m -> parentId != null && parentId.equals(m.getParentId())
+                            && Boolean.TRUE.equals(m.getActive()));
+            if (hasActiveSibling) {
+                return;
+            }
+            int affected = chatMessageService.reactivateBranch(replaceMessageId);
+            log.warn("replace 失败，旧助手分支已回滚: sessionId={}, replaceMessageId={}, 恢复 {} 行",
+                    sessionId, replaceMessageId, affected);
+        } catch (Exception e) {
+            log.error("回滚 replace 旧助手分支失败: sessionId={}, replaceMessageId={}, {}",
+                    sessionId, replaceMessageId, e.getMessage(), e);
+        }
     }
 
     /**

@@ -10,7 +10,7 @@ package com.fishsunny.assistant.mvc.controller;
 
 import com.fishsunny.assistant.dto.ToolConfirm;
 import com.fishsunny.assistant.dto.ToolQuestionAnswer;
-import com.fishsunny.assistant.engine.ChatHttpHandler;
+import com.fishsunny.assistant.engine.cancel.ChatCancelRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -27,6 +27,12 @@ import java.util.concurrent.TimeUnit;
 @RestController
 @RequestMapping("/chat")
 public class ChatController {
+
+    private final ChatCancelRegistry cancelRegistry;
+
+    public ChatController(ChatCancelRegistry cancelRegistry) {
+        this.cancelRegistry = cancelRegistry;
+    }
 
     /** 等待中的工具确认请求 */
     private static final Map<String, CompletableFuture<Boolean>> pendingConfirmations = new ConcurrentHashMap<>();
@@ -70,8 +76,8 @@ public class ChatController {
     @PostMapping("/stop")
     public Map<String, Object> stopStreaming(@RequestParam(value = "sessionId", required = false) String sessionId) {
         if (sessionId != null && !sessionId.isEmpty()) {
-            ChatHttpHandler.getPASS_SIGN().remove(sessionId);
-            log.info("收到中止信号，已移除 sessionId: {}", sessionId);
+            boolean hit = cancelRegistry.cancel(sessionId);
+            log.info("收到中止信号: sessionId={}, 命中在途轮次={}", sessionId, hit);
             return Map.of("success", true);
         }
         return Map.of("success", false, "message", "sessionId 不能为空");

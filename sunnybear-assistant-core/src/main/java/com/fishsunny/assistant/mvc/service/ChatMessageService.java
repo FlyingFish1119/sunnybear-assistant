@@ -96,6 +96,17 @@ public interface ChatMessageService {
     public int deactivateBranch(String messageId) throws Exception;
 
     /**
+     * 重新启用某个消息及其所有子孙消息（replace 失败回滚用）。
+     * <p>
+     * 与 {@link #deactivateBranch(String)} 严格镜像：同一批消息（自身 + 全部子孙）由停用翻回启用，
+     * 不碰 kid_index 分支记忆 —— 停用本身也没改过它，故回滚后父子链与停用前完全一致。
+     *
+     * @param messageId 消息 ID
+     * @return 受影响的行数
+     */
+    public int reactivateBranch(String messageId) throws Exception;
+
+    /**
      * 删除用户消息及其所有子孙消息（物理删除），并异步触发向量重生成
      *
      * @param id 用户消息 ID

@@ -18,7 +18,7 @@ import com.fishsunny.assistant.engine.protocol.project.AgentLogEntry;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
+import com.fishsunny.assistant.engine.protocol.project.processor.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.instance.file.FileListTool;
@@ -68,16 +68,16 @@ public class SecurityService {
     /** 审查子 Agent 工具调用轮次上限，防止取证跑飞 */
     private static final int MAX_TOOL_ROUNDS = 4;
 
-    private final ToolCallLoop toolCallLoop;
+    private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
     private final AISettings aiSettings;
     private final ObjectMapper objectMapper;
 
-    public SecurityService(ToolCallLoop toolCallLoop,
+    public SecurityService(EasyReActProcessor easyReActProcessor,
                            @Lazy ToolExecutor toolExecutor,
                            @Qualifier(AISettings.MISSION) AISettings aiSettings,
                            ObjectMapper objectMapper) {
-        this.toolCallLoop = toolCallLoop;
+        this.easyReActProcessor = easyReActProcessor;
         this.toolExecutor = toolExecutor;
         this.aiSettings = aiSettings;
         this.objectMapper = objectMapper;
@@ -145,11 +145,11 @@ public class SecurityService {
         RoundCapHook capHook = new RoundCapHook(MAX_TOOL_ROUNDS);
         Consumer<AgentLogEntry> noopLog = entry -> {
         };
-        ToolCallLoop.AgentLoopHook hook = new ToolCallLoop.AgentLoopHook(noopLog, capHook);
+        EasyReActProcessor.AgentLoopHook hook = new EasyReActProcessor.AgentLoopHook(noopLog, capHook);
 
         String finalText;
         try {
-            finalText = toolCallLoop.execute(jsonSettings, request, context, hook);
+            finalText = easyReActProcessor.execute(jsonSettings, request, context, hook);
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("AI 安全审查执行失败，操作未执行：" + rootMessage(e));
         }
@@ -326,7 +326,7 @@ public class SecurityService {
     // ======================== 轮次上限钩子 ========================
 
     /** 限制审查子 Agent 的工具调用轮数；超限后令循环终止并标记 capped */
-    private static final class RoundCapHook implements ToolCallLoop.ToolResultHook {
+    private static final class RoundCapHook implements EasyReActProcessor.ToolResultHook {
         private final int maxRounds;
         private int rounds;
         private boolean capped;
@@ -336,7 +336,7 @@ public class SecurityService {
         }
 
         @Override
-        public boolean onRound(List<ToolCallLoop.RoundResult> roundResults, String aiText) {
+        public boolean onRound(List<EasyReActProcessor.RoundResult> roundResults, String aiText) {
             rounds++;
             if (rounds > maxRounds) {
                 capped = true;

@@ -13,12 +13,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
+import com.fishsunny.assistant.engine.protocol.project.processor.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
-import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.engine.tool.instance.file.FileListTool;
@@ -56,18 +56,18 @@ public class FileExploreTool implements SubAgentToolHandler {
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
     private final AISettings missionAISettings;
-    private final ToolCallLoop toolCallLoop;
+    private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
     private final SecurityService securityService;
 
     public FileExploreTool(ObjectMapper objectMapper,
                            @Qualifier(AISettings.MISSION) AISettings missionAISettings,
-                           ToolCallLoop toolCallLoop,
+                           EasyReActProcessor easyReActProcessor,
                            SecurityService securityService,
                            @Lazy ToolExecutor toolExecutor) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
-        this.toolCallLoop = toolCallLoop;
+        this.easyReActProcessor = easyReActProcessor;
         this.securityService = securityService;
         this.toolExecutor = toolExecutor;
 
@@ -108,8 +108,7 @@ public class FileExploreTool implements SubAgentToolHandler {
             ask(context, arguments.getTarget());
 
             // ========== 构建请求 ==========
-            List<StandardToolRegister> subAgentTools = StandardToolRegister.buildToolRegisterByHandlers(
-                    toolExecutor, SUB_AGENT_TOOLS);
+            List<StandardToolRegister> subAgentTools = StandardToolRegister.buildToolRegisterByHandlers(toolExecutor, SUB_AGENT_TOOLS);
 
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(new ChatMessage().system(buildSystemPrompt()));
@@ -121,7 +120,7 @@ public class FileExploreTool implements SubAgentToolHandler {
                     .setTools(subAgentTools);
 
             // ========== 执行循环，捕获 AI 的最终报告 ==========
-            String finalReport = toolCallLoop.execute(missionAISettings, request, context, null);
+            String finalReport = easyReActProcessor.execute(missionAISettings, request, context, null);
 
             // ========== 组装返回结果 ==========
             return new ToolExecutor.ToolExecuteResponse(name(), finalReport);

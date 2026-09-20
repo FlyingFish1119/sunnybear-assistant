@@ -263,6 +263,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     log.warn("WebSocket 发送失败，连接可能已关闭 [{}]: {}", safeSession.getId(), e.getMessage());
                 } catch (Exception e) {
                     log.error("chatToAi async error [{}]: {}", safeSession.getId(), e.getMessage(), e);
+                    // replace 已经停用了旧助手分支，本轮却没能生成成功：把消息树状态修回去，
+                    // 否则活跃链永久断在父消息上（父是 tool 时链尾变 tool），后续消息会顺势挂错位置
+                    if (ChatMessageRequest.MODE_REPLACE.equals(request.getMode())) {
+                        serviceProcessor.rollbackReplacedBranch(request, chatSession.getId());
+                    }
                     sendErrorToFrontend(safeSession, chatSession.getId(), "AI 对话异常: " + e.getMessage());
                 } finally {
                     activeTaskCount.merge(safeSession.getId(), -1, Integer::sum);

@@ -10,8 +10,7 @@ package com.fishsunny.assistant.engine.tool.instance;
 
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
-import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
-import org.springframework.beans.factory.annotation.Value;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.util.List;
