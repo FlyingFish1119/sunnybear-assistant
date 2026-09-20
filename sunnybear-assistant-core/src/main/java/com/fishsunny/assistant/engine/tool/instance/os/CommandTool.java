@@ -271,11 +271,7 @@ public class CommandTool implements ToolHandler {
             }
 
             return new ToolExecutor.ToolExecuteResponse(name(), wrapHtmlCodeBlockIfNeeded(result));
-        } catch (ToolExecutor.ToolExecuteException e) {
-            throw e;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ToolExecutor.ToolExecuteException("命令执行被中断");
+
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }

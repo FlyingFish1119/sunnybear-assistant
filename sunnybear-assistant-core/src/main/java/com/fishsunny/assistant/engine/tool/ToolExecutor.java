@@ -219,10 +219,22 @@ public class ToolExecutor {
                 response = executeNow(handler, toolName, arguments, context);
             } else {
                 // 有超时限制：工具逻辑丢到独立任务上跑，本线程只负责限时等待
+                ChatCancelToken token = ChatCancelContext.current();
                 AtomicReference<Thread> workerRef = new AtomicReference<>();
                 CompletableFuture<ToolExecuteResponse> future = CompletableFuture.supplyAsync(() -> {
                     workerRef.set(Thread.currentThread());
-                    return executeNow(handler, toolName, arguments, context);
+                    if (token != null) {
+                        ChatCancelContext.bind(token);
+                        token.registerThread(Thread.currentThread());
+                    }
+                    try {
+                        return executeNow(handler, toolName, arguments, context);
+                    } finally {
+                        if (token != null) {
+                            token.unregisterThread(Thread.currentThread());
+                            ChatCancelContext.unbind();
+                        }
+                    }
                 }, executorService);
                 try {
                     response = future.get(timeoutMs, TimeUnit.MILLISECONDS);
@@ -230,11 +242,6 @@ public class ToolExecutor {
                     workerRef.get().interrupt();
                     log.warn("工具[{}]执行超时（{}ms），已中断执行线程", toolName, timeoutMs);
                     response = new ToolExecuteResponse(toolName, "工具[" + toolName + "]执行超时（" + timeoutMs + "ms），已强制中断").setSucceed(false);
-                } catch (InterruptedException e) {
-                    // 用户中止打断了等待：连执行线程一起中断，不让它在后台继续跑。
-                    // 不恢复中断标志 —— 本线程随后还要推工具结果通知，恢复会让这些阻塞调用立刻抛异常
-                    workerRef.get().interrupt();
-                    response = new ToolExecuteResponse(toolName, "工具[" + toolName + "]已被用户中止").setSucceed(false);
                 } catch (Exception e) {
                     response = new ToolExecuteResponse(toolName, "工具[" + toolName + "]执行异常，原因是：" + e.getMessage()).setSucceed(false);
                 }
@@ -276,13 +283,13 @@ public class ToolExecutor {
         } catch (ToolExecuteException e) {
             // 中止导致的原因常常是 null（InterruptedException 不带 message，被工具原样透传上来），
             // 识别中断状态给出可读文案，否则前端会显示「执行失败，原因是：null」
-            if (Thread.currentThread().isInterrupted()) {
+            if (ChatCancelContext.isCancelled()) {
                 return new ToolExecuteResponse(toolName, "工具[" + toolName + "]已被用户中止").setSucceed(false);
             }
             String reason = StringUtils.hasText(e.getMessage()) ? e.getMessage() : "未知原因";
             return new ToolExecuteResponse(toolName, "工具[" + toolName + "]执行失败，原因是：" + reason).setSucceed(false);
         } catch (Exception e) {
-            if (Thread.currentThread().isInterrupted()) {
+            if (ChatCancelContext.isCancelled()) {
                 return new ToolExecuteResponse(toolName, "工具[" + toolName + "]已被用户中止").setSucceed(false);
             }
             return new ToolExecuteResponse(toolName, "工具[" + toolName + "]执行异常，原因是：" + e.getMessage()).setSucceed(false);

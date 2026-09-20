@@ -91,8 +91,6 @@ public class ExtensionScriptTool implements ToolHandler {
 
             return new ToolExecutor.ToolExecuteResponse(name(), result);
 
-        } catch (ToolExecutor.ToolExecuteException e) {
-            throw e;
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("扩展脚本执行异常: " + e.getMessage());
         }

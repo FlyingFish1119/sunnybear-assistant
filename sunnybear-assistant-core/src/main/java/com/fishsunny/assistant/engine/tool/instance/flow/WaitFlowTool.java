@@ -73,11 +73,7 @@ public class WaitFlowTool implements ToolHandler {
                     .replace("${startTime}", startTime.format(DATE_TIME_FORMATTER))
                     .replace("${endTime}", LocalDateTime.now().format(DATE_TIME_FORMATTER));
             return new ToolExecutor.ToolExecuteResponse(name(), result);
-        } catch (ToolExecutor.ToolExecuteException e) {
-            throw e;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ToolExecutor.ToolExecuteException("等待被用户中止");
+
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }
