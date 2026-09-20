@@ -75,10 +75,19 @@ public class ChatHttpHandler {
     ) {
     }
 
-    public record TranslateHandler(
-            InTranslateCallback inTranslate,
-            CompleteCallback complete
-    ) {
+    @Data
+    @Accessors(chain = true, fluent = true)
+    public static class TranslateHandler{
+        InTranslateCallback inTranslate;
+        CompleteCallback complete;
+
+        public TranslateHandler(InTranslateCallback inTranslate, CompleteCallback complete) {
+            this.inTranslate = inTranslate;
+            this.complete = complete;
+        }
+
+        public TranslateHandler() {
+        }
     }
 
     /**

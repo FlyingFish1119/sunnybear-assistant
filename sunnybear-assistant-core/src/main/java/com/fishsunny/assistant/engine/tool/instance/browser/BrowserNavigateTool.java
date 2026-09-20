@@ -9,28 +9,23 @@ package com.fishsunny.assistant.engine.tool.instance.browser;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.constants.ControlSign;
-import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
-import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.BrowserToolKit;
 import com.fishsunny.assistant.engine.tool.service.browser.PlaywrightBrowserService;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
-import com.fishsunny.assistant.mvc.controller.ChatController;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @ToolKitComponent(BrowserToolKit.class)
 @ConditionalOnExpression("${engine.tool.browser.enable:true} && ${engine.tool.browser.navigate.enable:true}")

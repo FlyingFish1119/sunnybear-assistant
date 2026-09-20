@@ -241,6 +241,14 @@ public class ToolExecutor {
             }
         }
         response.setToolCallId(toolRequest.getToolCallId());
+        // 工具「安静地失败」：子 Agent 内部的 translate 被取消后不抛异常、只返回空结果，
+        // 走到这里就会被当成「执行成功」却没有任何内容。已取消时统一改写状态；
+        if (response.isSucceed() && ChatCancelContext.isCancelled()) {
+            response.setSucceed(false);
+            response.setResult(StringUtils.hasText(response.getResult())
+                    ? response.getResult() + "\n\n（工具[" + toolName + "]执行中途被用户中止，以上内容可能不完整）"
+                    : "工具[" + toolName + "]已被用户中止");
+        }
         // afterExec 在所有完成路径都触发（成功/失败/超时/工具不存在/无超时），保证 hook 不遗漏
         if (afterExec != null) {
             afterExec.accept(response);

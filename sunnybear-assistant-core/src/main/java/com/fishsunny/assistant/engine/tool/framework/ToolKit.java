@@ -1,5 +1,6 @@
 package com.fishsunny.assistant.engine.tool.framework;
 
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.AnnotationUtils;

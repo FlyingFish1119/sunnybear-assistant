@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.tool.framework;
+package com.fishsunny.assistant.engine.tool.framework.annotation;
 
 /*
  * @Usage
@@ -8,6 +8,7 @@ package com.fishsunny.assistant.engine.tool.framework;
  * @Date 2025/12/26 13:33
  */
 
+import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import org.springframework.stereotype.Component;
 
 import java.lang.annotation.*;

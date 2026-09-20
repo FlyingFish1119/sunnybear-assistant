@@ -16,12 +16,12 @@ import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
+import com.fishsunny.assistant.engine.protocol.project.processor.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolIncludeContext;
-import com.fishsunny.assistant.engine.tool.framework.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.calc.CalculateTool;
 import com.fishsunny.assistant.plug.character.constant.BattleControlSign;
@@ -68,14 +68,14 @@ public class BattleEngineTool implements ToolHandler {
     private final AISettings missionAISettings;
     private final ChatHttpHandler chatHttpHandler;
     private final ToolExecutor toolExecutor;
-    private final ToolCallLoop toolCallLoop;
+    private final EasyReActProcessor easyReActProcessor;
     private final BattleDbManager dbManager;
 
     public BattleEngineTool(ObjectMapper objectMapper,
                             @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                             ChatHttpHandler chatHttpHandler,
                             @Lazy ToolExecutor executor,
-                            ToolCallLoop toolCallLoop,
+                            EasyReActProcessor easyReActProcessor,
                             BattleDbManager dbManager
                             ) {
         this.objectMapper = objectMapper;
@@ -83,7 +83,7 @@ public class BattleEngineTool implements ToolHandler {
         this.chatHttpHandler = chatHttpHandler;
         this.dbManager = dbManager;
         this.toolExecutor = executor;
-        this.toolCallLoop = toolCallLoop;
+        this.easyReActProcessor = easyReActProcessor;
 
         // Step 1: 注册工具定义 —— 只收两段自然语言，所有数值/技能/Buff 都由 MissionAI 从中提取
         register = new ToolRegister()
@@ -633,7 +633,7 @@ public class BattleEngineTool implements ToolHandler {
                 .setTools(toolRegisters);
 
         AtomicReference<String> result = new AtomicReference<>("");
-        result.set(toolCallLoop.execute(missionAISettings, request, context));
+        result.set(easyReActProcessor.execute(missionAISettings, request, context));
 
         String text = result.get();
         return text != null ? text.trim() : "逃跑失败（检定异常）";
@@ -849,7 +849,7 @@ public class BattleEngineTool implements ToolHandler {
                 .setTools(toolRegisters);
 
         AtomicReference<String> result = new AtomicReference<>("");
-        result.set(toolCallLoop.execute(missionAISettings, request, context));
+        result.set(easyReActProcessor.execute(missionAISettings, request, context));
 
         return result.get();
     }

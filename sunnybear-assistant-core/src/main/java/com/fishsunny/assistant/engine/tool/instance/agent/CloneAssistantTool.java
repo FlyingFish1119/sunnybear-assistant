@@ -17,10 +17,12 @@ import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
+import com.fishsunny.assistant.engine.protocol.project.processor.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.*;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.engine.tool.instance.flow.QuestionTool;
 import com.fishsunny.assistant.engine.tool.service.ToolVisibilityPolicy;
@@ -29,8 +31,6 @@ import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
@@ -61,7 +61,7 @@ public class CloneAssistantTool implements SubAgentToolHandler {
     private final AISettings missionAISettings;
     private final AISettings cubAISettings;
     private final ChatHttpHandler chatHttpHandler;
-    private final ToolCallLoop toolCallLoop;
+    private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
     private final SessionFileManager sessionFileManager;
     private final ToolVisibilityPolicy toolVisibilityPolicy;
@@ -70,7 +70,7 @@ public class CloneAssistantTool implements SubAgentToolHandler {
 
     public CloneAssistantTool(ObjectMapper objectMapper,
                               @Lazy ToolExecutor toolExecutor,
-                              ToolCallLoop toolCallLoop,
+                              EasyReActProcessor easyReActProcessor,
                               SessionFileManager sessionFileManager,
                               ChatHttpHandler chatHttpHandler,
                               @Qualifier(AISettings.MISSION) AISettings missionAISettings,
@@ -89,7 +89,7 @@ public class CloneAssistantTool implements SubAgentToolHandler {
         this.objectMapper = objectMapper;
         this.chatHttpHandler = chatHttpHandler;
         this.toolExecutor = toolExecutor;
-        this.toolCallLoop = toolCallLoop;
+        this.easyReActProcessor = easyReActProcessor;
         this.sessionFileManager = sessionFileManager;
         this.missionAISettings = missionAISettings;
         this.cubAISettings = cubAISettings;
@@ -162,7 +162,7 @@ public class CloneAssistantTool implements SubAgentToolHandler {
                     .setTools(buildToolRegisters());
 
             // 5. 跑循环：执行体自己调工具、自己推敲，中间产生的 assistant / tool 消息由 ToolCallLoop 追加在 sendMessages 尾部
-            String finalText = toolCallLoop.execute(settings, request, context);
+            String finalText = easyReActProcessor.execute(settings, request, context);
 
             // 6. 把本轮新增的消息（执行体的答复、它自己的工具调用与结果）接回树并落盘。
             //    tree 与 sendMessages 里的消息是同一批对象，循环内每轮开头的展开都已在其中生效

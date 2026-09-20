@@ -2,6 +2,7 @@ package com.fishsunny.assistant.engine.tool.framework;
 
 
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -18,7 +19,7 @@ import java.util.Map;
  */
 @Aspect
 @Component
-public class ToolContextAspect {
+public class ToolHandlerAspect {
 
     @Around("@annotation(toolIncludeContext)")
     public Object checkToolContext(ProceedingJoinPoint joinPoint, ToolIncludeContext toolIncludeContext) throws Throwable {

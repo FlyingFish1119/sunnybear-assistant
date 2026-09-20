@@ -10,21 +10,20 @@ package com.fishsunny.assistant.engine.tool.instance.task;
 
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.constants.ControlSign;
-import com.fishsunny.assistant.dto.ToolAsk;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.Task;
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskPrompt;
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskStep;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.processor.ToolCallLoop;
+import com.fishsunny.assistant.engine.protocol.project.processor.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.*;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.instance.*;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
-import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.mvc.service.TaskPromptService;
 import com.fishsunny.assistant.mvc.service.TaskService;
 import com.fishsunny.assistant.settings.AISettings;
@@ -37,7 +36,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.util.StringUtils;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.ArrayList;
@@ -68,7 +66,7 @@ public class TaskRunTool implements ToolHandler {
     private final TaskPromptService taskPromptService;
     private final ChatHttpHandler chatHttpHandler;
     private final ToolExecutor toolExecutor;
-    private final ToolCallLoop toolCallLoop;
+    private final EasyReActProcessor easyReActProcessor;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final SecurityService securityService;
 
@@ -80,7 +78,7 @@ public class TaskRunTool implements ToolHandler {
                        ChatHttpHandler chatHttpHandler,
                        @Lazy ToolExecutor toolExecutor,
                        SecurityService securityService,
-                       ToolCallLoop toolCallLoop) {
+                       EasyReActProcessor easyReActProcessor) {
         this.taskService = taskService;
         this.objectMapper = objectMapper;
         this.cubAISettings = cubAISettings;
@@ -89,7 +87,7 @@ public class TaskRunTool implements ToolHandler {
         this.chatHttpHandler = chatHttpHandler;
         this.toolExecutor = toolExecutor;
         this.securityService = securityService;
-        this.toolCallLoop = toolCallLoop;
+        this.easyReActProcessor = easyReActProcessor;
     }
 
     @Override
@@ -229,7 +227,7 @@ public class TaskRunTool implements ToolHandler {
                         .setTools(toolRegisters);
                 AtomicReference<String> result = new AtomicReference<>();
 
-                result.set(toolCallLoop.execute(taskAISettings, request, context, new ToolCallLoop.AgentLoopHook(toolCallLoop.createDefaultLogback(context), null)));
+                result.set(easyReActProcessor.execute(taskAISettings, request, context, new EasyReActProcessor.AgentLoopHook(easyReActProcessor.createDefaultLogback(context), null)));
 
                 // 检查 AI 是否输出了失败标记
                 Matcher failureMatcher = TASK_FAILURE_PATTERN.matcher(result.get());
