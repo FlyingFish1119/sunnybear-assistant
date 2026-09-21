@@ -32,6 +32,7 @@
     <script src="../../utils/color.js"></script>
     <script src="../../utils/mermaid.js"></script>
     <script src="../../utils/file-url.js"></script>
+    <script src="../../utils/message-utils.js"></script>
     <!-- 图片查看器（灯箱）：点图在本页浮层里放大，不再跳新标签页 -->
     <script src="../../components/image-viewer/image-viewer.js"></script>
     <script src="../../directives/auto-follow.js"></script>
@@ -1617,6 +1618,8 @@
                                     if (m.id) localMsg.id = m.id;
                                     if (m.parentId) localMsg.parentId = m.parentId;
                                     if (m.createTime) localMsg.createTime = m.createTime;
+                                    // 服务端落库消息是权威快照：本地占位是 tool_response 帧建的，不含后到的追加块
+                                    MessageUtils.applyServerContents(localMsg, m);
                                 }
                             }
                         }
@@ -1634,11 +1637,9 @@
                             streamingMessage.reasoningContent += response.reasoningContent;
                         }
                         // 追加内容（修复 null 拼接为 "null" 的问题）
+                        // 正文恒写首块：末块可能是附件 / 追加块（后台任务通知等），写末尾会把正文塞进去
                         if (response.text) {
-                            let lastContent = Utils.getLast(streamingMessage.contents);
-                            if (lastContent) {
-                                lastContent.content += response.text;
-                            }
+                            MessageUtils.ensureBodyContent(streamingMessage).content += response.text;
                         }
                         // 追加工具调用（修复 for 循环条件：.length 缺失）
                         if (response.messages && response.messages.length > 0) {
@@ -1695,11 +1696,13 @@
                         if (serverMsg.createTime) streamingMessage.createTime = serverMsg.createTime;
                         if (serverMsg.siblingCount != null) streamingMessage.siblingCount = serverMsg.siblingCount;
                         if (serverMsg.siblingIndex != null) streamingMessage.siblingIndex = serverMsg.siblingIndex;
-                        // 斜杠指令等场景：没有 chunk 流，文字直接附在 init_assistant 里
+                        // 服务端落库消息是权威快照：整体覆盖内容块（本地流式累积的那份只有正文，缺后到的追加块）
+                        MessageUtils.applyServerContents(streamingMessage, serverMsg);
+                        // 斜杠指令等场景：没有 chunk 流，文字直接附在 init_assistant 里（正文恒写首块）
                         if (response.text) {
-                            let lastContent = Utils.getLast(streamingMessage.contents);
-                            if (lastContent && !lastContent.content) {
-                                lastContent.content = response.text;
+                            let bodyContent = MessageUtils.ensureBodyContent(streamingMessage);
+                            if (!bodyContent.content) {
+                                bodyContent.content = response.text;
                             }
                         }
                         break;

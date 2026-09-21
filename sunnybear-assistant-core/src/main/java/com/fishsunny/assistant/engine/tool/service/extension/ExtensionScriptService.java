@@ -10,6 +10,8 @@ package com.fishsunny.assistant.engine.tool.service.extension;
 
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
+import com.fishsunny.assistant.engine.tool.instance.os.ExtensionScriptTool;
+import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
 import com.fishsunny.assistant.utils.ProcessUtils;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import org.slf4j.Logger;
@@ -51,8 +53,13 @@ public class ExtensionScriptService {
 
     private final SessionFileManager sessionFileManager;
 
-    public ExtensionScriptService(SessionFileManager sessionFileManager) {
+    /** 后台脚本跑完把结果投递回对话，等下一次「有消息落地」的时机挂上去 */
+    private final BackgroundToolResponseBus backgroundToolResponseBus;
+
+    public ExtensionScriptService(SessionFileManager sessionFileManager,
+                                  BackgroundToolResponseBus backgroundToolResponseBus) {
         this.sessionFileManager = sessionFileManager;
+        this.backgroundToolResponseBus = backgroundToolResponseBus;
     }
 
     public String runScript(String name, Map<String, Object> arguments, long timeout) throws Exception {
@@ -147,15 +154,16 @@ public class ExtensionScriptService {
             throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + logFile + "]: " + e.getMessage());
         }
 
-        // 3. 在守护线程中执行脚本，流式写入输出
-        Thread thread = new Thread(() -> runScriptToFile(prepared, logFile), "script-executor-" + timestamp);
+        // 3. 在守护线程中执行脚本，流式写入输出（sessionId 在此捕获，收尾投递要用）
+        Thread thread = new Thread(() -> runScriptToFile(prepared, logFile, sessionId), "script-executor-" + timestamp);
         thread.setDaemon(true);
         thread.start();
 
         return "脚本已在后台启动执行。\n"
                 + "输出日志文件: " + logFile.toAbsolutePath() + "\n"
                 + "> 提示：使用 file_read_tool 读取日志文件内容查看脚本输出。"
-                + "脚本执行完成后，日志末尾会写入退出码和结束时间。";
+                + "脚本执行完成后，日志末尾会写入退出码和结束时间。\n"
+                + "> 脚本执行完成后，结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。";
     }
 
     /**
@@ -212,16 +220,23 @@ public class ExtensionScriptService {
     }
 
     /**
-     * 在后台执行已准备的脚本，将输出流式写入日志文件，结束后写入退出码和结束时间。
+     * 在后台执行已准备的脚本，将输出流式写入日志文件，结束后写入退出码和结束时间，
+     * 并把收尾结果投递到后台总线（等下一次「有消息落地」的时机挂进对话）。
+     *
+     * @param sessionId 启动后台任务时捕获的会话 id（异步线程里上下文早已出栈，只能靠调用方捕获）
      */
-    private void runScriptToFile(PreparedScript prepared, Path logFile) {
+    private void runScriptToFile(PreparedScript prepared, Path logFile, String sessionId) {
         Process process = null;
+        Integer exitCode = null;
+        String failure = null;
         try {
             process = prepared.processBuilder().start();
 
             OSToolKit.writeLog(logFile, process);
-            appendFooter(logFile, "脚本执行完成，退出码: " + process.waitFor());
+            exitCode = process.waitFor();
+            appendFooter(logFile, "脚本执行完成，退出码: " + exitCode);
         } catch (Exception e) {
+            failure = e.getMessage();
             log.error("Error executing script in background: {}", e.getMessage());
             appendFooter(logFile, "脚本执行异常: " + e.getMessage());
         } finally {
@@ -230,6 +245,34 @@ public class ExtensionScriptService {
             }
             deleteTempScript(prepared.tempFile());
         }
+        // 成功或异常都要收尾投递
+        notifyBackgroundFinish(sessionId, prepared.script(), logFile, exitCode, failure);
+    }
+
+    /**
+     * 后台脚本收尾后投递结果到后台总线。
+     * <p>
+     * 投递内容只写「退出码/异常 + 脚本标识 + 日志路径」，刻意不带日志尾部：脚本输出单行长度不可控，
+     * 一行几十万字符的日志会把整段对话的上下文直接撑爆，要看内容让模型自己去读文件。
+     *
+     * @param sessionId 启动后台任务时捕获的会话 id
+     * @param script    脚本元数据（取名称与类型）
+     * @param logFile   输出日志文件
+     * @param exitCode  退出码；执行异常时为 null
+     * @param failure   异常信息；正常结束时为 null
+     */
+    private void notifyBackgroundFinish(String sessionId, ExtensionScriptMeta script, Path logFile,
+                                        Integer exitCode, String failure) {
+        StringBuilder text = new StringBuilder();
+        if (failure != null) {
+            text.append("脚本执行异常: ").append(failure);
+        } else {
+            text.append("脚本执行完成，退出码: ").append(exitCode);
+        }
+        text.append("\n脚本: ").append(script.getName()).append(" (").append(script.getType()).append(")");
+        text.append("\n日志文件: ").append(logFile.toAbsolutePath());
+
+        backgroundToolResponseBus.post(sessionId, ExtensionScriptTool.NAME, text.toString());
     }
 
     /**

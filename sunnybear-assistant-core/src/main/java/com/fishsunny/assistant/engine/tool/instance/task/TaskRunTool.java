@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.Task;
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskPrompt;
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskStep;
@@ -23,6 +24,7 @@ import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.instance.*;
+import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.mvc.service.TaskPromptService;
 import com.fishsunny.assistant.mvc.service.TaskService;
@@ -69,6 +71,8 @@ public class TaskRunTool implements ToolHandler {
     private final EasyReActProcessor easyReActProcessor;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final SecurityService securityService;
+    /** 每完成一步 / 任务终结时把进展投递回对话，等下一次「有消息落地」的时机挂上去 */
+    private final BackgroundToolResponseBus backgroundToolResponseBus;
 
     @Autowired
     public TaskRunTool(TaskService taskService, ObjectMapper objectMapper,
@@ -78,7 +82,8 @@ public class TaskRunTool implements ToolHandler {
                        ChatHttpHandler chatHttpHandler,
                        @Lazy ToolExecutor toolExecutor,
                        SecurityService securityService,
-                       EasyReActProcessor easyReActProcessor) {
+                       EasyReActProcessor easyReActProcessor,
+                       BackgroundToolResponseBus backgroundToolResponseBus) {
         this.taskService = taskService;
         this.objectMapper = objectMapper;
         this.cubAISettings = cubAISettings;
@@ -88,10 +93,11 @@ public class TaskRunTool implements ToolHandler {
         this.toolExecutor = toolExecutor;
         this.securityService = securityService;
         this.easyReActProcessor = easyReActProcessor;
+        this.backgroundToolResponseBus = backgroundToolResponseBus;
     }
 
     @Override
-    @ToolIncludeContext(key = "session", type = WebSocketSession.class)
+    @ToolIncludeContext(key = {"session", "chatSession"}, type = {WebSocketSession.class, ChatSession.class})
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
             if (!cas.compareAndSet(false, true)) {
@@ -123,12 +129,17 @@ public class TaskRunTool implements ToolHandler {
             // 确认机制：始终要求用户确认（无审查/定时任务由 SecurityService 统一裁决）
             ask(context, task, steps);
 
+            // 会话 id 在此捕获：异步线程里上下文早已出栈，收尾投递只能靠它
+            ChatSession chatSession = (ChatSession) context.get("chatSession");
+            String sessionId = chatSession == null ? null : chatSession.getId();
+
             // 异步执行
             executor.submit(() -> {
                 try {
-                    execute(context, task);
+                    execute(context, task, sessionId);
                 } catch (Exception e) {
                     log.error("任务执行异常: taskId={}, error={}", task.getId(), e.getMessage(), e);
+                    postProgress(sessionId, task, "任务执行异常: " + e.getMessage());
                 }
             });
 
@@ -136,7 +147,8 @@ public class TaskRunTool implements ToolHandler {
                     "- 任务 ID: " + task.getId() + "\n" +
                     "- 任务名称: **" + task.getTaskName() + "**\n" +
                     "- 步骤数: **" + steps.size() + "**\n" +
-                    "\n任务将在后台异步执行，可通过 task_read_tool 查询任务状态了解进度。";
+                    "\n任务将在后台异步执行，可通过 task_read_tool 查询任务状态了解进度。"
+                    + "\n任务进展与最终结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。";
 
             return new ToolExecutor.ToolExecuteResponse(name(), sb);
         } catch (ToolExecutor.ToolExecuteException e) {
@@ -157,9 +169,14 @@ public class TaskRunTool implements ToolHandler {
             FileToolKit.class, NetToolKit.class, ImageToolKit.class, OSToolKit.class, AgentToolKit.class);
 
     /**
-     * 异步执行任务的所有步骤
+     * 异步执行任务的所有步骤。
+     * <p>
+     * 每完成一步、以及任务终结（全部完成 / 步骤失败 / 执行异常）时，都把进展投递到后台总线，
+     * 等下一次「有消息落地」的时机挂进对话。
+     *
+     * @param sessionId 启动任务时捕获的会话 id（异步线程里上下文早已出栈）
      */
-    private void execute(Map<String, Object> context, Task task) throws ToolExecutor.ToolExecuteException {
+    private void execute(Map<String, Object> context, Task task, String sessionId) throws ToolExecutor.ToolExecuteException {
         TaskService.TheTask current = taskService.selectTaskById(task.getId());
         // 以执行时的最新快照为准（failed 重跑时步骤可能已被部分执行/部分完成）
         List<TaskStep> steps = current.taskSteps();
@@ -173,7 +190,8 @@ public class TaskRunTool implements ToolHandler {
         }
         try {
             StringBuilder flow = new StringBuilder();
-            for (TaskStep step : steps) {
+            for (int i = 0; i < steps.size(); i++) {
+                TaskStep step = steps.get(i);
                 // failed 任务断点续跑：跳过已完成步骤，从数据库读取其结果注入 flow，不重新执行
                 if (Task.STATUS_FINISHED.equals(step.getStatus()) && StringUtils.hasText(step.getResult())) {
                     flow.append("[步骤").append(step.getSort()).append("] ")
@@ -237,6 +255,8 @@ public class TaskRunTool implements ToolHandler {
                             task.getId(), step.getId(), step.getStepName(), failureReason);
                     taskService.updateTaskStepStatus(step.getId(), Task.STATUS_FAILED);
                     taskService.updateTaskStatus(task.getId(), Task.STATUS_FAILED);
+                    postProgress(sessionId, task, "执行失败，卡在步骤 " + (i + 1) + "/" + steps.size()
+                            + ": " + step.getStepName() + "，原因: " + failureReason);
                     return;
                 }
 
@@ -245,8 +265,15 @@ public class TaskRunTool implements ToolHandler {
                         "[完成结果]：" + result;
                 taskService.finishStep(step.getId(), result.get());
                 flow.append(builder).append("\n\n");
+
+                // 每完成一步投递一次进展；最后一步的「完成」留给任务终结那条，避免重复
+                if (i < steps.size() - 1) {
+                    postProgress(sessionId, task, "步骤 " + (i + 1) + "/" + steps.size()
+                            + " 已完成: " + step.getStepName());
+                }
             }
             taskService.finishTask(task.getId());
+            postProgress(sessionId, task, "全部 " + steps.size() + " 个步骤已完成");
         } catch (Exception e) {
             log.error("任务执行异常: taskId={}, error={}", task.getId(), e.getMessage(), e);
             try {
@@ -256,6 +283,21 @@ public class TaskRunTool implements ToolHandler {
             }
             throw new RuntimeException("任务[" + task.getTaskName() + "]执行异常：" + e.getMessage());
         }
+    }
+
+    /**
+     * 把一条任务进展投递到后台总线（等下一次「有消息落地」的时机挂进对话）。
+     * <p>
+     * 正文只写「状态 + 任务 ID」：步骤产出动辄上万字，整段塞进对话白吃上下文，
+     * 要看细节让模型用 task_read_tool 查。
+     *
+     * @param sessionId 启动任务时捕获的会话 id；为空则投递被总线丢弃（结果无处可投）
+     * @param task      任务（取名称与 ID）
+     * @param status    状态文案
+     */
+    private void postProgress(String sessionId, Task task, String status) {
+        backgroundToolResponseBus.post(sessionId, name(),
+                "任务: " + task.getTaskName() + "\n任务 ID: " + task.getId() + "\n" + status);
     }
 
     /**

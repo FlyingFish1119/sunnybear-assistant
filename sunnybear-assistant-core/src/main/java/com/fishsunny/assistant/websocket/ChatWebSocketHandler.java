@@ -141,8 +141,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             // 其余普通事件帧照常重放，用于重建在途消息。
             synchronized (safeSession.delegate()) {
                 safeSession.sendMessage(new TextMessage(ControlSign.SIGN_REPLAY_MESSAGE + sessionId));
-                for (SessionMessageBus.Event event : replayEvents) {
-                    if (!shouldReplay(sessionId, event.payload())) {
+                for (int i = 0; i < replayEvents.size(); i++) {
+                    SessionMessageBus.Event event = replayEvents.get(i);
+                    if (!shouldReplay(sessionId, event.payload(), i, replayEvents)) {
                         continue;
                     }
                     safeSession.sendMessage(new TextMessage(event.payload()));
@@ -158,7 +159,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      * 供子类重写扩展：子类先调用 super，再对插件自己的交互信号（如角色战斗回合）追加过滤，
      * sessionId 用于按会话键控的 pending 查询（如 BattleController 以 sessionId 为键）。
      */
-    protected boolean shouldReplay(String sessionId, String eventPayload) {
+    protected boolean shouldReplay(String sessionId, String eventPayload, int index, List<SessionMessageBus.Event> events) {
         // TTS 音频帧是实时通道，不参与断线重放（旧音频注入新轮次只会错乱）
         if (eventPayload.startsWith(ControlSign.SIGN_TTS_AUDIO)) {
             return false;
@@ -173,7 +174,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         // 重放旧状态只会让一个已经过期的「连接中」闪一下
         if (eventPayload.startsWith(ControlSign.SIGN_REQUEST_CONNECTING)
                 || eventPayload.startsWith(ControlSign.SIGN_REQUEST_THINKING)) {
-            return false;
+            return index == events.size() - 1;
         }
         String sign = null;
         if (eventPayload.startsWith(ControlSign.SIGN_TOOL_ASK)) {

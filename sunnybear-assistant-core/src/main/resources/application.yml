@@ -2,8 +2,8 @@
   port: 11451
 
 spring:
-#  profiles:
-#    active: remote
+  profiles:
+    active: remote
   application:
     name: assistant
   datasource:
@@ -122,11 +122,11 @@ engine:
         modelUrl: https://api.deepseek.com/models
         apiKey: ${DEEPSEEK_API_KEY:}
         stream: false
-        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextAIAdapter
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.multimodal.MultimodalAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
-        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.multimodal.MultimodalAIRequest
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
-        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextAIResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.StandardAIResponse
 
       # DeepSeek 流式
       - apiName: deepseek
@@ -134,11 +134,11 @@ engine:
         modelUrl: https://api.deepseek.com/models
         apiKey: ${DEEPSEEK_API_KEY:}
         stream: true
-        adapterCls: com.fishsunny.assistant.engine.adapter.text.TextStreamAIAdapter
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.multimodal.MultimodalAIAdapter
         masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
-        targetReqCls: com.fishsunny.assistant.engine.protocol.text.TextAIRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.multimodal.MultimodalAIRequest
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
-        targetRespCls: com.fishsunny.assistant.engine.protocol.text.TextStreamAIResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.StandardAIResponse
 
       # siliconflow 非流式
       - apiName: siliconflow

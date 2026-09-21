@@ -30,7 +30,6 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -567,10 +566,11 @@ public class CommandTool implements ToolHandler {
         backgroundThread.setDaemon(true);
         backgroundThread.start();
 
-        String message = "命令已在后台启动执行（）。\n"
+        String message = "命令已在后台启动执行。\n"
                 + "输出日志文件: " + logFile.toAbsolutePath() + "\n"
                 + "> 提示：使用 file_read_tool 读取日志文件内容查看命令输出。"
-                + "命令执行完成后，日志末尾会写入退出码和结束时间。";
+                + "命令执行完成后，日志末尾会写入退出码和结束时间。\n"
+                + "> 命令执行完成后，结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。";
 
         return new ToolExecutor.ToolExecuteResponse(name(), message);
     }
@@ -598,37 +598,7 @@ public class CommandTool implements ToolHandler {
         text.append("\n命令: ").append(command);
         text.append("\n日志文件: ").append(logFile.toAbsolutePath());
 
-        String output = readLogTail(logFile, 4000);
-        if (StringUtils.hasText(output)) {
-            text.append("\n\n").append(output);
-        }
-
         backgroundToolResponseBus.post(sessionId, name(), text.toString());
-    }
-
-    /**
-     * 读日志尾部（最多 maxBytes 字节）。
-     * <p>
-     * 后台命令的输出体量不可控（构建日志、训练日志动辄几十 MB），整段读进内存再塞进消息显然
-     * 不合适，只取尾部足够看清结局；截断点可能落在多字节字符中间，所以丢掉第一行残片。
-     */
-    private static String readLogTail(Path logFile, int maxBytes) {
-        try (RandomAccessFile reader = new RandomAccessFile(logFile.toFile(), "r")) {
-            long size = reader.length();
-            long start = Math.max(0, size - maxBytes);
-            reader.seek(start);
-            byte[] buffer = new byte[(int) (size - start)];
-            reader.readFully(buffer);
-            String content = new String(buffer, StandardCharsets.UTF_8);
-            if (start > 0) {
-                int firstNewline = content.indexOf('\n');
-                content = firstNewline >= 0 ? content.substring(firstNewline + 1) : content;
-                return "...（前部已省略，完整输出见日志文件）\n" + content;
-            }
-            return content;
-        } catch (IOException e) {
-            return "（日志读取失败: " + e.getMessage() + "）";
-        }
     }
 
     @Override

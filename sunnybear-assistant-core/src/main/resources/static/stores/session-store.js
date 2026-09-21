@@ -161,23 +161,7 @@ const SessionStore = (function () {
         }, extra)));
     }
 
-    /**
-     * 取消息的正文块（contents[0]）并保证其存在。
-     * 语义契约：正文恒为首块且必须是 text；其后的块（附件 / 追加文本）只展示不编辑。
-     * 首块不是 text 时（历史脏数据）在首位补一个空正文块，绝不往附件块里写正文。
-     */
-    function ensureBodyContent(message) {
-        if (!Array.isArray(message.contents)) {
-            message.contents = [];
-        }
-        const first = message.contents[0];
-        if (first && first.type === 'text') {
-            return first;
-        }
-        const body = { type: 'text', content: '' };
-        message.contents.unshift(body);
-        return body;
-    }
+    /** 正文块（contents[0]）的语义与实现统一在 utils/message-utils.js 的 MessageUtils.ensureBodyContent */
 
     /* ================= 流式文本合帧 ================= */
     /**
@@ -643,7 +627,7 @@ const SessionStore = (function () {
             }
             if (response.text) {
                 // 正文恒写首块：末块可能是附件，写末尾会把正文塞进附件对象里
-                ensureBodyContent(streamingMessage).content += response.text;
+                MessageUtils.ensureBodyContent(streamingMessage).content += response.text;
             }
             if (response.messages && response.messages.length > 0) {
                 for (let index = 0; index < response.messages.length; index++) {
@@ -826,6 +810,8 @@ const SessionStore = (function () {
                         if (m.id) localMsg.id = m.id;
                         if (m.parentId) localMsg.parentId = m.parentId;
                         if (m.createTime) localMsg.createTime = m.createTime;
+                        // 服务端落库消息是权威快照：本地占位是 tool_response 帧建的，不含后到的追加块
+                        MessageUtils.applyServerContents(localMsg, m);
                         localMsg._v = (localMsg._v || 0) + 1;
                     }
                 }
@@ -857,10 +843,12 @@ const SessionStore = (function () {
             if (serverMsg.extension) {
                 streamingMessage.extension = Object.assign({}, streamingMessage.extension || {}, serverMsg.extension);
             }
+            // 服务端落库消息是权威快照：整体覆盖内容块（本地流式累积的那份只有正文，缺后到的追加块）
+            MessageUtils.applyServerContents(streamingMessage, serverMsg);
             // 斜杠指令等场景：没有 chunk 流，文字直接附在 init_assistant 里
             if (response.text) {
                 // 同上：斜杠指令等场景直接把文字附在正文首块上，仅当正文为空时填充
-                const bodyContent = ensureBodyContent(streamingMessage);
+                const bodyContent = MessageUtils.ensureBodyContent(streamingMessage);
                 if (!bodyContent.content) {
                     bodyContent.content = response.text;
                 }
