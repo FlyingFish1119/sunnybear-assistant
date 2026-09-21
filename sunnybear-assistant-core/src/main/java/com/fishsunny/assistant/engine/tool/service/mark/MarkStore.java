@@ -113,7 +113,9 @@ public class MarkStore implements ToolResponseHandleChain {
         if (last == null) {
             return;
         }
-        last.setResult(last.getResult() + "\n\n" + buildReminder(unfinished));
+        // 提醒作为正文之后的独立文本块追加，不污染工具结果本体（result 是喂回模型的工具返回值，
+        // 混进系统提醒会让人分不清哪是工具输出、哪是系统提示；独立块的展示语义与后台任务通知一致）
+        last.appendTextContent(buildReminder(unfinished).stripTrailing());
     }
 
     @Override

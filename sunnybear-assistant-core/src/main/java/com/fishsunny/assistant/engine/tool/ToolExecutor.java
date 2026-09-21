@@ -183,7 +183,9 @@ public class ToolExecutor {
                 String errorMessage = "处理链" + chain.getClass().getSimpleName() + "处理失败，原因是：" + e.getMessage();
                 ToolExecuteResponse last = responses.isEmpty() ? null : responses.getLast();
                 if (last != null) {
-                    last.setResult(last.getResult() + "\n\n" + errorMessage);
+                    // 链的报错是链自己的事，别写进 result —— result 是工具自身的输出，
+                    // 混进框架报错会让人分不清哪是工具结果、哪是处理链的问题
+                    last.appendTextContent(errorMessage);
                 }
                 log.warn(errorMessage);
             }
