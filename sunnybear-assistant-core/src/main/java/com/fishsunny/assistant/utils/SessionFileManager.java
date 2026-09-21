@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -43,6 +44,9 @@ public class SessionFileManager {
 
     private static final String SESSION_DIR = "session";
     private static final String FILE_DIR = "file";
+
+    /** 文本读取上限 2MB：超过这个大小的文件不往编辑器里塞，免得把页面拖死 */
+    private static final long MAX_TEXT_READ_BYTES = 2 * 1024 * 1024;
 
     private final String basePath;
 
@@ -63,6 +67,40 @@ public class SessionFileManager {
     /** 会话文件目录：{basePath}/session/{sessionId}/file */
     public Path buildSessionDirPath(String sessionId) {
         return buildSessionRootPath(sessionId).resolve(FILE_DIR);
+    }
+
+    /* ======================== 沙箱路径解析 ======================== */
+
+    /**
+     * 把相对路径解析到指定基目录之内 —— 会话文件所有读/写/改名/删除的唯一入口。
+     * <p>规则：不允许绝对路径、盘符路径、以分隔符开头，也不允许用 {@code ..} 跳出基目录。
+     * 与 {@code FileWriteTool} 的 sessionFile 模式同源（那边已改为调用本方法）。
+     *
+     * @param baseDir      基目录
+     * @param relativePath 相对路径，空串表示基目录自身
+     * @return 归一化后的绝对路径，保证落在 baseDir 之内
+     */
+    public static Path resolveUnder(Path baseDir, String relativePath) {
+        Path base = baseDir.toAbsolutePath().normalize();
+        String relative = relativePath == null ? "" : relativePath.trim().replace('\\', '/');
+        while (relative.startsWith("/")) {
+            relative = relative.substring(1);
+        }
+        if (relative.matches("^[A-Za-z]:.*")) {
+            throw new IllegalArgumentException("路径不能包含盘符: " + relativePath);
+        }
+        Path resolved = relative.isEmpty()
+                ? base
+                : base.resolve(relative).toAbsolutePath().normalize();
+        if (!resolved.startsWith(base)) {
+            throw new IllegalArgumentException("路径不能跳出会话文件目录（禁止 .. 回溯）: " + relativePath);
+        }
+        return resolved;
+    }
+
+    /** 会话沙箱内解析：结果必落在 {basePath}/session/{sessionId}/file 之下 */
+    public Path resolveSessionFilePath(String sessionId, String relativePath) {
+        return resolveUnder(buildSessionDirPath(sessionId), relativePath);
     }
 
     /**
@@ -141,6 +179,151 @@ public class SessionFileManager {
             return null;
         }
         return Files.readAllBytes(filePath);
+    }
+
+    /* ======================== 会话文件管理（REST / 工具共用） ======================== */
+
+    /**
+     * 列出会话文件目录下某一层的条目（不递归）：目录在前，同类型按名称排序。
+     * <p>目录不存在时返回空列表 —— 前端第一次打开资源栏时不该看到报错。
+     *
+     * @param relativeDir 相对会话文件目录的子目录，空串表示根
+     */
+    public List<SessionFileEntry> listSessionFiles(String sessionId, String relativeDir) throws IOException {
+        Path dir = resolveSessionFilePath(sessionId, relativeDir);
+        if (!Files.isDirectory(dir)) {
+            return new ArrayList<>();
+        }
+        List<SessionFileEntry> entries = new ArrayList<>();
+        try (Stream<Path> stream = Files.list(dir)) {
+            for (Path child : stream.toList()) {
+                try {
+                    BasicFileAttributes attrs = Files.readAttributes(child, BasicFileAttributes.class);
+                    boolean isDir = attrs.isDirectory();
+                    entries.add(new SessionFileEntry(
+                            child.getFileName().toString(),
+                            relativePathOf(sessionId, child),
+                            isDir,
+                            isDir ? -1L : attrs.size(),
+                            attrs.lastModifiedTime().toMillis()
+                    ));
+                } catch (IOException e) {
+                    log.warn("读取文件属性失败: {}", child, e);
+                }
+            }
+        }
+        entries.sort(Comparator
+                .comparing(SessionFileEntry::directory, Comparator.reverseOrder())
+                .thenComparing(SessionFileEntry::name, String.CASE_INSENSITIVE_ORDER));
+        return entries;
+    }
+
+    /**
+     * 读取文本内容（UTF-8）。
+     * <p>超过 {@link #MAX_TEXT_READ_BYTES} 直接抛异常，由上层转成提示 —— 编辑器吃不下超大文件。
+     *
+     * @return 文件不存在时返回 null
+     */
+    @Nullable
+    public String readSessionText(String sessionId, String relativePath) throws IOException {
+        Path filePath = resolveSessionFilePath(sessionId, relativePath);
+        if (!Files.isRegularFile(filePath)) {
+            return null;
+        }
+        long size = Files.size(filePath);
+        if (size > MAX_TEXT_READ_BYTES) {
+            throw new IllegalStateException("文件大小 " + (size / 1024) + "KB 超过编辑器上限 "
+                    + (MAX_TEXT_READ_BYTES / 1024) + "KB，请下载后查看");
+        }
+        return Files.readString(filePath, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 读取文件原始字节（图片预览、二进制下载用）。
+     * <p>路径同样走会话沙箱解析；文件不存在返回 null。
+     */
+    @Nullable
+    public byte[] readSessionBytes(String sessionId, String relativePath) throws IOException {
+        Path filePath = resolveSessionFilePath(sessionId, relativePath);
+        if (!Files.isRegularFile(filePath)) {
+            return null;
+        }
+        return Files.readAllBytes(filePath);
+    }
+
+    /** 写回文本（整文件覆盖），父目录不存在时自动创建。返回可移植引用 */
+    public String writeSessionText(String sessionId, String relativePath, String content) throws IOException {
+        Path filePath = resolveSessionFilePath(sessionId, relativePath);
+        if (Files.isDirectory(filePath)) {
+            throw new IllegalArgumentException("目标是一个目录，不能写入: " + relativePath);
+        }
+        Files.createDirectories(filePath.getParent());
+        Files.writeString(filePath, content == null ? "" : content, StandardCharsets.UTF_8);
+        return buildRef(sessionId, relativePathOf(sessionId, filePath));
+    }
+
+    /** 新建文件。目标已存在时抛异常，避免把已有内容覆盖掉 */
+    public void createSessionText(String sessionId, String relativePath, String content) throws IOException {
+        Path filePath = resolveSessionFilePath(sessionId, relativePath);
+        if (Files.exists(filePath)) {
+            throw new IllegalArgumentException("同名文件已存在: " + relativePath);
+        }
+        Files.createDirectories(filePath.getParent());
+        Files.writeString(filePath, content == null ? "" : content, StandardCharsets.UTF_8);
+    }
+
+    /** 改名 / 移动（同目录或跨子目录都走这里）。源不存在、目标已存在都会抛异常 */
+    public void renameSessionFile(String sessionId, String fromPath, String toPath) throws IOException {
+        Path source = resolveSessionFilePath(sessionId, fromPath);
+        Path target = resolveSessionFilePath(sessionId, toPath);
+        if (!Files.exists(source)) {
+            throw new IllegalArgumentException("源文件不存在: " + fromPath);
+        }
+        if (Files.exists(target)) {
+            throw new IllegalArgumentException("目标已存在: " + toPath);
+        }
+        Files.createDirectories(target.getParent());
+        Files.move(source, target);
+    }
+
+    /**
+     * 删除文件或空目录。
+     * <p>只允许删空目录：手滑删掉一整个目录的代价太大，非空目录先让用户自己清空。
+     */
+    public void deleteSessionFile(String sessionId, String relativePath) throws IOException {
+        Path rootDir = buildSessionDirPath(sessionId).toAbsolutePath().normalize();
+        Path path = resolveSessionFilePath(sessionId, relativePath);
+        if (path.equals(rootDir)) {
+            throw new IllegalArgumentException("不能删除会话文件根目录");
+        }
+        if (!Files.exists(path)) {
+            throw new IllegalArgumentException("文件不存在: " + relativePath);
+        }
+        if (Files.isDirectory(path)) {
+            try (Stream<Path> children = Files.list(path)) {
+                if (children.findAny().isPresent()) {
+                    throw new IllegalArgumentException("目录非空，请先删除其中的文件: " + relativePath);
+                }
+            }
+        }
+        Files.delete(path);
+    }
+
+    /** 文件相对会话文件目录的路径（统一 / 分隔，供前端做树形 key） */
+    private String relativePathOf(String sessionId, Path child) {
+        return buildSessionDirPath(sessionId).toAbsolutePath().normalize()
+                .relativize(child.toAbsolutePath().normalize())
+                .toString().replace('\\', '/');
+    }
+
+    /** 会话文件条目（列表接口与 session_file_tool 共用） */
+    public record SessionFileEntry(
+            String name,
+            String path,
+            boolean directory,
+            long size,
+            long lastModified
+    ) {
     }
 
     /**

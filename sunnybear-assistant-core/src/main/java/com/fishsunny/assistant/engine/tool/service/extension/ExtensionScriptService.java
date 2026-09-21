@@ -10,6 +10,7 @@ package com.fishsunny.assistant.engine.tool.service.extension;
 
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
+import com.fishsunny.assistant.utils.ProcessUtils;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,7 +73,9 @@ public class ExtensionScriptService {
                 try {
                     result = future.get(timeout, TimeUnit.SECONDS);
                 } catch (TimeoutException e) {
-                    process.destroyForcibly();
+                    future.cancel(true);
+                    // 脚本内部再起进程时，只杀父进程会留下孤儿继续跑
+                    ProcessUtils.killTree(process);
                     throw new ToolExecutor.ToolExecuteException(
                             "脚本执行超时（" + timeout + "秒）: " + prepared.script().getName());
                 }
@@ -86,7 +89,8 @@ public class ExtensionScriptService {
             return result;
         } finally {
             if (process != null) {
-                process.destroyForcibly();
+                // 收尾路径也走杀树：异常分支下脚本可能已经派生了子进程
+                ProcessUtils.killTree(process);
             }
             deleteTempScript(prepared.tempFile());
         }
@@ -222,7 +226,7 @@ public class ExtensionScriptService {
             appendFooter(logFile, "脚本执行异常: " + e.getMessage());
         } finally {
             if (process != null) {
-                process.destroyForcibly();
+                ProcessUtils.killTree(process);
             }
             deleteTempScript(prepared.tempFile());
         }

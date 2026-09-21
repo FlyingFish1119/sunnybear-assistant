@@ -141,6 +141,24 @@
             #in-loading .inl-ring{ display: none; }
         }
     </style>
+
+    <!-- 主页面布局补偿：左侧多了一条 56px 的导航轨（nav-rail），
+         侧边栏相应收窄，让「竖轨 + 侧边栏」的总宽跟改动前落在同一条线上。
+         只覆盖主页面 —— 插件页（plug/character、plug/world）没有竖轨，
+         继续吃 css/layout.css 里 :root 的 300px 默认值。 -->
+    <style>
+        #app{
+            --sidebar-width: 244px;    /* 300px（原侧边栏） − 56px（导航轨） */
+        }
+
+        /* 移动端导航轨隐藏（见 nav-rail.css），抽屉恢复原本的宽度 */
+        @media (max-width: 768px){
+            #app{
+                --sidebar-width: 300px;
+            }
+        }
+    </style>
+
     <script>
         /* 把缓存主色提到 --main-color 上，越早越好：加载态的背景、柔光、铃铛
            全都从它派生，晚了就会先闪一下默认色。
@@ -177,6 +195,8 @@
     <!-- lucide 图标 -->
     <script src="lib/lucide.min.js"></script>
     <script src="utils/lucide-safe.js"></script>
+    <!-- Ace 编辑器：会话文件面板里的文本编辑（核心在此，mode/theme 由 ace 按需从 lib/ace/ 取） -->
+    <script src="lib/ace/ace.js"></script>
     <script src="lib/marked.min.js"></script>
     <script src="lib/highlight.min.js"></script>
     <!-- KaTeX 数学公式渲染 -->
@@ -209,6 +229,12 @@
     <script src="components/confirm-dialog/confirm-dialog.js"></script>
     <script src="components/chat-session-name/chat-session-name.js"></script>
     <script src="components/chat-sidebar/chat-sidebar.js"></script>
+    <!-- 左侧导航轨（竖栏按钮条） -->
+    <script src="components/nav-rail/nav-rail.js"></script>
+    <!-- 会话文件双层抽屉（资源树 + 编辑器 / 图片预览） -->
+    <script src="components/session-files/session-files.js"></script>
+    <!-- 终端面板（单层大抽屉）：异步跑 shell 命令，边跑边吐输出，Ctrl+C 可中断 -->
+    <script src="components/shell-panel/shell-panel.js"></script>
     <script src="components/file-upload/file-upload.js"></script>
     <script src="components/chat-connection/chat-connection.js"></script>
     <script src="components/auto-resize-textarea/auto-resize-textarea.js"></script>
@@ -225,6 +251,12 @@
     <link rel="stylesheet" href="css/scrollbar.css"/>
     <link rel="stylesheet" href="css/layout.css"/>
     <!-- 三大板块样式：侧边栏 | 消息栏 | 发送栏 -->
+    <!-- 左侧导航轨（最外层竖栏） -->
+    <link rel="stylesheet" href="components/nav-rail/nav-rail.css"/>
+    <!-- 会话文件双层抽屉 -->
+    <link rel="stylesheet" href="components/session-files/session-files.css"/>
+    <!-- 终端面板（单层大抽屉） -->
+    <link rel="stylesheet" href="components/shell-panel/shell-panel.css"/>
     <link rel="stylesheet" href="components/chat-sidebar/chat-sidebar.css"/>
     <link rel="stylesheet" href="components/message-area/message-area.css"/>
     <link rel="stylesheet" href="components/message-topbar/message-topbar.css"/>
@@ -276,6 +308,7 @@
     </div>
 </div>
 <div id="app">
+    <nav-rail :main-color="mainColor" :active-key="railActiveKey" @select="onRailSelect"></nav-rail>
     <chat-sidebar
         :main-color="mainColor"
         :collapsed="sidebarCollapsed"
@@ -307,9 +340,23 @@
             @drag-over-change="isChange => dragOver = isChange"
         ></send-area>
     </div>
+    <!-- 会话文件双层抽屉（fixed 浮层，放在哪儿都不占布局） -->
+    <session-files ref="sessionFiles"
+                   :main-color="mainColor"
+                   @visible-change="onPanelVisible('files', $event)"></session-files>
+    <!-- 终端面板（fixed 浮层，同上） -->
+    <shell-panel ref="shellPanel"
+                 :main-color="mainColor"
+                 @visible-change="onPanelVisible('shell', $event)"></shell-panel>
 </div>
 
 <script>
+    /**
+     * 导航轨上「有真面板」的按钮 key → 组件 ref 名。
+     * 面板之间互斥，同一时刻只留一个，所以这份映射也用来「把其余面板收掉」。
+     */
+    const RAIL_PANEL_REFS = { files: 'sessionFiles', shell: 'shellPanel' };
+
     const app = Vue.createApp({
         data() {
             return {
@@ -322,6 +369,8 @@
 
                 // 桌面端侧边栏折叠
                 sidebarCollapsed: false,
+                // 导航轨高亮：跟着「当前打开的面板」走，不是「最后点过的按钮」
+                railActiveKey: '',
                 // 拖拽上传悬停状态（由发送区组件上抛，控制消息区遮罩）
                 dragOver: false,
             }
@@ -362,6 +411,42 @@
         inject: ['sessionStore'],
 
         methods: {
+
+            /**
+             * 导航轨按钮分发。
+             * 面板之间互斥：点别的按钮先把当前这个收掉 —— 否则终端还开着、
+             * 高亮却跑到另一个按钮上，眼睛看着就是对不上的。
+             */
+            onRailSelect(key) {
+                const refName = RAIL_PANEL_REFS[key];
+                if (!refName) {
+                    return;   // 查不到对应面板：什么都不做
+                }
+                this.closeRailPanels(key);
+                const panel = this.$refs[refName];
+                if (panel) panel.toggle();
+            },
+
+            /** 收起导航轨上除 exceptKey 之外的面板（面板互斥） */
+            closeRailPanels(exceptKey) {
+                Object.keys(RAIL_PANEL_REFS).forEach(panelKey => {
+                    if (panelKey === exceptKey) return;
+                    const panel = this.$refs[RAIL_PANEL_REFS[panelKey]];
+                    if (panel && panel.visible) panel.close();
+                });
+            },
+
+            /**
+             * 面板自己也会被关（ESC / 叉 / 点遮罩），高亮得由它回灌，
+             * 不能只在点导航轨的时候算一次。
+             */
+            onPanelVisible(key, visible) {
+                if (visible) {
+                    this.railActiveKey = key;
+                } else if (this.railActiveKey === key) {
+                    this.railActiveKey = '';
+                }
+            },
 
             inLoading() {
                 document.getElementById("app").style.display = "none";
@@ -522,6 +607,7 @@
     app.component('confirm-dialog', ConfirmDialog);
     app.component('chat-session-name', ChatSessionName);
     app.component('chat-sidebar', ChatSidebar);
+    app.component('nav-rail', NavRail);
     app.component('file-upload', FileUpload);
     app.component('chat-connection', ChatConnection);
     app.component('auto-resize-textarea', AutoResizeTextarea);
@@ -531,6 +617,8 @@
     app.component('message-area', MessageArea);
     app.component('send-area', SendArea);
     app.component('mark-tracker', MarkTracker);
+    app.component('session-files', SessionFiles);
+    app.component('shell-panel', ShellPanel);
 
     app.use(ElementPlus);
     // 自定义指令（放在 ElementPlus 之后注册，确保同名指令以自定义实现为准）

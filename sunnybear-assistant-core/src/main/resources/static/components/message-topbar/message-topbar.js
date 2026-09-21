@@ -81,7 +81,7 @@ const MessageTopbar = {
             <button class="sidebar-toggle-btn" @click="toggleAgentLog"
                     :title="agentLogVisible ? '折叠 Agent Log' : '展开 Agent Log'"
                     :style="agentLogVisible ? {color: mainColor} : {}">
-                <i data-lucide="terminal" style="width: 18px; height: 18px;"></i>
+                <i data-lucide="activity" style="width: 18px; height: 18px;"></i>
             </button>
         </div>
     </div>

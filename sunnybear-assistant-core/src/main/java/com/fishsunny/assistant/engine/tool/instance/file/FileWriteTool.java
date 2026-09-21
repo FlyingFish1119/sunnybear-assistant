@@ -94,7 +94,8 @@ public class FileWriteTool implements ToolHandler {
                     throw new ToolExecutor.ToolExecuteException("sessionFile 模式需要当前会话信息，但上下文中缺少 chatSession 或 sessionId");
                 }
                 Path sessionDir = sessionFileManager.buildSessionDirPath(chatSession.getId());
-                filePath = resolveSessionFilePath(sessionDir, arguments.getPath());
+                // 沙箱校验统一走 SessionFileManager（与前端 /session/file/* 接口共用同一份实现）
+                filePath = sessionFileManager.resolveUnder(sessionDir, arguments.getPath());
             } else {
                 filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
             }
@@ -174,34 +175,6 @@ public class FileWriteTool implements ToolHandler {
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }
-    }
-
-    /**
-     * 解析会话文件模式下的目标路径。
-     * <p>path 必须相对于会话文件目录：不允许绝对路径、盘符路径或从根目录开始，
-     * 也不允许通过 {@code ..} 跳出该目录。
-     *
-     * @param sessionDir 会话文件目录
-     * @param rawPath    模型传入的原始 path
-     * @return 归一化后的绝对路径，保证位于 {@code sessionDir} 之内
-     */
-    private Path resolveSessionFilePath(Path sessionDir, String rawPath) throws ToolExecutor.ToolExecuteException {
-        String relative = rawPath.trim();
-        boolean startsFromRoot = relative.startsWith("/") || relative.startsWith("\\")
-                || relative.matches("^[A-Za-z]:.*");
-        if (startsFromRoot || Paths.get(relative).isAbsolute()) {
-            throw new ToolExecutor.ToolExecuteException(
-                    "sessionFile 模式下 path 不能是绝对路径或从根目录开始，必须相对于当前会话文件目录，"
-                            + "例如 test.txt 或 tmp/demo.js。当前值: " + rawPath);
-        }
-
-        Path baseDir = sessionDir.toAbsolutePath().normalize();
-        Path resolved = baseDir.resolve(relative).toAbsolutePath().normalize();
-        if (!resolved.startsWith(baseDir)) {
-            throw new ToolExecutor.ToolExecuteException(
-                    "sessionFile 模式下 path 不能跳出会话文件目录（禁止 .. 回溯）。当前值: " + rawPath);
-        }
-        return resolved;
     }
 
     /**

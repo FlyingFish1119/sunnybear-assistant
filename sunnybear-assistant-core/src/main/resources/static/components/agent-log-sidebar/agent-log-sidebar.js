@@ -26,7 +26,7 @@ const AgentLogSidebar = {
     <div class="agent-log-sidebar" :class="{ collapsed: !visible }">
         <div class="agent-log-header" :style="{ borderBottomColor: mainColor }">
             <div class="agent-log-header-title">
-                <i data-lucide="terminal" style="width: 16px; height: 16px;"></i>
+                <i data-lucide="activity" style="width: 16px; height: 16px;"></i>
                 <span>Agent Log</span>
                 <span v-if="logs.length > 0" class="agent-log-badge">{{ logs.length }}</span>
             </div>

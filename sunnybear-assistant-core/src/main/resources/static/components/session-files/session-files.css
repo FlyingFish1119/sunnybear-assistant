@@ -1,0 +1,327 @@
+/* ============================================================
+   Session Files —— 会话文件双层抽屉
+   ------------------------------------------------------------
+   结构：遮罩 + 两层浮层抽屉（都从左往右依次展开）
+     · 第一层 .sf-drawer--tree    资源树（贴着导航轨滑出）
+     · 第二层 .sf-drawer--viewer  内容区（在第一层右边接着展开）
+   两层可共存：点文件不收起列表，方便连着翻几个文件看。
+
+   宽度：第一层 320px、第二层 620px，窄屏按比例收。
+   移动端（≤768px）导航轨隐藏，遮罩与抽屉从 0 起算，两层叠满屏。
+   ============================================================ */
+
+/* 导航轨宽度：遮罩要给它让位，否则遮罩一盖导航轨就点不动了 */
+.session-files-overlay{
+    --sf-rail-w: 56px;
+    --sf-tree-w: 320px;
+    --sf-viewer-w: 620px;
+
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: var(--sf-rail-w);
+    z-index: 1200;                 /* 高于页面内容，低于 el-dialog（2000 档）与 toast */
+    display: flex;
+    background: rgba(17, 24, 39, 0.28);
+}
+
+/* ---- 抽屉公共件 ---- */
+.sf-drawer{
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100%;
+    box-sizing: border-box;
+    background: #fff;
+    box-shadow: 0 0 28px rgba(17, 24, 39, 0.18);
+}
+
+.sf-drawer--tree{
+    flex: none;
+    width: var(--sf-tree-w);
+    border-right: 1px solid rgba(0, 0, 0, 0.06);
+    animation: sf-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.sf-drawer--viewer{
+    flex: 1;
+    max-width: var(--sf-viewer-w);
+    animation: sf-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sf-slide-in{
+    from{ opacity: 0; transform: translateX(-22px); }
+    to  { opacity: 1; transform: translateX(0); }
+}
+
+/* ---- 抽屉头部 ---- */
+.sf-head{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 52px;
+    padding: 0 10px 0 14px;
+    box-sizing: border-box;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+}
+
+.sf-title{
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary, #333);
+}
+
+.sf-title svg{
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: var(--main-color, lightsalmon);
+}
+
+/* 文件名太长时省略，不把操作按钮挤掉 */
+.sf-title-text{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sf-btn{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sf-btn svg{ width: 16px; height: 16px; display: block; }
+.sf-btn:hover{ background: #f2f2f2; color: #333; }
+.sf-btn:disabled{ opacity: 0.45; cursor: not-allowed; }
+
+/* ---- 第一层：资源树 ---- */
+.sf-tree{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 8px 12px;
+    scrollbar-width: thin;
+}
+
+.sf-tree-row{
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding-right: 4px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #333;
+    user-select: none;
+}
+
+.sf-tree-row:hover{ background: #f4f5f7; }
+.sf-tree-row.is-active{ background: color-mix(in srgb, var(--main-color, #FFA07A) 16%, #fff); }
+
+/* 层级缩进：depth 由组件写进行内样式 */
+.sf-tree-row .sf-row-icon{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    color: #8a8f98;
+}
+
+.sf-tree-row.is-dir .sf-row-icon{ color: color-mix(in srgb, var(--main-color, #FFA07A) 78%, #6b6258); }
+.sf-tree-row .sf-row-icon svg{ width: 15px; height: 15px; display: block; }
+
+.sf-row-name{
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sf-row-size{
+    flex: none;
+    font-size: 11px;
+    color: var(--text-muted, #999);
+    font-variant-numeric: tabular-nums;
+}
+
+/* 行尾操作：hover 才出现，避免列表被一堆图标塞满 */
+.sf-row-actions{
+    flex: none;
+    display: none;
+    align-items: center;
+    gap: 2px;
+}
+
+.sf-tree-row:hover .sf-row-actions{ display: flex; }
+/* hover 出操作按钮时把大小让出去，窄抽屉也不至于挤成一团 */
+.sf-tree-row:hover .sf-row-size{ display: none; }
+
+.sf-row-btn{
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #777;
+    cursor: pointer;
+}
+
+.sf-row-btn svg{ width: 13px; height: 13px; display: block; }
+.sf-row-btn:hover{ background: #e8eaed; color: #333; }
+.sf-row-btn.is-danger:hover{ background: #fdecec; color: #e5484d; }
+
+.sf-empty,
+.sf-hint{
+    padding: 18px 12px;
+    font-size: 12.5px;
+    color: var(--text-muted, #999);
+    text-align: center;
+    line-height: 1.6;
+}
+
+/* 正在展开的目录：占位行 */
+.sf-tree-loading{
+    height: 26px;
+    display: flex;
+    align-items: center;
+    padding-left: 28px;
+    font-size: 12px;
+    color: var(--text-muted, #999);
+}
+
+/* ---- 第二层：内容区 ---- */
+.sf-viewer-body{
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: #fbfbfc;
+}
+
+.sf-editor-host{
+    flex: 1;
+    min-height: 0;
+    position: relative;
+}
+
+/* Ace 会往宿主里塞自己的 DOM，这里只保证宿主撑满 */
+.sf-editor-host .ace_editor{
+    position: absolute;
+    inset: 0;
+    font-size: 13px;
+}
+
+.sf-image-wrap{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background:
+        linear-gradient(45deg, #f0f0f2 25%, transparent 25%, transparent 75%, #f0f0f2 75%),
+        linear-gradient(45deg, #f0f0f2 25%, transparent 25%, transparent 75%, #f0f0f2 75%);
+    background-size: 18px 18px;
+    background-position: 0 0, 9px 9px;
+    background-color: #fafafa;
+}
+
+.sf-image-wrap img{
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    box-shadow: 0 6px 24px rgba(17, 24, 39, 0.16);
+    border-radius: 4px;
+}
+
+/* ---- 状态条：保存状态 / 文件信息 ---- */
+.sf-status{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 30px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+    font-size: 11.5px;
+    color: var(--text-muted, #999);
+}
+
+.sf-status-dot{
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #c9ccd1;
+    flex: none;
+}
+
+.sf-status-dot.is-dirty{ background: #f0a02a; }
+.sf-status-dot.is-saving{ background: #3b82f6; }
+.sf-status-dot.is-saved{ background: #2fb344; }
+.sf-status-dot.is-error{ background: #e5484d; }
+
+.sf-status-path{
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: rtl;              /* 路径太长时保留尾部（文件名那端） */
+    text-align: left;
+}
+
+.sf-status-action{
+    flex: none;
+    cursor: pointer;
+    color: #4b5563;
+}
+
+.sf-status-action:hover{ text-decoration: underline; }
+
+/* 跟随系统的「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce){
+    .sf-drawer--tree,
+    .sf-drawer--viewer{ animation: none; }
+}
+
+/* ---- 窄屏：导航轨不显示，抽屉从 0 起算；第二层不再挤在右边，改为盖在第一层上 ---- */
+@media (max-width: 768px){
+    .session-files-overlay{
+        --sf-rail-w: 0px;
+        --sf-tree-w: 78vw;
+        --sf-viewer-w: 100vw;
+    }
+
+    /* 移动端空间不够并排，内容区盖住整屏 */
+    .sf-drawer--viewer{
+        position: absolute;
+        left: 0;
+        right: 0;
+        max-width: none;
+    }
+}

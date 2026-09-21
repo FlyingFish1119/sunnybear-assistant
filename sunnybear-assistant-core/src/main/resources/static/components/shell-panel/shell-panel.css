@@ -1,0 +1,264 @@
+/* ============================================================
+   Shell Panel —— 终端面板（单层大抽屉）
+   ------------------------------------------------------------
+   从导航轨右侧铺满到底的一个大抽屉，深色终端风。
+   结构：头部（标题 / 清屏 / 关闭）→ cwd 栏 → 输出区 → 输入行
+   无二级抽屉：所有交互都在这一个面板里完成。
+
+   移动端（≤768px）导航轨隐藏，抽屉从 0 起算。
+   ============================================================ */
+
+.shell-overlay{
+    --sh-mono: Consolas, "Cascadia Mono", "JetBrains Mono", "Courier New", monospace;
+    --sh-rail-w: 56px;
+
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: var(--sh-rail-w);
+    z-index: 1200;                     /* 与文件面板同级：高于页面内容，低于 dialog 与 toast */
+    display: flex;
+    background: rgba(17, 24, 39, 0.28);
+}
+
+.shell-drawer{
+    /* 显式焊死布局关键属性：同页多份 CSS，不指望加载顺序 */
+    position: relative;
+    overflow: hidden;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: #1b1b1f;
+    box-shadow: 0 0 28px rgba(17, 24, 39, 0.3);
+    animation: sh-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sh-slide-in{
+    from{ opacity: 0; transform: translateX(-22px); }
+    to  { opacity: 1; transform: translateX(0); }
+}
+
+/* ---- 头部 ---- */
+.sh-head{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 52px;
+    padding: 0 10px 0 16px;
+    box-sizing: border-box;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sh-title{
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #e8e8ea;
+}
+
+.sh-title svg{
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: #7dd3a0;
+}
+
+.sh-os{
+    font-size: 11px;
+    font-weight: 400;
+    color: #6b7280;
+}
+
+.sh-btn{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #9aa0a6;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sh-btn svg{ width: 16px; height: 16px; display: block; }
+.sh-btn:hover{ background: rgba(255, 255, 255, 0.08); color: #e8e8ea; }
+
+/* ---- 工作目录栏（点击可改） ---- */
+.sh-cwd{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 34px;
+    padding: 0 16px;
+    box-sizing: border-box;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.03);
+    font-family: var(--sh-mono);
+    font-size: 12px;
+    color: #9aa0a6;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sh-cwd:hover{ background: rgba(255, 255, 255, 0.06); color: #d1d5db; }
+.sh-cwd svg{ width: 14px; height: 14px; flex: none; color: #6b7280; }
+
+.sh-cwd-text{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---- 输出区 ---- */
+.sh-screen{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 12px 16px;
+    font-family: var(--sh-mono);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #d4d4d8;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.sh-screen::-webkit-scrollbar{ width: 9px; }
+.sh-screen::-webkit-scrollbar-thumb{
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 5px;
+}
+.sh-screen::-webkit-scrollbar-thumb:hover{ background: rgba(255, 255, 255, 0.28); }
+
+.sh-line{
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* 回显的命令：加个 > 前缀，和输出区分开 */
+.sh-line.is-cmd{
+    color: #7dd3a0;
+    margin-top: 6px;
+}
+
+.sh-line.is-cmd::before{
+    content: '> ';
+    color: #4b5563;
+}
+
+.sh-line.is-out{ color: #d4d4d8; }
+
+.sh-line.is-note{
+    color: #6b7280;
+    font-size: 11.5px;
+}
+
+.sh-hint{
+    color: #4b5563;
+    font-size: 12px;
+    line-height: 1.8;
+}
+
+.sh-running{
+    display: flex;
+    align-items: center;
+    margin-top: 6px;
+    font-size: 11.5px;
+    color: #7dd3a0;
+}
+
+.sh-spinner{
+    width: 10px;
+    height: 10px;
+    margin-right: 7px;
+    border-radius: 50%;
+    border: 2px solid rgba(125, 211, 160, 0.25);
+    border-top-color: #7dd3a0;
+    animation: sh-spin 0.7s linear infinite;
+}
+
+@keyframes sh-spin{
+    to{ transform: rotate(360deg); }
+}
+
+/* ---- 输入行 ---- */
+.sh-input-row{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    box-sizing: border-box;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.sh-prompt{
+    flex: none;
+    font-family: var(--sh-mono);
+    font-size: 13px;
+    color: #7dd3a0;
+}
+
+.sh-input{
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #e8e8ea;
+    font-family: var(--sh-mono);
+    font-size: 13px;
+    caret-color: #7dd3a0;
+}
+
+.sh-input::placeholder{ color: #4b5563; }
+.sh-input:read-only{ color: #9aa0a6; }
+
+.sh-stop{
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(229, 72, 77, 0.15);
+    color: #f27a7d;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.sh-stop:hover{ background: rgba(229, 72, 77, 0.26); }
+.sh-stop svg{ width: 13px; height: 13px; }
+
+/* 跟随系统的「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce){
+    .shell-drawer{ animation: none; }
+    .sh-spinner{ animation: none; }
+}
+
+/* ---- 移动端：导航轨不显示，抽屉从 0 起算 ---- */
+@media (max-width: 768px){
+    .shell-overlay{
+        --sh-rail-w: 0px;
+    }
+
+    .sh-screen{ font-size: 12px; padding: 10px 12px; }
+    .sh-input-row{ padding: 8px 12px; }
+}

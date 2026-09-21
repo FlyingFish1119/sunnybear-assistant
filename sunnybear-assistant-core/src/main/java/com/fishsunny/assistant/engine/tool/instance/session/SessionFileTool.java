@@ -3,6 +3,9 @@ package com.fishsunny.assistant.engine.tool.instance.session;
 /*
  * @Usage Session 文件工具 —— 列出当前 session 文件目录下所有文件的元信息
  *
+ *        列目录逻辑已下沉到 SessionFileManager（与前端 /session/file/list 共用一份实现），
+ *        本工具只负责把结果排版成给模型看的表格；输出格式与排序规则保持改动前原样。
+ *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
  * @Date 2026/7/7
@@ -21,16 +24,12 @@ import org.springframework.util.StringUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 /**
  * Session 文件列表工具
@@ -81,40 +80,16 @@ public class SessionFileTool implements ToolHandler {
         }
 
         try {
-            // 收集文件元信息
-            List<FileMeta> files = new ArrayList<>();
-            try (Stream<Path> stream = Files.list(sessionFileDir)) {
-                for (Path child : stream.sorted().toList()) {
-                    try {
-                        BasicFileAttributes attrs = Files.readAttributes(child, BasicFileAttributes.class);
-                        files.add(new FileMeta(
-                                child.getFileName().toString(),
-                                child.toAbsolutePath().toString(),
-                                attrs.isDirectory(),
-                                attrs.isDirectory() ? -1 : attrs.size(),
-                                attrs.creationTime(),
-                                attrs.lastModifiedTime()
-                        ));
-                    } catch (IOException ignored) {
-                        files.add(new FileMeta(
-                                child.getFileName().toString(),
-                                child.toAbsolutePath().toString(),
-                                Files.isDirectory(child),
-                                -1,
-                                FileTime.from(Instant.EPOCH),
-                                FileTime.from(Instant.EPOCH)
-                        ));
-                    }
-                }
-            }
+            // 列目录逻辑已下沉到 SessionFileManager（与前端 /session/file/list 共用）
+            List<SessionFileManager.SessionFileEntry> files = sessionFileManager.listSessionFiles(sessionId, "");
 
             if (files.isEmpty()) {
                 return new ToolExecutor.ToolExecuteResponse(name(),
                         "会话文件目录 [" + sessionFileDir + "] 中暂无文件。");
             }
 
-            // 按修改时间降序排列
-            files.sort(Comparator.comparing(FileMeta::lastModifiedTime).reversed());
+            // 本工具的输出仍按修改时间降序，不跟随资源栏那份「目录在前」的排序
+            files.sort(Comparator.comparing(SessionFileManager.SessionFileEntry::lastModified).reversed());
 
             // 构建输出
             StringBuilder sb = new StringBuilder();
@@ -125,9 +100,9 @@ public class SessionFileTool implements ToolHandler {
             // 计算列宽
             int maxNameLen = "文件名".length();
             int maxSizeLen = "大小".length();
-            for (FileMeta f : files) {
-                maxNameLen = Math.max(maxNameLen, f.fileName().length());
-                maxSizeLen = Math.max(maxSizeLen, f.getSizeDisplay().length());
+            for (SessionFileManager.SessionFileEntry f : files) {
+                maxNameLen = Math.max(maxNameLen, f.name().length());
+                maxSizeLen = Math.max(maxSizeLen, formatSize(f).length());
             }
             maxNameLen = Math.min(maxNameLen, 60);
 
@@ -137,16 +112,16 @@ public class SessionFileTool implements ToolHandler {
             sb.repeat("-", maxNameLen + maxSizeLen + 42).append("\n");
 
             // 文件条目
-            for (FileMeta f : files) {
-                String displayName = f.fileName();
+            for (SessionFileManager.SessionFileEntry f : files) {
+                String displayName = f.name();
                 if (displayName.length() > 60) {
                     displayName = displayName.substring(0, 57) + "...";
                 }
                 sb.append(String.format(format,
                         displayName,
-                        f.getSizeDisplay(),
+                        formatSize(f),
                         f.directory() ? "DIR" : "FILE",
-                        f.getLastModifiedTime()));
+                        formatTime(f)));
             }
 
             return new ToolExecutor.ToolExecuteResponse(name(), sb.toString().trim());
@@ -165,27 +140,16 @@ public class SessionFileTool implements ToolHandler {
         return register;
     }
 
-    // ======================== 内部记录类 ========================
+    // ======================== 格式化辅助 ========================
 
-    private record FileMeta(
-            String fileName,
-            String absolutePath,
-            boolean directory,
-            long size,
-            FileTime creationTime,
-            FileTime lastModifiedTime
-    ) {
-        public String getSizeDisplay() {
-            if (directory) return "-";
-            if (size < 0) return "?";
-            return ToolKit.formatSize(size);
-        }
+    private String formatSize(SessionFileManager.SessionFileEntry entry) {
+        if (entry.directory()) return "-";
+        if (entry.size() < 0) return "?";
+        return ToolKit.formatSize(entry.size());
+    }
 
-        public String getLastModifiedTime() {
-            if (lastModifiedTime == null || lastModifiedTime.toMillis() == 0) {
-                return "未知";
-            }
-            return FORMATTER.format(Instant.ofEpochMilli(lastModifiedTime.toMillis()));
-        }
+    private String formatTime(SessionFileManager.SessionFileEntry entry) {
+        if (entry.lastModified() <= 0) return "未知";
+        return FORMATTER.format(Instant.ofEpochMilli(entry.lastModified()));
     }
 }

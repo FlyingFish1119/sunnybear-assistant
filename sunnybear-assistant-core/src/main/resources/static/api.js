@@ -220,6 +220,62 @@ const API = (function () {
             toggleUnreviewed: function (id) { return post('session/toggle-unreviewed?id=' + encodeURIComponent(id)); }
         },
 
+        /* ---------- 会话文件（文件资源栏） ---------- */
+        sessionFile: {
+            /** 列出某一层目录；dir 为空表示会话文件根目录 */
+            list: function (sessionId, dir) {
+                return get('session/file/list?sessionId=' + encodeURIComponent(sessionId)
+                    + '&dir=' + encodeURIComponent(dir || ''));
+            },
+            /** 读文本内容（UTF-8；超过 2MB 后端会拒绝并给出提示） */
+            read: function (sessionId, path) {
+                return get('session/file/read?sessionId=' + encodeURIComponent(sessionId)
+                    + '&path=' + encodeURIComponent(path));
+            },
+            /** 写回（整文件覆盖） */
+            write: function (sessionId, path, content) {
+                return post('session/file/write', { sessionId: sessionId, path: path, content: content });
+            },
+            /** 新建文件（同名已存在会失败，不覆盖） */
+            create: function (sessionId, path) {
+                return post('session/file/create', { sessionId: sessionId, path: path, content: '' });
+            },
+            /** 改名 / 移动 */
+            rename: function (sessionId, path, newPath) {
+                return post('session/file/rename', { sessionId: sessionId, path: path, newPath: newPath });
+            },
+            /** 删除文件或空目录 */
+            remove: function (sessionId, path) {
+                return post('session/file/delete', { sessionId: sessionId, path: path });
+            },
+            /**
+             * 文件原始内容的 URL（图片预览 / 下载）。
+             * 走 /session/file/raw 而不是 /file/proxy：后者只认 {sessionId}:{文件名} 的引用形态，不吃子目录。
+             */
+            rawUrl: function (sessionId, path) {
+                return BASE_PATH + 'session/file/raw?sessionId=' + encodeURIComponent(sessionId)
+                    + '&path=' + encodeURIComponent(path);
+            }
+        },
+
+        /* ---------- Shell 终端 ---------- */
+        shell: {
+            /** 平台信息：默认工作目录、系统名、shell 名 */
+            info: function () { return get('shell/info'); },
+            /** 启动命令，立即返回 { jobId, cwd, startedAt }；进程在后台跑，不受请求超时限制 */
+            exec: function (command, cwd) {
+                return post('shell/exec', { command: command, cwd: cwd });
+            },
+            /** 按 offset 增量拉输出；返回体里的 offset 是下次该传的值 */
+            output: function (jobId, offset) {
+                return get('shell/output?jobId=' + encodeURIComponent(jobId) + '&offset=' + (offset || 0));
+            },
+            /** 强杀任务（含子进程） */
+            kill: function (jobId) {
+                return post('shell/kill?jobId=' + encodeURIComponent(jobId));
+            }
+        },
+
         /* ---------- 定时任务 ---------- */
         cronJob: {
             list: function () { return get('cron-job/list'); },

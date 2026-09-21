@@ -1,0 +1,101 @@
+/* ============================================================
+   Nav Rail —— 左侧竖向导航轨（图标按钮条）
+   ------------------------------------------------------------
+   位置：#app 内最左侧，会话侧边栏外侧的常驻竖栏
+   视觉：主色铺底 + 纵向渐变做层次；按钮 40×40 圆角方块，
+        hover 浮白，选中为白色药丸 + 主色图标
+   注：移动端（≤768px）侧边栏已变抽屉，竖轨隐藏，不占屏宽
+   ============================================================ */
+
+.nav-rail{
+    position: relative;                /* 自成层，避免被消息区里的定位元素压住 */
+    z-index: 20;
+    flex: none;
+    width: 56px;
+    height: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 0 10px;
+    /* 兜底底色：mainColor 未传时退回全局主题色；行内 style 优先级更高 */
+    background-color: var(--main-color, lightsalmon);
+    /* 主色之上叠一层纵向渐变，把竖轨和侧边栏分成两条 */
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.14));
+    box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.08);
+}
+
+/* 按钮列表：竖直排布；按钮变多时自己滚，不改结构 */
+.nav-rail-list{
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+}
+
+.nav-rail-list::-webkit-scrollbar{
+    display: none;
+}
+
+.nav-rail-btn{
+    flex: none;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    color: rgba(51, 51, 51, 0.72);
+    cursor: pointer;
+    transition: background var(--transition-fast, 0.15s ease),
+                color var(--transition-fast, 0.15s ease),
+                transform var(--transition-fast, 0.15s ease);
+}
+
+.nav-rail-btn svg{
+    width: 20px;
+    height: 20px;
+    display: block;
+}
+
+.nav-rail-btn:hover{
+    background: rgba(255, 255, 255, 0.82);
+    color: #333;
+}
+
+.nav-rail-btn:active{
+    transform: scale(0.94);
+}
+
+.nav-rail-btn:focus-visible{
+    outline: 2px solid rgba(0, 0, 0, 0.28);
+    outline-offset: 1px;
+}
+
+/* 选中态：白色药丸 + 主色图标
+   （主色往往偏浅，往深压一截才和对白底对比得住） */
+.nav-rail-btn.active{
+    background: #fff;
+    color: color-mix(in srgb, var(--nav-rail-accent, #FFA07A) 72%, #2B241F);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+}
+
+/* 跟随系统的「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce){
+    .nav-rail-btn{
+        transition: none;
+    }
+}
+
+/* 移动端：侧边栏已是抽屉，竖轨隐藏，不挤占屏宽 */
+@media (max-width: 768px){
+    .nav-rail{
+        display: none;
+    }
+}

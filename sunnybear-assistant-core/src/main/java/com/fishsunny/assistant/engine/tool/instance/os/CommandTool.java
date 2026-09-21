@@ -18,6 +18,7 @@ import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
+import com.fishsunny.assistant.utils.ProcessUtils;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -238,8 +239,12 @@ public class CommandTool implements ToolHandler {
             try {
                 result = future.get(settings.getTimeout(), TimeUnit.SECONDS);
             } catch (TimeoutException e) {
-                process.destroyForcibly();
-                throw new ToolExecutor.ToolExecuteException("命令执行超时（" + settings.getTimeout() + "秒），如果该命令打开了一个进程用于运行GUI等，那么这个报错是正常。");
+                // 读输出的任务还挂在管道上，先取消
+                future.cancel(true);
+                // 连子孙一起杀：只 destroy 父进程的话，cmd.exe 派生的子进程会继续跑完，
+                // 于是出现「工具已经报超时，命令却还在后台改文件」的怪象
+                ProcessUtils.killTree(process);
+                throw new ToolExecutor.ToolExecuteException("命令执行超时（" + settings.getTimeout() + "秒），已终止该命令及其子进程。如果该命令打开了一个进程用于运行GUI等，那么这个报错是正常。");
             }
 
             int exitCode = process.waitFor();

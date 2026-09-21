@@ -106,6 +106,33 @@
     line-height: 1.6;
 }
 
+/* ---- 可选输入框（show() 传了 inputValue 才出现） ---- */
+.confirm-input-wrap {
+    padding: 14px 26px 0;
+}
+
+.confirm-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid #e4e7ed;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    color: #333;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.confirm-input::placeholder {
+    color: #bbb;
+}
+
+.confirm-input:focus {
+    border-color: var(--main-color, lightsalmon);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--main-color, #FFA07A) 18%, transparent);
+}
+
 /* ---- footer ---- */
 .confirm-footer {
     display: flex;
@@ -202,6 +229,10 @@
 
     .confirm-subtitle {
         font-size: 13px;
+    }
+
+    .confirm-input-wrap {
+        padding: 12px 16px 0;
     }
 
     .confirm-footer {
