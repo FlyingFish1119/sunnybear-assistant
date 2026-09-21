@@ -177,6 +177,7 @@ public class ChatMessage {
         return this;
     }
 
+    /** 用文本重建整个 contents（新建消息用：正文占首块，其后由调用方追加附件） */
     public ChatMessage text(String text) {
         List<MessageContent> contents = new ArrayList<>();
         contents.add(new TextContent(text));
@@ -184,9 +185,50 @@ public class ChatMessage {
         return this;
     }
 
+    /**
+     * 取正文，即 contents 的首块文本。
+     * <p>语义契约：user / assistant 消息的 {@code contents[0]} 恒为正文文本块（可编辑），
+     * 其后的文本块与附件块只作展示，不参与编辑。与 {@link #resolveText()} 的区别是后者
+     * 会把所有文本块拼起来（供模型解析用），本条只认首块。
+     *
+     * @return 首块文本；首块不是文本或没有块时返回空串
+     */
+    public String resolveBodyText() {
+        if (contents == null || contents.isEmpty()) {
+            return "";
+        }
+        MessageContent first = contents.getFirst();
+        return first instanceof TextContent textContent && textContent.getContent() != null
+                ? textContent.getContent() : "";
+    }
+
+    /**
+     * 覆写正文（contents 首块文本），其余块原样保留。
+     * <p>与 {@link #text(String)} 的区别：{@code text()} 会重建整个 contents，用于新建消息；
+     * 本方法只动首块，用于编辑既有消息，避免丢掉附件或追加的展示块。
+     */
+    public ChatMessage bodyText(String text) {
+        if (contents == null) {
+            contents = new ArrayList<>();
+        }
+        if (contents.isEmpty() || !(contents.getFirst() instanceof TextContent)) {
+            contents.addFirst(new TextContent(text));
+        } else {
+            contents.set(0, new TextContent(text));
+        }
+        return this;
+    }
+
     public String resolveText() {
         if (contents == null) {
             throw new IllegalArgumentException("contents cannot be null");
+        }
+        int lastTextIndex = -1;
+        for (int i = 0; i < contents.size(); i++) {
+            MessageContent content = contents.get(i);
+            if (content instanceof TextContent) {
+                lastTextIndex = i;
+            }
         }
 
         StringBuilder text = new StringBuilder();
@@ -195,7 +237,7 @@ public class ChatMessage {
             if (content instanceof TextContent textContent) {
                 String append = textContent.getContent() == null ? "" : textContent.getContent();
                 text.append(append);
-                if (i < contents.size() - 1) {
+                if (i < lastTextIndex) {
                     text.append("\n\n");
                 }
             }

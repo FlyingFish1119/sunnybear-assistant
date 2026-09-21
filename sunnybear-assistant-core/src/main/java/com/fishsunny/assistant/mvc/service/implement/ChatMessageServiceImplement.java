@@ -9,8 +9,6 @@ package com.fishsunny.assistant.mvc.service.implement;
  */
 
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.mvc.dao.ChatMessageRepository;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.validator.ChatMessageValidator;
@@ -300,9 +298,8 @@ public class ChatMessageServiceImplement implements ChatMessageService {
             throw new IllegalArgumentException("只能编辑助手消息，当前消息角色为: " + message.getRole());
         }
 
-        List<MessageContent> contents = new ArrayList<>();
-        contents.add(new TextContent(content));
-        message.setContents(contents);
+        // 只覆写正文块（首块），附件与追加的展示块原样保留
+        message.bodyText(content);
 
         chatMessageRepository.update(message);
     }

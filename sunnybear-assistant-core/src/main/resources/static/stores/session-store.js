@@ -161,12 +161,22 @@ const SessionStore = (function () {
         }, extra)));
     }
 
-    /** 取数组最后一项（保持与旧 Utils.getLast 一致） */
-    function getLast(arr) {
-        if (arr === null || arr.length === 0) {
-            return null;
+    /**
+     * 取消息的正文块（contents[0]）并保证其存在。
+     * 语义契约：正文恒为首块且必须是 text；其后的块（附件 / 追加文本）只展示不编辑。
+     * 首块不是 text 时（历史脏数据）在首位补一个空正文块，绝不往附件块里写正文。
+     */
+    function ensureBodyContent(message) {
+        if (!Array.isArray(message.contents)) {
+            message.contents = [];
         }
-        return arr[arr.length - 1];
+        const first = message.contents[0];
+        if (first && first.type === 'text') {
+            return first;
+        }
+        const body = { type: 'text', content: '' };
+        message.contents.unshift(body);
+        return body;
     }
 
     /* ================= 流式文本合帧 ================= */
@@ -632,10 +642,8 @@ const SessionStore = (function () {
                 streamingMessage.reasoningContent += response.reasoningContent;
             }
             if (response.text) {
-                const lastContent = getLast(streamingMessage.contents);
-                if (lastContent) {
-                    lastContent.content += response.text;
-                }
+                // 正文恒写首块：末块可能是附件，写末尾会把正文塞进附件对象里
+                ensureBodyContent(streamingMessage).content += response.text;
             }
             if (response.messages && response.messages.length > 0) {
                 for (let index = 0; index < response.messages.length; index++) {
@@ -851,9 +859,10 @@ const SessionStore = (function () {
             }
             // 斜杠指令等场景：没有 chunk 流，文字直接附在 init_assistant 里
             if (response.text) {
-                const lastContent = getLast(streamingMessage.contents);
-                if (lastContent && !lastContent.content) {
-                    lastContent.content = response.text;
+                // 同上：斜杠指令等场景直接把文字附在正文首块上，仅当正文为空时填充
+                const bodyContent = ensureBodyContent(streamingMessage);
+                if (!bodyContent.content) {
+                    bodyContent.content = response.text;
                 }
             }
             streamingMessage._v = (streamingMessage._v || 0) + 1;
@@ -874,8 +883,12 @@ const SessionStore = (function () {
             // 而服务端此刻已把那条分支回滚为活跃 —— 必须重拉历史把消息补回来。
             // 成功路径不会走到这里，所以正常轮次只多一次 filter，没有额外请求
             this.refreshHistoryOnError(errSessionId);
-            const errText = (response.messages && response.messages.length > 0)
-                ? response.messages[0].contents?.map(c => c.content).join('')
+            // 错误文案取错误消息的正文（首块）：不要遍历所有 content 拼，
+            // 非文本块的 content 是 undefined，拼进去会得到 "xxxundefined"
+            const errMsg = response.messages && response.messages[0];
+            const errBody = errMsg && errMsg.contents && errMsg.contents[0];
+            const errText = errBody && errBody.type === 'text' && errBody.content
+                ? errBody.content
                 : 'AI 服务返回了一个错误，请稍后重试';
             return errText || '未知错误';
         },

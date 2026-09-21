@@ -445,7 +445,8 @@ public class WorldGroupChatService {
                 .setBeforeSaveAssistantProvider((chatMessage -> {
                     String text = chatMessage.resolveText();
                     if (text.startsWith(listener + ":") || text.startsWith(listener + "：")) {
-                        chatMessage.text(text.substring(listener.length() + 1).trim());
+                        // 只改正文首块：text() 会重建整个 contents，把附件与追加的展示块丢掉
+                        chatMessage.bodyText(text.substring(listener.length() + 1).trim());
                     }
                     return chatMessage;
                 }));
@@ -497,7 +498,8 @@ public class WorldGroupChatService {
                 .setBeforeSaveAssistantProvider((chatMessage -> {
                     String text = chatMessage.resolveText();
                     if (text.startsWith(narratorName + ":") || text.startsWith(narratorName + "：")) {
-                        chatMessage.text(text.substring(narratorName.length() + 1).trim());
+                        // 只改正文首块：text() 会重建整个 contents，把附件与追加的展示块丢掉
+                        chatMessage.bodyText(text.substring(narratorName.length() + 1).trim());
                     }
                     return chatMessage;
                 }));

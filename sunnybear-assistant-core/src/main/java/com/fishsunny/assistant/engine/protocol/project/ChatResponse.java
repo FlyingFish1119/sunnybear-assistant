@@ -136,13 +136,10 @@ public class ChatResponse implements AIResponse {
         return stringBuilder.isEmpty() ? null : stringBuilder.toString();
     }
 
+    /** 把文本前置到各消息的正文块（contents 首块）前；追加的展示块不受影响 */
     public void appendTextAtStart(String text) {
         for (ChatMessage message : messages) {
-            for (MessageContent content : message.getContents()) {
-                if (content instanceof TextContent textContent && textContent.getContent() != null) {
-                    textContent.setContent(text + textContent.getContent());
-                }
-            }
+            message.bodyText(text + message.resolveBodyText());
         }
     }
 

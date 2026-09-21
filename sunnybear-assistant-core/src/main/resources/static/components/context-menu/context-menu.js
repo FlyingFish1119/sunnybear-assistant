@@ -120,12 +120,9 @@ const ContextMenu = {
             }
             if (!msg || !Array.isArray(msg.contents)) return '';
 
-            var parts = [];
-            for (var j = 0; j < msg.contents.length; j++) {
-                var c = msg.contents[j];
-                if (c && c.type === 'text' && c.content) parts.push(c.content);
-            }
-            return parts.join('\n\n').trim();
+            // 只取正文（首块）：其后的追加文本块与附件只展示，不进复制内容
+            var first = msg.contents[0];
+            return (first && first.type === 'text' && first.content) ? String(first.content).trim() : '';
         },
 
         /**

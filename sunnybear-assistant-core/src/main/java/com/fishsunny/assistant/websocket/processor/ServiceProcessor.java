@@ -20,7 +20,6 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
@@ -452,14 +451,12 @@ public class ServiceProcessor {
             throw new UserException("只能编辑用户消息，当前消息角色为: " + oldUserMsg.getRole());
         }
 
-        // 提取旧消息中的非文本内容（文件附件），编辑时保留
+        // 编辑只替换正文（首块）：首块之后的全部内容原样带入新消息，
+        // 包括文件附件与只作展示、不参与编辑的追加文本块
         List<MessageContent> preservedContents = new ArrayList<>();
-        if (oldUserMsg.getContents() != null) {
-            for (MessageContent c : oldUserMsg.getContents()) {
-                if (!(c instanceof TextContent)) {
-                    preservedContents.add(c);
-                }
-            }
+        List<MessageContent> oldContents = oldUserMsg.getContents();
+        if (oldContents != null && oldContents.size() > 1) {
+            preservedContents.addAll(oldContents.subList(1, oldContents.size()));
         }
 
         // 获取旧用户消息的 parentId（可能为 null，表示根消息）

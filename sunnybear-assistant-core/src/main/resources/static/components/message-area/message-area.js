@@ -21,12 +21,6 @@
  *           MermaidUtils、auto-follow 指令、auto-resize-textarea 组件。
  */
 
-/** 取数组最后一项（判断"思考中"用） */
-function getLast(arr) {
-    if (arr === null || arr.length === 0) return null;
-    return arr[arr.length - 1];
-}
-
 /** 建议提问的图标：后端只回文本，前端按顺序轮换配图标 */
 const SUGGESTION_ICONS = ['pen-line', 'file-text', 'lightbulb', 'compass'];
 
@@ -170,7 +164,7 @@ const MessageArea = {
                             ></auto-resize-textarea>
                         </div>
                         <!-- 正常模式：显示内容 -->
-                        <div v-else v-for="(content, idx) in msg.contents" :key="idx">
+                        <div v-else v-for="(content, idx) in msg.contents" :key="idx" class="message-area-content-block">
                             <!-- 流式期间按块渲染：已闭合的代码块 / 表格 / 列表不会再被重建，
                                  复制按钮、滚动位置、文本选中都不会被打断 -->
                             <div v-if="content.type === 'text' && isStreamingMsg(msg)" class="markdown-body md-streaming">
@@ -620,6 +614,18 @@ const MessageArea = {
             return key;
         },
 
+        /**
+         * 取消息正文（contents[0] 的文本）。
+         * 语义契约：正文恒为首块且可编辑；其后的文本块与附件只展示，不参与编辑，
+         * 因此编辑草稿、重发等"正文操作"一律只认首块，不拼接其它文本块。
+         * @param {object} msg - 消息对象
+         * @returns {string} 正文文本；首块不是文本时返回空串
+         */
+        bodyText(msg) {
+            const first = msg && msg.contents && msg.contents[0];
+            return first && first.type === 'text' ? (first.content || '') : '';
+        },
+
         /** 正文 Markdown（缓存到 content 对象的 text 槽：历史消息只解析一次） */
         renderContent(content) {
             return memoHtml(content, 'text', content.content, this.$md.render);
@@ -743,13 +749,7 @@ const MessageArea = {
                 ElementPlus.ElMessage.error('未找到对应的用户消息');
                 return;
             }
-            let userText = '';
-            if (parentMsg.contents && parentMsg.contents.length > 0) {
-                userText = parentMsg.contents
-                    .filter(c => c.type === 'text')
-                    .map(c => c.content)
-                    .join('\n');
-            }
+            const userText = this.bodyText(parentMsg);
             if (!userText) {
                 ElementPlus.ElMessage.error('用户消息内容为空');
                 return;
@@ -762,16 +762,9 @@ const MessageArea = {
          * @param {object} msg - 用户消息对象
          */
         startEdit(msg) {
-            let userText = '';
-            if (msg.contents && msg.contents.length > 0) {
-                userText = msg.contents
-                    .filter(c => c.type === 'text')
-                    .map(c => c.content)
-                    .join('\n');
-            }
             this.currentEditId = msg.id;
             this.editTargetRole = 'user';
-            this.editDraft = userText;
+            this.editDraft = this.bodyText(msg);
             this.focusEditTextarea();
         },
 
@@ -817,16 +810,9 @@ const MessageArea = {
          * @param {object} msg - 助手消息对象
          */
         startAssistantEdit(msg) {
-            let assistantText = '';
-            if (msg.contents && msg.contents.length > 0) {
-                assistantText = msg.contents
-                    .filter(c => c.type === 'text')
-                    .map(c => c.content)
-                    .join('\n');
-            }
             this.currentEditId = msg.id;
             this.editTargetRole = 'assistant';
-            this.editDraft = assistantText;
+            this.editDraft = this.bodyText(msg);
             this.focusEditTextarea();
         },
 
@@ -843,13 +829,11 @@ const MessageArea = {
                 const result = await API.message.editAssistant({ id: msg.id, content: this.editDraft });
                 if (result.status === 200) {
                     const targetMsg = this.currentMessages.find(m => m.id === msg.id);
-                    if (targetMsg && targetMsg.contents && targetMsg.contents.length > 0) {
-                        const textContent = targetMsg.contents.find(c => c.type === 'text');
-                        if (textContent) {
-                            textContent.content = this.editDraft;
-                        } else {
-                            targetMsg.contents.push({ type: 'text', content: this.editDraft });
-                        }
+                    if (targetMsg && Array.isArray(targetMsg.contents)) {
+                        // 只改正文首块：附件与追加的展示块原样保留，与后端 editAssistantMessage 同口径
+                        const others = targetMsg.contents.slice(1);
+                        targetMsg.contents.splice(0, targetMsg.contents.length,
+                            { type: 'text', content: this.editDraft }, ...others);
                         // 编辑可能等长替换（长度键检测不到），显式标记以触发该分组重建
                         targetMsg._v = (targetMsg._v || 0) + 1;
                     }
@@ -897,17 +881,8 @@ const MessageArea = {
          * @param {object} msg - 消息对象
          */
         copyMessage(msg) {
-            let text = '';
-            if (msg.contents && msg.contents.length > 0) {
-                text = msg.contents
-                    .filter(c => c.type === 'text')
-                    .map(c => c.content)
-                    .join('\n');
-            }
-            if (msg.role === 'assistant' && msg.reasoningContent) {
-                text = '思考过程:\n' + msg.reasoningContent + (text ? '\n\n' + text : '');
-            }
-            this.writeToClipboard(text);
+            // 只复制正文（首块）：追加的展示块与思考过程都不进剪贴板
+            this.writeToClipboard(this.bodyText(msg));
         },
 
         /**
@@ -961,8 +936,8 @@ const MessageArea = {
         isThinkingMsg(msg) {
             if (!this.isStreaming || !(msg.role === 'assistant' && msg.id && msg.id.startsWith('streaming_'))) return false;
             const hasReasoning = msg.reasoningContent != null && msg.reasoningContent.length > 0;
-            const lastContent = getLast(msg.contents);
-            const bodyStarted = lastContent && lastContent.content && lastContent.content.length > 0;
+            // 正文是否开始看首块（contents[0]）：末尾可能是附件，看末块会永远判成"正文还没开始"
+            const bodyStarted = this.bodyText(msg).length > 0;
             return hasReasoning && !bodyStarted;
         },
 

@@ -203,7 +203,12 @@ public class ContextCompressor {
         return -1;
     }
 
-    /** 把摘要块前置写入用户消息的文本内容（没有文本内容时新建一条） */
+    /**
+     * 把摘要块前置写入用户消息的文本内容（没有文本内容时新建一条）。
+     * <p>说明：压缩链路按「首块 = 正文」的语义顺带改写正文（摘要并入首块文本），
+     * 属于压缩自身的行为，不受消息正文编辑语义的约束；附件与追加的展示块在压缩里
+     * 不做保留承诺（见 {@code truncateRetainedToolMessages}）。
+     */
     private void prependSummary(ChatMessage userMessage, String summary) {
         String block = SUMMARY_BLOCK_HEADER + summary.trim() + "\n\n——————————\n";
         List<MessageContent> contents = userMessage.getContents();
@@ -318,6 +323,7 @@ public class ContextCompressor {
                 continue;
             }
             String truncated = truncate(text, RETAINED_TOOL_TRUNCATE_CHARS);
+            // 压缩策略：工具结果超长时整体重建为单块，附件不做保留承诺（与正文编辑语义无关）
             message.setContents(new ArrayList<>(List.of(new TextContent(truncated))));
             changed = true;
             try {
