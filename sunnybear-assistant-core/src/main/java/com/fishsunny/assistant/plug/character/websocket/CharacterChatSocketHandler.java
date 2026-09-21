@@ -101,8 +101,8 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
      * BATTLE_END 照常重放，用于重建战斗战场叙事。
      */
     @Override
-    protected boolean shouldReplay(String sessionId, String eventPayload) {
-        if (!super.shouldReplay(sessionId, eventPayload)) {
+    protected boolean shouldReplay(String sessionId, String eventPayload, int index, List<SessionMessageBus.Event> events) {
+        if (!super.shouldReplay(sessionId, eventPayload, index, events)) {
             return false;
         }
         if (eventPayload.startsWith(BattleControlSign.SIGN_BATTLE_TURN)) {
