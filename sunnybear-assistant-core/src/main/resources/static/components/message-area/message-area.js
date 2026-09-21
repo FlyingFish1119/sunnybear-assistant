@@ -298,7 +298,7 @@ const MessageArea = {
                         </span>
                     </div>
                     <div :class="['collapsible-content', { collapsed: isCollapsed(msg.id, 'tool') }]" :data-collapse-key="msg.id + '_tool'">
-                        <div v-for="(content, idx) in msg.contents" :key="idx">
+                        <div v-for="(content, idx) in msg.contents" :key="idx" class="message-area-content-block">
                             <div v-if="content.type === 'text'">
                                 <template v-if="msg.extension && msg.extension.status === 'executing'">
                                     <div class="message-area-bubble-tools-meta">
@@ -306,7 +306,8 @@ const MessageArea = {
                                         <div style="padding: 0 0 1px 4px; color: #faad14">[{{msg.name}}]执行中…</div>
                                     </div>
                                 </template>
-                                <template v-else>
+                                <!-- 工具结果块：contents[0] 的结果 JSON，只有它能判成功/失败 -->
+                                <template v-else-if="$toolParsed(content)">
                                     <span v-if="$toolParsed(content).succeed" class="message-area-bubble-tools-meta">
                                         <i style="width: 12px; height: 12px; color: #52c41a" data-lucide="circle-check"></i>
                                         <span style="padding: 0 0 1px 4px; color: #52c41a">[{{msg.name}}]执行成功</span>
@@ -317,6 +318,8 @@ const MessageArea = {
                                     </div>
                                     <div class="markdown-body" v-html="renderToolResult(content)"></div>
                                 </template>
+                                <!-- 追加的展示文本块（后台任务通知等）：不是工具结果 JSON，只按纯文本渲染 -->
+                                <div v-else class="markdown-body" v-html="renderContent(content)"></div>
                             </div>
                             <div v-else-if="content.type === 'image'" class="message-attachment-image">
                                 <img :src="$fileUrl.proxy(content.url)" @click.stop="$fileUrl.previewImage(content.url)" />
@@ -650,21 +653,30 @@ const MessageArea = {
         /**
          * 带缓存的工具结果 JSON 解析（模板中使用）。
          * 避免每次 Vue 更新都对同一 content 重复 JSON.parse。
+         *
+         * 工具消息的 contents[0] 是工具结果 JSON；其后的文本块是追加的展示内容
+         * （后台任务完成通知等），不是 JSON。解析不出来一律返回 null，交给模板按纯文本
+         * 渲染——这里绝不能抛：渲染期异常会让 Vue 把整个消息区替换成空节点，页面被顶飞。
          * @param {object} content - 消息的 content 对象
-         * @returns {object} 解析后的工具结果
+         * @returns {object|null} 解析后的工具结果；不是工具结果 JSON 时返回 null
          */
         $toolParsed(content) {
             let raw = content.content;
             if (content._rawJson !== raw) {
                 content._rawJson = raw;
-                content._parsed = JSON.parse(raw);
+                try {
+                    content._parsed = raw ? JSON.parse(raw) : null;
+                } catch (e) {
+                    content._parsed = null;
+                }
             }
-            return content._parsed;
+            return content._parsed || null;
         },
 
         /**
          * 获取工具消息的聚合执行状态（模板中使用）。
          * 在折叠的头部显示成功/失败图标和颜色。
+         * 非 JSON 的追加文本块只是展示内容，不参与状态判定。
          * @param {object} msg - 工具消息对象
          * @returns {{ succeed: boolean, icon: string, color: string, text: string }}
          */
@@ -677,17 +689,12 @@ const MessageArea = {
             }
             let allSucceed = true;
             for (let content of msg.contents) {
-                if (content.type === 'text') {
-                    try {
-                        let parsed = this.$toolParsed(content);
-                        if (!parsed.succeed) {
-                            allSucceed = false;
-                            break;
-                        }
-                    } catch (e) {
-                        allSucceed = false;
-                        break;
-                    }
+                if (content.type !== 'text') continue;
+                let parsed = this.$toolParsed(content);
+                if (!parsed) continue;
+                if (!parsed.succeed) {
+                    allSucceed = false;
+                    break;
                 }
             }
             return allSucceed
