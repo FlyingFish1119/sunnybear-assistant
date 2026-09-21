@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.fishsunny.assistant.constants.ContentTypeVariable;
+import com.fishsunny.assistant.engine.ContentType;
 
 import java.util.*;
 
@@ -93,7 +93,7 @@ public class ObjectUtils {
 
     static {
         // 图片
-        putExtensions(ContentTypeVariable.IMAGE,
+        putExtensions(ContentType.IMAGE,
                 "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico", "tiff", "tif", "heic", "heif");
         putMimeTypes("image/png", "png");
         putMimeTypes("image/jpeg", "jpg", "jpeg");
@@ -106,7 +106,7 @@ public class ObjectUtils {
         putMimeTypes("image/heic", "heic", "heif");
 
         // 音频
-        putExtensions(ContentTypeVariable.AUDIO,
+        putExtensions(ContentType.AUDIO,
                 "mp3", "wav", "ogg", "flac", "aac", "wma", "m4a", "opus", "weba");
         putMimeTypes("audio/mpeg", "mp3");
         putMimeTypes("audio/wav", "wav");
@@ -119,7 +119,7 @@ public class ObjectUtils {
         putMimeTypes("audio/webm", "weba");
 
         // 视频
-        putExtensions(ContentTypeVariable.VIDEO,
+        putExtensions(ContentType.VIDEO,
                 "mp4", "webm", "avi", "mov", "wmv", "flv", "mkv", "m4v", "3gp");
         putMimeTypes("video/mp4", "mp4");
         putMimeTypes("video/webm", "webm");
@@ -132,7 +132,7 @@ public class ObjectUtils {
         putMimeTypes("video/3gpp", "3gp");
 
         // 文本
-        putExtensions(ContentTypeVariable.TEXT,
+        putExtensions(ContentType.TEXT,
                 "txt", "md", "csv", "log", "xml", "json", "yaml", "yml",
                 "html", "htm", "css", "js", "ts", "jsx", "tsx",
                 "java", "py", "c", "cpp", "h", "go", "rs", "sh", "bat", "sql");
@@ -160,7 +160,7 @@ public class ObjectUtils {
         putMimeTypes("text/x-sql", "sql");
 
         // 文档（归入 FILE）
-        putExtensions(ContentTypeVariable.FILE,
+        putExtensions(ContentType.FILE,
                 "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
                 "zip", "rar", "7z", "tar", "gz");
         putMimeTypes("application/pdf", "pdf");
@@ -205,7 +205,7 @@ public class ObjectUtils {
     /**
      * 运行时动态注册后缀映射，方便扩展而不改静态块
      *
-     * @param type       类型常量 {@link ContentTypeVariable}
+     * @param type       类型常量 {@link ContentType}
      * @param extensions 要注册的后缀
      */
     public static void registerExtension(String type, String... extensions) {
@@ -214,19 +214,19 @@ public class ObjectUtils {
 
     /**
      * 根据文件名（或后缀）判断文件类型
-     * <p>后缀匹配 → 类型常量，未匹配默认返回 {@link ContentTypeVariable#FILE}
+     * <p>后缀匹配 → 类型常量，未匹配默认返回 {@link ContentType#FILE}
      *
      * @param fileName 文件名，如 "photo.png"、"report.pdf"，也可直接传后缀如 "mp3"
      * @return 类型常量: IMAGE / AUDIO / VIDEO / TEXT / FILE
      */
     public static String detectFileTypeByExtension(String fileName) {
         if (fileName == null || fileName.isEmpty()) {
-            return ContentTypeVariable.FILE;
+            return ContentType.FILE;
         }
         String ext = fileName.contains(".")
                 ? fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase()
                 : fileName.toLowerCase();
-        return EXTENSION_TYPE_MAP.getOrDefault(ext, ContentTypeVariable.FILE);
+        return EXTENSION_TYPE_MAP.getOrDefault(ext, ContentType.FILE);
     }
 
     /**
@@ -238,13 +238,13 @@ public class ObjectUtils {
      */
     public static String detectFileType(String dataUri) {
         if (dataUri == null || !dataUri.startsWith("data:")) {
-            return ContentTypeVariable.FILE;
+            return ContentType.FILE;
         }
         // data:image/png;base64,...  → 取 image/png
         int colonIdx = dataUri.indexOf(':');
         int semicolonIdx = dataUri.indexOf(';');
         if (colonIdx < 0 || semicolonIdx <= colonIdx) {
-            return ContentTypeVariable.FILE;
+            return ContentType.FILE;
         }
         String mimeType = dataUri.substring(colonIdx + 1, semicolonIdx);
         // image/png → png,  text/plain → txt, application/pdf → pdf

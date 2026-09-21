@@ -11,6 +11,7 @@ package com.fishsunny.assistant.engine.tool.framework;
  * @Author FlyingFish-SunnyBear
  */
 
+import com.fishsunny.assistant.engine.ContentType;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -39,11 +40,14 @@ public interface MultimodalResultAble {
             throw new IOException("无法确定当前会话，多模态结果无法落盘");
         }
         for (MultimodalContent content : contents) {
+            if (content.getType().equals(ContentType.TEXT)) {
+                continue;
+            }
             byte[] bytes = decodeBase64(content.getData());
             if (bytes == null) {
                 continue;
             }
-            content.setPath(sessionFileManager.writeSessionFile(sessionId, content.getPath(), bytes));
+            content.setPathOrText(sessionFileManager.writeSessionFile(sessionId, content.getPathOrText(), bytes));
         }
     }
 

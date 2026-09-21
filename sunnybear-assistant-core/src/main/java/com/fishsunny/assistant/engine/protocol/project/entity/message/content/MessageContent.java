@@ -10,7 +10,7 @@ package com.fishsunny.assistant.engine.protocol.project.entity.message.content;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fishsunny.assistant.constants.ContentTypeVariable;
+import com.fishsunny.assistant.engine.ContentType;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.audio.AudioContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.file.FileContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
@@ -30,11 +30,11 @@ import java.util.List;
         property = "type"  // 使用 JSON 字段区分类型
 )
 @JsonSubTypes({
-        @JsonSubTypes.Type(value = TextContent.class, name = ContentTypeVariable.TEXT),
-        @JsonSubTypes.Type(value = ImageContent.class, name = ContentTypeVariable.IMAGE),
-        @JsonSubTypes.Type(value = VideoContent.class, name = ContentTypeVariable.VIDEO),
-        @JsonSubTypes.Type(value = AudioContent.class, name = ContentTypeVariable.AUDIO),
-        @JsonSubTypes.Type(value = FileContent.class, name = ContentTypeVariable.FILE)
+        @JsonSubTypes.Type(value = TextContent.class, name = ContentType.TEXT),
+        @JsonSubTypes.Type(value = ImageContent.class, name = ContentType.IMAGE),
+        @JsonSubTypes.Type(value = VideoContent.class, name = ContentType.VIDEO),
+        @JsonSubTypes.Type(value = AudioContent.class, name = ContentType.AUDIO),
+        @JsonSubTypes.Type(value = FileContent.class, name = ContentType.FILE)
 })
 public abstract class MessageContent {
     public static List<MessageContent> files(List<String> filePaths) {
@@ -45,13 +45,13 @@ public abstract class MessageContent {
         for (String fileName: filePaths) {
             String type = ObjectUtils.detectFileTypeByExtension(fileName);
             switch (type) {
-                case ContentTypeVariable.IMAGE:
+                case ContentType.IMAGE:
                     messageContents.add(new ImageContent(fileName));
                     break;
-                case ContentTypeVariable.VIDEO:
+                case ContentType.VIDEO:
                     messageContents.add(new VideoContent(fileName));
                     break;
-                case ContentTypeVariable.AUDIO:
+                case ContentType.AUDIO:
                     messageContents.add(new AudioContent(fileName));
                     break;
                 default:
@@ -70,15 +70,15 @@ public abstract class MessageContent {
             return messageContents;
         }
         for (MultimodalContent content : contents) {
-            String data = content.getPath();
+            String data = content.getPathOrText();
             if (!StringUtils.hasText(data)) {
                 continue;
             }
             switch (content.getType() == null ? "" : content.getType()) {
-                case ContentTypeVariable.IMAGE -> messageContents.add(new ImageContent(data));
-                case ContentTypeVariable.AUDIO -> messageContents.add(new AudioContent(data));
-                case ContentTypeVariable.VIDEO -> messageContents.add(new VideoContent(data));
-                case ContentTypeVariable.TEXT -> messageContents.add(new TextContent(data));
+                case ContentType.IMAGE -> messageContents.add(new ImageContent(data));
+                case ContentType.AUDIO -> messageContents.add(new AudioContent(data));
+                case ContentType.VIDEO -> messageContents.add(new VideoContent(data));
+                case ContentType.TEXT -> messageContents.add(new TextContent(data));
                 default -> messageContents.add(new FileContent(data));
             }
         }

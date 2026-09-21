@@ -10,6 +10,7 @@ package com.fishsunny.assistant.engine.tool;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.engine.ContentType;
 import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.cancel.ChatCancelContext;
 import com.fishsunny.assistant.engine.cancel.ChatCancelToken;
@@ -168,9 +169,11 @@ public class ToolExecutor {
     private void applyResponseHandleChains(List<ToolExecuteResponse> responses,
                                            Map<String, Object> context,
                                            ToolResponseHandleProvider responseHandleProvider) {
-        Map<ToolExecuteResponse, String> originResults = new IdentityHashMap<>();
+        // 用内容快照（文本结果 + 额外内容块数量）拍基线：只比 result 会漏掉「仅追加了内容块」的改写，
+        // 那些响应就拿不到补推帧，前端看不到追加内容
+        Map<ToolExecuteResponse, String> originSnapshots = new IdentityHashMap<>();
         for (ToolExecuteResponse response : responses) {
-            originResults.put(response, response.getResult());
+            originSnapshots.put(response, response.contentSnapshot());
         }
         Map<String, Object> safeContext = context == null ? new HashMap<>() : context;
         for (ToolResponseHandleChain chain : toolResponseHandleChains) {
@@ -190,7 +193,7 @@ public class ToolExecutor {
         }
         List<ToolExecuteResponse> changed = new ArrayList<>();
         for (ToolExecuteResponse response : responses) {
-            if (!Objects.equals(originResults.get(response), response.getResult())) {
+            if (!Objects.equals(originSnapshots.get(response), response.contentSnapshot())) {
                 changed.add(response);
             }
         }
@@ -583,6 +586,26 @@ public class ToolExecutor {
             this.multimodalContents = this.multimodalContents == null ? new ArrayList<>() : this.multimodalContents;
             this.multimodalContents.add(new MultimodalContent(path, type, data));
             return this;
+        }
+
+        /**
+         * 追加一个纯文本内容块（不走文件落盘）。
+         * <p>
+         * 走 MultimodalContent 的 text 类型通道：转换时会被 MessageContent.toMessageContents
+         * 还原成 TextContent，成为工具消息正文之后的额外展示块。
+         */
+        public ToolExecuteResponse appendTextContent(String text) {
+            return modalContent(text, ContentType.TEXT, null);
+        }
+
+        /**
+         * 内容快照：后置处理链判定「响应是否被改写」用。
+         * <p>
+         * 纳入文本结果与额外内容块数量 —— 只比 result 会漏掉「仅追加了内容块」的链，
+         * 导致它们改写的响应拿不到补推帧。
+         */
+        public String contentSnapshot() {
+            return (result == null ? "" : result) + "\u0000" + multimodalContents.size();
         }
 
         public void status(String toolCallId, boolean succeed) {

@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.constants;
+package com.fishsunny.assistant.engine;
 
 /*
  * @Usage
@@ -8,7 +8,7 @@ package com.fishsunny.assistant.constants;
  * @Date 2026/6/27 16:10
  */
 
-public class ContentTypeVariable {
+public class ContentType {
 
     public static final String TEXT = "text";
     public static final String IMAGE = "image";

@@ -20,6 +20,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
+import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
@@ -85,6 +86,7 @@ public class ServiceProcessor {
     private final AISettings cubAISettings;
     private final SessionMessageBus sessionMessageBus;
     private final SessionFileManager sessionFileManager;
+    private final BackgroundToolResponseBus backgroundToolResponseBus;
     public ServiceProcessor(ChatMessageService chatMessageService,
                             ChatSessionService chatSessionService,
                             CronJobService cronJobService,
@@ -94,7 +96,8 @@ public class ServiceProcessor {
                             ChatHttpHandler chatHttpHandler,
                             @Qualifier(AISettings.CUB) AISettings cubAISettings,
                             SessionMessageBus sessionMessageBus,
-                            SessionFileManager sessionFileManager
+                            SessionFileManager sessionFileManager,
+                            BackgroundToolResponseBus backgroundToolResponseBus
                             ) {
         this.chatMessageService = chatMessageService;
         this.chatSessionService = chatSessionService;
@@ -106,6 +109,7 @@ public class ServiceProcessor {
         this.cubAISettings = cubAISettings;
         this.sessionMessageBus = sessionMessageBus;
         this.sessionFileManager = sessionFileManager;
+        this.backgroundToolResponseBus = backgroundToolResponseBus;
     }
 
     /**
@@ -519,6 +523,8 @@ public class ServiceProcessor {
         ChatMessage chatMessage = new ChatMessage()
                 .user(prompt, fileContents)
                 .makeInsertable(sessionId, parentId, userSettings.getUsername());
+        // 落库前探一次后台任务总线：上一轮遗留的在途结果作为追加文本块挂到这条用户消息末尾
+        backgroundToolResponseBus.attachPending(chatMessage);
 
         try {
             ChatMessage message = chatMessageService.save(chatMessage);

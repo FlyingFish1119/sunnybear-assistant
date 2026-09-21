@@ -12,7 +12,7 @@ package com.fishsunny.assistant.engine.tool.instance.mcp;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.constants.ContentTypeVariable;
+import com.fishsunny.assistant.engine.ContentType;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
@@ -109,7 +109,7 @@ public class McpCallTool implements ToolHandler, MultimodalResultAble {
         ToolExecutor.ToolExecuteResponse response = new ToolExecutor.ToolExecuteResponse(name(), resultText);
         for (McpContentItem image : images) {
             String fileName = UUID.randomUUID() + "." + imageSuffix(image.mimeType());
-            response.modalContent(fileName, ContentTypeVariable.IMAGE, image.data().trim());
+            response.modalContent(fileName, ContentType.IMAGE, image.data().trim());
         }
         return response;
     }

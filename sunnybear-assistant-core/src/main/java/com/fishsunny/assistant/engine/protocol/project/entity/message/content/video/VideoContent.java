@@ -8,7 +8,7 @@ package com.fishsunny.assistant.engine.protocol.project.entity.message.content.v
  * @Date 2026/6/27 21:13
  */
 
-import com.fishsunny.assistant.constants.ContentTypeVariable;
+import com.fishsunny.assistant.engine.ContentType;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -19,7 +19,7 @@ import lombok.experimental.Accessors;
 @Accessors(chain = true)
 public class VideoContent extends MessageContent {
 
-    private final String type = ContentTypeVariable.VIDEO;
+    private final String type = ContentType.VIDEO;
 
     private String url;
 

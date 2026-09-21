@@ -10,19 +10,8 @@ package com.fishsunny.assistant.engine.tool.framework;
  * @Author FlyingFish-SunnyBear
  */
 
-import com.fishsunny.assistant.constants.ContentTypeVariable;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.audio.AudioContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.file.FileContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.video.VideoContent;
+import com.fishsunny.assistant.engine.ContentType;
 import lombok.Data;
-import org.springframework.util.CollectionUtils;
-import org.springframework.util.StringUtils;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * 多模态工具结果内容块。
@@ -31,9 +20,9 @@ import java.util.List;
 public class MultimodalContent {
 
     /** 文件引用：工具产出时为会话内文件名，落盘后被回写为 "sessionId:fileName" */
-    private String path;
+    private String pathOrText;
 
-    /** 内容类型常量，见 {@link ContentTypeVariable}：image / audio / video / text / file */
+    /** 内容类型常量，见 {@link ContentType}：image / audio / video / text / file */
     private String type;
 
     /** base64 数据 */
@@ -42,8 +31,8 @@ public class MultimodalContent {
     public MultimodalContent() {
     }
 
-    public MultimodalContent(String path, String type, String data) {
-        this.path = path;
+    public MultimodalContent(String pathOrText, String type, String data) {
+        this.pathOrText = pathOrText;
         this.type = type;
         this.data = data;
     }

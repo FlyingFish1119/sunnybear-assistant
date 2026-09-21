@@ -11,7 +11,7 @@ package com.fishsunny.assistant.engine.tool.instance.test;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.constants.ContentTypeVariable;
+import com.fishsunny.assistant.engine.ContentType;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
@@ -99,7 +99,7 @@ public class MultimodalTestTool implements ToolHandler, MultimodalResultAble {
                     .replace("${size}", String.valueOf(imageBytes.length))
                     .replace("${imagePath}", fileName);
             return new ToolExecutor.ToolExecuteResponse(name(), result)
-                    .modalContent(fileName, ContentTypeVariable.IMAGE, base64);
+                    .modalContent(fileName, ContentType.IMAGE, base64);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
         } catch (Exception e) {

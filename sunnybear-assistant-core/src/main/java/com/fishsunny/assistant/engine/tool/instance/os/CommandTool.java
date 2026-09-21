@@ -16,6 +16,7 @@ import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
+import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
 import com.fishsunny.assistant.utils.ProcessUtils;
@@ -29,6 +30,7 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -160,16 +162,19 @@ public class CommandTool implements ToolHandler {
     private final Settings settings;
     private final SecurityService securityService;
     private final SessionFileManager sessionFileManager;
+    private final BackgroundToolResponseBus backgroundToolResponseBus;
 
     public CommandTool(ObjectMapper objectMapper,
                        @Qualifier(SETTINGS) Settings settings,
                        SecurityService securityService,
-                       SessionFileManager sessionFileManager
+                       SessionFileManager sessionFileManager,
+                       BackgroundToolResponseBus backgroundToolResponseBus
                        ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
         this.securityService = securityService;
         this.sessionFileManager = sessionFileManager;
+        this.backgroundToolResponseBus = backgroundToolResponseBus;
     }
 
     @Override
@@ -516,6 +521,8 @@ public class CommandTool implements ToolHandler {
 
         // 在守护线程中执行命令，流式写入输出（直接写字节，避免编码边界问题）
         Thread backgroundThread = new Thread(() -> {
+            Integer exitCode = null;
+            String failure = null;
             try {
                 String[] shell = getShell();
                 ProcessBuilder processBuilder = new ProcessBuilder(shell[0], shell[1], command);
@@ -523,7 +530,7 @@ public class CommandTool implements ToolHandler {
                 Process process = processBuilder.start();
 
                 OSToolKit.writeLog(logFile, process);
-                int exitCode = process.waitFor();
+                exitCode = process.waitFor();
 
                 // 写入结束标记
                 try (BufferedWriter footerWriter = Files.newBufferedWriter(logFile, StandardCharsets.UTF_8,
@@ -538,6 +545,7 @@ public class CommandTool implements ToolHandler {
                     footerWriter.flush();
                 }
             } catch (Exception e) {
+                failure = e.getMessage();
                 try (BufferedWriter errorWriter = Files.newBufferedWriter(logFile, StandardCharsets.UTF_8,
                         StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
                     errorWriter.newLine();
@@ -552,6 +560,8 @@ public class CommandTool implements ToolHandler {
                     // 无法写入错误信息，静默忽略
                 }
             }
+            // 成功或异常都要收尾投递：等下一次「有消息落地」的时机挂进对话
+            notifyBackgroundFinish(sessionId, command, logFile, exitCode, failure);
         }, "command-bg-" + timestamp);
 
         backgroundThread.setDaemon(true);
@@ -563,6 +573,62 @@ public class CommandTool implements ToolHandler {
                 + "命令执行完成后，日志末尾会写入退出码和结束时间。";
 
         return new ToolExecutor.ToolExecuteResponse(name(), message);
+    }
+
+    /**
+     * 后台命令收尾后投递结果到后台总线。
+     * <p>
+     * 投递内容 = 退出码/异常 + 命令原文 + 日志路径 + 日志尾部：总线会在下一次「有消息落地」的
+     * 时机把它作为追加文本块挂进对话，模型和用户不用再主动翻日志就知道后台跑完了。
+     *
+     * @param sessionId 启动后台任务时捕获的会话 id（异步线程里 context 早已出栈，只能在此前捕获）
+     * @param command   原始命令
+     * @param logFile   输出日志文件
+     * @param exitCode  退出码；执行异常时为 null
+     * @param failure   异常信息；正常结束时为 null
+     */
+    private void notifyBackgroundFinish(String sessionId, String command, Path logFile,
+                                        Integer exitCode, String failure) {
+        StringBuilder text = new StringBuilder();
+        if (failure != null) {
+            text.append("命令执行异常: ").append(failure);
+        } else {
+            text.append("命令执行完成，退出码: ").append(exitCode);
+        }
+        text.append("\n命令: ").append(command);
+        text.append("\n日志文件: ").append(logFile.toAbsolutePath());
+
+        String output = readLogTail(logFile, 4000);
+        if (StringUtils.hasText(output)) {
+            text.append("\n\n").append(output);
+        }
+
+        backgroundToolResponseBus.post(sessionId, name(), text.toString());
+    }
+
+    /**
+     * 读日志尾部（最多 maxBytes 字节）。
+     * <p>
+     * 后台命令的输出体量不可控（构建日志、训练日志动辄几十 MB），整段读进内存再塞进消息显然
+     * 不合适，只取尾部足够看清结局；截断点可能落在多字节字符中间，所以丢掉第一行残片。
+     */
+    private static String readLogTail(Path logFile, int maxBytes) {
+        try (RandomAccessFile reader = new RandomAccessFile(logFile.toFile(), "r")) {
+            long size = reader.length();
+            long start = Math.max(0, size - maxBytes);
+            reader.seek(start);
+            byte[] buffer = new byte[(int) (size - start)];
+            reader.readFully(buffer);
+            String content = new String(buffer, StandardCharsets.UTF_8);
+            if (start > 0) {
+                int firstNewline = content.indexOf('\n');
+                content = firstNewline >= 0 ? content.substring(firstNewline + 1) : content;
+                return "...（前部已省略，完整输出见日志文件）\n" + content;
+            }
+            return content;
+        } catch (IOException e) {
+            return "（日志读取失败: " + e.getMessage() + "）";
+        }
     }
 
     @Override

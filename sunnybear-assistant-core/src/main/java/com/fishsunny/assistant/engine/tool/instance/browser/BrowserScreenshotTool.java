@@ -10,7 +10,7 @@ package com.fishsunny.assistant.engine.tool.instance.browser;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.constants.ContentTypeVariable;
+import com.fishsunny.assistant.engine.ContentType;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
@@ -124,7 +124,7 @@ public class BrowserScreenshotTool implements ToolHandler, MultimodalResultAble 
                 + "当前URL: " + currentUrl + "\n"
                 + "图片已保存至会话文件目录：" + fileName;
         return new ToolExecutor.ToolExecuteResponse(name(), result)
-                .modalContent(fileName, ContentTypeVariable.IMAGE, imageBase64);
+                .modalContent(fileName, ContentType.IMAGE, imageBase64);
     }
 
     /**

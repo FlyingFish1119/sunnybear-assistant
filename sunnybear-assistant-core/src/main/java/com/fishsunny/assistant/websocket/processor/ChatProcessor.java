@@ -40,6 +40,7 @@ import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import com.fishsunny.assistant.utils.ToolContextUtils;
+import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
 import com.fishsunny.assistant.utils.ToolExecuteNotifier;
 import com.fishsunny.assistant.websocket.ChatProvider;
 import com.fishsunny.assistant.websocket.SessionMessageBus;
@@ -81,6 +82,7 @@ public class ChatProcessor {
     private final ToolVisibilityPolicy toolVisibilityPolicy;
     private final ContextCompressor contextCompressor;
     private final SessionMessageBus sessionMessageBus;
+    private final BackgroundToolResponseBus backgroundToolResponseBus;
 
     public ChatProcessor(ChatMessageService chatMessageService,
                             ChatSessionService chatSessionService,
@@ -98,7 +100,8 @@ public class ChatProcessor {
                             SessionFileManager sessionFileManager,
                             ToolVisibilityPolicy toolVisibilityPolicy,
                             ContextCompressor contextCompressor,
-                            SessionMessageBus sessionMessageBus
+                            SessionMessageBus sessionMessageBus,
+                            BackgroundToolResponseBus backgroundToolResponseBus
                          ) {
         this.chatMessageService = chatMessageService;
         this.chatSessionService = chatSessionService;
@@ -117,6 +120,7 @@ public class ChatProcessor {
         this.toolVisibilityPolicy = toolVisibilityPolicy;
         this.contextCompressor = contextCompressor;
         this.sessionMessageBus = sessionMessageBus;
+        this.backgroundToolResponseBus = backgroundToolResponseBus;
     }
     /**
      * 核心对话处理逻辑
@@ -547,6 +551,8 @@ public class ChatProcessor {
 
     private ChatMessage appendAssistantMessage(ChatMessage chatMessage) throws Exception {
         try {
+            // 落库前探一次后台任务总线：在途结果作为追加文本块挂到这条助手消息末尾
+            backgroundToolResponseBus.attachPending(chatMessage);
             ChatMessage saved = chatMessageService.save(chatMessage);
             // 助手消息落库后清空总线缓冲：已落库内容由历史兜底，缓冲只需保留此后产生的在途事件，
             // 使重连 replay 从最近一条落库消息开始，而不是从上一轮 user 重放整轮。
@@ -563,6 +569,11 @@ public class ChatProcessor {
     private List<ChatMessage> appendToolMessage(List<ChatMessage> messages) throws Exception {
         List<ChatMessage> resultMessages = new ArrayList<>();
         try {
+            // 落库前探一次总线：挂到最后一条工具消息末尾
+            // （工具链执行完时已消费过一轮，这里兜的是「工具跑完、落库前」才到的那批）
+            if (!messages.isEmpty()) {
+                backgroundToolResponseBus.attachPending(messages.getLast());
+            }
             for (ChatMessage message : messages) {
                 chatMessageService.save(message);
                 resultMessages.add(message);
