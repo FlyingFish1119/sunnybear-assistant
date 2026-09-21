@@ -1,9 +1,13 @@
 /**
- * Shell 终端面板 —— 单层大抽屉
+ * 命令面板 —— 单层大抽屉
+ *
+ * 定位：一次跑一条命令的执行面板，**不是完整终端**。
+ * 同一会话里 shell 常驻，cd 与环境变量能保持；但没有 PTY，
+ * 不支持 vim / top / 交互式 REPL 这类程序（会卡住，用「重开会话」逃生）。
  *
  * 交互：
- *   导航轨「终端」按钮 → 从导航轨右侧铺满的大抽屉（深色终端风）
- *   输入命令回车执行；↑↓ 翻历史；Ctrl+C 中断运行中的命令
+ *   导航轨「命令」按钮 → 从导航轨右侧铺满的大抽屉
+ *   输入命令回车执行；↑↓ 翻历史；运行中 Ctrl+C 可停止等待
  *   顶部路径栏点击可改工作目录（用项目自绘 confirm-dialog 的输入形态）
  *
  * 为什么是异步的：
@@ -24,8 +28,8 @@ const ShellPanel = {
         <aside class="shell-drawer" @keydown="onKeydown">
             <div class="sh-head">
                 <div class="sh-title">
-                    <i data-lucide="terminal"></i>
-                    <span>终端</span>
+                    <i data-lucide="chevrons-right"></i>
+                    <span>命令</span>
                     <span class="sh-os">{{ osLabel }}</span>
                 </div>
                 <button class="sh-btn" title="清屏（只清显示，不影响运行中的命令）" @click="clearScreen">
@@ -46,25 +50,25 @@ const ShellPanel = {
 
             <div class="sh-screen" ref="screen">
                 <div v-if="blocks.length === 0" class="sh-hint">
-                    在这里敲命令，回车执行。<br>
-                    ↑↓ 翻历史 · Ctrl+C 中断运行中的命令 · 点上方 <b>cd …</b> 切换目录（会话持续，cd 与环境变量会保持）
+                    一次跑一条命令，回车执行。<br>
+                    ↑↓ 翻历史 · 点上方 <b>cd …</b> 切换目录（同一会话里，cd 与环境变量会保持）<br>
+                    <span class="sh-warn">⚠ 不支持 vim / top / 交互式 REPL 这类程序 —— 它们会一直等输入、把会话占住。遇到就点右上角重开会话按钮。</span>
                 </div>
                 <div v-for="(block, i) in blocks"
                      :key="i"
                      class="sh-line"
                      :class="'is-' + block.kind">{{ block.text }}</div>
                 <div v-if="running" class="sh-running">
-                    <span class="sh-spinner"></span>运行中…（Ctrl+C 中断）
+                    <span class="sh-spinner"></span>运行中…（长时间没动静？点右上角重开会话）
                 </div>
             </div>
 
             <div class="sh-input-row">
-                <span class="sh-prompt">&gt;</span>
                 <input ref="input"
                        class="sh-input"
                        v-model="inputText"
                        :readonly="running"
-                       :placeholder="running ? '命令执行中，Ctrl+C 可中断' : '输入命令，回车执行'"
+                       :placeholder="running ? '命令执行中…' : '输入一条命令，回车执行'"
                        @keydown.enter="submit"
                        @keydown.up.prevent="historyPrev"
                        @keydown.down.prevent="historyNext">

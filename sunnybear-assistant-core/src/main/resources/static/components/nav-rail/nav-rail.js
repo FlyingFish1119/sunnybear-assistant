@@ -44,7 +44,7 @@ const NavRail = {
         /**
          * 当前高亮的按钮 key —— 由父级受控传入。
          * 语义必须是「当前打开的面板」，而不是「最后点过的按钮」：
-         * 后者会让终端开着、高亮却跑到别的按钮上，画面对不上。
+         * 后者会让命令面板开着、高亮却跑到别的按钮上，画面对不上。
          */
         activeKey: { type: String, default: '' }
     },
@@ -53,10 +53,10 @@ const NavRail = {
 
     data() {
         return {
-            // 按钮清单：目前只有「会话文件」和「终端」接了真实面板
+            // 按钮清单：目前只有「会话文件」和「命令」接了真实面板
             items: [
-                { key: 'files', icon: 'folder-open', label: '会话文件' },
-                { key: 'shell', icon: 'terminal',    label: '终端' }
+                { key: 'files', icon: 'folder-open',    label: '会话文件' },
+                { key: 'shell', icon: 'chevrons-right', label: '命令' }
             ]
         };
     },
