@@ -262,17 +262,25 @@ const API = (function () {
         shell: {
             /** 平台信息：默认工作目录、系统名、shell 名 */
             info: function () { return get('shell/info'); },
-            /** 启动命令，立即返回 { jobId, cwd, startedAt }；进程在后台跑，不受请求超时限制 */
-            exec: function (command, cwd) {
-                return post('shell/exec', { command: command, cwd: cwd });
+            /**
+             * 往「常驻 shell」里下达一条命令，立即返回 { jobId, cwd, startedAt }。
+             * 注意：不再传 cwd —— 会话是持久的，工作目录由命令里的 cd 维持，
+             * 起始目录只在 shell 首次启动时生效（后端用项目根）。
+             */
+            exec: function (command) {
+                return post('shell/exec', { command: command });
             },
             /** 按 offset 增量拉输出；返回体里的 offset 是下次该传的值 */
             output: function (jobId, offset) {
                 return get('shell/output?jobId=' + encodeURIComponent(jobId) + '&offset=' + (offset || 0));
             },
-            /** 强杀任务（含子进程） */
+            /** 终止当前命令（不重建 shell） */
             kill: function (jobId) {
                 return post('shell/kill?jobId=' + encodeURIComponent(jobId));
+            },
+            /** 关闭并重建常驻 shell —— 命令卡死时的逃生口（工作目录/环境会丢） */
+            close: function () {
+                return post('shell/close');
             }
         },
 
