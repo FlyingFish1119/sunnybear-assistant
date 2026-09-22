@@ -1,0 +1,94 @@
+/* ============================================
+   「用户与助手」区共享样式
+   供 assistant/user-settings 与 assistant/assistant-settings 两个组件共用。
+   含：头像上传控件（char-avatar-*）、背景图上传（background-preview*，仅 user-settings 使用）
+   ============================================ */
+
+/* ---- 头像 / 背景图上传 ---- */
+
+.char-avatar-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.char-avatar-preview {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #f5f7fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed #dcdfe6;
+    cursor: pointer;
+    flex-shrink: 0;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+
+.char-avatar-preview:hover {
+    border-color: var(--main-color);
+}
+
+.char-avatar-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.char-avatar-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.char-avatar-btn {
+    padding: 5px 14px;
+    font-size: 13px;
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+    color: #606266;
+    transition: all 0.15s;
+    white-space: nowrap;
+    font-family: inherit;
+}
+
+.char-avatar-btn:hover {
+    border-color: var(--main-color);
+    color: var(--main-color);
+}
+
+.char-avatar-btn.danger:hover {
+    border-color: #f56c6c;
+    color: #f56c6c;
+}
+
+/* ---- 背景图上传（user-settings 专用） ---- */
+
+.background-preview {
+    width: 100%;
+    height: 120px;
+    border-radius: 8px;
+    background: #f5f7fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed #dcdfe6;
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.2s;
+    margin-bottom: 8px;
+}
+
+.background-preview:hover {
+    border-color: var(--main-color);
+}
+
+.background-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}

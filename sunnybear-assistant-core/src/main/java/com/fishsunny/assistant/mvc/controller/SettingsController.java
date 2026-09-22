@@ -735,6 +735,7 @@ public class SettingsController {
         userSettings.setMainColor(settings.getMainColor());
         userSettings.setEnableAutoSwitchModel(
                 Boolean.TRUE.equals(settings.getEnableAutoSwitchModel()));
+        userSettings.setProModelThreshold(settings.getProModelThreshold());
         userSettings.setContextTokenLimit(settings.getContextTokenLimit());
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(userSettingsPath), userSettings);

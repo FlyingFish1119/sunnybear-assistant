@@ -73,6 +73,27 @@ public class UserSettings {
     }
 
     /**
+     * 自动切换高级模型的判定阈值：复杂度评分大于该值（不含等于）才切到高级模型。
+     * 取值 0-1，默认 0.7；越小越容易切高级模型（0 = 几乎全切，1 = 永不自动切）。
+     */
+    private Double proModelThreshold;
+    public UserSettings setProModelThreshold(Double proModelThreshold) {
+        if (proModelThreshold == null) {
+            this.proModelThreshold = 0.7;
+        } else if (proModelThreshold < 0) {
+            this.proModelThreshold = 0.0;
+        } else if (proModelThreshold > 1) {
+            this.proModelThreshold = 1.0;
+        } else {
+            this.proModelThreshold = proModelThreshold;
+        }
+        return this;
+    }
+    public Double getProModelThreshold() {
+        return proModelThreshold == null ? 0.7 : proModelThreshold;
+    }
+
+    /**
      * 上下文 token 上限：单轮请求里消息（不含 system）的估算总 token 超过该值时触发一次压缩。
      * null 或 &lt;= 0 表示关闭该功能。
      */

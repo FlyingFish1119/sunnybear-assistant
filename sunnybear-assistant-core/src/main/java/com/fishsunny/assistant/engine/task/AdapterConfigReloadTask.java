@@ -49,7 +49,7 @@ public class AdapterConfigReloadTask {
         this.configFile = Paths.get(System.getProperty("user.dir"), FILE_NAME);
     }
 
-    @Scheduled(fixedDelayString = "${assistant.adapter-reload.interval-ms:60000}")
+    @Scheduled(fixedDelayString = "${assistant.adapter-reload.interval-ms:30000}")
     public void check() {
         if (!Files.exists(configFile)) {
             if (loaded) {

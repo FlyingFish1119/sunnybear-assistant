@@ -248,7 +248,7 @@ public class ServiceProcessor {
                     )
                     .build();
             Double needProModel = jevClient.send(jevRequest).mappingNoul("complex_question");
-            return needProModel > 0.6;
+            return needProModel != null && needProModel > userSettings.getProModelThreshold();
         } catch (Exception e) {
             log.warn("模型复杂度判断失败，默认使用标准模型: {}", e.getMessage());
             return false;

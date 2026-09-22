@@ -146,119 +146,9 @@ body {
 }
 
 /* ============================================
-   顶部导航栏
+   顶部导航栏 + 主体内容区（页面骨架）
+   已抽出至 css/settings-page.css
    ============================================ */
-
-.settings-topbar {
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 0 28px;
-    height: 56px;
-    background: #fff;
-    border-bottom: 1px solid #ebeef5;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-}
-
-.settings-topbar .back-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border: none;
-    background: transparent;
-    border-radius: 8px;
-    cursor: pointer;
-    color: var(--text-secondary);
-    transition: all var(--transition-fast);
-}
-
-.settings-topbar .back-btn:hover {
-    background: #f0f2f5;
-    color: var(--main-color);
-}
-
-.settings-topbar .topbar-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.settings-topbar .topbar-subtitle {
-    font-size: 13px;
-    color: var(--text-muted);
-    margin-left: 4px;
-}
-
-/* ============================================
-   主体内容区
-   ============================================ */
-
-.settings-body-wrapper {
-    margin: 0 auto;
-    flex: 1;
-    min-height: 0;
-    width: 98dvw;
-    overflow-y: auto;
-}
-
-.settings-body {
-    max-width: 780px;
-    margin: 0 auto;
-    padding: 24px 20px 60px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-/* ---- 分区标题 ---- */
-.settings-section-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 8px 4px 0;
-    margin-top: 4px;
-}
-
-/* ---- 设置卡片 ---- */
-.settings-card {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-    overflow: hidden;
-    transition: box-shadow var(--transition-fast);
-}
-
-.settings-card:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.settings-card-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 16px 20px;
-    background: #fafbfc;
-    border-bottom: 1px solid #f0f2f5;
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.settings-card-header i {
-    color: var(--main-color);
-}
-
-.settings-card-body {
-    display: flex;
-    flex-direction: column;
-}
 
 /* ---- 设置条目 ---- */
 .settings-item {
@@ -420,72 +310,8 @@ body {
     padding: 12px 0 0 0;
 }
 
-/* ---- 清除高级参数按钮 ---- */
-.clear-advanced-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    margin-left: 12px;
-    padding: 3px 10px;
-    border: 1px dashed var(--border-color);
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 12px;
-    font-family: inherit;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-    vertical-align: middle;
-}
-
-.clear-advanced-btn:hover {
-    border-color: #f56c6c;
-    color: #f56c6c;
-    background: #fef0f0;
-}
-
-.clear-advanced-btn i {
-    flex-shrink: 0;
-}
-
-/* ---- 高级参数：单项标题 + 清空 / 恢复按钮 ---- */
-/* el-form-item 内容区是 40px 行高且垂直居中，清空后由本行提示文字撑开高度 */
-.ai-param-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.ai-param-clear-btn {
-    flex-shrink: 0;
-    padding: 1px 6px;
-    border: 1px dashed #dcdfe6;
-    border-radius: 4px;
-    background: transparent;
-    color: #a8abb2;
-    font-size: 11px;
-    font-family: inherit;
-    line-height: 1.5;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.ai-param-clear-btn:hover {
-    border-color: #f56c6c;
-    color: #f56c6c;
-    background: #fef0f0;
-}
-
-.ai-param-unset {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.ai-param-unset-text {
-    color: var(--text-muted);
-    font-size: 12px;
-}
+/* ai-param-* （高级参数清空/恢复控件、刻度留白）已抽出至
+   components/settings/ai-settings/ai-settings.css */
 
 /* ---- 推理深度滑块的刻度标签 ----
    1) 每个 marks-text 由组件内联 left:百分比 定位，而库默认给 marks 容器只有 18px 宽
@@ -496,70 +322,6 @@ body {
 .settings-dialog .el-slider__marks {
     width: 100%;
     left: 0;
-}
-
-.ai-param-with-marks {
-    padding-bottom: 22px;
-}
-
-/* ============================================
-   已弃用 视觉
-   ============================================ */
-
-/* 条目/文字行内的「已弃用」小标签 */
-.deprecated-badge {
-    display: inline-block;
-    margin-left: 6px;
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: #f5f7fa;
-    border: 1px solid #dcdfe6;
-    color: #909399;
-    font-size: 11px;
-    line-height: 1.5;
-    font-weight: 400;
-    letter-spacing: 0.3px;
-    vertical-align: middle;
-}
-
-/* 整行弱化（embedding 配置行等） */
-.settings-item.deprecated {
-    opacity: 0.78;
-}
-
-/* 对话框内的弃用说明条 */
-.deprecated-note {
-    margin: 0 0 14px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    background: #f5f7fa;
-    border: 1px dashed #dcdfe6;
-    color: #909399;
-    font-size: 12px;
-    line-height: 1.6;
-}
-
-/* 表单内「已弃用」分组标题 */
-.deprecated-zone-title {
-    margin-top: 8px;
-    color: #b0b3b8;
-}
-
-.deprecated-zone-title::after {
-    content: ' · 将在未来版本移除';
-    font-weight: 400;
-    letter-spacing: 0.2px;
-}
-
-.settings-dialog .el-form-item.deprecated {
-    opacity: 0.72;
-}
-
-.deprecated-hint {
-    margin-top: 4px;
-    font-size: 12px;
-    color: var(--text-muted);
-    line-height: 1.5;
 }
 
 /* ---- 对话框底部按钮 ---- */
@@ -635,160 +397,8 @@ body {
     font-weight: 500;
 }
 
-/* ============================================
-   头像预览
-   ============================================ */
-
-.avatar-preview-wrap {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 8px;
-}
-
-.avatar-preview {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 2px solid #eee;
-    flex-shrink: 0;
-    background: #fff;
-}
-
-.avatar-preview-default {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    font-weight: 600;
-    color: #fff;
-    user-select: none;
-}
-
-.avatar-preview-user {
-    background: linear-gradient(135deg, #87ceeb 0%, #6495ed 100%);
-}
-
-.avatar-preview-assistant {
-    background: linear-gradient(135deg, #ffa07a 0%, #ff7f50 100%);
-}
-
-.avatar-preview-hint {
-    font-size: 12px;
-    color: var(--text-muted);
-    line-height: 1.5;
-}
-
-.avatar-preview-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    background: #f5f6fa;
-    border: 2px dashed var(--border-color);
-    transition: all var(--transition-fast);
-}
-
-.avatar-preview-placeholder:hover {
-    border-color: var(--main-color);
-    background: #fef5ef;
-}
-
-/* ============================================
-   头像 / 背景图上传
-   ============================================ */
-
-.char-avatar-row {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
-
-.char-avatar-preview {
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
-    background: #f5f7fa;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px dashed #dcdfe6;
-    cursor: pointer;
-    flex-shrink: 0;
-    overflow: hidden;
-    transition: border-color 0.2s;
-}
-
-.char-avatar-preview:hover {
-    border-color: var(--main-color);
-}
-
-.char-avatar-preview img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.char-avatar-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.char-avatar-btn {
-    padding: 5px 14px;
-    font-size: 13px;
-    border: 1px solid #e4e7ed;
-    border-radius: 8px;
-    background: #fff;
-    cursor: pointer;
-    color: #606266;
-    transition: all 0.15s;
-    white-space: nowrap;
-    font-family: inherit;
-}
-
-.char-avatar-btn:hover {
-    border-color: var(--main-color);
-    color: var(--main-color);
-}
-
-.char-avatar-btn.danger:hover {
-    border-color: #f56c6c;
-    color: #f56c6c;
-}
-
-.char-form-hint {
-    margin-top: 6px;
-    font-size: 12px;
-    color: #909399;
-}
-
-.background-preview {
-    width: 100%;
-    height: 120px;
-    border-radius: 8px;
-    background: #f5f7fa;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px dashed #dcdfe6;
-    cursor: pointer;
-    overflow: hidden;
-    transition: border-color 0.2s;
-    margin-bottom: 8px;
-}
-
-.background-preview:hover {
-    border-color: var(--main-color);
-}
-
-.background-preview img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
+/* char-avatar-* / background-preview* （「用户与助手」区）已抽出至
+   components/settings/assistant/char-avatar.css */
 
 /* ============================================
    知识库 / 记忆管理列表
@@ -898,11 +508,6 @@ body {
 
 /* 平板 */
 @media (max-width: 840px) {
-    .settings-body {
-        max-width: 100%;
-        padding: 16px 12px 40px;
-    }
-
     .settings-item-desc {
         max-width: 200px;
     }
@@ -914,35 +519,6 @@ body {
 
 /* 大屏手机 */
 @media (max-width: 640px) {
-    .settings-topbar {
-        padding: 0 12px;
-        height: 50px;
-        gap: 10px;
-    }
-
-    .settings-topbar .topbar-title {
-        font-size: 16px;
-    }
-
-    .settings-topbar .topbar-subtitle {
-        display: none;
-    }
-
-    .settings-body {
-        padding: 12px 8px 48px;
-        gap: 14px;
-    }
-
-    .settings-section-title {
-        font-size: 12px;
-        padding: 4px 2px 0;
-    }
-
-    .settings-card-header {
-        padding: 12px 14px;
-        font-size: 14px;
-    }
-
     .settings-item {
         padding: 12px 14px;
     }

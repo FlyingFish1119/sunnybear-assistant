@@ -1,4 +1,4 @@
-/* ============================================================
+﻿/* ============================================================
  * 看板熊 live 版 —— PSD 分层 + 原生 JS 拟态动效
  * ------------------------------------------------------------
  * 素材：static/icon/signboard_bear/live/（由 PSD 分层导出）
@@ -111,8 +111,6 @@
         stage.innerHTML = '';
 
         var bodyGroup = document.createElement('div');
-        // ⚠ 类名不能叫 mascot-body：css/send-area.css（插件页那份旧样式）里有
-        //   `.send-area-mascot .mascot-body` 规则，会把身体组变成透明的 90px 小块并顶到画面外
         bodyGroup.className = 'mascot-group mascot-body-group';
         BODY_ORDER.forEach(function (n) { var i = makeLayer(n); if (i) bodyGroup.appendChild(i); });
 
