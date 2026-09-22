@@ -1,9 +1,13 @@
 /**
- * Shell 终端面板 —— 单层大抽屉
+ * 命令面板 —— 单层大抽屉
+ *
+ * 定位：一次跑一条命令的执行面板，**不是完整终端**。
+ * 同一会话里 shell 常驻，cd 与环境变量能保持；但没有 PTY，
+ * 不支持 vim / top / 交互式 REPL 这类程序（会卡住，用「重开会话」逃生）。
  *
  * 交互：
- *   导航轨「终端」按钮 → 从导航轨右侧铺满的大抽屉（深色终端风）
- *   输入命令回车执行；↑↓ 翻历史；Ctrl+C 中断运行中的命令
+ *   导航轨「命令」按钮 → 从导航轨右侧铺满的大抽屉
+ *   输入命令回车执行；↑↓ 翻历史；运行中 Ctrl+C 可停止等待
  *   顶部路径栏点击可改工作目录（用项目自绘 confirm-dialog 的输入形态）
  *
  * 为什么是异步的：
@@ -24,44 +28,47 @@ const ShellPanel = {
         <aside class="shell-drawer" @keydown="onKeydown">
             <div class="sh-head">
                 <div class="sh-title">
-                    <i data-lucide="terminal"></i>
-                    <span>终端</span>
+                    <i data-lucide="chevrons-right"></i>
+                    <span>命令</span>
                     <span class="sh-os">{{ osLabel }}</span>
                 </div>
                 <button class="sh-btn" title="清屏（只清显示，不影响运行中的命令）" @click="clearScreen">
                     <i data-lucide="eraser"></i>
+                </button>
+                <button class="sh-btn" title="重开会话（命令卡死时用；工作目录与环境会重置）" @click="restartSession">
+                    <i data-lucide="refresh-cw"></i>
                 </button>
                 <button class="sh-btn" title="关闭（任务会在后台继续跑）" @click="close">
                     <i data-lucide="x"></i>
                 </button>
             </div>
 
-            <div class="sh-cwd" :title="cwd" @click="editCwd">
+            <div class="sh-cwd" :title="cwd ? ('当前目录：' + cwd + ' —— 点击切换') : '点击切换目录'" @click="cdTo">
                 <i data-lucide="folder"></i>
-                <span class="sh-cwd-text">{{ cwd || '（默认项目根目录）' }}</span>
+                <span class="sh-cwd-text">{{ cwd || '（尚未执行命令）' }}</span>
             </div>
 
             <div class="sh-screen" ref="screen">
                 <div v-if="blocks.length === 0" class="sh-hint">
-                    在这里敲命令，回车执行。<br>
-                    ↑↓ 翻历史 · Ctrl+C 中断运行中的命令 · 点上面的路径可以改工作目录
+                    一次跑一条命令，回车执行。<br>
+                    ↑↓ 翻历史 · 点上方 <b>cd …</b> 切换目录（同一会话里，cd 与环境变量会保持）<br>
+                    <span class="sh-warn">⚠ 不支持 vim / top / 交互式 REPL 这类程序 —— 它们会一直等输入、把会话占住。遇到就点右上角重开会话按钮。</span>
                 </div>
                 <div v-for="(block, i) in blocks"
                      :key="i"
                      class="sh-line"
                      :class="'is-' + block.kind">{{ block.text }}</div>
                 <div v-if="running" class="sh-running">
-                    <span class="sh-spinner"></span>运行中…（Ctrl+C 中断）
+                    <span class="sh-spinner"></span>运行中…（长时间没动静？点右上角重开会话）
                 </div>
             </div>
 
             <div class="sh-input-row">
-                <span class="sh-prompt">&gt;</span>
                 <input ref="input"
                        class="sh-input"
                        v-model="inputText"
                        :readonly="running"
-                       :placeholder="running ? '命令执行中，Ctrl+C 可中断' : '输入命令，回车执行'"
+                       :placeholder="running ? '命令执行中…' : '输入一条命令，回车执行'"
                        @keydown.enter="submit"
                        @keydown.up.prevent="historyPrev"
                        @keydown.down.prevent="historyNext">
@@ -73,7 +80,7 @@ const ShellPanel = {
         </aside>
     </div>
 
-    <!-- 改工作目录用项目自绘的输入弹窗，和删除确认同一套视觉 -->
+    <!-- cd 快捷输入用项目自绘的输入弹窗，和删除确认同一套视觉 -->
     <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
     `,
 
@@ -127,9 +134,6 @@ const ShellPanel = {
 
         async open() {
             this.visible = true;
-            if (!this.cwd) {
-                this.cwd = this.loadCwd();
-            }
             if (!this.osLabel) {
                 try {
                     const res = await API.shell.info();
@@ -180,7 +184,7 @@ const ShellPanel = {
 
             let res;
             try {
-                res = await API.shell.exec(command, this.cwd);
+                res = await API.shell.exec(command);
             } catch (e) {
                 this.blocks.push({ kind: 'note', text: '启动失败：' + e.message });
                 this.scrollToBottom();
@@ -193,11 +197,6 @@ const ShellPanel = {
             }
 
             this.jobId = res.data.jobId;
-            // 用后端解析后的真实工作目录回显，避免前端显示的和实际执行的不一致
-            if (res.data.cwd) {
-                this.cwd = res.data.cwd;
-                this.saveCwd(this.cwd);
-            }
             this.running = true;
             this.scrollToBottom();
             this.poll();
@@ -224,6 +223,7 @@ const ShellPanel = {
 
             const data = res.data || {};
             this.offset = data.offset || 0;
+            if (data.cwd) this.cwd = data.cwd;
 
             if (data.chunk) {
                 this.appendOutput(data.chunk);
@@ -241,7 +241,7 @@ const ShellPanel = {
                 const seconds = data.startedAt && data.finishedAt
                     ? ((data.finishedAt - data.startedAt) / 1000).toFixed(2)
                     : null;
-                const parts = ['退出码 ' + data.exitCode];
+                const parts = ['退出码 ' + (data.exitCode == null ? '–' : data.exitCode)];
                 if (seconds != null) parts.push('耗时 ' + seconds + 's');
                 this.blocks.push({ kind: 'note', text: '── ' + parts.join(' · ') });
                 this.scrollToBottom();
@@ -333,46 +333,57 @@ const ShellPanel = {
             }
         },
 
-        /* ==================== 工作目录 ==================== */
+        /* ==================== 工作目录 / 会话 ==================== */
 
-        loadCwd() {
-            try {
-                return localStorage.getItem(CWD_KEY) || '';
-            } catch (e) {
-                return '';
-            }
-        },
-
-        saveCwd(value) {
-            try {
-                localStorage.setItem(CWD_KEY, value);
-            } catch (e) {
-                /* 写不进去就算了，下次打开回落默认目录 */
-            }
-        },
-
-        async editCwd() {
+        /**
+         * 「cd …」快捷按钮：输入目录后，往常驻 shell 里发一条 cd 命令。
+         * 会话是持续的，cd 之后的工作目录会一直保持到下次 cd。
+         */
+        async cdTo() {
             const dialog = this.$refs.confirmDialog;
             if (!dialog) return;
+            if (this.running) {
+                if (window.SbToast) window.SbToast.warning('还有命令在跑，先等它结束或 Ctrl+C 中断');
+                return;
+            }
             let value;
             try {
                 value = await dialog.show({
-                    title: '工作目录',
-                    message: '命令将在这个目录下执行（目录不存在时执行会报错）',
-                    confirmText: '确定',
+                    title: '切换目录',
+                    message: '相当于在当前会话里执行 cd —— 之后所有命令都会在这个目录下运行',
+                    confirmText: '切换',
                     cancelText: '取消',
                     type: 'info',
                     inputValue: this.cwd || '',
-                    inputPlaceholder: '例如 E:\\local\\sunnybear-assistant'
+                    inputPlaceholder: '例如 E:\\project\\sunnybear-assistant'
                 });
             } catch (e) {
                 return;   // 取消
             }
             value = String(value || '').trim();
-            if (!value || value === this.cwd) return;
-            this.cwd = value;
-            this.saveCwd(value);
-            this.$nextTick(() => this.focusInput());
+            if (!value) return;
+            this.inputText = 'cd ' + value;
+            this.$nextTick(() => this.submit());
+        },
+
+        /**
+         * 重开会话：关闭并重建常驻 shell（命令卡死时的逃生口）。
+         * 工作目录与环境变量会随旧 shell 一起重置。
+         */
+        async restartSession() {
+            try {
+                const res = await API.shell.close();
+                if (res.status !== 200) {
+                    this.blocks.push({ kind: 'note', text: '重开会话失败：' + (res.message || '') });
+                } else {
+                    this.blocks.push({ kind: 'note', text: '会话已重开，工作目录与环境已重置' });
+                }
+            } catch (e) {
+                this.blocks.push({ kind: 'note', text: '重开会话失败：' + e.message });
+            }
+            this.running = false;
+            this.jobId = '';
+            this.scrollToBottom();
         },
 
         /* ==================== 展示辅助 ==================== */
@@ -411,5 +422,4 @@ const ShellPanel = {
 /* ==================== 常量 ==================== */
 
 const HISTORY_KEY = 'assistant-shell-history';
-const CWD_KEY = 'assistant-shell-cwd';
 const MAX_HISTORY = 100;

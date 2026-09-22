@@ -1,8 +1,10 @@
 /* ============================================================
-   Shell Panel —— 终端面板（单层大抽屉）
+   命令面板（单层大抽屉）
    ------------------------------------------------------------
-   从导航轨右侧铺满到底的一个大抽屉，深色终端风。
-   结构：头部（标题 / 清屏 / 关闭）→ cwd 栏 → 输出区 → 输入行
+   从导航轨右侧铺满到底的一个大抽屉。底子偏深色，但刻意**不做成终端**：
+   输入框是应用输入框而不是命令行提示符，并明确标注能力边界 ——
+   免得人看到深色等宽字体就以为 vim / top 也能跑。
+   结构：头部（标题 / 清屏 / 重开会话 / 关闭）→ 目录栏 → 输出区 → 输入行
    无二级抽屉：所有交互都在这一个面板里完成。
 
    移动端（≤768px）导航轨隐藏，抽屉从 0 起算。
@@ -171,6 +173,18 @@
     line-height: 1.8;
 }
 
+/* 能力边界提示：说清「这不是完整终端」，避免用户敲了 vim/top 之后一头雾水 */
+.sh-warn{
+    display: inline-block;
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(201, 168, 106, 0.09);
+    color: #b99a5e;
+    font-size: 11.5px;
+    line-height: 1.7;
+}
+
 .sh-running{
     display: flex;
     align-items: center;
@@ -205,23 +219,27 @@
     background: rgba(255, 255, 255, 0.02);
 }
 
-.sh-prompt{
-    flex: none;
-    font-family: var(--sh-mono);
-    font-size: 13px;
-    color: #7dd3a0;
-}
-
+/* 输入框做成「应用输入框」而不是终端命令行 —— 避免让人误以为这是完整终端 */
 .sh-input{
     flex: 1;
     min-width: 0;
-    border: none;
+    height: 34px;
+    padding: 0 12px;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
     outline: none;
-    background: transparent;
+    background: rgba(255, 255, 255, 0.04);
     color: #e8e8ea;
     font-family: var(--sh-mono);
     font-size: 13px;
     caret-color: #7dd3a0;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.sh-input:focus{
+    border-color: rgba(125, 211, 160, 0.5);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .sh-input::placeholder{ color: #4b5563; }

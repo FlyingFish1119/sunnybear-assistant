@@ -3,8 +3,12 @@ package com.fishsunny.assistant.mvc.controller;
 /*
  * @Usage Shell 终端接口 —— 前端「终端」面板用。
  *
- *        exec 立即返回 jobId（命令在后台跑，不受 HTTP 超时限制），
- *        输出由 /output 按 offset 增量拉取，/kill 随时强杀。
+ *        底层是一个「常驻 shell 会话」（见 ShellService）：命令跨调用共享同一个
+ *        shell 进程，因此 cd、环境变量能保持——这正是它和一次性命令的本质区别。
+ *
+ *        exec  立即返回 jobId（命令在后台跑，不受 HTTP 超时限制），
+ *        输出由 /output 按 offset 增量拉取，/kill 终止当前命令，
+ *        /close 关闭并重建 shell（命令卡死时的逃生口）。
  *
  *        ⚠ 访问来源：本接口能执行任意命令，而服务绑的是 0.0.0.0
  *        （application.yml 没配 server.address），局域网里任何设备都能访问这个端口。
@@ -111,6 +115,7 @@ public class ShellController {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("chunk", job.readFrom(offset));
             data.put("offset", job.outputLength());
+            data.put("cwd", job.cwd);
             data.put("running", job.running);
             data.put("exitCode", job.exitCode);
             data.put("truncated", job.truncated);
@@ -139,6 +144,26 @@ public class ShellController {
         } catch (Exception e) {
             log.error("终止命令失败: jobId={}", jobId, e);
             return new RestResponse().error("终止失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 关闭并重建常驻 shell。
+     *
+     * <p>命令卡死（如误敲了 top / tail -f）时的逃生口：强杀整个 shell 进程树，
+     * 下次 exec 会自动拉起一个干净的新 shell。注意工作目录与环境变量会随旧 shell 一起丢掉。
+     */
+    @PostMapping("/close")
+    public RestResponse close(HttpServletRequest request) {
+        if (!isLocal(request)) {
+            return rejected(request);
+        }
+        try {
+            shellService.closeShell();
+            return new RestResponse().success("会话已关闭，下次执行将重建");
+        } catch (Exception e) {
+            log.error("关闭 shell 会话失败", e);
+            return new RestResponse().error("关闭失败: " + e.getMessage());
         }
     }
 
