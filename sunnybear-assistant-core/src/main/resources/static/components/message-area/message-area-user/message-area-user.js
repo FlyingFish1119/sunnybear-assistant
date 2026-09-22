@@ -184,22 +184,22 @@ const MessageAreaUser = {
         /** 复制本条消息正文到剪贴板（只复制正文首块） */
         copyMessage() {
             this.ctx.actions.writeToClipboard(this.ctx.actions.bodyText(this.msg));
+        },
+
+        /** 合并同一帧内的多次图标刷新 */
+        scheduleIconRefresh() {
+            if (this._iconRefreshPending) return;
+            this._iconRefreshPending = true;
+            requestAnimationFrame(() => {
+                this._iconRefreshPending = false;
+                if (typeof lucide !== 'undefined' && this.$el) {
+                    lucide.createIcons({ root: this.$el });
+                }
+            });
         }
     },
 
     updated: function () {
         this.scheduleIconRefresh();
-    },
-
-    /** 合并同一帧内的多次图标刷新 */
-    scheduleIconRefresh() {
-        if (this._iconRefreshPending) return;
-        this._iconRefreshPending = true;
-        requestAnimationFrame(() => {
-            this._iconRefreshPending = false;
-            if (typeof lucide !== 'undefined' && this.$el) {
-                lucide.createIcons({ root: this.$el });
-            }
-        });
     }
 };

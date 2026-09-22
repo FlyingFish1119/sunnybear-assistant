@@ -238,6 +238,37 @@ body {
     flex-shrink: 0;
 }
 
+/* 行内数字输入框（工具设置条目右侧直接编辑，失焦/回车即保存） */
+.settings-inline-number {
+    width: 84px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    text-align: center;
+    background: #fff;
+    color: var(--text-primary);
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.settings-inline-number::-webkit-inner-spin-button,
+.settings-inline-number::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.settings-inline-number:hover,
+.settings-inline-number:focus {
+    border-color: var(--main-color);
+    outline: none;
+}
+
+.settings-inline-number:disabled {
+    opacity: 0.6;
+}
+
 /* ============================================
    对话框样式
    ============================================ */

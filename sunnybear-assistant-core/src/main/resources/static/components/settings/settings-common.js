@@ -37,10 +37,11 @@ const SettingsCommon = {
 
     methods: {
         /**
-         * 通用保存：POST → 成功后关闭对话框并通知父组件刷新全部设置
+         * 通用保存：POST → 成功后关闭对话框（如有）并通知父组件刷新全部设置
          * @param {string} path - API 路径（不含 BASE_PATH）
          * @param {object} body - 请求体
          * @param {string} key - 对话框 / saving 状态 key
+         * @returns {Promise<boolean>} 是否保存成功
          */
         async postSave(path, body, key) {
             this.saving[key] = true;
@@ -48,8 +49,9 @@ const SettingsCommon = {
                 const result = await API.post(path, body);
                 if (result.status === 200) {
                     ElementPlus.ElMessage.success('保存成功');
-                    this.dialogs[key] = false;
+                    if (this.dialogs) this.dialogs[key] = false;
                     this.$emit('saved');
+                    return true;
                 } else {
                     ElementPlus.ElMessage.error(result.message || '保存失败');
                 }
@@ -59,6 +61,7 @@ const SettingsCommon = {
             } finally {
                 this.saving[key] = false;
             }
+            return false;
         },
 
         getModeLabel(mode) {

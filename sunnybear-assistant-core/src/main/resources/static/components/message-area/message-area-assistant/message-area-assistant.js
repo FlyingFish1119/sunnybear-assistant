@@ -295,6 +295,31 @@ const MessageAreaAssistant = {
         /** 取消助手消息编辑 */
         cancelAssistantEdit() {
             this.ctx.actions.clearEditState();
+        },
+
+        /**
+         * 合并同一帧内的多次 mermaid 重渲染请求。
+         * mermaid 异步渲染完成后调用，触发组件重渲染以把源码占位换成 SVG。
+         */
+        scheduleMermaidRefresh() {
+            if (this._mermaidRefreshPending) return;
+            this._mermaidRefreshPending = true;
+            requestAnimationFrame(() => {
+                this._mermaidRefreshPending = false;
+                this.ctx.mermaidNonce++;
+            });
+        },
+
+        /** 合并同一帧内的多次图标刷新（流式期间每次 chunk 都会触发组件更新） */
+        scheduleIconRefresh() {
+            if (this._iconRefreshPending) return;
+            this._iconRefreshPending = true;
+            requestAnimationFrame(() => {
+                this._iconRefreshPending = false;
+                if (typeof lucide !== 'undefined' && this.$el) {
+                    lucide.createIcons({ root: this.$el });
+                }
+            });
         }
     },
 
@@ -312,30 +337,5 @@ const MessageAreaAssistant = {
 
     updated: function () {
         this.scheduleIconRefresh();
-    },
-
-    /**
-     * 合并同一帧内的多次 mermaid 重渲染请求。
-     * mermaid 异步渲染完成后调用，触发组件重渲染以把源码占位换成 SVG。
-     */
-    scheduleMermaidRefresh() {
-        if (this._mermaidRefreshPending) return;
-        this._mermaidRefreshPending = true;
-        requestAnimationFrame(() => {
-            this._mermaidRefreshPending = false;
-            this.ctx.mermaidNonce++;
-        });
-    },
-
-    /** 合并同一帧内的多次图标刷新（流式期间每次 chunk 都会触发组件更新） */
-    scheduleIconRefresh() {
-        if (this._iconRefreshPending) return;
-        this._iconRefreshPending = true;
-        requestAnimationFrame(() => {
-            this._iconRefreshPending = false;
-            if (typeof lucide !== 'undefined' && this.$el) {
-                lucide.createIcons({ root: this.$el });
-            }
-        });
     }
 };
