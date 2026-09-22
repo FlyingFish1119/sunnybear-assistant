@@ -19,28 +19,53 @@ const MSG_NL = String.fromCharCode(10);
  * 消息区插件注册表（全局单例）。
  *
  * 插件在任意时机（脚本加载后即可，无需等组件挂载）调用 register 声明自己的扩展
- * 组件；MessageArea 创建 context 时会把这里已登记的条目同步进 ctx.assistantActionSlots，
- * 之后每条助手消息的按钮区末尾都会渲染它们。见 context.registerAssistantActionSlot。
+ * 组件；MessageArea 创建 context 时会把已登记的条目同步进 ctx，之后按锚点渲染。
+ *
+ * 锚点（slot anchor）——每个锚点对应消息区的一个固定插入位置：
+ *   'message-list-top'   消息列表顶部（新对话开场等整块内容）
+ *   'message-bubble'     每条消息气泡末尾（组件自行按 msg 判断是否渲染）
+ *   'assistant-actions'  助手消息操作按钮区末尾（等价于 message-bubble 的助手场景）
+ *
+ * 组件会收到 prop: { msg }（列表顶部锚点 msg 为 null），并可 inject 共享上下文。
  */
 const MessageAreaPlugins = (function () {
-    const slots = [];
+    /** 锚点名 → 槽条目数组（{ component, order }） */
+    const slotsByAnchor = Object.create(null);
+
+    /** 取（或初始化）某锚点的槽数组 */
+    function bucket(anchor) {
+        if (!slotsByAnchor[anchor]) slotsByAnchor[anchor] = [];
+        return slotsByAnchor[anchor];
+    }
 
     /**
-     * 注册一个助手消息按钮区扩展组件。
+     * 注册一个消息区扩展组件。
+     * @param {string} anchor - 锚点名（见文件顶部说明）
      * @param {object} component - Vue 组件选项对象（会收到 prop: msg）
      * @param {number} [order=0] - 排序权重，越小越靠前
      */
+    function registerSlot(anchor, component, order) {
+        if (!anchor || !component) return;
+        const arr = bucket(anchor);
+        arr.push({ component: component, order: order || 0 });
+        arr.sort((a, b) => a.order - b.order);
+    }
+
+    /** 注册一个助手操作区扩展（兼容旧 API，等价于 'assistant-actions' 锚点） */
     function registerAssistantActionSlot(component, order) {
-        if (!component) return;
-        slots.push({ component: component, order: order || 0 });
-        slots.sort((a, b) => a.order - b.order);
+        registerSlot('assistant-actions', component, order);
     }
 
     return {
+        registerSlot: registerSlot,
         registerAssistantActionSlot: registerAssistantActionSlot,
-        /** 供 context 创建时取一份已登记槽的拷贝 */
+        /** 供 context 创建时取某锚点已登记槽的拷贝 */
+        snapshot: function (anchor) {
+            return (slotsByAnchor[anchor] || []).slice();
+        },
+        /** 兼容旧名：等价于 snapshot('assistant-actions') */
         snapshotAssistantActionSlots: function () {
-            return slots.slice();
+            return (slotsByAnchor['assistant-actions'] || []).slice();
         }
     };
 })();
@@ -99,9 +124,13 @@ function createMessageAreaContext(sessionStore) {
         collapsedState: {},
         // mermaid 异步出图完成时需要让子组件重渲染（渲染时会读取该计数）
         mermaidNonce: 0,
-        // 插件渲染槽：助手消息按钮区末尾的扩展位，元素形如 { component, order }
-        // 初始即纳入启动阶段通过 MessageAreaPlugins 登记的插件
-        assistantActionSlots: MessageAreaPlugins.snapshotAssistantActionSlots()
+        // 插件渲染槽：锚点名 → 槽条目数组（元素形如 { component, order }）。
+        // 初始即纳入启动阶段通过 MessageAreaPlugins 登记的插件。
+        slots: {
+            'message-list-top': MessageAreaPlugins.snapshot('message-list-top'),
+            'message-bubble': MessageAreaPlugins.snapshot('message-bubble'),
+            'assistant-actions': MessageAreaPlugins.snapshot('assistant-actions')
+        }
     });
 
     const api = {
@@ -312,37 +341,54 @@ function createMessageAreaContext(sessionStore) {
         /* ---------- 插件渲染槽 ---------- */
 
         /**
-         * 注册一个助手消息按钮区末尾的扩展组件。插件在启动阶段调用一次即可，
-         * 之后每条助手消息的按钮区末尾都会渲染它，并注入 { msg, context } 供其自行取用。
+         * 注册一个消息区扩展组件。插件在启动阶段调用一次即可，
+         * 之后对应锚点处会渲染它，并把 { msg } 作为 prop 传入。
          *
-         * 组件契约（约定而非强制，插件可自行忽略）：
-         *   props: { msg: Object }  — 当前助手消息
+         * 组件契约（约定而非强制）：
+         *   props: { msg: Object }     — 当前消息（列表顶部锚点为 null）
          *   inject: messageAreaContext — 与内置子组件共用同一份共享上下文
          *
+         * @param {string} anchor - 锚点名：见文件顶部 MessageAreaPlugins 说明
          * @param {object} component - Vue 组件选项对象
          * @param {number} [order=0] - 排序权重，越小越靠前
          * @returns {object} 已登记的槽对象（可用于 unregister）
          */
-        registerAssistantActionSlot(component, order) {
-            if (!component) return null;
+        registerSlot(anchor, component, order) {
+            if (!anchor || !component) return null;
             // 写入全局注册表，保证后续新建的 context 也能带上；本次渲染直接进当前 ctx
-            MessageAreaPlugins.registerAssistantActionSlot(component, order);
+            MessageAreaPlugins.registerSlot(anchor, component, order);
+            const arr = api.slotsFor(anchor);
             const slot = { component: component, order: order || 0 };
-            ctx.assistantActionSlots.push(slot);
-            // 保持稳定的展示顺序：order 相同时按注册先后
-            ctx.assistantActionSlots.sort((a, b) => a.order - b.order);
+            arr.push(slot);
+            arr.sort((a, b) => a.order - b.order);
             return slot;
         },
 
         /**
          * 注销已注册的扩展组件。
-         * @param {object} component - 注册时传入的组件对象，或 registerAssistantActionSlot 返回的槽对象
+         * @param {string} anchor - 锚点名
+         * @param {object} component - 注册时传入的组件对象，或 registerSlot 返回的槽对象
          */
+        unregisterSlot(anchor, component) {
+            const arr = api.slotsFor(anchor);
+            const idx = arr.findIndex(s => s === component || s.component === component);
+            if (idx !== -1) arr.splice(idx, 1);
+        },
+
+        /** 取某锚点当前的槽数组（响应式，直接用于 v-for） */
+        slotsFor(anchor) {
+            if (!ctx.slots[anchor]) ctx.slots[anchor] = [];
+            return ctx.slots[anchor];
+        },
+
+        /* ---------- 兼容旧 API（等价于 assistant-actions 锚点） ---------- */
+
+        registerAssistantActionSlot(component, order) {
+            return api.registerSlot('assistant-actions', component, order);
+        },
+
         unregisterAssistantActionSlot(component) {
-            const idx = ctx.assistantActionSlots.findIndex(
-                s => s === component || s.component === component
-            );
-            if (idx !== -1) ctx.assistantActionSlots.splice(idx, 1);
+            api.unregisterSlot('assistant-actions', component);
         }
     };
 

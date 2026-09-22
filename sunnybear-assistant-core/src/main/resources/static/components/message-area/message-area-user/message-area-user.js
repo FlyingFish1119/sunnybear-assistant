@@ -109,11 +109,22 @@ const MessageAreaUser = {
             <!-- 本轮 token 消耗（message-area-tokens 子组件） -->
             <message-area-tokens :msg="msg"></message-area-tokens>
         </div>
+        <!-- 气泡末尾插件槽（锚点 'message-bubble'，插件自行按 msg 判断是否渲染） -->
+        <div v-if="bubbleSlots.length" class="message-area-plugin-slots">
+            <component v-for="(slot, si) in bubbleSlots"
+                       :key="'plugin-bubble-' + si"
+                       :is="slot.component"
+                       :msg="msg"></component>
+        </div>
     </div>`,
 
     computed: {
         ctx: function () {
             return this.messageAreaContext;
+        },
+        /** 气泡末尾插件槽（锚点 'message-bubble'） */
+        bubbleSlots: function () {
+            return this.ctx.actions.slotsFor('message-bubble');
         },
         /** 本轮不可交互（请求在途或流式输出中）：隐藏操作按钮 */
         busy: function () {

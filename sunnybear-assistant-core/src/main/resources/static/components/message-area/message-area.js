@@ -29,15 +29,22 @@ const MessageArea = {
 
     template: `
     <div class="message-area-panel" :class="{ 'is-new-chat': isNewChat }">
-        <!-- 新对话落地页：头像 + 问候 + 建议提问（message-area-hero 子组件） -->
+        <!-- 新对话落地页：头像 + 问候 + 建议提问（message-area-hero 子组件）。
+             若插件注册了列表顶部槽（如角色登场 char-hero），则核心开场让位，避免两块开场同时出现 -->
         <message-area-hero
-            v-if="isNewChat"
+            v-if="isNewChat && !listTopSlots.length"
             :main-color="mainColor"
             :avatar="assistantAvatar"
             :assistant-name="assistantSettings.assistantName"
         ></message-area-hero>
-        <!-- 消息列表：新对话时隐藏 -->
-        <div v-show="currentSessionId || currentMessages.length > 0" class="message-area-list" v-auto-follow>
+        <!-- 消息列表：新对话时隐藏（但插件注册了列表顶部槽时保留，供其渲染开场内容） -->
+        <div v-show="currentSessionId || currentMessages.length > 0 || listTopSlots.length"
+             class="message-area-list" v-auto-follow>
+            <!-- 列表顶部插件槽（如角色登场开场页） -->
+            <component v-for="(slot, si) in listTopSlots"
+                       :key="'plugin-top-' + si"
+                       :is="slot.component"
+                       :msg="null"></component>
             <div :style="{'--main-color': mainColor}" class="message-area-list-loading" v-if="sessionSelectLoading">
                 <div class="loading-spinner">
                     <i data-lucide="loader-circle" class="loading-icon"></i>
@@ -127,6 +134,10 @@ const MessageArea = {
         },
         isNewChat: function () {
             return !this.currentSessionId && this.currentMessages.length === 0;
+        },
+        /** 列表顶部插件槽（锚点 'message-list-top'） */
+        listTopSlots: function () {
+            return this.context.actions.slotsFor('message-list-top');
         },
         /**
          * 助手头像 URL（本地文件走代理），供落地页子组件使用。

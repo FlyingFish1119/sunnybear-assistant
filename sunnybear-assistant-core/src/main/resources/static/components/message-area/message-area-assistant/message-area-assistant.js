@@ -156,13 +156,20 @@ const MessageAreaAssistant = {
                   title="编辑消息">
                 <i style="width: 14px; height: 14px" data-lucide="pencil"></i>
             </span>
-            <!-- 插件扩展槽：插件注册的组件在此渲染（见 context.registerAssistantActionSlot） -->
-            <component v-for="slot in actionSlots"
-                       :key="'plugin-slot-' + slot.order"
-                       :is="slot.component"
-                       :msg="msg"></component>
             <!-- 本轮 token 消耗（message-area-tokens 子组件） -->
             <message-area-tokens :msg="msg"></message-area-tokens>
+            <!-- 操作区插件槽（锚点 'assistant-actions'） -->
+            <component v-for="(slot, si) in actionSlots"
+                       :key="'plugin-action-' + si"
+                       :is="slot.component"
+                       :msg="msg"></component>
+        </div>
+        <!-- 气泡末尾插件槽（锚点 'message-bubble'，插件自行按 msg 判断是否渲染） -->
+        <div v-if="bubbleSlots.length" class="message-area-plugin-slots">
+            <component v-for="(slot, si) in bubbleSlots"
+                       :key="'plugin-bubble-' + si"
+                       :is="slot.component"
+                       :msg="msg"></component>
         </div>
     </div>`,
 
@@ -182,9 +189,13 @@ const MessageAreaAssistant = {
         busy: function () {
             return this.sessionStore.busy;
         },
-        /** 插件注册的按钮区扩展组件（已按 order 排序） */
+        /** 操作区插件槽（锚点 'assistant-actions'） */
         actionSlots: function () {
-            return this.ctx.assistantActionSlots;
+            return this.ctx.actions.slotsFor('assistant-actions');
+        },
+        /** 气泡末尾插件槽（锚点 'message-bubble'） */
+        bubbleSlots: function () {
+            return this.ctx.actions.slotsFor('message-bubble');
         },
         /** 工具调用参数的 markdown 文本（流式分块渲染与非流式整段渲染共用同一份拼装逻辑） */
         toolCallsMarkdown: function () {

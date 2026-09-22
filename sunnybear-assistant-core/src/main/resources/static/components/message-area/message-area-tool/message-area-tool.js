@@ -75,11 +75,22 @@ const MessageAreaTool = {
                 </div>
             </div>
         </div>
+        <!-- 气泡末尾插件槽（锚点 'message-bubble'，插件自行按 msg 判断是否渲染） -->
+        <div v-if="bubbleSlots.length" class="message-area-plugin-slots">
+            <component v-for="(slot, si) in bubbleSlots"
+                       :key="'plugin-bubble-' + si"
+                       :is="slot.component"
+                       :msg="msg"></component>
+        </div>
     </div>`,
 
     computed: {
         ctx: function () {
             return this.messageAreaContext;
+        },
+        /** 气泡末尾插件槽（锚点 'message-bubble'） */
+        bubbleSlots: function () {
+            return this.ctx.actions.slotsFor('message-bubble');
         },
         /** 工具消息的聚合执行状态（折叠头显示成功/失败图标和颜色） */
         toolStatus: function () {

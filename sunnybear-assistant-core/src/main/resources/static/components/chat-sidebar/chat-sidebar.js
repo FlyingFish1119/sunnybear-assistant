@@ -1,8 +1,11 @@
 /**
  * 聊天页侧边栏组件（会话列表 + 右键菜单 + 桌面折叠 / 移动端抽屉）
  *
- * 纯视图：会话列表与分页状态统一由 SessionStore 持有，本组件只负责渲染与交互，
+ * 纯视图：会话列表与分页状态默认由 SessionStore 持有，本组件只负责渲染与交互，
  * 数据操作（刷新/翻页/增删/Pro/无审查）一律调用 store 方法。
+ *
+ * 插件扩展：通过全局注册表 ChatSidebarPlugins 可让插件「完全接管」会话列表的
+ * 数据来源与分页能力（见 provider 契约）；未注册时一律回退 sessionStore。
  *
  * 开合由 WsBus 本地事件驱动：订阅 'sidebar:toggle'（顶部菜单按钮）与
  * 'sidebar:close'（store 切/新建会话时）。桌面端的折叠态仍通过 emit 交父级布局。
@@ -22,6 +25,51 @@
  *   toggle()               — 切换侧边栏（桌面折叠 or 移动抽屉）
  *   close()                — 关闭移动端抽屉
  */
+
+/**
+ * 侧边栏插件注册表（全局单例）。
+ *
+ * 插件在任意时机（脚本加载后即可）调用 registerProvider 声明一个「会话列表提供者」，
+ * 侧边栏会优先用它取数据；未注册时回退 sessionStore。多个 provider 时取最后一个
+ * （后注册者覆盖先前，便于插件按加载顺序决定优先级）。
+ *
+ * provider 契约（全部可选，缺省字段自动回退 store）：
+ *   {
+ *     sessions()                         -> Array   会话数组（必填，否则本 provider 视为无效）
+ *     hasMore()                          -> Boolean 是否还有下一页
+ *     loadingMore()                      -> Boolean 是否正在加载下一页
+ *     loadMore()                         -> Promise 触底加载下一页
+ *     refresh()                          -> Promise 首次刷新（侧边栏挂载时调用）
+ *     selectSession(session)             -> void    点击会话
+ *     createSession()                    -> void    新建对话
+ *     deleteSession(session)             -> void    删除会话
+ *     toggleProMode(session)             -> void    切换 Pro
+ *     toggleUnreviewed(session)          -> void    切换无审查
+ *   }
+ * provider 内的响应式数据自行保证可被 Vue 追踪（例如其内部用 reactive/ref）。
+ */
+const ChatSidebarPlugins = (function () {
+    var provider = null;
+
+    return {
+        /**
+         * 注册会话列表提供者（完全接管数据来源）。
+         * @param {object} p - provider 契约对象
+         */
+        registerProvider: function (p) {
+            if (p && typeof p.sessions === 'function') provider = p;
+        },
+        /** 注销当前提供者，回退 sessionStore */
+        unregisterProvider: function () {
+            provider = null;
+        },
+        /** 取当前提供者（可能为 null） */
+        getProvider: function () {
+            return provider;
+        }
+    };
+})();
+
 const ChatSidebar = {
     name: 'ChatSidebar',
 
@@ -166,6 +214,8 @@ const ChatSidebar = {
     data: function () {
         return {
             sidebarOpen: false,
+            /** 提供者版本号：运行期注册/注销 provider 后由 forceRefresh 递增，驱动相关计算属性重算 */
+            providerVersion: 0,
             /** 列表模式切换进行中：既用来锁住连点，也用来抑制瞬间的空态闪现 */
             listSwitching: false,
             /** 旧列表正在逐条退场 */
@@ -194,7 +244,10 @@ const ChatSidebar = {
 
     mounted: function () {
         var self = this;
-        if (this.sessionStore) {
+        var provider = ChatSidebarPlugins.getProvider();
+        if (provider && typeof provider.refresh === 'function') {
+            Promise.resolve(provider.refresh()).finally(function () { self.ensureScrollable(); });
+        } else if (this.sessionStore) {
             this.sessionStore.refreshSessions().finally(function () { self.ensureScrollable(); });
         }
         // 兄弟组件（message-topbar）/ store 经 WsBus 本地事件驱动侧边栏开合
@@ -247,6 +300,23 @@ const ChatSidebar = {
         },
 
         /**
+         * 强制刷新会话列表：供插件在「运行期」注册/注销 provider 后调用（启动期注册无需调用）。
+         * 递增版本号驱动计算属性重算，并按当前 provider / store 重新拉取数据。
+         */
+        forceRefresh: function () {
+            var self = this;
+            this.providerVersion++;
+            this.$nextTick(function () {
+                var provider = ChatSidebarPlugins.getProvider();
+                if (provider && typeof provider.refresh === 'function') {
+                    Promise.resolve(provider.refresh()).finally(function () { self.ensureScrollable(); });
+                } else if (self.sessionStore) {
+                    self.sessionStore.refreshSessions().finally(function () { self.ensureScrollable(); });
+                }
+            });
+        },
+
+        /**
          * 跳转到设置页面（不依赖父页面，组件内直接跳转）
          */
         goSettings: function () {
@@ -260,16 +330,24 @@ const ChatSidebar = {
             window.location.href = API.BASE_PATH + 'router.html';
         },
 
-        /** 点击会话：切换当前会话（委托 store；加载中或切换模式动画期间直接忽略） */
+        /** 点击会话：切换当前会话（插件优先，回退 store；加载中或切换模式动画期间直接忽略） */
         selectSession: function (session) {
             if (this.sessionSelectLoading || this.listSwitching) return;
-            if (this.sessionStore) this.sessionStore.selectSession(session);
+            if (this.sessionProvider && typeof this.sessionProvider.selectSession === 'function') {
+                this.sessionProvider.selectSession(session);
+            } else if (this.sessionStore) {
+                this.sessionStore.selectSession(session);
+            }
         },
 
-        /** 点击"新对话"（委托 store；加载中直接忽略） */
+        /** 点击"新对话"（插件优先，回退 store；加载中直接忽略） */
         createSession: function () {
             if (this.sessionSelectLoading) return;
-            if (this.sessionStore) this.sessionStore.createSession();
+            if (this.sessionProvider && typeof this.sessionProvider.createSession === 'function') {
+                this.sessionProvider.createSession();
+            } else if (this.sessionStore) {
+                this.sessionStore.createSession();
+            }
         },
 
         /**
@@ -326,9 +404,12 @@ const ChatSidebar = {
             }, 490);
         },
 
-        /** 触底加载更早一页（由 v-infinite-scroll 指令触发，委托 store） */
+        /** 触底加载更早一页（由 v-infinite-scroll 指令触发；插件优先，回退 store） */
         loadMore: function () {
             // 返回 Promise 以便指令在请求期间上锁，避免重复触发
+            if (this.sessionProvider && typeof this.sessionProvider.loadMore === 'function') {
+                return Promise.resolve(this.sessionProvider.loadMore());
+            }
             if (!this.sessionStore) return Promise.resolve();
             return this.sessionStore.loadMoreSessions();
         },
@@ -385,7 +466,11 @@ const ChatSidebar = {
                 cancelText: '取消',
                 type: 'warning'
             }).then(function () {
-                if (self.sessionStore) self.sessionStore.deleteSession(session);
+                if (self.sessionProvider && typeof self.sessionProvider.deleteSession === 'function') {
+                    self.sessionProvider.deleteSession(session);
+                } else if (self.sessionStore) {
+                    self.sessionStore.deleteSession(session);
+                }
             }).catch(function () { /* 用户取消 */ });
         },
 
@@ -487,7 +572,11 @@ const ChatSidebar = {
          */
         toggleProMode: function (session) {
             this.closeContextMenu();
-            if (this.sessionStore) this.sessionStore.toggleSessionPro(session);
+            if (this.sessionProvider && typeof this.sessionProvider.toggleProMode === 'function') {
+                this.sessionProvider.toggleProMode(session);
+            } else if (this.sessionStore) {
+                this.sessionStore.toggleSessionPro(session);
+            }
         },
 
         /**
@@ -497,11 +586,17 @@ const ChatSidebar = {
         toggleUnreviewed: function (session) {
             var self = this;
             self.closeContextMenu();
-            if (!self.sessionStore) return;
+            var provider = self.sessionProvider;
+            var useProvider = provider && typeof provider.toggleUnreviewed === 'function';
+            if (!useProvider && !self.sessionStore) return;
+            var apply = function () {
+                if (useProvider) provider.toggleUnreviewed(session);
+                else self.sessionStore.toggleSessionUnreviewed(session);
+            };
             var enabling = !session.unreviewed;
             if (!enabling) {
                 // 关闭无审查：直接切换
-                self.sessionStore.toggleSessionUnreviewed(session);
+                apply();
                 return;
             }
             // 开启无审查：先弹确认，防止误触
@@ -512,7 +607,7 @@ const ChatSidebar = {
                 cancelText: '取消',
                 type: 'warning'
             }).then(function () {
-                self.sessionStore.toggleSessionUnreviewed(session);
+                apply();
             }).catch(function () { /* 用户取消 */ });
         },
 
@@ -588,8 +683,15 @@ const ChatSidebar = {
     },
 
     computed: {
-        // 以下均来自 SessionStore（未注入时降级为空/默认，保证插件页不报错）
+        /** 当前生效的会话列表提供者：插件优先，未注册则回退 store 适配器 */
+        sessionProvider: function () {
+            void this.providerVersion; // 显式依赖版本号，便于运行期注册后经 forceRefresh 触发重算
+            return ChatSidebarPlugins.getProvider();
+        },
+        // 以下优先取自插件 provider；无 provider 时回退 SessionStore
+        // （store 未注入时降级为空/默认，保证插件页不报错）
         sessions: function () {
+            if (this.sessionProvider) return this.sessionProvider.sessions() || [];
             return this.sessionStore ? this.sessionStore.sessions : [];
         },
         // 按天分组（updateTime 为 "yyyy-MM-dd HH:mm:ss"，列表已按时间倒序）
@@ -627,9 +729,15 @@ const ChatSidebar = {
             return rows;
         },
         sessionsHasMore: function () {
+            if (this.sessionProvider && typeof this.sessionProvider.hasMore === 'function') {
+                return this.sessionProvider.hasMore();
+            }
             return this.sessionStore ? this.sessionStore.sessionsHasMore : false;
         },
         sessionsLoadingMore: function () {
+            if (this.sessionProvider && typeof this.sessionProvider.loadingMore === 'function') {
+                return this.sessionProvider.loadingMore();
+            }
             return this.sessionStore ? this.sessionStore.sessionsLoadingMore : false;
         },
         listMode: function () {
@@ -639,6 +747,9 @@ const ChatSidebar = {
         },
         // 当前会话：优先取注入的 sessionStore，插件页无法注入时回退空对象
         currentSession: function () {
+            if (this.sessionProvider && typeof this.sessionProvider.currentSession === 'function') {
+                return this.sessionProvider.currentSession();
+            }
             return this.sessionStore ? this.sessionStore.state.currentSession : {};
         },
         isNewSession: function () {

@@ -15,6 +15,10 @@
  *
  * 模型展示文本由本组件自行计算：启动时拉取 chat / chat_pro 设置，
  * 结合注入 store 的 currentSession.enablePro 决定显示哪个模型。
+ * 插件页可通过 sessionStore.configure({ getModelDisplay }) 覆盖这段展示。
+ *
+ * 插件扩展：通过全局注册表 TopbarPlugins 按锚点插入扩展组件（左栏 / 右栏），
+ * 见文件顶部 TopbarPlugins 说明。
  *
  * Props:
  *   mainColor             — String   主题色
@@ -25,21 +29,75 @@
  *
  * 依赖注入（可选）：
  *   wsBus                  — WebSocket 消息总线
- *   sessionStore           — 会话/消息仓库（读取 currentSession.enablePro）
+ *   sessionStore           — 会话/消息仓库（读取 currentSession.enablePro / 模型覆盖）
  */
+
+/**
+ * 顶栏插件注册表（全局单例）。
+ *
+ * 插件在任意时机调用 registerSlot 声明扩展组件，顶栏挂载时同步进内部槽并按锚点渲染。
+ * 锚点：
+ *   'topbar-left'   左栏（模型名 / 会话名一带）
+ *   'topbar-right'  右栏（连接状态 / Agent Log 一带）
+ * 组件会收到 prop: { mainColor }，可 inject sessionStore / wsBus。
+ *
+ * 还可通过 hideBuiltin(key) 隐藏内置元素（插件页不需要的按钮等）。
+ * 内置元素 key：
+ *   'menu'              侧边栏开关
+ *   'model'             模型名标签
+ *   'session-name'      会话名
+ *   'ctx-gauge'         上下文用量环
+ *   'pending-tool'      待确认工具入口
+ *   'pending-question'  待回答提问入口
+ *   'knowledge-flash'   知识库命中闪现
+ *   'connection'        连接状态指示器
+ *   'agent-log'         Agent Log 开关
+ */
+const TopbarPlugins = (function () {
+    const slotsByAnchor = Object.create(null);
+    /** 被隐藏的内置元素 key 集合 */
+    const hiddenBuiltins = Object.create(null);
+
+    function registerSlot(anchor, component, order) {
+        if (!anchor || !component) return;
+        if (!slotsByAnchor[anchor]) slotsByAnchor[anchor] = [];
+        const arr = slotsByAnchor[anchor];
+        arr.push({ component: component, order: order || 0 });
+        arr.sort((a, b) => a.order - b.order);
+    }
+
+    /** 隐藏一个内置元素（key 见文件顶部说明） */
+    function hideBuiltin(key) {
+        if (key) hiddenBuiltins[key] = true;
+    }
+
+    return {
+        registerSlot: registerSlot,
+        hideBuiltin: hideBuiltin,
+        /** 供组件挂载时取某锚点已登记槽的拷贝 */
+        snapshot: function (anchor) {
+            return (slotsByAnchor[anchor] || []).slice();
+        },
+        /** 供组件挂载时取一份被隐藏 key 的拷贝 */
+        hiddenSnapshot: function () {
+            return Object.assign({}, hiddenBuiltins);
+        }
+    };
+})();
+
 const MessageTopbar = {
     name: 'MessageTopbar',
 
     template: `
     <div class="message-area-top">
         <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
-            <button class="sidebar-toggle-btn" @click="toggleSidebar" title="展开/收起侧边栏">
+            <button v-if="!isHidden('menu')" class="sidebar-toggle-btn" @click="toggleSidebar" title="展开/收起侧边栏">
                 <i data-lucide="menu" style="width: 18px; height: 18px;"></i>
             </button>
-            <span class="model-name-tag">{{ displayModel }} ·</span>
-            <chat-session-name :main-color="mainColor"></chat-session-name>
+            <span v-if="!isHidden('model')" class="model-name-tag">{{ displayModel }} ·</span>
+            <chat-session-name v-if="!isHidden('session-name')" :main-color="mainColor"></chat-session-name>
             <!-- 上下文用量环：显示离自动压缩还剩多少（已用比例越高越满） -->
-            <el-tooltip v-if="contextRatio !== null"
+            <el-tooltip v-if="!isHidden('ctx-gauge') && contextRatio !== null"
                         effect="light"
                         placement="bottom"
                         :show-after="80"
@@ -55,7 +113,7 @@ const MessageTopbar = {
                 </div>
             </el-tooltip>
             <!-- 待确认工具请求入口：弹窗收起后从此处重新展开 -->
-            <button v-if="pendingToolCount > 0"
+            <button v-if="!isHidden('pending-tool') && pendingToolCount > 0"
                     class="pending-entry-btn"
                     :style="{'--main-color': mainColor}"
                     @click="$refs.toolConfirm.expand()"
@@ -64,7 +122,7 @@ const MessageTopbar = {
                 <span class="pending-entry-badge">{{ pendingToolCount }}</span>
             </button>
             <!-- 待回答提问入口：弹窗收起后从此处重新展开 -->
-            <button v-if="pendingQuestionCount > 0"
+            <button v-if="!isHidden('pending-question') && pendingQuestionCount > 0"
                     class="pending-entry-btn"
                     :style="{'--main-color': mainColor}"
                     @click="$refs.toolQuestion.expand()"
@@ -72,13 +130,23 @@ const MessageTopbar = {
                 <i data-lucide="message-circle-question"></i>
                 <span class="pending-entry-badge">{{ pendingQuestionCount }}</span>
             </button>
+            <!-- 左栏插件槽（锚点 'topbar-left'，如角色名等） -->
+            <component v-for="(slot, si) in leftSlots"
+                       :key="'topbar-left-' + si"
+                       :is="slot.component"
+                       :main-color="mainColor"></component>
         </div>
         <div style="display: flex; align-items: center; gap: 16px;">
-            <span v-if="knowledgeFlashVisible" class="knowledge-hit-flash" title="已自动检索知识库内容">
+            <!-- 右栏插件槽（锚点 'topbar-right'，如数据库面板按钮等） -->
+            <component v-for="(slot, si) in rightSlots"
+                       :key="'topbar-right-' + si"
+                       :is="slot.component"
+                       :main-color="mainColor"></component>
+            <span v-if="!isHidden('knowledge-flash') && knowledgeFlashVisible" class="knowledge-hit-flash" title="已自动检索知识库内容">
                 <i data-lucide="database"></i>
             </span>
-            <chat-connection :ws-url="wsUrl"></chat-connection>
-            <button class="sidebar-toggle-btn" @click="toggleAgentLog"
+            <chat-connection v-if="!isHidden('connection')" :ws-url="wsUrl"></chat-connection>
+            <button v-if="!isHidden('agent-log')" class="sidebar-toggle-btn" @click="toggleAgentLog"
                     :title="agentLogVisible ? '折叠 Agent Log' : '展开 Agent Log'"
                     :style="agentLogVisible ? {color: mainColor} : {}">
                 <i data-lucide="activity" style="width: 18px; height: 18px;"></i>
@@ -109,6 +177,11 @@ const MessageTopbar = {
 
     data: function () {
         return {
+            // 锚点插件槽（挂载时从全局注册表同步）
+            leftSlots: TopbarPlugins.snapshot('topbar-left'),
+            rightSlots: TopbarPlugins.snapshot('topbar-right'),
+            // 被插件隐藏的内置元素 key 集合
+            hiddenBuiltins: TopbarPlugins.hiddenSnapshot(),
             knowledgeFlashVisible: false,
             // Agent Log 展开态（由 sidebar 通过 'agent-log:visibility' 回显）
             agentLogVisible: false,
@@ -124,8 +197,10 @@ const MessageTopbar = {
     },
 
     computed: {
-        // 当前会话启用 Pro → 显示 Pro 模型，否则显示普通模型；无会话时两者并列
+        // 当前会话启用 Pro → 显示 Pro 模型，否则显示普通模型；无会话时两者并列。
+        // 插件页可通过 sessionStore.adapter.getModelDisplay 覆盖（如角色自带的模型名）。
         displayModel: function () {
+            if (this.modelDisplayOverride != null) return this.modelDisplayOverride;
             var session = this.sessionStore ? this.sessionStore.state.currentSession : {};
             if (!session || !session.id) {
                 return (this.chatModel || '?') + ' / ' + (this.chatProModel || '?');
@@ -134,6 +209,22 @@ const MessageTopbar = {
                 return this.chatProModel || '?';
             }
             return this.chatModel || '?';
+        },
+
+        /** 插件对模型展示的覆盖值：由 adapter.getModelDisplay 提供，未提供则为 null */
+        modelDisplayOverride: function () {
+            var adapter = this.sessionStore && this.sessionStore.adapter;
+            if (!adapter || typeof adapter.getModelDisplay !== 'function') return null;
+            try {
+                return adapter.getModelDisplay({
+                    session: this.sessionStore.state.currentSession,
+                    chatModel: this.chatModel,
+                    chatProModel: this.chatProModel
+                });
+            } catch (e) {
+                console.error('getModelDisplay 钩子出错:', e);
+                return null;
+            }
         },
 
         /** 压缩阈值（token）：非正数视为未配置 */
@@ -191,6 +282,11 @@ const MessageTopbar = {
     },
 
     methods: {
+        /** 某内置元素是否被插件隐藏（key 见文件顶部 TopbarPlugins 说明） */
+        isHidden: function (key) {
+            return !!this.hiddenBuiltins[key];
+        },
+
         /**
          * 知识库命中：闪现图标，约 5 秒后自动消失（与 CSS 动画时长一致）。
          * 由组件自行订阅 ###KNOWLEDGE_HIT### 信号触发（见 mounted）。

@@ -61,6 +61,56 @@ const SessionStore = (function () {
         clearSendArea: function () {}
     };
 
+    /**
+     * 数据源适配钩子（由页面在启动时通过 configure 注入，全部可选）。
+     *
+     * 设计目标：核心流程（会话切换 / 流式处理 / 消息操作）保持唯一实现，
+     * 插件页只覆盖「数据从哪来、请求怎么拼」这一层差异，不复制 store 逻辑。
+     *
+     * 每个钩子缺省时回退到核心实现（API.session / API.message / API.ws / 无后处理）。
+     */
+    const adapter = {
+        /** 会话列表分页：默认核心 API.session.page；返回 {status, data:{list, hasMore}} */
+        fetchPage: function (mode, size, cursorUpdateTime, cursorId) {
+            return API.session.page(mode, size, cursorUpdateTime, cursorId);
+        },
+        /** 拉取会话历史消息：默认核心 API.message.getHistory；返回 {status, data} */
+        fetchHistory: function (sessionId) {
+            return API.message.getHistory(sessionId);
+        },
+        /** 加工新建会话请求（在 sendMessage 组装后、发送前调用，可增删字段） */
+        buildCreateRequest: null,
+        /** WebSocket 地址（供 connection-indicator / 页面读取）；默认核心地址 */
+        getWsUrl: function () {
+            return API.ws.url;
+        },
+        /**
+         * 覆盖顶栏的模型展示文本（返回字符串即覆盖，返回 null/undefined 则走核心逻辑）。
+         * 参数：{ session, chatModel, chatProModel }
+         */
+        getModelDisplay: null,
+        /** 历史消息加载完成后的后处理（如解析 chat-select），默认无操作 */
+        onMessagesLoaded: null,
+        /** 单条服务端消息落库/合并后的后处理（历史与流式两条路径都会调用） */
+        onServerMessage: null,
+        /**
+         * WS 帧后处理钩子：store 幂等处理完一帧后调用，让插件追加自己的逻辑。
+         * @param {string} status 帧状态名（如 'init_assistant' / 'UPDATE_SESSION' 等）
+         * @param {*} response 原始帧负载（JSON 帧为解析后的对象，信号帧为原始字符串）
+         */
+        onWsFrame: null
+    };
+
+    /** 应用适配钩子（仅覆盖传入的键，未传的保持原值） */
+    function applyAdapter(hooks) {
+        if (!hooks) return;
+        Object.keys(hooks).forEach(function (key) {
+            if (key in adapter && typeof hooks[key] !== 'undefined') {
+                adapter[key] = hooks[key];
+            }
+        });
+    }
+
     const state = reactive({
         /** 会话列表（已加载子集，始终按 updateTime 降序，单一数据源） */
         sessions: [],
@@ -275,6 +325,18 @@ const SessionStore = (function () {
             Object.assign(ui, hooks || {});
         },
 
+        /**
+         * 注册数据源适配钩子（插件页在启动时调用一次，用于接管数据来源）。
+         * 仅覆盖传入的键，未传的保持核心默认实现，因此核心页无需调用。
+         * @param {object} hooks 见文件顶部 adapter 契约
+         */
+        configure(hooks) {
+            applyAdapter(hooks);
+        },
+
+        /** 只读访问适配钩子（供页面读取 wsUrl 等） */
+        adapter: adapter,
+
         /* ================= 会话操作 ================= */
 
         /**
@@ -303,9 +365,14 @@ const SessionStore = (function () {
                 state.requestStateMap = {};
             }
             try {
-                const result = await API.message.getHistory(session.id);
+                const result = await adapter.fetchHistory(session.id);
                 if (result.status === 200) {
                     state.currentMessages = result.data;
+                    // 插件后处理（如解析 chat-select）：不改核心数据流，只做补充加工
+                    if (adapter.onMessagesLoaded) {
+                        try { adapter.onMessagesLoaded(state.currentMessages); }
+                        catch (e) { console.error('onMessagesLoaded 钩子出错:', e); }
+                    }
                     ui.scrollToBottom(true);
                     // 请求该会话的总线续传：若当前有一轮在进行中，服务端回放缓冲事件重建在途消息
                     const ws = WsBus.getSocket();
@@ -350,7 +417,7 @@ const SessionStore = (function () {
          */
         async refreshSessions() {
             try {
-                const result = await API.session.page(state.sessionListMode, SESSION_PAGE_SIZE);
+                const result = await adapter.fetchPage(state.sessionListMode, SESSION_PAGE_SIZE);
                 if (result.status === 200 && result.data) {
                     const top = result.data.list || [];
                     const hasMoreTop = !!result.data.hasMore;
@@ -386,7 +453,7 @@ const SessionStore = (function () {
             if (!last || !last.id || !last.updateTime) return;
             state.sessionsLoadingMore = true;
             try {
-                const result = await API.session.page(
+                const result = await adapter.fetchPage(
                     state.sessionListMode, SESSION_PAGE_SIZE, last.updateTime, last.id);
                 if (result.status === 200 && result.data) {
                     const list = result.data.list || [];
@@ -528,7 +595,7 @@ const SessionStore = (function () {
         sendMessage(payload) {
             if (!beginSend()) return false;
             const sessionId = currentSessionId();
-            const request = {
+            let request = {
                 mode: sessionId ? 'append' : 'create',
                 sessionId: sessionId,
                 content: payload.content,
@@ -536,6 +603,15 @@ const SessionStore = (function () {
             };
             if (payload.files && payload.files.length > 0) {
                 request.files = payload.files;
+            }
+            // 插件可加工请求（如新会话携带 extension.characterId）
+            if (adapter.buildCreateRequest) {
+                try {
+                    const customized = adapter.buildCreateRequest(request, { isNew: !sessionId });
+                    if (customized) request = customized;
+                } catch (e) {
+                    console.error('buildCreateRequest 钩子出错:', e);
+                }
             }
             const ws = WsBus.getSocket();
             if (ws) {
@@ -827,6 +903,10 @@ const SessionStore = (function () {
                         && response.sessionId === currentSessionId()
                         && !state.currentMessages.some(m => m.id === serverMsg.id)) {
                     state.currentMessages.push(serverMsg);
+                    if (adapter.onServerMessage) {
+                        try { adapter.onServerMessage(serverMsg); }
+                        catch (e) { console.error('onServerMessage 钩子出错:', e); }
+                    }
                 }
                 return;
             }
@@ -854,6 +934,11 @@ const SessionStore = (function () {
                 }
             }
             streamingMessage._v = (streamingMessage._v || 0) + 1;
+            // 插件后处理：服务端落库消息已合并进流式消息（如解析 extension.chatSelect）
+            if (adapter.onServerMessage) {
+                try { adapter.onServerMessage(streamingMessage, serverMsg); }
+                catch (e) { console.error('onServerMessage 钩子出错:', e); }
+            }
         },
 
         /** 处理 error 帧：复位发送态、清理流式消息与标记、补拉历史、返回错误文本 */
@@ -1085,7 +1170,16 @@ const SessionStore = (function () {
                 return;
             }
             if (raw.startsWith('###')) {
-                console.warn('未知的信号:' + raw);
+                // store 未精确订阅的信号（如插件私有的 BATTLE_TURN / BATTLE_END）：
+                // 交给 onWsFrame 钩子处理，插件可在自己的页面里消费这些帧
+                const signal = raw.substring(3, raw.indexOf('###', 3));
+                if (adapter.onWsFrame) {
+                    const payload = raw.substring(('###' + signal + '###').length);
+                    try { adapter.onWsFrame(signal, payload, store); }
+                    catch (e) { console.error('onWsFrame 钩子出错 [' + signal + ']:', e); }
+                } else {
+                    console.warn('未知的信号:' + raw);
+                }
                 return;
             }
             let response;
@@ -1136,6 +1230,12 @@ const SessionStore = (function () {
                     break;
                 }
             }
+
+            // 插件帧后处理：store 已幂等处理完这一帧，插件可追加自己的逻辑
+            if (adapter.onWsFrame) {
+                try { adapter.onWsFrame(response.status, response, store); }
+                catch (e) { console.error('onWsFrame 钩子出错:', e); }
+            }
         }
     };
 
@@ -1149,17 +1249,31 @@ const SessionStore = (function () {
         if (typeof WsBus === 'undefined' || store._wsBridgeReady) return;
         store._wsBridgeReady = true;
 
-        WsBus.on('REPLAY_MESSAGE', payload => store.handleReplay(payload));
-        WsBus.on('START', payload => store.handleStart(payload));
-        WsBus.on('REPLACE', payload => store.handleReplace(payload));
-        WsBus.on('END', payload => store.handleEnd(payload));
-        WsBus.on('TOOL_CALL_FINISH', payload => store.handleToolCallFinish(payload));
-        WsBus.on('CONTEXT_COMPRESSING', payload => store.handleContextCompressing(payload));
-        WsBus.on('CONTEXT_COMPRESSED', payload => store.handleContextCompressed(payload));
-        WsBus.on('CONTEXT_COMPRESS_END', payload => store.handleContextCompressEnd(payload));
-        WsBus.on('REQUEST_CONNECTING', payload => store.handleRequestConnecting(payload));
-        WsBus.on('REQUEST_THINKING', payload => store.handleRequestThinking(payload));
-        WsBus.on('UPDATE_SESSION', payload => {
+        /**
+         * 订阅信号并统一在末尾触发 onWsFrame 插件钩子，
+         * 让插件能感知 store 处理过的每个信号帧（信号名作为 status 传入）。
+         */
+        function onSignal(name, handler) {
+            WsBus.on(name, payload => {
+                handler(payload);
+                if (adapter.onWsFrame) {
+                    try { adapter.onWsFrame(name, payload, store); }
+                    catch (e) { console.error('onWsFrame 钩子出错 [' + name + ']:', e); }
+                }
+            });
+        }
+
+        onSignal('REPLAY_MESSAGE', payload => store.handleReplay(payload));
+        onSignal('START', payload => store.handleStart(payload));
+        onSignal('REPLACE', payload => store.handleReplace(payload));
+        onSignal('END', payload => store.handleEnd(payload));
+        onSignal('TOOL_CALL_FINISH', payload => store.handleToolCallFinish(payload));
+        onSignal('CONTEXT_COMPRESSING', payload => store.handleContextCompressing(payload));
+        onSignal('CONTEXT_COMPRESSED', payload => store.handleContextCompressed(payload));
+        onSignal('CONTEXT_COMPRESS_END', payload => store.handleContextCompressEnd(payload));
+        onSignal('REQUEST_CONNECTING', payload => store.handleRequestConnecting(payload));
+        onSignal('REQUEST_THINKING', payload => store.handleRequestThinking(payload));
+        onSignal('UPDATE_SESSION', payload => {
             console.log('update session', payload);
             try {
                 store.upsertSession(JSON.parse(payload));
@@ -1167,7 +1281,7 @@ const SessionStore = (function () {
                 console.error('解析 UPDATE_SESSION 失败:', e);
             }
         });
-        WsBus.on('TTS_AUDIO', payload => {
+        onSignal('TTS_AUDIO', payload => {
             try {
                 store.handleTtsAudio(JSON.parse(payload));
             } catch (e) {
