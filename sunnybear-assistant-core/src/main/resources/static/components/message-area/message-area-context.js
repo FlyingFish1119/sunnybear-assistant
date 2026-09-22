@@ -59,11 +59,6 @@ const MessageAreaPlugins = (function () {
         arr.sort((a, b) => a.order - b.order);
     }
 
-    /** 注册一个助手操作区扩展（兼容旧 API，等价于 'assistant-actions' 锚点） */
-    function registerAssistantActionSlot(component, order) {
-        registerSlot('assistant-actions', component, order);
-    }
-
     /**
      * 注册正文文本块渲染器：注册后，所有 type==='text' 的正文块改为交给该组件渲染，
      * 未注册时使用内置的 Markdown 渲染（见 message-area-text）。
@@ -112,7 +107,6 @@ const MessageAreaPlugins = (function () {
 
     return {
         registerSlot: registerSlot,
-        registerAssistantActionSlot: registerAssistantActionSlot,
         registerTextRenderer: registerTextRenderer,
         registerAvatarResolver: registerAvatarResolver,
         registerAvatarInitialResolver: registerAvatarInitialResolver,
@@ -133,10 +127,6 @@ const MessageAreaPlugins = (function () {
         /** 供 context 创建时取某锚点已登记槽的拷贝 */
         snapshot: function (anchor) {
             return (slotsByAnchor[anchor] || []).slice();
-        },
-        /** 兼容旧名：等价于 snapshot('assistant-actions') */
-        snapshotAssistantActionSlots: function () {
-            return (slotsByAnchor['assistant-actions'] || []).slice();
         }
     };
 })();
@@ -481,16 +471,6 @@ function createMessageAreaContext(sessionStore) {
         slotsFor(anchor) {
             if (!ctx.slots[anchor]) ctx.slots[anchor] = [];
             return ctx.slots[anchor];
-        },
-
-        /* ---------- 兼容旧 API（等价于 assistant-actions 锚点） ---------- */
-
-        registerAssistantActionSlot(component, order) {
-            return api.registerSlot('assistant-actions', component, order);
-        },
-
-        unregisterAssistantActionSlot(component) {
-            api.unregisterSlot('assistant-actions', component);
         }
     };
 
