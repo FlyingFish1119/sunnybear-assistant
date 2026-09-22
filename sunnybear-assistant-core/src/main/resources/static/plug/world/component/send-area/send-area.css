@@ -4,7 +4,8 @@
    ------------------------------------------------------------
    本文件原位于 css/send-area.css，因仅 world 页在用，已迁入 world 目录。
    ⚠ world 页重构迁到 components/send-area 组件后，本文件整体删除。
-   ⚠ 消息内附件 / 拖拽遮罩样式在 css/attachment.css（页面级公共样式）。
+   ⚠ 消息内附件 / 拖拽遮罩样式已各归其主：消息内附件 → components/message-area/message-area.css，
+      拖拽上传遮罩 → components/file-upload/file-upload.css，都不再是页面级公共样式。
    ============================================ */
 
 /* ---- 底部发送区容器（wrapper 直接子元素，固定于底部） ---- */
@@ -191,7 +192,8 @@
 }
 .file-chip-add:hover { border-color: var(--main-color); color: var(--main-color); background: rgba(0,0,0,0.03); }
 
-/* ---- 拖拽遮罩 / 消息内附件：已拆到 css/attachment.css ---- */
+/* ---- 拖拽遮罩：已归 components/file-upload/file-upload.css ----
+   ---- 消息内附件：已归 components/message-area/message-area.css ---- */
 
 /* ============================================
    看板熊：趴在“发送按钮”顶沿上的装饰（icon/signboard_bear_2.png + icon/signboard_bear_1.png）
@@ -309,5 +311,5 @@
         --cx: calc(85% + 34px);
     }
 
-    /* 拖拽遮罩 / 消息内附件的移动端适配：已拆到 css/attachment.css */
+    /* 拖拽遮罩 / 消息内附件的移动端适配：也随各自归到 file-upload.css / message-area.css */
 }

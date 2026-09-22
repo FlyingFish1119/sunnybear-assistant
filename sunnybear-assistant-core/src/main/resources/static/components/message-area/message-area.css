@@ -948,6 +948,12 @@
         padding-top: 4px;
         opacity: 1;
     }
+
+    /* 消息内附件：小屏图片放宽到满宽、限高收到 40vh（原 css/attachment.css） */
+    .message-attachment-image img {
+        max-width: 100%;
+        max-height: 40vh;
+    }
 }
 
 /* ==================== 知识库命中闪现 ==================== */
@@ -1142,4 +1148,39 @@
     padding-top: 10px;
     border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
+
+/* ============================================
+    消息内附件（图片 / 音视频 / 文件）
+    ------------------------------------------------------------
+    原在 css/attachment.css，已按归属收回本组件：这些类只在消息气泡里渲染，
+    与消息区是一体的，放组件里才能跟着组件一起走（不再有"页面级公共"那份）。
+    ⚠ 拖拽上传遮罩不在这里 —— 那归 file-upload 组件。
+    ============================================ */
+.message-attachment-image img {
+    max-width: min(100%, 600px);
+    max-height: 70vh;
+    border-radius: 8px;
+    cursor: pointer;
+    margin: 4px 0;
+}
+.message-attachment-audio audio,
+.message-attachment-video video {
+    max-width: 100%;
+    max-height: 480px;
+    border-radius: 8px;
+    margin: 4px 0;
+}
+.message-attachment-file a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(0, 0, 0, 0.04);
+    border-radius: 8px;
+    text-decoration: none;
+    color: #333;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+.message-attachment-file a:hover { background: rgba(0, 0, 0, 0.08); }
 

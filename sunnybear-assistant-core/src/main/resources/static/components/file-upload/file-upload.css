@@ -110,7 +110,10 @@
 }
 .file-chip-add:hover { border-color: var(--main-color); color: var(--main-color); background: rgba(0,0,0,0.03); }
 
-/* ---- 拖拽遮罩（仍由父级渲染，样式保留在此以便管理） ---- */
+/* ---- 拖拽遮罩 ----
+   定义只此一处：遮罩的 DOM 由页面渲染（本组件只抛 drag-over-change 让页面开关它），
+   但样式归本组件 —— 拖拽上传就是 file-upload 的事，跟着组件走。
+   ⚠ 别再往 css/attachment.css 或任何页面级样式里复制这份（那两份已删）。 */
 .drag-overlay {
     position: absolute;
     inset: 0;

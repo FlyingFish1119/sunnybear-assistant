@@ -244,7 +244,8 @@
     <script src="components/message-topbar/message-topbar.js"></script>
     <!-- 看板熊 live：几何数据（脚本从 PSD 导出）+ 分层动效引擎，必须在 send-area.js 之前 -->
     <script src="icon/signboard_bear/live/bear-geometry.js"></script>
-    <script src="components/send-area/mascot-live.js"></script>
+    <script src="components/mascot/mascot-live.js"></script>
+    <script src="components/mascot/mascot.js"></script>
     <script src="components/send-area/send-area.js"></script>
     <script src="components/mark-tracker/mark-tracker.js"></script>
     <script src="components/message-area/message-area.js"></script>
@@ -263,7 +264,7 @@
     <link rel="stylesheet" href="components/message-topbar/message-topbar.css"/>
     <link rel="stylesheet" href="components/chat-session-name/chat-session-name.css"/>
     <link rel="stylesheet" href="components/send-area/send-area.css"/>
-    <link rel="stylesheet" href="css/attachment.css"/>
+    <link rel="stylesheet" href="components/mascot/mascot.css"/>
     <link rel="stylesheet" href="components/mark-tracker/mark-tracker.css"/>
     <link rel="stylesheet" href="components/file-upload/file-upload.css"/>
     <link rel="stylesheet" href="css/markdown.css"/>
@@ -340,6 +341,9 @@
             :main-color="mainColor"
             @drag-over-change="isChange => dragOver = isChange"
         ></send-area>
+        <!-- 看板熊（阳阳）：独立组件，Teleport 到发送区输入卡上。
+             必须放在 send-area 之后 —— Teleport 的目标得先存在 -->
+        <mascot :main-color="mainColor"></mascot>
     </div>
     <!-- 会话文件双层抽屉（fixed 浮层，放在哪儿都不占布局） -->
     <session-files ref="sessionFiles"
@@ -617,6 +621,7 @@
     app.component('message-topbar', MessageTopbar);
     app.component('message-area', MessageArea);
     app.component('send-area', SendArea);
+    app.component('mascot', Mascot);
     app.component('mark-tracker', MarkTracker);
     app.component('session-files', SessionFiles);
     app.component('shell-panel', ShellPanel);

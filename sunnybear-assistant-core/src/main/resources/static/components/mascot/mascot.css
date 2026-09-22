@@ -1,0 +1,151 @@
+/* ============================================
+   看板熊（阳阳）live 版 —— 独立组件样式
+   ------------------------------------------------------------
+   素材：icon/signboard_bear/live/（从 PSD 分层导出，几何见 bear-geometry.js）
+   动效：呼吸 / 眨眼 / 眼仁跟随鼠标 / 耳朵抽动 / 刘海飘动 / 头部微转 + 上身轻摆
+         （逻辑在 components/mascot/mascot-live.js）
+   位置：被 Teleport 到锚点元素（默认 .send-area-composer）内部，
+        坐在锚点右上沿，宽度 = 锚点宽度的 1/4
+   彩蛋唤起方式不变：桌面连按 b×10、移动端长按发送键 3s
+   ============================================ */
+.mascot-root {
+    position: absolute;
+    inset: 0;
+    /* 熊整体下沉量（相对自身高度）—— 这是唯一需要调的旋钮：
+       素材底部不是平的：腰部那条被桌面切断的边比最低的拳头高约 3.8%（原图 29px），
+       所以前 3.8% 只是把腰线压到卡片顶边、刚好抹平；
+       剩下的是"再往下压"的部分，用来让熊真的趴在卡片上、呼吸起伏也绝不露缝。
+       8% 偏保守（腰线只压进去 4%），13% 是"明显趴住"的手感，
+       15% 比 13% 再多压约 3~4px（桌面端换算），更稳。 */
+    --mascot-sink: 15%;
+    /* 层级：整只熊必须压在输入卡里那些 z-index:1 的控件之上。
+       这里把会影响层叠的属性全部显式写死，避免外部残留的同名旧规则把它压下去
+       （旧的两图拼接方案曾把身体关进低层，只剩一颗脑袋） */
+    z-index: 30;
+    opacity: 1;
+    transform: none;
+    overflow: visible;
+    pointer-events: none; /* 纯装饰，绝不拦截输入框/按钮的点击 */
+}
+
+/* 显隐层：只负责"落下来 / 抬起来"这段过渡。
+   呼吸那种每帧都在改的 transform 写在 .mascot-stage 上，
+   两层分开，过渡动画和逐帧动画才不会互相覆盖 */
+.mascot-holder {
+    position: absolute;
+    /* 离卡片右边留一点空，不贴着边缘（想更靠里就加大这个值；相对锚点宽度算） */
+    right: 3%;
+    bottom: 100%;
+    width: 25%;    /* 宽度 = 锚点宽度的 1/4：卡片变宽熊跟着变大，不用另调尺寸 */
+    z-index: 6;    /* 盖过消息区；熊整体在卡片之外，不参与卡片内容控件那套层叠 */
+    opacity: 0;
+    transform: translateY(-70px);
+    /* 末尾的过冲（y = 1.1）就是"落下来弹一下"的手感 */
+    transition: opacity 0.45s ease, transform 0.55s cubic-bezier(0.2, 1.1, 0.35, 1);
+}
+
+/* 召唤态：从上方落下来坐好。
+   落脚点 = 往下压 --mascot-sink（默认 8%）：先让腰部那条切边贴住卡片顶边，
+   再多压出去的作为呼吸余量，起伏时手掌和腰都不会和卡片之间露缝 */
+.mascot-root.mascot-visible .mascot-holder {
+    opacity: 1;
+    transform: translateY(var(--mascot-sink, 8%));
+}
+
+/* 舞台：宽高比锁定成素材内容比 1008×768（与 bear-geometry.js 的 contentSize 一致）。
+   用 padding-bottom 撑高度而不是 aspect-ratio，兼容性更稳 */
+.mascot-stage {
+    position: relative;
+    width: 100%;
+    height: 0;
+    padding-bottom: 76.1905%;    /* 768 / 1008 */
+    transform-origin: 50% 100%;  /* 呼吸从"坐着"的底部起，看起来才像在起伏 */
+    will-change: transform;
+}
+
+/* 身体组 / 头部组 / 眼睛组：都铺满舞台，内部的层用百分比绝对定位。
+   组只负责旋转、平移，不参与布局 —— 头部微转、上身轻摆、眨眼都作用在组上 */
+.mascot-group {
+    position: absolute;
+    inset: 0;
+    will-change: transform;
+}
+
+/* 单层：位置尺寸全部来自 bear-geometry.js 的百分比几何，缩放天然自适应 */
+.mascot-layer {
+    position: absolute;
+    display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+    /* 点熊冒问候语：只有实际图层接住点击，组和空白区域都不拦。
+       ⚠ 熊下半身压进输入卡的那一小块也会接住点击 —— 视觉上它就是趴在卡片上，
+       点那里等于点熊，反馈只是冒个气泡，不会误触发别的操作 */
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+/* 送走之后：整只熊退出命中测试。
+   ⚠ 隐藏靠的是 opacity + 位移，元素本身还在 DOM 里、也还占着位置 ——
+   不显式关掉的话，鼠标扫过那块空白照样变手型，title 也照样弹。
+   必须落在这层上：.mascot-layer 自己写了 pointer-events: auto，只关父容器拦不住 */
+.mascot-root:not(.mascot-visible) .mascot-layer {
+    pointer-events: none;
+}
+
+/* ============================================
+   看板熊的问候语气泡（点一下熊冒出来，几秒后自动收起）
+   文案取 GET greeting/random，与新对话页那句同一套话术；
+   样式沿用「问候语横幅」的语言：白 → 主色浅渐变 + 左侧主色条 + 圆角
+   ============================================ */
+.mascot-bubble {
+    position: absolute;
+    /* 贴近熊的左侧：只留很小的尾巴缝，不再飘出一截 */
+    right: calc(100% + 4px);
+    bottom: 58%;                /* 对着头部/脖子高度 */
+    /* ⚠ 绝对定位元素不写宽度时，宽度按「包含块宽度 − left − right」收缩，
+       而这里的 right 已经超过包含块宽度了，算出来是负的可用宽度 →
+       文字会被压成一条竖排细条。所以必须显式给宽度：按内容撑开、再由 max-width 截断换行 */
+    width: max-content;
+    max-width: min(280px, 46vw);
+    padding: 10px 14px;
+    border-radius: 14px;
+    /* 简约：极淡的主色底 + 一层细主色描边；边缘用主色叠多层外发光做出"炫光" */
+    background: color-mix(in srgb, var(--main-color, lightsalmon) 9%, rgba(255, 255, 255, 0.94));
+    border: 1px solid color-mix(in srgb, var(--main-color, lightsalmon) 42%, rgba(255, 255, 255, 0.9));
+    color: #4a4a4a;
+    font-size: var(--text-sm, 13px);
+    line-height: 1.6;
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--main-color, lightsalmon) 16%, transparent),
+        0 0 10px color-mix(in srgb, var(--main-color, lightsalmon) 48%, transparent),
+        0 0 20px color-mix(in srgb, var(--main-color, lightsalmon) 24%, transparent),
+        0 8px 20px rgba(0, 0, 0, 0.08);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    pointer-events: none;       /* 气泡本身不吃点击，不挡住底下的东西 */
+}
+
+/* 气泡小尾巴，朝右指向熊 */
+.mascot-bubble::after {
+    content: '';
+    position: absolute;
+    right: -7px;
+    bottom: 16px;
+    width: 0;
+    height: 0;
+    border: 8px solid transparent;
+    border-right: 0;
+    border-left-color: rgba(255, 255, 255, 0.94);
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--main-color, lightsalmon) 45%, transparent));
+}
+
+/* 淡入淡出（Vue transition） */
+.mascot-bubble-enter-active,
+.mascot-bubble-leave-active {
+    transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.mascot-bubble-enter-from,
+.mascot-bubble-leave-to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+}
