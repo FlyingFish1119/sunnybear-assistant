@@ -31,7 +31,7 @@ const FileUpload = {
              :class="isImage(file) ? 'file-chip-image' : 'file-chip-file'">
             <!-- 图片：128px 缩略图卡片 -->
             <template v-if="isImage(file)">
-                <img class="file-chip-thumb" :src="file.data" :alt="file.name" :title="file.name" />
+                <img class="file-chip-thumb" :src="thumbSrc(file)" :alt="file.name" :title="file.name" />
                 <span class="file-chip-caption">{{ file.name }}</span>
                 <span class="file-chip-remove file-chip-remove-overlay" @click="removeFile(idx)" title="移除">
                     <i data-lucide="x" style="width:14px;height:14px"></i>
@@ -62,14 +62,39 @@ const FileUpload = {
 
     emits: ['update-files', 'drag-over-change'],
 
+    inject: {
+        sessionStore: { default: null }
+    },
+
     data: function () {
         return {
             dragCounter: 0,
         };
     },
 
+    computed: {
+        /** 会话文件链接（session-file-link:）的缩略图要用当前会话 ID 组原始内容地址 */
+        linkSessionId: function () {
+            var store = this.sessionStore;
+            if (!store) return '';
+            if (store.currentSessionId) return store.currentSessionId;
+            var cur = store.currentSession;
+            return (cur && cur.id) || '';
+        }
+    },
+
     methods: {
         MAX_SIZE: 100 * 1024 * 1024, // 100MB
+
+        /** 缩略图地址：普通上传是 data URI；会话文件链接（session-file-link:）转原始内容地址 */
+        thumbSrc: function (file) {
+            var data = file.data || '';
+            if (data.indexOf('session-file-link:') === 0) {
+                var path = data.substring('session-file-link:'.length);
+                return this.linkSessionId ? API.sessionFile.rawUrl(this.linkSessionId, path) : '';
+            }
+            return data;
+        },
 
         /* ---- 文件读取 ---- */
 

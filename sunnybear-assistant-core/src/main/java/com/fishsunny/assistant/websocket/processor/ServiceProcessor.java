@@ -45,6 +45,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -532,6 +534,22 @@ public class ServiceProcessor {
                 continue;
             }
             String dataUri = fileData.getData();
+            // 会话文件链接（session-file-link:{相对路径}）：文件已在会话目录里，
+            // 直接拼引用不重复落盘。引用归属以后端当前会话为准，客户端的正文无视。
+            if (dataUri.startsWith(FileData.SESSION_FILE_LINK_PREFIX)) {
+                String relPath = dataUri.substring(FileData.SESSION_FILE_LINK_PREFIX.length()).trim();
+                try {
+                    Path filePath = sessionFileManager.resolveSessionFilePath(sessionId, relPath);
+                    if (Files.isRegularFile(filePath)) {
+                        writtenPaths.add(sessionFileManager.buildRef(sessionId, relPath));
+                    } else {
+                        log.warn("会话文件链接指向的文件不存在，跳过: {}", relPath);
+                    }
+                } catch (Exception e) {
+                    log.warn("会话文件链接解析失败，跳过: {} ({})", relPath, e.getMessage());
+                }
+                continue;
+            }
             byte[] data = Base64Utils.decodeBase64FromDataUri(dataUri);
             if (data == null) {
                 log.warn("无法解析文件数据，跳过索引: {}", i);

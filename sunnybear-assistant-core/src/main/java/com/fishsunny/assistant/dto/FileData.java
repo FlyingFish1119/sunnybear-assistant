@@ -18,6 +18,13 @@ import java.util.UUID;
 public class FileData {
 
     /**
+     * 会话文件链接标记：data 携带该前缀表示「文件已在会话目录里，勿重复落盘」，
+     * 剥开后为相对会话文件目录的路径（允许子目录）。
+     * 由文件资源栏「加载到发送栏」产生；ServiceProcessor 见到该标记直接拼引用，无视正文。
+     */
+    public static final String SESSION_FILE_LINK_PREFIX = "session-file-link:";
+
+    /**
      * 原始文件名（如 "screenshot.png"）
      */
     private String name;

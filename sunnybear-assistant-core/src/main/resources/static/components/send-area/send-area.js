@@ -277,10 +277,21 @@ const SendArea = {
                 });
             });
         }
+        // 文件资源栏「加载到发送栏」：把文件快照（{name, data: dataURI}）挂进附件区
+        this._onAttachToSendbar = function (e) {
+            var files = (e.detail && e.detail.files) || [];
+            if (!files.length) return;
+            self.uploadedFiles = self.uploadedFiles.concat(files);
+        };
+        window.addEventListener('sunnybear:attach-to-sendbar', this._onAttachToSendbar);
     },
 
     beforeUnmount: function () {
         if (this._unsubFill) { this._unsubFill(); this._unsubFill = null; }
+        if (this._onAttachToSendbar) {
+            window.removeEventListener('sunnybear:attach-to-sendbar', this._onAttachToSendbar);
+            this._onAttachToSendbar = null;
+        }
         clearTimeout(this._pressTimer);
         if (this._ttsAudio) {
             this._ttsAudio.pause();

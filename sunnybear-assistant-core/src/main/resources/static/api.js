@@ -248,6 +248,11 @@ const API = (function () {
             remove: function (sessionId, path) {
                 return post('session/file/delete', { sessionId: sessionId, path: path });
             },
+            /** 上传文件（multipart）；dir 为目标子目录。同名自动加序号，返回落盘相对路径 */
+            upload: function (sessionId, file, dir) {
+                return upload('session/file/upload?sessionId=' + encodeURIComponent(sessionId)
+                    + '&path=' + encodeURIComponent(dir || ''), file);
+            },
             /**
              * 文件原始内容的 URL（图片预览 / 下载）。
              * 走 /session/file/raw 而不是 /file/proxy：后者只认 {sessionId}:{文件名} 的引用形态，不吃子目录。
@@ -255,6 +260,46 @@ const API = (function () {
             rawUrl: function (sessionId, path) {
                 return BASE_PATH + 'session/file/raw?sessionId=' + encodeURIComponent(sessionId)
                     + '&path=' + encodeURIComponent(path);
+            }
+        },
+
+        /* ---------- 核心文件（data/core，跨会话长期保存、随时引用） ---------- */
+        coreFile: {
+            /** 列出某一层目录；dir 为空表示核心目录 */
+            list: function (dir) {
+                return get('core/file/list?dir=' + encodeURIComponent(dir || ''));
+            },
+            /** 读文本内容（UTF-8；超过 2MB 后端会拒绝并给出提示） */
+            read: function (path) {
+                return get('core/file/read?path=' + encodeURIComponent(path));
+            },
+            /** 写回（整文件覆盖） */
+            write: function (path, content) {
+                return post('core/file/write', { path: path, content: content });
+            },
+            /** 新建文件（同名已存在会失败，不覆盖） */
+            create: function (path) {
+                return post('core/file/create', { path: path, content: '' });
+            },
+            /** 改名 / 移动 */
+            rename: function (path, newPath) {
+                return post('core/file/rename', { path: path, newPath: newPath });
+            },
+            /** 删除文件或空目录 */
+            remove: function (path) {
+                return post('core/file/delete', { path: path });
+            },
+            /** 上传文件（multipart）；dir 为目标子目录。同名自动加序号，返回落盘相对路径 */
+            upload: function (file, dir) {
+                return upload('core/file/upload?path=' + encodeURIComponent(dir || ''), file);
+            },
+            /** 会话文件转存到核心库（提升为核心），返回落盘相对路径 */
+            promote: function (sessionId, path) {
+                return post('core/file/promote', { sessionId: sessionId, path: path });
+            },
+            /** 文件原始内容的 URL（图片预览 / 下载 / 转附件） */
+            rawUrl: function (path) {
+                return BASE_PATH + 'core/file/raw?path=' + encodeURIComponent(path);
             }
         },
 

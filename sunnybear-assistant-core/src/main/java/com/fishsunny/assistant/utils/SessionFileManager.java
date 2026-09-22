@@ -103,6 +103,33 @@ public class SessionFileManager {
         return resolveUnder(buildSessionDirPath(sessionId), relativePath);
     }
 
+    /** 文件名消毒：只取最后一段（防 ../ 与盘符混入），过滤 Windows 非法字符。上传落盘共用 */
+    public static String sanitizeFileName(String name) {
+        String normalized = name == null ? "" : name.trim().replace('\\', '/');
+        int idx = normalized.lastIndexOf('/');
+        String last = idx >= 0 ? normalized.substring(idx + 1) : normalized;
+        String cleaned = last.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+        return StringUtils.hasText(cleaned) ? cleaned : "file";
+    }
+
+    /** 同名自动加序号：img.png → img_1.png → img_2.png。上传落盘共用 */
+    public static Path uniquePath(Path dir, String fileName) {
+        Path candidate = dir.resolve(fileName);
+        if (!Files.exists(candidate)) {
+            return candidate;
+        }
+        int dot = fileName.lastIndexOf('.');
+        String base = dot > 0 ? fileName.substring(0, dot) : fileName;
+        String ext = dot > 0 ? fileName.substring(dot) : "";
+        for (int i = 1; i < 1000; i++) {
+            Path next = dir.resolve(base + "_" + i + ext);
+            if (!Files.exists(next)) {
+                return next;
+            }
+        }
+        return dir.resolve(base + "_" + System.currentTimeMillis() + ext);
+    }
+
     /**
      * 取得会话内某个文件的真实路径，并确保其所在目录已创建。
      * <p>供需要流式写入的场景使用（如后台命令/脚本日志边跑边写），
@@ -149,13 +176,14 @@ public class SessionFileManager {
         int idx = ref.indexOf(':');
         if (idx > 0) {
             String rest = ref.substring(idx + 1);
-            // 引用形如 {sessionId}:{fileName}，fileName 不含任何路径分隔符。
-            // 该约束同时挡掉 Windows 盘符路径（"E:\data\.." 的 rest 以 \ 开头），
+            // 引用形如 {sessionId}:{相对路径}，允许子目录（sub/a.png）。
+            // rest 以分隔符开头的不算引用 —— 挡掉 Windows 盘符路径（"E:\data\.." 的 rest 以 \ 开头），
             // 否则 "E:" 会被误判成 sessionId，导致历史绝对路径全部解析失败。
+            // 含 .. 回溯的也不算引用，交给 Path.of 按文件系统路径处理（历史数据兜底）。
             if (!rest.isEmpty()
                     && !rest.startsWith("\\") && !rest.startsWith("/")
-                    && rest.indexOf('/') < 0 && rest.indexOf('\\') < 0) {
-                return buildSessionDirPath(ref.substring(0, idx)).resolve(rest);
+                    && !rest.contains("..")) {
+                return resolveUnder(buildSessionDirPath(ref.substring(0, idx)), rest);
             }
         }
         return Path.of(ref);
@@ -260,6 +288,24 @@ public class SessionFileManager {
         Files.createDirectories(filePath.getParent());
         Files.writeString(filePath, content == null ? "" : content, StandardCharsets.UTF_8);
         return buildRef(sessionId, relativePathOf(sessionId, filePath));
+    }
+
+    /**
+     * 上传文件落盘：文件名消毒 + 同名自动加序号（img.png → img_1.png），
+     * 返回落盘后的相对路径（供前端刷新树定位）。与核心文件上传同一套口径。
+     *
+     * @param relativeDir 目标子目录，空串表示根
+     */
+    public String saveSessionUpload(String sessionId, String relativeDir, String originalFilename, byte[] data) throws IOException {
+        if (data == null || data.length == 0) {
+            throw new IllegalArgumentException("File data cannot be empty");
+        }
+        Path dir = resolveSessionFilePath(sessionId, relativeDir);
+        String safeName = sanitizeFileName(originalFilename);
+        Path target = uniquePath(dir, safeName);
+        Files.createDirectories(target.getParent());
+        Files.write(target, data);
+        return relativePathOf(sessionId, target);
     }
 
     /** 新建文件。目标已存在时抛异常，避免把已有内容覆盖掉 */

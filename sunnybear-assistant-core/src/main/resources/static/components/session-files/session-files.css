@@ -112,6 +112,15 @@
 .sf-btn:hover{ background: #f2f2f2; color: #333; }
 .sf-btn:disabled{ opacity: 0.45; cursor: not-allowed; }
 
+/* ---- 拖拽上传高亮 ---- */
+/* 注意：background 是「替换」不是「叠加」，这里必须写不透明的实色，
+   否则会把 .sf-drawer 的白底整个顶掉，抽屉变得能透视背后内容 */
+.sf-drawer--tree.is-dragover{
+    outline: 2px dashed #f97316;
+    outline-offset: -6px;
+    background: #fff6ef;
+}
+
 /* ---- 第一层：资源树 ---- */
 .sf-tree{
     flex: 1;
