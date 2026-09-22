@@ -14,6 +14,8 @@ import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ChatMessageRequest;
 import com.fishsunny.assistant.dto.FileData;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
+import com.fishsunny.assistant.engine.jev.JevClient;
+import com.fishsunny.assistant.engine.jev.request.JevRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
@@ -51,7 +53,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 本类主要和元数据处理逻辑有关
@@ -87,6 +88,7 @@ public class ServiceProcessor {
     private final SessionMessageBus sessionMessageBus;
     private final SessionFileManager sessionFileManager;
     private final BackgroundToolResponseBus backgroundToolResponseBus;
+    private final JevClient jevClient;
     public ServiceProcessor(ChatMessageService chatMessageService,
                             ChatSessionService chatSessionService,
                             CronJobService cronJobService,
@@ -97,7 +99,8 @@ public class ServiceProcessor {
                             @Qualifier(AISettings.CUB) AISettings cubAISettings,
                             SessionMessageBus sessionMessageBus,
                             SessionFileManager sessionFileManager,
-                            BackgroundToolResponseBus backgroundToolResponseBus
+                            BackgroundToolResponseBus backgroundToolResponseBus,
+                            JevClient jevClient
                             ) {
         this.chatMessageService = chatMessageService;
         this.chatSessionService = chatSessionService;
@@ -110,6 +113,7 @@ public class ServiceProcessor {
         this.sessionMessageBus = sessionMessageBus;
         this.sessionFileManager = sessionFileManager;
         this.backgroundToolResponseBus = backgroundToolResponseBus;
+        this.jevClient = jevClient;
     }
 
     /**
@@ -226,58 +230,25 @@ public class ServiceProcessor {
         }
     }
 
-    /**
-     * 使用 mission AI 判断用户问题是否需要使用复杂模型（chat_pro）。
-     * @return true = 需要高级模型，false = 普通模型即可
-     */
     private boolean judgeProModel(String userQuestion) {
         if (userSettings.getEnableAutoSwitchModel() == null || !userSettings.getEnableAutoSwitchModel()) {
             return false;
         }
-
-        String judgmentPrompt = """
-                你是一个问题复杂度判断器。分析用户的问题，判断它是否需要使用更强大的模型来回答。
-
-                需要复杂模型的典型特征（满足任意一条即可）：
-                1. 需要多步骤推理或深度分析
-                2. 涉及代码编写、调试、架构设计
-                3. 需要处理复杂数学、逻辑或科学问题
-                4. 要求生成长篇、结构化内容（如报告、文档、方案）
-                5. 涉及多领域交叉知识
-                6. 问题表述详细、有多个子问题或约束条件
-
-                不需要复杂模型的典型特征：
-                1. 简单的事实性问题或定义查询
-                2. 日常闲聊、问候
-                3. 简单的翻译或文本改写
-                4. 单一明确答案的查询
-
-                请只回复一个单词：true（需要复杂模型）或 false（不需要复杂模型）。
-
-                用户问题：
-                %s
-                """.formatted(userQuestion);
-
-        ChatRequest request = new ChatRequest().quickBuild(judgmentPrompt, userQuestion, cubAISettings);
+        if (!StringUtils.hasText(userQuestion)) {
+            return false;
+        }
 
         try {
-            AtomicBoolean result = new AtomicBoolean(false);
-            ChatHttpHandler.TranslateData translateData = new ChatHttpHandler.TranslateData(
-                    UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request
-            );
-            ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler()
-                    .complete((trResult, lastRes) -> {
-                        String content = trResult.content();
-                        if (content != null) {
-                            result.set(content.trim().toLowerCase().contains("true"));
-                        }
-                    });
-            ChatHttpHandler.TranslateOption translateOption = new ChatHttpHandler.TranslateOption()
-                    .setStream(cubAISettings.getStream())
-                    .setEnableTTS(false);
-
-            chatHttpHandler.translate(translateData, translateHandler, translateOption);
-            return result.get();
+            JevRequest jevRequest = JevRequest.Builder.create(userQuestion)
+                    .noulQuestion(
+                            "complex_question",
+                            "Is the user's question a complex question, or one that will lead to a complex task?",
+                            "Questions that are inherently complex (deep reasoning, multi-step logic, domain expertise, complex code analysis), or that will likely spawn a subsequent complex task (multi-file code changes, system-level operations, long multi-step workflows).",
+                            "Casual greetings, simple factual Q&A, basic translation, format conversion, or other questions that are neither complex themselves nor likely to lead to a complex task."
+                    )
+                    .build();
+            Double needProModel = jevClient.send(jevRequest).mappingNoul("complex_question");
+            return needProModel > 0.6;
         } catch (Exception e) {
             log.warn("模型复杂度判断失败，默认使用标准模型: {}", e.getMessage());
             return false;

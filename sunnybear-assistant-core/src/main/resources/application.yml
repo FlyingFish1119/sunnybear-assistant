@@ -82,6 +82,11 @@ engine:
   chat:
     idle-timeout-s: 45
     connection-timeout-s: 30
+  jev:
+    url: https://opencode.ai/zen/v1/systemone
+    api-key: ${OPEN_CODE_API_KEY:}
+    model: jev-1.13-free
+    timeout-s: 30
   tts:
     enable: true
     base-url: https://api.siliconflow.cn/v1/audio/speech
