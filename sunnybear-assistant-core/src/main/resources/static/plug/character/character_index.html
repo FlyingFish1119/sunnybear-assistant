@@ -72,6 +72,7 @@
     <script src="components/character-chat-select/character-chat-select.js"></script>
     <script src="components/character-name-tag/character-name-tag.js"></script>
     <script src="components/character-db-button/character-db-button.js"></script>
+    <script src="components/character-settings-button/character-settings-button.js"></script>
     <!-- 样式 -->
     <link rel="stylesheet" href="../../css/scrollbar.css"/>
     <link rel="stylesheet" href="../../css/layout.css"/>
@@ -254,12 +255,21 @@
     MessageAreaPlugins.registerSlot('message-bubble', CharacterChatSelect, 0);
     TopbarPlugins.registerSlot('topbar-left', CharacterNameTag, 0);
     TopbarPlugins.registerSlot('topbar-right', CharacterDbButton, 0);
+    ChatSidebarPlugins.registerSlot('sidebar-footer', CharacterSettingsButton, 0);
     // 角色页不需要的内置顶栏元素：模型名、Agent Log（页面无接收方）、
     // 上下文用量环、知识库命中闪现（角色页不发该信号）
     TopbarPlugins.hideBuiltin('model');
     TopbarPlugins.hideBuiltin('agent-log');
     TopbarPlugins.hideBuiltin('ctx-gauge');
     TopbarPlugins.hideBuiltin('knowledge-flash');
+    // 角色会话没有「定时器」概念，隐藏 chat/cron 切换按钮；
+    // 右键菜单只保留「删除 / 导出」，与旧版 character-sidebar 一致
+    ChatSidebarPlugins.hideBuiltin('list-mode-toggle');
+    ChatSidebarPlugins.hideBuiltin('menu-pro');
+    ChatSidebarPlugins.hideBuiltin('menu-unreviewed');
+    ChatSidebarPlugins.hideBuiltin('menu-knowledge');
+    // 设置按钮跳角色专属设置页，隐藏核心的、改由插件提供
+    ChatSidebarPlugins.hideBuiltin('settings-button');
 
     const Utils = {
         getLast(arr) {

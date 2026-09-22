@@ -137,11 +137,6 @@ const MessageTopbar = {
                        :main-color="mainColor"></component>
         </div>
         <div style="display: flex; align-items: center; gap: 16px;">
-            <!-- 右栏插件槽（锚点 'topbar-right'，如数据库面板按钮等） -->
-            <component v-for="(slot, si) in rightSlots"
-                       :key="'topbar-right-' + si"
-                       :is="slot.component"
-                       :main-color="mainColor"></component>
             <span v-if="!isHidden('knowledge-flash') && knowledgeFlashVisible" class="knowledge-hit-flash" title="已自动检索知识库内容">
                 <i data-lucide="database"></i>
             </span>
@@ -151,6 +146,11 @@ const MessageTopbar = {
                     :style="agentLogVisible ? {color: mainColor} : {}">
                 <i data-lucide="activity" style="width: 18px; height: 18px;"></i>
             </button>
+            <!-- 右栏插件槽（锚点 'topbar-right'，如数据库面板按钮等） -->
+            <component v-for="(slot, si) in rightSlots"
+                       :key="'topbar-right-' + si"
+                       :is="slot.component"
+                       :main-color="mainColor"></component>
         </div>
     </div>
 

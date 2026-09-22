@@ -50,6 +50,10 @@
  */
 const ChatSidebarPlugins = (function () {
     var provider = null;
+    /** 被隐藏的内置元素 key 集合 */
+    var hiddenBuiltins = Object.create(null);
+    /** 锚点名 → 槽条目数组（{ component, order }） */
+    var slotsByAnchor = Object.create(null);
 
     return {
         /**
@@ -66,6 +70,40 @@ const ChatSidebarPlugins = (function () {
         /** 取当前提供者（可能为 null） */
         getProvider: function () {
             return provider;
+        },
+        /**
+         * 注册一个侧边栏扩展组件。锚点：
+         *   'sidebar-footer'  footer 左侧按钮区（设置/导航按钮旁）
+         * 组件会收到 prop: { mainColor }，可 inject sessionStore / wsBus。
+         */
+        registerSlot: function (anchor, component, order) {
+            if (!anchor || !component) return;
+            if (!slotsByAnchor[anchor]) slotsByAnchor[anchor] = [];
+            var arr = slotsByAnchor[anchor];
+            arr.push({ component: component, order: order || 0 });
+            arr.sort(function (a, b) { return a.order - b.order; });
+        },
+        /** 供组件挂载时取某锚点已登记槽的拷贝 */
+        snapshot: function (anchor) {
+            return (slotsByAnchor[anchor] || []).slice();
+        },
+        /**
+         * 隐藏一个内置元素。内置 key：
+         *   'list-mode-toggle'  chat / cron 列表模式切换按钮
+         *   'settings-button'   设置按钮
+         *   'router-button'     页面导航按钮
+         *   'menu-delete'       右键菜单：删除会话
+         *   'menu-pro'          右键菜单：Pro 模式切换
+         *   'menu-unreviewed'   右键菜单：无审查模式切换
+         *   'menu-knowledge'    右键菜单：查看知识库
+         *   'menu-export'       右键菜单：导出对话
+         */
+        hideBuiltin: function (key) {
+            if (key) hiddenBuiltins[key] = true;
+        },
+        /** 供组件挂载时取一份被隐藏 key 的拷贝 */
+        hiddenSnapshot: function () {
+            return Object.assign({}, hiddenBuiltins);
         }
     };
 })();
@@ -114,38 +152,44 @@ const ChatSidebar = {
              class="session-context-menu"
              :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
              @click.stop>
-            <div class="session-context-menu-item" @click="deleteSession(contextMenu.session)">
+            <div v-if="!isHidden('menu-delete')" class="session-context-menu-item" @click="deleteSession(contextMenu.session)">
                 <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
                 <span>删除会话</span>
             </div>
-            <div class="session-context-menu-item" @click="toggleProMode(contextMenu.session)">
+            <div v-if="!isHidden('menu-pro')" class="session-context-menu-item" @click="toggleProMode(contextMenu.session)">
                 <i data-lucide="zap" style="width: 16px; height: 16px;"></i>
                 <span>{{ contextMenu.session.enablePro ? '当前：高级' : '当前：普通' }}</span>
             </div>
-            <div class="session-context-menu-item" @click="toggleUnreviewed(contextMenu.session)">
+            <div v-if="!isHidden('menu-unreviewed')" class="session-context-menu-item" @click="toggleUnreviewed(contextMenu.session)">
                 <i data-lucide="shield-off" style="width: 16px; height: 16px;"></i>
                 <span>{{ contextMenu.session.unreviewed ? '当前：无审查' : '当前：审查中' }}</span>
             </div>
-            <div class="session-context-menu-item" @click="openSessionKnowledge(contextMenu.session)">
+            <div v-if="!isHidden('menu-knowledge')" class="session-context-menu-item" @click="openSessionKnowledge(contextMenu.session)">
                 <i data-lucide="database" style="width: 16px; height: 16px;"></i>
                 <span>查看知识库</span>
             </div>
-            <div class="session-context-menu-item" @click="exportSession(contextMenu.session)">
+            <div v-if="!isHidden('menu-export')" class="session-context-menu-item" @click="exportSession(contextMenu.session)">
                 <i data-lucide="download" style="width: 16px; height: 16px;"></i>
                 <span>导出对话</span>
             </div>
         </div>
         <div class="sidebar-footer">
             <div class="sidebar-footer-left">
-                <button class="sidebar-icon-btn" @click="goSettings" title="设置">
+                <button v-if="!isHidden('settings-button')" class="sidebar-icon-btn" @click="goSettings" title="设置">
                     <i data-lucide="settings"></i>
                 </button>
-                <button class="sidebar-icon-btn" @click="goRouter" title="页面导航">
+                <!-- footer 插件槽（锚点 'sidebar-footer'，插件可放自己的按钮） -->
+                <component v-for="(slot, si) in footerSlots"
+                           :key="'sidebar-footer-' + si"
+                           :is="slot.component"
+                           :main-color="mainColor"></component>
+                <button v-if="!isHidden('router-button')" class="sidebar-icon-btn" @click="goRouter" title="页面导航">
                     <i data-lucide="layout-grid"></i>
                 </button>
             </div>
-            <!-- 定时器 / 对话 切换 -->
-            <button class="sidebar-list-mode-toggle"
+            <!-- 定时器 / 对话 切换（插件可经 hideBuiltin('list-mode-toggle') 隐藏） -->
+            <button v-if="!isHidden('list-mode-toggle')"
+                    class="sidebar-list-mode-toggle"
                     :title="listMode === 'chat' ? '切换到定时器会话' : '切换到对话会话'"
                     @click="toggleListMode">
                 <span class="list-mode-icon" :class="{ active: listMode === 'chat' }">
@@ -214,6 +258,10 @@ const ChatSidebar = {
     data: function () {
         return {
             sidebarOpen: false,
+            /** 被插件隐藏的内置元素 key 集合 */
+            hiddenBuiltins: ChatSidebarPlugins.hiddenSnapshot(),
+            /** footer 插件槽（锚点 'sidebar-footer'） */
+            footerSlots: ChatSidebarPlugins.snapshot('sidebar-footer'),
             /** 提供者版本号：运行期注册/注销 provider 后由 forceRefresh 递增，驱动相关计算属性重算 */
             providerVersion: 0,
             /** 列表模式切换进行中：既用来锁住连点，也用来抑制瞬间的空态闪现 */
@@ -279,6 +327,11 @@ const ChatSidebar = {
     },
 
     methods: {
+        /** 某内置元素是否被插件隐藏（key 见文件顶部 ChatSidebarPlugins 说明） */
+        isHidden: function (key) {
+            return !!this.hiddenBuiltins[key];
+        },
+
         /* ---- 公开方法 ---- */
 
         /**
