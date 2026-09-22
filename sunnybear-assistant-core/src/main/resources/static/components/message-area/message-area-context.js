@@ -198,6 +198,25 @@ function createMessageAreaContext(sessionStore) {
         sessionStore: sessionStore,
 
         /**
+         * 某内置元素（消息操作按钮等）是否被插件隐藏。委托到全局注册表 MessageAreaPlugins，
+         * 与 hideBuiltin 同源；供子组件模板 ctx.actions.isHidden(key) 判断是否渲染。
+         * @param {string} key - 内置元素 key，见 message-area-context.js 顶部 hideBuiltin 说明
+         * @returns {boolean}
+         */
+        isHidden(key) {
+            return MessageAreaPlugins.isHidden(key);
+        },
+
+        /**
+         * 隐藏一个内置元素（消息操作按钮等）。等价于 MessageAreaPlugins.hideBuiltin，
+         * 插件可在页面启动阶段通过任一入口调用。
+         * @param {string} key - 内置元素 key
+         */
+        hideBuiltin(key) {
+            MessageAreaPlugins.hideBuiltin(key);
+        },
+
+        /**
          * 取消息正文（contents[0] 的文本）。
          * 语义契约：正文恒为首块且可编辑；其后的文本块与附件只展示，不参与编辑，
          * 因此编辑草稿、重发等"正文操作"一律只认首块，不拼接其它文本块。
