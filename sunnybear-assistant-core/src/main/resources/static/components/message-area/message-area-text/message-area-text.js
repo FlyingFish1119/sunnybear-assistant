@@ -40,7 +40,7 @@ const MessageAreaText = {
         <div v-for="(block, bi) in $md.streamBlocks(text)" :key="bi" class="md-block" v-html="block.html"></div>
     </div>
     <!-- 默认：整段 Markdown -->
-    <div v-else class="markdown-body" v-html="html"></div>`,
+    <div v-else class="markdown-body" v-html="bodyHtml"></div>`,
 
     props: {
         content: { type: Object, required: true },
@@ -59,8 +59,12 @@ const MessageAreaText = {
         text: function () {
             return this.content ? (this.content.content || '') : '';
         },
-        /** 整段 Markdown（缓存到 content 对象的 text 槽：历史消息只解析一次） */
-        html: function () {
+        /**
+         * 整段 Markdown（缓存到 content 对象的 text 槽：历史消息只解析一次）。
+         * 命名不能叫 html：Vue 模板表达式会回落到全局作用域，而 window.html 是存在的
+         * （HTMLHtmlElement），v-html="html" 会绑到全局对象上导致正文空白。
+         */
+        bodyHtml: function () {
             void this.ctx.mermaidNonce; // mermaid 异步出图后触发重渲染
             return memoMsgHtml(this.content, 'text', this.text, this.$md.render);
         }
