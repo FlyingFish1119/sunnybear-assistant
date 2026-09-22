@@ -31,6 +31,14 @@ const MSG_NL = String.fromCharCode(10);
 const MessageAreaPlugins = (function () {
     /** 锚点名 → 槽条目数组（{ component, order }） */
     const slotsByAnchor = Object.create(null);
+    /** 正文文本块渲染器组件（插件可注册一个覆盖默认 Markdown 渲染） */
+    let textRenderer = null;
+    /** 消息头像解析器（插件可注册，覆盖默认的 user/assistant 头像 URL；如群聊按角色名取头像） */
+    let avatarResolver = null;
+    /** 消息头像首字母解析器（插件可注册，覆盖默认首字母；如群聊按角色名取首字） */
+    let avatarInitialResolver = null;
+    /** 被隐藏的内置元素 key 集合（消息操作按钮等） */
+    const hiddenBuiltins = Object.create(null);
 
     /** 取（或初始化）某锚点的槽数组 */
     function bucket(anchor) {
@@ -56,9 +64,72 @@ const MessageAreaPlugins = (function () {
         registerSlot('assistant-actions', component, order);
     }
 
+    /**
+     * 注册正文文本块渲染器：注册后，所有 type==='text' 的正文块改为交给该组件渲染，
+     * 未注册时使用内置的 Markdown 渲染（见 message-area-text）。
+     * 渲染器组件契约：props { content, msg, streaming }，可 inject messageAreaContext。
+     */
+    function registerTextRenderer(component) {
+        textRenderer = component || null;
+    }
+
+    /**
+     * 隐藏一个内置元素（消息操作按钮等）。内置 key：
+     *   'assistant-edit'    助手消息：编辑
+     *   'assistant-replace' 助手消息：重新生成
+     *   'assistant-copy'    助手消息：复制
+     *   'assistant-play'    助手消息：播放语音
+     *   'assistant-branch'  助手消息：分支切换
+     *   'user-edit'         用户消息：编辑
+     *   'user-copy'         用户消息：复制
+     *   'user-delete'       用户消息：删除
+     *   'user-branch'       用户消息：分支切换
+     */
+    function hideBuiltin(key) {
+        if (key) hiddenBuiltins[key] = true;
+    }
+
+    /** 某内置元素是否被隐藏（供子组件判断） */
+    function isHidden(key) {
+        return !!hiddenBuiltins[key];
+    }
+
+    /**
+     * 注册消息头像解析器：返回头像 URL（空串表示无头像，走首字母兜底）。
+     * 参数：{ msg, defaultUrl }
+     */
+    function registerAvatarResolver(fn) {
+        avatarResolver = typeof fn === 'function' ? fn : null;
+    }
+
+    /**
+     * 注册消息头像首字母解析器：返回首字母字符串。
+     * 参数：{ msg, defaultInitial }
+     */
+    function registerAvatarInitialResolver(fn) {
+        avatarInitialResolver = typeof fn === 'function' ? fn : null;
+    }
+
     return {
         registerSlot: registerSlot,
         registerAssistantActionSlot: registerAssistantActionSlot,
+        registerTextRenderer: registerTextRenderer,
+        registerAvatarResolver: registerAvatarResolver,
+        registerAvatarInitialResolver: registerAvatarInitialResolver,
+        hideBuiltin: hideBuiltin,
+        isHidden: isHidden,
+        /** 取当前正文渲染器（可能为 null） */
+        getTextRenderer: function () {
+            return textRenderer;
+        },
+        /** 取当前头像解析器（可能为 null） */
+        getAvatarResolver: function () {
+            return avatarResolver;
+        },
+        /** 取当前头像首字母解析器（可能为 null） */
+        getAvatarInitialResolver: function () {
+            return avatarInitialResolver;
+        },
         /** 供 context 创建时取某锚点已登记槽的拷贝 */
         snapshot: function (anchor) {
             return (slotsByAnchor[anchor] || []).slice();
@@ -173,6 +244,22 @@ function createMessageAreaContext(sessionStore) {
 
         /** 获取消息对应的头像 URL（$fileUrl.proxy 已处理 data:/http(s) 与本地路径代理） */
         getMessageAvatar(msg) {
+            const defaultUrl = api.defaultMessageAvatar(msg);
+            const resolver = MessageAreaPlugins.getAvatarResolver();
+            if (resolver) {
+                try {
+                    const custom = resolver({ msg: msg, defaultUrl: defaultUrl });
+                    // 返回 undefined 视为不接管，回落默认
+                    if (custom !== undefined) return custom || '';
+                } catch (e) {
+                    console.error('头像解析器出错:', e);
+                }
+            }
+            return defaultUrl;
+        },
+
+        /** 默认头像 URL（user / assistant 设置） */
+        defaultMessageAvatar(msg) {
             if (msg.role === 'user' && ctx.userAvatarError) return '';
             if (msg.role === 'assistant' && ctx.assistantAvatarError) return '';
             const avatar = msg.role === 'user'
@@ -183,6 +270,21 @@ function createMessageAreaContext(sessionStore) {
 
         /** 掷取消息头像的默认首字母 */
         getAvatarInitial(msg) {
+            const defaultInitial = api.defaultAvatarInitial(msg);
+            const resolver = MessageAreaPlugins.getAvatarInitialResolver();
+            if (resolver) {
+                try {
+                    const custom = resolver({ msg: msg, defaultInitial: defaultInitial });
+                    if (custom !== undefined && custom !== '') return custom;
+                } catch (e) {
+                    console.error('头像首字母解析器出错:', e);
+                }
+            }
+            return defaultInitial;
+        },
+
+        /** 默认首字母 */
+        defaultAvatarInitial(msg) {
             if (msg.role === 'user') {
                 return (ctx.userSettings.username || 'U').charAt(0);
             }

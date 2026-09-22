@@ -1,0 +1,90 @@
+/* ============================================
+   World Hero — 世界观群聊页的「新对话开场」
+   ------------------------------------------------------------
+   未选择会话时的落地页：只有一行「世界名」。
+
+   设计意图（世界没有头像，也不需要问候语）：
+     · 一行世界名作主角，毛玻璃胶囊卡片承住它；
+     · 让消息区的世界背景图透上来，不挡画面；
+     · 未选世界时文案转引导，颜色转为次要。
+   ============================================ */
+
+.world-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+    /* 父级 .message-area-list 是 flex column：margin:auto 让卡片在列表中双向居中。
+       新对话时列表里只有这张卡片，视觉上即整块居中；有消息时卡片不渲染，不影响布局 */
+    margin: auto;
+    max-width: min(92%, 440px);
+    padding: 16px 30px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.07);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    animation: world-hero-in 0.55s ease both;
+}
+
+/* ---- 世界名（主角） ---- */
+.world-hero-name {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+    color: var(--text-primary, #333);
+    overflow-wrap: anywhere;
+}
+
+/* ---- 引导语（未选世界时才出现） ---- */
+.world-hero-line {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary, #666);
+}
+
+/* ============================================
+   未选世界：文案转次要
+   ============================================ */
+.world-hero.is-empty {
+    border-radius: 18px;
+}
+
+.world-hero.is-empty .world-hero-name {
+    font-size: 19px;
+    color: var(--text-secondary, #666);
+}
+
+/* ============================================
+   入场动画
+   ============================================ */
+@keyframes world-hero-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .world-hero {
+        animation: none;
+    }
+}
+
+/* ============================================
+   移动端
+   ============================================ */
+@media (max-width: 768px) {
+    .world-hero {
+        padding: 14px 22px;
+    }
+
+    .world-hero-name {
+        font-size: 19px;
+    }
+
+    .world-hero-line {
+        font-size: 12px;
+    }
+}

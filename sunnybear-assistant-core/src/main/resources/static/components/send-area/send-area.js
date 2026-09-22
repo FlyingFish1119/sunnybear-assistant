@@ -11,6 +11,32 @@ const SLASH_COMMANDS = [
 ];
 
 /**
+ * 发送区插件注册表（全局单例）。
+ *
+ * 插件按锚点插入扩展组件：
+ *   'toolbar'   工具栏图标区（TTS / 上传 / 步骤清单之后），如角色页的私聊/移交按钮
+ *   'overlay'   输入区上方的浮层区（发送区容器内、composer 之前），如私聊面板
+ * 组件会收到 prop: { mainColor, inputText } 并 inject sendArea（本组件实例），
+ * 可读写输入内容（sendArea.inputText）或调用其方法。
+ */
+const SendAreaPlugins = (function () {
+    const slotsByAnchor = Object.create(null);
+
+    return {
+        registerSlot: function (anchor, component, order) {
+            if (!anchor || !component) return;
+            if (!slotsByAnchor[anchor]) slotsByAnchor[anchor] = [];
+            const arr = slotsByAnchor[anchor];
+            arr.push({ component: component, order: order || 0 });
+            arr.sort(function (a, b) { return a.order - b.order; });
+        },
+        snapshot: function (anchor) {
+            return (slotsByAnchor[anchor] || []).slice();
+        }
+    };
+})();
+
+/**
  * 发送区组件（输入框 + 上传/朗读按钮 + 发送/停止按钮 + 斜杠指令面板）
  *
  * 自包含内容：
@@ -73,6 +99,11 @@ const SendArea = {
             @update-files="files => uploadedFiles = files"
             @drag-over-change="isChange => $emit('drag-over-change', isChange)">
         </file-upload>
+        <!-- 输入区上方的插件浮层（锚点 'overlay'，如私聊 / 移交面板） -->
+        <component v-for="(slot, si) in overlaySlots"
+                   :key="'send-overlay-' + si"
+                   :is="slot.component"
+                   :main-color="mainColor"></component>
         <div class="send-area-composer">
             <div class="send-area-main">
                 <auto-resize-textarea
@@ -100,6 +131,11 @@ const SendArea = {
                         </button>
                         <!-- 步骤清单跟踪：紧挨文件上传按钮右侧，无步骤时不渲染 -->
                         <mark-tracker :main-color="mainColor"></mark-tracker>
+                        <!-- 工具栏插件槽（锚点 'toolbar'，如私聊 / 移交按钮） -->
+                        <component v-for="(slot, si) in toolbarSlots"
+                                   :key="'send-toolbar-' + si"
+                                   :is="slot.component"
+                                   :main-color="mainColor"></component>
                     </div>
                     <span class="send-area-hint">Ctrl+Enter 发送</span>
                 </div>
@@ -147,8 +183,17 @@ const SendArea = {
         wsBus: { default: null }
     },
 
+    provide: function () {
+        // 向插件槽组件暴露本实例：可读写 inputText / uploadedFiles、调用 submit 等
+        return { sendArea: this };
+    },
+
     data: function () {
         return {
+            // 工具栏插件槽（锚点 'toolbar'）
+            toolbarSlots: SendAreaPlugins.snapshot('toolbar'),
+            // 浮层插件槽（锚点 'overlay'）
+            overlaySlots: SendAreaPlugins.snapshot('overlay'),
             // 输入框内容（组件内部状态）
             inputText: '',
             uploadedFiles: [],   // [{ name, data }] — 对应后端 FileData

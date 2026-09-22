@@ -1,0 +1,144 @@
+/* ============================================
+   世界观私聊 / 独白 / 移交 —— 正文块与浮条样式
+   ------------------------------------------------------------
+   私聊块由 world-private-text（正文渲染器）渲染；
+   浮条由 world-private-chat-panel / world-switch-chat-panel 渲染。
+   从旧 world_index 内联 style 迁出。
+   ============================================ */
+
+/* 私聊标签块：默认折叠为通用文本，点击展开具体内容 */
+.private-chat-block {
+    border: 1px dashed rgba(128, 128, 128, 0.5);
+    border-radius: 8px;
+    padding: 6px 10px;
+    margin: 4px 0;
+    background: rgba(128, 128, 128, 0.08);
+    cursor: pointer;
+    user-select: none;
+}
+.private-chat-block-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #888;
+}
+.private-chat-lock { font-size: 12px; }
+.private-chat-chevron {
+    margin-left: auto;
+    font-size: 10px;
+    transition: transform 0.2s;
+}
+.private-chat-chevron.expanded { transform: rotate(180deg); }
+.private-chat-block-content {
+    margin-top: 6px;
+    cursor: auto;
+    user-select: text;
+}
+/* 独白块（<private> 无 to）：暖色提示，与私聊区分 */
+.private-chat-block.monologue {
+    border-color: rgba(250, 140, 22, 0.45);
+    background: rgba(250, 140, 22, 0.06);
+}
+/* 发言权移交提示：<switch to:"X"> 渲染成靠左的轻提示 */
+.switch-chat-hint {
+    text-align: left;
+    font-size: 12px;
+    color: #aaa;
+    padding: 2px 0;
+    user-select: none;
+}
+
+/* 私聊浮条：悬浮在发送栏上方、与发送栏等宽（复用 command-suggest 浮层风格） */
+.private-chat-panel {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 92%;
+    max-width: 600px;
+    margin-bottom: 8px;
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.06);
+    padding: 10px 12px;
+    z-index: 500;
+    box-sizing: border-box;
+}
+.private-chat-panel-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.private-chat-panel-body { margin-top: 8px; }
+.private-chat-panel-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #606266;
+    white-space: nowrap;
+}
+.private-chat-panel-input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid #dcdfe6;
+    border-radius: 10px;
+    font-size: 14px;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.2s;
+}
+.private-chat-panel-input:focus { border-color: var(--main-color); }
+.private-chat-panel-btn {
+    padding: 7px 16px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+    white-space: nowrap;
+    background: #f5f5f5;
+    color: #666;
+}
+.private-chat-panel-btn:hover { background: #e8e8e8; color: #303133; }
+.private-chat-panel-btn-primary { background: var(--main-color); color: #fff; }
+.private-chat-panel-btn-primary:hover { filter: brightness(1.06); }
+/* 私聊 / 独白 类型切换按钮 */
+.private-chat-mode-btn {
+    padding: 4px 12px;
+    border: 1px solid #dcdfe6;
+    border-radius: 8px;
+    background: #fff;
+    color: #606266;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.private-chat-mode-btn.active {
+    background: var(--main-color);
+    border-color: var(--main-color);
+    color: #fff;
+}
+.private-chat-mode-btn:not(.active):hover {
+    border-color: var(--main-color);
+    color: var(--main-color);
+}
+.private-chat-panel-close {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+}
+/* 私聊按钮展开态：面板显示时按钮压暗 */
+.world-attach-btn.panel-open { filter: brightness(0.85); }
+@media (max-width: 768px) {
+    .private-chat-panel-row { flex-wrap: wrap; }
+    .private-chat-panel-input { flex-basis: 100%; }
+}

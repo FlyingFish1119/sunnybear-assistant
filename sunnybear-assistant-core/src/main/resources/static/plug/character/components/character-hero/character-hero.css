@@ -19,8 +19,9 @@
     align-items: center;
     gap: 20px;
     text-align: left;
-    /* 父级 .message-area-panel 是 flex column，这里水平居中即可 */
-    align-self: center;
+    /* 父级 .message-area-list 是 flex column：margin:auto 让卡片在列表中双向居中。
+       新对话时列表里只有这张卡片，视觉上即整块居中；有消息时卡片不渲染，不影响布局 */
+    margin: auto;
     max-width: min(92%, 460px);
     padding: 22px 30px;
     border-radius: 20px;

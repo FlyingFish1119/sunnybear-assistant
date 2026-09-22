@@ -69,12 +69,11 @@ const MessageAreaAssistant = {
         <!-- 正常模式：显示内容 -->
         <div v-else>
             <div v-for="(content, idx) in msg.contents" :key="idx" class="message-area-content-block">
-                <!-- 流式期间按块渲染：已闭合的代码块 / 表格 / 列表不会再被重建，
-                     复制按钮、滚动位置、文本选中都不会被打断 -->
-                <div v-if="content.type === 'text' && isStreamingMsg" class="markdown-body md-streaming">
-                    <div v-for="(block, bi) in $md.streamBlocks(content.content)" :key="bi" class="md-block" v-html="block.html"></div>
-                </div>
-                <div v-else-if="content.type === 'text'" class="markdown-body" v-html="renderContent(content)"></div>
+                <!-- 文本块：统一走 message-area-text（默认 Markdown / 插件可自定义渲染） -->
+                <message-area-text v-if="content.type === 'text'"
+                                   :content="content"
+                                   :msg="msg"
+                                   :streaming="isStreamingMsg"></message-area-text>
                 <div v-else-if="content.type === 'image'" class="message-attachment-image">
                     <img :src="$fileUrl.proxy(content.url)" @click.stop="$fileUrl.previewImage(content.url)" />
                 </div>
@@ -122,36 +121,36 @@ const MessageAreaAssistant = {
         </div>
         <!-- 真实按钮区 -->
         <div v-else class="message-area-bubble-actions">
-            <span v-if="msg.siblingCount > 1" class="branch-switch-arrow"
+            <span v-if="!ctx.actions.isHidden('assistant-branch') && msg.siblingCount > 1" class="branch-switch-arrow"
                   :class="{ disabled: msg.siblingIndex === 0 }"
                   @click.stop="ctx.actions.switchBranch(msg, 'left')"
                   title="切换到上一个分支">
                 <i style="width: 14px; height: 14px" data-lucide="chevron-left"></i>
             </span>
-            <span v-if="msg.siblingCount > 1" class="branch-switch-counter">{{ msg.siblingIndex + 1 }} / {{ msg.siblingCount }}</span>
-            <span v-if="msg.siblingCount > 1" class="branch-switch-arrow"
+            <span v-if="!ctx.actions.isHidden('assistant-branch') && msg.siblingCount > 1" class="branch-switch-counter">{{ msg.siblingIndex + 1 }} / {{ msg.siblingCount }}</span>
+            <span v-if="!ctx.actions.isHidden('assistant-branch') && msg.siblingCount > 1" class="branch-switch-arrow"
                   :class="{ disabled: msg.siblingIndex === msg.siblingCount - 1 }"
                   @click.stop="ctx.actions.switchBranch(msg, 'right')"
                   title="切换到下一个分支">
                 <i style="width: 14px; height: 14px" data-lucide="chevron-right"></i>
             </span>
-            <span class="branch-switch-arrow"
+            <span v-if="!ctx.actions.isHidden('assistant-replace')" class="branch-switch-arrow"
                   @click.stop="replaceBranch()"
                   title="重新生成回复">
                 <i style="width: 14px; height: 14px" data-lucide="rotate-ccw"></i>
             </span>
-            <span class="branch-switch-arrow"
+            <span v-if="!ctx.actions.isHidden('assistant-copy')" class="branch-switch-arrow"
                   @click.stop="copyMessage()"
                   title="复制消息">
                 <i style="width: 14px; height: 14px" data-lucide="copy"></i>
             </span>
-            <span v-if="msg.extension && msg.extension.ttsAudio"
+            <span v-if="!ctx.actions.isHidden('assistant-play') && msg.extension && msg.extension.ttsAudio"
                   class="branch-switch-arrow"
                   @click.stop="playMessageAudio()"
                   title="播放语音回复">
                 <i style="width: 14px; height: 14px" data-lucide="volume-2"></i>
             </span>
-            <span class="branch-switch-arrow"
+            <span v-if="!ctx.actions.isHidden('assistant-edit')" class="branch-switch-arrow"
                   @click.stop="startAssistantEdit()"
                   title="编辑消息">
                 <i style="width: 14px; height: 14px" data-lucide="pencil"></i>
@@ -212,12 +211,6 @@ const MessageAreaAssistant = {
     },
 
     methods: {
-        /** 正文 Markdown（缓存到 content 对象的 text 槽：历史消息只解析一次） */
-        renderContent(content) {
-            void this.ctx.mermaidNonce; // mermaid 异步出图后触发重渲染
-            return memoMsgHtml(content, 'text', content.content, this.$md.render);
-        },
-
         /** 思考过程 Markdown（缓存到 message 对象的 reasoning 槽） */
         renderReasoning() {
             void this.ctx.mermaidNonce;

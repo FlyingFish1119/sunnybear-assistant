@@ -43,7 +43,9 @@ const MessageAreaUser = {
         <!-- 正常模式：显示内容 -->
         <div v-else>
             <div v-for="(content, idx) in msg.contents" :key="idx" class="message-area-content-block">
-                <div v-if="content.type === 'text'" class="markdown-body" v-html="renderContent(content)"></div>
+                <message-area-text v-if="content.type === 'text'"
+                                   :content="content"
+                                   :msg="msg"></message-area-text>
                 <div v-else-if="content.type === 'image'" class="message-attachment-image">
                     <img :src="$fileUrl.proxy(content.url)" @click.stop="$fileUrl.previewImage(content.url)" />
                 </div>
@@ -78,30 +80,30 @@ const MessageAreaUser = {
         </div>
         <!-- 真实按钮区 -->
         <div v-else class="message-area-bubble-actions">
-            <span v-if="msg.siblingCount > 1" class="branch-switch-arrow"
+            <span v-if="!ctx.actions.isHidden('user-branch') && msg.siblingCount > 1" class="branch-switch-arrow"
                   :class="{ disabled: msg.siblingIndex === 0 }"
                   @click.stop="ctx.actions.switchBranch(msg, 'left')"
                   title="切换到上一个分支">
                 <i style="width: 14px; height: 14px" data-lucide="chevron-left"></i>
             </span>
-            <span v-if="msg.siblingCount > 1" class="branch-switch-counter">{{ msg.siblingIndex + 1 }} / {{ msg.siblingCount }}</span>
-            <span v-if="msg.siblingCount > 1" class="branch-switch-arrow"
+            <span v-if="!ctx.actions.isHidden('user-branch') && msg.siblingCount > 1" class="branch-switch-counter">{{ msg.siblingIndex + 1 }} / {{ msg.siblingCount }}</span>
+            <span v-if="!ctx.actions.isHidden('user-branch') && msg.siblingCount > 1" class="branch-switch-arrow"
                   :class="{ disabled: msg.siblingIndex === msg.siblingCount - 1 }"
                   @click.stop="ctx.actions.switchBranch(msg, 'right')"
                   title="切换到下一个分支">
                 <i style="width: 14px; height: 14px" data-lucide="chevron-right"></i>
             </span>
-            <span class="branch-switch-arrow"
+            <span v-if="!ctx.actions.isHidden('user-edit')" class="branch-switch-arrow"
                   @click.stop="startEdit()"
                   title="编辑消息">
                 <i style="width: 14px; height: 14px" data-lucide="pencil"></i>
             </span>
-            <span class="branch-switch-arrow"
+            <span v-if="!ctx.actions.isHidden('user-copy')" class="branch-switch-arrow"
                   @click.stop="copyMessage()"
                   title="复制消息">
                 <i style="width: 14px; height: 14px" data-lucide="copy"></i>
             </span>
-            <span class="branch-switch-arrow"
+            <span v-if="!ctx.actions.isHidden('user-delete')" class="branch-switch-arrow"
                   @click.stop="deleteUserMessage()"
                   title="删除消息">
                 <i style="width: 14px; height: 14px" data-lucide="trash-2"></i>
@@ -137,11 +139,6 @@ const MessageAreaUser = {
     },
 
     methods: {
-        /** 正文 Markdown（缓存到 content 对象的 text 槽：历史消息只解析一次） */
-        renderContent(content) {
-            return memoMsgHtml(content, 'text', content.content, this.$md.render);
-        },
-
         /* ---------- 消息自身动作（编辑 / 复制 / 删除） ---------- */
 
         /** 进入编辑模式：写入共享编辑态并初始化草稿 */
