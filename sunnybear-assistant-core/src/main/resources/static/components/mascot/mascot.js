@@ -189,6 +189,7 @@ const Mascot = {
     watch: {
         // 显隐切换时启停动效循环：藏起来就别空转，省 CPU
         visible: function (val) {
+            // 分层还没搭好（Teleport 落地前切的显隐）先记下来，等 initLive 自己补启
             if (!this._live) return;
             if (val) {
                 this._live.start();
@@ -202,17 +203,19 @@ const Mascot = {
         var self = this;
 
         // 锚点由页面上的 send-area 渲染出来，本组件挂载时它可能还没进 DOM，
-        // 所以先探一次：拿到就开传送，拿不到就整只熊不渲染（$nextTick 后 stage 才有）
+        // 所以先探一次：拿到就开传送，拿不到就整只熊不渲染
         this.anchorReady = !!document.querySelector(this.anchor);
-        if (!this.anchorReady) return;
-
-        // 分层与动效：由 mascot-live.js 按几何数据搭出（素材 icon/signboard_bear/live/）
-        this._live = (window.SunnyBearMascot && this.$refs.stage)
-            ? window.SunnyBearMascot.create(this.$refs.stage)
-            : null;
-        if (this._live && this.visible) {
-            this._live.start();
+        if (!this.anchorReady) {
+            console.warn('[mascot] 找不到挂载锚点 ' + this.anchor + '，看板熊不渲染');
+            return;
         }
+
+        //   Teleport 的内容要等下一轮渲染才真正挂进锚点，$refs.stage 那时才有值。
+        //   在这里同步取会拿到 undefined → create() 静默返回 null → stage 里一个图层都没有：
+        //   熊整体消失、点不到，但气泡/台词/彩蛋那些不依赖它的行为全都还在（踩过这个坑）。
+        this.$nextTick(function () {
+            self.initLive();
+        });
 
         // 彩蛋一：连按 10 次 b 切换（中间按了别的键就打断重计；长按连发不计）
         this._bKeyCount = 0;
@@ -270,12 +273,35 @@ const Mascot = {
             this._unsub.forEach(function (off) { if (off) off(); });
             this._unsub = null;
         }
+        if (this._liveRetry) { cancelAnimationFrame(this._liveRetry); this._liveRetry = 0; }
         if (this._live) { this._live.destroy(); this._live = null; }
         clearTimeout(this._bubbleTimer);
         clearTimeout(this._toggleTimer);
     },
 
     methods: {
+        /**
+         * 搭出分层并起跑动效（Teleport 落地之后才能调用）。
+         * 舞台元素还没到位时退到下一帧再试一次 —— 宁可多等一帧，也不要静默变空。
+         */
+        initLive: function () {
+            if (this._live || !this.anchorReady) return;
+            if (!this.$refs.stage) {
+                var self = this;
+                this._liveRetry = requestAnimationFrame(function () {
+                    self._liveRetry = 0;
+                    self.initLive();
+                });
+                return;
+            }
+            this._live = window.SunnyBearMascot
+                ? window.SunnyBearMascot.create(this.$refs.stage)
+                : null;
+            if (this._live && this.visible) {
+                this._live.start();
+            }
+        },
+
         /** 切换显隐并持久化（连按 b×10 / 长按发送键 3s 共用） */
         toggle: function () {
             if (this._toggleTimer) return;   // 进出场过渡中，忽略连点，避免状态打架

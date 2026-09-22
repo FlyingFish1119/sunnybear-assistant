@@ -1,86 +1,41 @@
 /**
- * 消息区组件
+ * 消息区组件（骨架）
  *
- * 把原先内联在 index.html 的消息列表整体拆出，连同其绑定的全部状态与操作
- * （编辑 currentEditId/editDraft/editTargetRole、折叠 collapsedState、头像错误兜底）
- * 内聚到本组件。会话与消息数据统一来自注入的 sessionStore；replace / edit / 播放语音
- * 等动作委托 store，组件自身不直接持有 WebSocket。
+ * 组件只负责装配：新对话落地页（message-area-hero 子组件）、加载态、
+ * 消息分组循环（_message-area-group 子组件）与上下文压缩卡片
+ * （message-area-compress 子组件）。
+ *
+ * 具体 UI 已各归其主：
+ *   message-area-context.js        — 共享状态（编辑态/折叠态/头像兜底）+ 动作集
+ *   message-area-group/message-area-group.js           — 组导轨 + 组头
+ *   message-area-user/message-area-user.js             — 用户消息气泡
+ *   message-area-assistant/message-area-assistant.js   — 助手消息气泡
+ *   message-area-tool/message-area-tool.js             — 工具消息气泡
  *
  * Props:
  *   mainColor         — String  主题色
  *   userSettings      — Object  用户设置（头像 / 用户名）
  *   assistantSettings — Object  助手设置（头像 / 名称）
  *
- * 空会话问候语由组件自行向 API.greeting.random() 请求，无需父级传入。
- *
  * Injects:
  *   sessionStore      — 会话/消息仓库；currentMessages / currentSessionId /
  *                       isStreaming / sessionSelectLoading 均取自仓库
  *
- * 依赖全局：$md (MarkdownUtils)、$fileUrl (FileUrlUtils)、ColorUtils、ElementPlus、
- *           MermaidUtils、auto-follow 指令、auto-resize-textarea 组件。
+ * 依赖全局：$md（MarkdownUtils）、ElementPlus、lucide、auto-follow 指令。
  */
-
-/** 建议提问的图标：后端只回文本，前端按顺序轮换配图标 */
-const SUGGESTION_ICONS = ['pen-line', 'file-text', 'lightbulb', 'compass'];
-
-/** 换行符常量：拼装工具调用参数的 markdown 时用，避免在字符串里写转义符 */
-const NL = String.fromCharCode(10);
-
-/**
- * 消息渲染缓存：按「对象 + 源文本」记忆 Markdown 结果。
- * 历史消息内容不变，组件重渲染时直接复用，避免每次 chunk 都重新 marked.parse。
- * 用 WeakMap（不挂到 reactive 对象上，避免污染响应式并额外触发更新）。
- */
-const _htmlCache = new WeakMap();
-
-/** 含 mermaid 围栏的文本不走对象缓存：其 HTML 会随异步出图被全局缓存失效，需每次重算 */
-const MERMAID_FENCE_RE = /(^|\n)\s{0,3}(`{3,}|~{3,})mermaid/;
-
-/**
- * 按「对象 + 字段槽 + 源文本」记忆渲染结果。同一个对象上可能并存多个渲染字段
- * （如消息的思考过程与工具调用参数），必须分槽存储，否则会互相覆盖、每帧重算。
- */
-function memoHtml(obj, slot, text, render) {
-    // mermaid 渲染完成后 $md 会清全局缓存并通知重渲染，对象缓存会挡住这次替换，故直接走 $md
-    if (text && MERMAID_FENCE_RE.test(text)) {
-        return render(text);
-    }
-    let store = _htmlCache.get(obj);
-    if (!store) {
-        store = {};
-        _htmlCache.set(obj, store);
-    }
-    const hit = store[slot];
-    if (hit && hit.src === text) return hit.html;
-    const html = render(text);
-    store[slot] = { src: text, html: html };
-    return html;
-}
 
 const MessageArea = {
     name: 'MessageArea',
 
     template: `
     <div class="message-area-panel" :class="{ 'is-new-chat': isNewChat }">
-        <!-- 新对话落地页：头像 + 问候 + 建议提问 -->
-        <div v-if="isNewChat" class="new-chat-hero" :style="{'--main-color': mainColor}">
-            <div class="hero-avatar">
-                <img v-if="heroAvatar" :src="heroAvatar" alt="" @error="assistantAvatarError = true">
-                <i v-else :data-lucide="greetingIcon" class="hero-avatar-icon"></i>
-            </div>
-            <p class="hero-greeting">{{ greetingText || '你好，我能帮你做点什么？' }}</p>
-            <p class="hero-subtitle">{{ heroSubtitle }}</p>
-            <div class="hero-suggestions">
-                <button v-for="(item, index) in suggestions"
-                        :key="index"
-                        class="hero-suggestion"
-                        @click="useSuggestion(item.text)">
-                    <i :data-lucide="item.icon" class="hero-suggestion-icon"></i>
-                    <span>{{ item.text }}</span>
-                </button>
-            </div>
-        </div>
+        <!-- 新对话落地页：头像 + 问候 + 建议提问（message-area-hero 子组件） -->
+        <message-area-hero
+            v-if="isNewChat"
+            :main-color="mainColor"
+            :avatar="assistantAvatar"
+            :assistant-name="assistantSettings.assistantName"
+        ></message-area-hero>
         <!-- 消息列表：新对话时隐藏 -->
         <div v-show="currentSessionId || currentMessages.length > 0" class="message-area-list" v-auto-follow>
             <div :style="{'--main-color': mainColor}" class="message-area-list-loading" v-if="sessionSelectLoading">
@@ -90,269 +45,14 @@ const MessageArea = {
                 <span class="loading-text">加载中</span>
                 <span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>
             </div>
-            <div v-for="group in messageGroups"
-                 :key="'group-' + group.messages[0].id"
-                 v-memo="group.memo"
-                 class="message-area-row"
-                 :class="[group.role, { 'is-active-group': group.active }]">
-                    <!-- 助手组左侧导轨：头像（仅组第一条）+ 主色淡竖线 -->
-                    <div v-if="group.role !== 'user'" class="react-rail">
-                        <img v-if="getMessageAvatar(group.messages[0])"
-                             :src="getMessageAvatar(group.messages[0])"
-                             class="message-avatar-top react-avatar"
-                             :alt="group.messages[0].name + '头像'"
-                             @error="assistantAvatarError = true">
-                        <div v-else class="message-avatar-top react-avatar message-avatar-default assistant-avatar-default">
-                            <span>{{ getAvatarInitial(group.messages[0]) }}</span>
-                        </div>
-                        <span v-if="group.messages.length > 1" class="react-line"></span>
-                    </div>
-                    <div class="message-area-col">
-                        <!-- 名称 + 时间：仅组的第一条显示（用户消息头像在名称旁） -->
-                        <div class="message-header-row">
-                            <template v-if="group.role === 'user'">
-                                <img v-if="getMessageAvatar(group.messages[0])"
-                                     :src="getMessageAvatar(group.messages[0])"
-                                     class="message-avatar-top"
-                                     :alt="group.messages[0].name + '头像'"
-                                     @error="userAvatarError = true">
-                                <div v-else class="message-avatar-top message-avatar-default user-avatar-default">
-                                    <span>{{ getAvatarInitial(group.messages[0]) }}</span>
-                                </div>
-                            </template>
-                            <span class="message-header-meta">{{ group.messages[0].name }} · {{ group.messages[0].createTime }}</span>
-                        </div>
-                        <template v-for="msg in group.messages" :key="msg.id">
-                        <!-- data-msg-id：全局右键菜单靠它从 store 反查这条消息的原始 Markdown（复制为 Markdown） -->
-                        <div v-if="msg.role !== 'tool'" class="message-area-bubble"
-                             :data-msg-id="msg.id"
-                             :style="msg.role === 'user' ? {'background-color': userBubbleBg} : {}">
-                        <!-- 本轮请求状态：连接中 / 思考中（后端 REQUEST_CONNECTING / REQUEST_THINKING 驱动，
-                             首个产出帧到达即清除）。只在在途气泡上出现，历史消息不会带出残留状态 -->
-                        <div v-if="isStreamingMsg(msg) && requestState" class="request-state">
-                            <i class="request-state-icon"
-                               :class="{ 'request-state-spin': requestState === 'connecting' }"
-                               :data-lucide="requestState === 'connecting' ? 'loader-circle' : 'sparkle'"></i>
-                            <span class="request-state-text">{{ requestState === 'connecting' ? '连接中' : '思考中' }}</span>
-                            <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
-                        </div>
-                        <div v-if="msg.reasoningContent !== null && msg.reasoningContent.length > 0">
-                            <div class="message-area-bubble-meta reasoning-header" @click="toggleCollapse(msg.id, 'thinking')">
-                                <i style="width: 10px; height: 10px" data-lucide="sparkle"></i>
-                                <span>思考过程:</span>
-                                <span v-if="isThinkingMsg(msg)" :style="{'--main-color': mainColor}" class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
-                                <i :class="['reasoning-chevron', { collapsed: isCollapsed(msg.id, 'thinking') }]" style="width: 14px; height: 14px" data-lucide="chevron-down"></i>
-                            </div>
-                            <div :class="['collapsible-content', { collapsed: isCollapsed(msg.id, 'thinking') }]" :data-collapse-key="msg.id + '_thinking'">
-                                <!-- 流式期间按块渲染：已闭合的块 HTML 不再变化，DOM 不重建 -->
-                                <div v-if="isStreamingMsg(msg)" class="message-area-reasoning markdown-body md-streaming">
-                                    <div v-for="(block, bi) in $md.streamBlocks(msg.reasoningContent)" :key="bi" class="md-block" v-html="block.html"></div>
-                                </div>
-                                <div v-else class="message-area-reasoning markdown-body" v-html="renderReasoning(msg)"></div>
-                            </div>
-                        </div>
-                        <!-- 编辑模式：显示 textarea -->
-                        <div v-if="currentEditId === msg.id">
-                            <auto-resize-textarea
-                                class="message-edit-textarea"
-                                :main-color="mainColor"
-                                v-model="editDraft"
-                                :max-height="300"
-                                :min-height="65"
-                                @submit="editTargetRole === 'assistant' ? confirmAssistantEdit(msg) : confirmEdit(msg)"
-                                @cancel="editTargetRole === 'assistant' ? cancelAssistantEdit() : cancelEdit()"
-                            ></auto-resize-textarea>
-                        </div>
-                        <!-- 正常模式：显示内容 -->
-                        <div v-else v-for="(content, idx) in msg.contents" :key="idx" class="message-area-content-block">
-                            <!-- 流式期间按块渲染：已闭合的代码块 / 表格 / 列表不会再被重建，
-                                 复制按钮、滚动位置、文本选中都不会被打断 -->
-                            <div v-if="content.type === 'text' && isStreamingMsg(msg)" class="markdown-body md-streaming">
-                                <div v-for="(block, bi) in $md.streamBlocks(content.content)" :key="bi" class="md-block" v-html="block.html"></div>
-                            </div>
-                            <div v-else-if="content.type === 'text'" class="markdown-body" v-html="renderContent(content)"></div>
-                            <div v-else-if="content.type === 'image'" class="message-attachment-image">
-                                <img :src="$fileUrl.proxy(content.url)" @click.stop="$fileUrl.previewImage(content.url)" />
-                            </div>
-                            <div v-else-if="content.type === 'audio'" class="message-attachment-audio">
-                                <audio :src="$fileUrl.proxy(content.url)" controls preload="metadata"></audio>
-                            </div>
-                            <div v-else-if="content.type === 'video'" class="message-attachment-video">
-                                <video :src="$fileUrl.proxy(content.url)" controls preload="metadata"></video>
-                            </div>
-                            <div v-else-if="content.type === 'file'" class="message-attachment-file">
-                                <a :href="$fileUrl.proxy(content.url)" target="_blank">
-                                    <i data-lucide="file" style="width:18px;height:18px"></i>
-                                    <span>{{ $fileUrl.fileName(content.url) }}</span>
-                                </a>
-                            </div>
-                        </div>
-                        <div v-if="msg.toolCalls && msg.toolCalls.length > 0" :class="['tool-calls-block', { collapsed: isCollapsed(msg.id, 'toolcalls') }]">
-                            <div class="message-area-bubble-tools-header" @click="toggleCollapse(msg.id, 'toolcalls')">
-                                <i :class="['tool-chevron', { collapsed: isCollapsed(msg.id, 'toolcalls') }]" style="width: 14px; height: 14px" data-lucide="chevron-right"></i>
-                                <span class="markdown-body" v-html="$md.render(msg.toolCalls.map(t => '\`' + t.name + '\`').join(', '))"></span>
-                            </div>
-                            <div :class="['message-area-bubble-tools-wrap', { collapsed: isCollapsed(msg.id, 'toolcalls') }]" :data-collapse-key="msg.id + '_toolcalls'">
-                                <div v-if="isStreamingMsg(msg)" class="message-area-bubble-tools markdown-body md-streaming">
-                                    <div v-for="(block, bi) in $md.streamBlocks(toolCallsMarkdown(msg))" :key="bi" class="md-block" v-html="block.html"></div>
-                                </div>
-                                <div v-else class="message-area-bubble-tools markdown-body" v-html="renderToolCalls(msg)">
-                                </div>
-                            </div>
-                        </div>
-                        <!-- streaming 时空占位，防止高度抽搐 -->
-                        <div v-if="(msg.siblingCount > 1 || msg.role === 'assistant' || msg.role === 'user') && busy"
-                             class="message-area-bubble-actions" style="visibility: hidden;"></div>
-                        <!-- 编辑模式：确认/取消按钮，始终可见 -->
-                        <div v-else-if="currentEditId === msg.id" class="message-area-bubble-actions" style="opacity: 1;">
-                            <span class="branch-switch-arrow"
-                                  @click.stop="editTargetRole === 'assistant' ? confirmAssistantEdit(msg) : confirmEdit(msg)"
-                                  title="确认编辑">
-                                <i style="width: 14px; height: 14px" data-lucide="check"></i>
-                            </span>
-                            <span class="branch-switch-arrow"
-                                  @click.stop="editTargetRole === 'assistant' ? cancelAssistantEdit() : cancelEdit()"
-                                  title="取消编辑">
-                                <i style="width: 14px; height: 14px" data-lucide="x"></i>
-                            </span>
-                        </div>
-                        <!-- 真实按钮区，当前消息不在编辑模式时显示 -->
-                        <div v-else-if="(msg.siblingCount > 1 || msg.role === 'assistant' || msg.role === 'user') && currentEditId !== msg.id" class="message-area-bubble-actions">
-                            <span v-if="msg.siblingCount > 1" class="branch-switch-arrow"
-                                  :class="{ disabled: msg.siblingIndex === 0 }"
-                                  @click.stop="switchBranch(msg, 'left')"
-                                  title="切换到上一个分支">
-                                <i style="width: 14px; height: 14px" data-lucide="chevron-left"></i>
-                            </span>
-                            <span v-if="msg.siblingCount > 1" class="branch-switch-counter">{{ msg.siblingIndex + 1 }} / {{ msg.siblingCount }}</span>
-                            <span v-if="msg.siblingCount > 1" class="branch-switch-arrow"
-                                  :class="{ disabled: msg.siblingIndex === msg.siblingCount - 1 }"
-                                  @click.stop="switchBranch(msg, 'right')"
-                                  title="切换到下一个分支">
-                                <i style="width: 14px; height: 14px" data-lucide="chevron-right"></i>
-                            </span>
-                            <span v-if="msg.role === 'assistant'" class="branch-switch-arrow"
-                                  @click.stop="replaceBranch(msg)"
-                                  title="重新生成回复">
-                                <i style="width: 14px; height: 14px" data-lucide="rotate-ccw"></i>
-                            </span>
-                            <span v-if="msg.role === 'assistant'" class="branch-switch-arrow"
-                                  @click.stop="copyMessage(msg)"
-                                  title="复制消息">
-                                <i style="width: 14px; height: 14px" data-lucide="copy"></i>
-                            </span>
-                            <span v-if="msg.role === 'assistant' && msg.extension && msg.extension.ttsAudio"
-                                  class="branch-switch-arrow"
-                                  @click.stop="playMessageAudio(msg)"
-                                  title="播放语音回复">
-                                <i style="width: 14px; height: 14px" data-lucide="volume-2"></i>
-                            </span>
-                            <span v-if="msg.role === 'assistant'" class="branch-switch-arrow"
-                                  @click.stop="startAssistantEdit(msg)"
-                                  title="编辑消息">
-                                <i style="width: 14px; height: 14px" data-lucide="pencil"></i>
-                            </span>
-                            <span v-if="msg.role === 'user'" class="branch-switch-arrow"
-                                  @click.stop="startEdit(msg)"
-                                  title="编辑消息">
-                                <i style="width: 14px; height: 14px" data-lucide="pencil"></i>
-                            </span>
-                            <span v-if="msg.role === 'user'" class="branch-switch-arrow"
-                                  @click.stop="copyMessage(msg)"
-                                  title="复制消息">
-                                <i style="width: 14px; height: 14px" data-lucide="copy"></i>
-                            </span>
-                            <span v-if="msg.role === 'user'" class="branch-switch-arrow"
-                                  @click.stop="deleteUserMessage(msg)"
-                                  title="删除消息">
-                                <i style="width: 14px; height: 14px" data-lucide="trash-2"></i>
-                            </span>
-                            <!-- 本轮 token 消耗（来自消息 extension.chat_usage），并入操作按钮区 -->
-                            <div v-if="messageUsage(msg)" class="message-token-usage">
-                                <el-tooltip effect="light" placement="top" :show-after="100"
-                                            popper-class="message-token-tooltip">
-                                    <template #content>
-                                        <div class="message-token-tip">
-                                            <div v-for="row in tokenBreakdown(messageUsage(msg))"
-                                                 :key="row.label" class="message-token-tip-row">
-                                                <span class="message-token-tip-label">{{ row.label }}</span>
-                                                <span class="message-token-tip-value">{{ row.value }}</span>
-                                            </div>
-                                        </div>
-                                    </template>
-                                    <span class="message-token-badge">
-                                        <i data-lucide="coins" style="width:12px;height:12px"></i>
-                                        tokens {{ tokenSummary(messageUsage(msg)) }}
-                                    </span>
-                                </el-tooltip>
-                            </div>
-                        </div>
-                        </div>
-                        <div v-else class="message-area-bubble tool-bubble">
-                    <div class="message-area-bubble-meta tool-meta-header" @click="toggleCollapse(msg.id, 'tool')">
-                        <i :class="['tool-chevron', { collapsed: isCollapsed(msg.id, 'tool') }]" style="width: 14px; height: 14px" data-lucide="chevron-right"></i>
-                        <span>{{ msg.name }} · {{ msg.createTime }}</span>
-                        <span class="tool-status-inline" :style="{color: $toolStatus(msg).color}">
-                            <i style="width: 12px; height: 12px" :data-lucide="$toolStatus(msg).icon"></i>
-                            <span style="padding-left: 2px">{{ $toolStatus(msg).text }}</span>
-                        </span>
-                    </div>
-                    <div :class="['collapsible-content', { collapsed: isCollapsed(msg.id, 'tool') }]" :data-collapse-key="msg.id + '_tool'">
-                        <div v-for="(content, idx) in msg.contents" :key="idx" class="message-area-content-block">
-                            <div v-if="content.type === 'text'">
-                                <template v-if="msg.extension && msg.extension.status === 'executing'">
-                                    <div class="message-area-bubble-tools-meta">
-                                        <i style="width: 12px; height: 12px; color: #faad14" data-lucide="circle-dot"></i>
-                                        <div style="padding: 0 0 1px 4px; color: #faad14">[{{msg.name}}]执行中…</div>
-                                    </div>
-                                </template>
-                                <!-- 工具结果块：contents[0] 的结果 JSON，只有它能判成功/失败 -->
-                                <template v-else-if="$toolParsed(content)">
-                                    <span v-if="$toolParsed(content).succeed" class="message-area-bubble-tools-meta">
-                                        <i style="width: 12px; height: 12px; color: #52c41a" data-lucide="circle-check"></i>
-                                        <span style="padding: 0 0 1px 4px; color: #52c41a">[{{msg.name}}]执行成功</span>
-                                    </span>
-                                    <div v-else class="message-area-bubble-tools-meta">
-                                        <i style="width: 12px; height: 12px; color: #ff4d4f" data-lucide="circle-x"></i>
-                                        <div style="padding: 0 0 1px 4px; color: #ff4d4f">[{{msg.name}}]执行失败</div>
-                                    </div>
-                                    <div class="markdown-body" v-html="renderToolResult(content)"></div>
-                                </template>
-                                <!-- 追加的展示文本块（后台任务通知等）：不是工具结果 JSON，只按纯文本渲染 -->
-                                <div v-else class="markdown-body" v-html="renderContent(content)"></div>
-                            </div>
-                            <div v-else-if="content.type === 'image'" class="message-attachment-image">
-                                <img :src="$fileUrl.proxy(content.url)" @click.stop="$fileUrl.previewImage(content.url)" />
-                            </div>
-                            <div v-else-if="content.type === 'audio'" class="message-attachment-audio">
-                                <audio :src="$fileUrl.proxy(content.url)" controls preload="metadata"></audio>
-                            </div>
-                            <div v-else-if="content.type === 'video'" class="message-attachment-video">
-                                <video :src="$fileUrl.proxy(content.url)" controls preload="metadata"></video>
-                            </div>
-                            <div v-else-if="content.type === 'file'" class="message-attachment-file">
-                                <a :href="$fileUrl.proxy(content.url)" target="_blank">
-                                    <i data-lucide="file" style="width:18px;height:18px"></i>
-                                    <span>{{ $fileUrl.fileName(content.url) }}</span>
-                                </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                        </template>
-                    </div>
-                </div>
-            <!-- 上下文压缩卡片：长对话总结旧历史期间顶替空占位，避免在「等待回复」处呆等 -->
-            <div v-if="compressState" :style="{'--main-color': mainColor}"
-                 class="ctx-compress-card" :class="{ 'is-done': compressState === 'done' }">
-                <i v-if="compressState === 'done'" class="ctx-compress-icon" data-lucide="check"></i>
-                <i v-else class="ctx-compress-icon ctx-compress-spin" data-lucide="loader-circle"></i>
-                <span class="ctx-compress-text">
-                    {{ compressState === 'done'
-                        ? '上下文已压缩，对话即将继续'
-                        : '正在压缩上下文，生成衔接摘要…' }}
-                </span>
-            </div>
+            <message-area-group
+                v-for="group in messageGroups"
+                :key="'group-' + group.messages[0].id"
+                :group="group">
+            </message-area-group>
+            <!-- 上下文压缩卡片（message-area-compress 子组件）：长对话总结旧历史期间
+                 顶替空占位，避免在「等待回复」处呆等 -->
+            <message-area-compress :main-color="mainColor"></message-area-compress>
         </div>
     </div>`,
 
@@ -364,37 +64,35 @@ const MessageArea = {
 
     inject: {
         // 主应用必注：会话/消息仓库
-        sessionStore: { required: true },
-        // 可选：本地事件总线（用于把建议提问填进发送框）
-        wsBus: { default: null }
+        sessionStore: { required: true }
+    },
+
+    /**
+     * provide：sessionStore 与共享上下文一并下发，供 group/user/assistant/tool
+     * 子组件注入使用。
+     */
+    provide: function () {
+        return {
+            sessionStore: this.sessionStore,
+            messageAreaContext: this.context
+        };
     },
 
     data: function () {
+        // 在 data 里创建共享上下文（provide 在 data 之后求值，这里创建才能被 provide 捕获）
+        const context = createMessageAreaContext(this.sessionStore);
+        context.mainColor = this.mainColor;
+        context.userSettings = this.userSettings;
+        context.assistantSettings = this.assistantSettings;
         return {
-            // 空会话问候语（组件自行请求）
-            greetingText: '',
-            // 新对话页的「建议提问」：点击填入发送框
-            suggestions: [
-                { icon: 'pen-line', text: '帮我写一封得体的邮件' },
-                { icon: 'file-text', text: '总结这份文档的核心要点' },
-                { icon: 'lightbulb', text: '用简单的话解释一个概念' },
-                { icon: 'calendar-check', text: '帮我制定一周的作息计划' }
-            ],
-            // 头像加载失败兜底：失败后回退到默认首字母头像
-            userAvatarError: false,
-            assistantAvatarError: false,
-            // 消息编辑状态
-            currentEditId: null,
-            editDraft: '',
-            editTargetRole: null,
-            // 折叠状态：key = msgId_section, value = true(折叠)/false(展开)
-            collapsedState: {},
-            // v-memo 依赖：折叠态是组件局部状态，vue 不会因 memo 命中而重新读取，
-            // 故用自增计数把「折叠态变化」显式暴露给分组依赖
-            collapseNonce: 0,
-            // 同上：mermaid 异步出图完成时需要让分组重建（$forceUpdate 会被 v-memo 挡住）
-            mermaidNonce: 0
+            context: context
         };
+    },
+
+    watch: {
+        mainColor: function (v) { if (this.context) this.context.mainColor = v; },
+        userSettings: function (v) { if (this.context) this.context.userSettings = v; },
+        assistantSettings: function (v) { if (this.context) this.context.assistantSettings = v; }
     },
 
     computed: {
@@ -402,6 +100,8 @@ const MessageArea = {
             return this.sessionStore.state.currentMessages;
         },
         // 按用户消息切分渲染组：assistant/tool 连续段归为一个 ReAct 组（共用一个头像+竖线）
+        // 流式期间只有当前消息的内容变化，只有它所在的子组件重渲染，
+        // 历史分组作为独立组件实例保持不动
         messageGroups: function () {
             const groups = [];
             let current = null;
@@ -417,55 +117,10 @@ const MessageArea = {
                     current.messages.push(msg);
                 }
             }
-            // v-memo 依赖：组内每条消息的渲染键 + 影响全局渲染的状态。
-            // 流式期间只有当前消息的键变化 → 只有它所在分组重建 DOM，历史分组保持不动。
-            const globalDeps = [
-                this.busy ? 1 : 0,
-                this.isStreaming ? 1 : 0,
-                // 编辑中才纳入草稿/角色：受控 textarea 需要每次输入都下发新值，
-                // 非编辑态恒为空串，不引入额外依赖
-                this.currentEditId
-                    ? (this.currentEditId + '|' + this.editTargetRole + '|' + this.editDraft)
-                    : '',
-                this.collapseNonce,
-                this.mermaidNonce,
-                this.userAvatarError ? 1 : 0,
-                this.assistantAvatarError ? 1 : 0,
-                this.mainColor,
-                this.userSettings.avatar,
-                this.assistantSettings.avatar,
-                this.userSettings.username,
-                this.assistantSettings.assistantName
-            ];
-            for (const group of groups) {
-                const deps = globalDeps.slice();
-                let active = false;
-                for (const msg of group.messages) {
-                    deps.push(this.messageMemoKey(msg));
-                    if (this.isStreamingMsg(msg)) active = true;
-                }
-                group.active = active;
-                group.memo = deps;
-            }
             return groups;
         },
         currentSessionId: function () {
             return this.sessionStore.currentSessionId;
-        },
-        isStreaming: function () {
-            return this.sessionStore.isStreaming;
-        },
-        // 当前会话的上下文压缩状态：'running' | 'done' | null
-        compressState: function () {
-            return this.sessionStore.compressState;
-        },
-        // 当前会话的本轮请求状态：'connecting' | 'thinking' | null
-        requestState: function () {
-            return this.sessionStore.requestState;
-        },
-        // 本轮不可交互（请求在途或流式输出中）：隐藏消息操作按钮，防止重复触发
-        busy: function () {
-            return this.sessionStore.busy;
         },
         sessionSelectLoading: function () {
             return this.sessionStore.sessionSelectLoading;
@@ -473,618 +128,18 @@ const MessageArea = {
         isNewChat: function () {
             return !this.currentSessionId && this.currentMessages.length === 0;
         },
-        // 用户消息气泡背景色：跟随主色自动变浅
-        userBubbleBg: function () {
-            return ColorUtils.lighten(this.mainColor, 0.25);
-        },
-        greetingIcon: function () {
-            const hour = new Date().getHours();
-            if (hour >= 6 && hour < 12) return 'sunrise';
-            if (hour >= 12 && hour < 18) return 'sun';
-            if (hour >= 18 && hour < 22) return 'sunset';
-            return 'moon';
-        },
-        // 新对话页副标题：带上助理名，无则用通用引导
-        heroSubtitle: function () {
-            const name = this.assistantSettings.assistantName;
-            return name ? ('和 ' + name + ' 聊点什么，或试试下面的问题')
-                        : '试试下面的问题，或直接输入你的想法';
-        },
-        // 新对话页头像：复用消息头像的 URL 处理（本地文件走代理）
-        heroAvatar: function () {
-            return this.getMessageAvatar({ role: 'assistant' });
-        }
-    },
-
-    watch: {
-        // 每次进入新对话刷新问候语 + 建议提问（换个花样）
-        isNewChat: function (val) {
-            if (val) this.fetchGreeting();
-        }
-    },
-
-    methods: {
-        /** 空会话问候语 + 建议提问：组件挂载时自行请求，失败时回退默认文案 */
-        async fetchGreeting() {
-            try {
-                const result = await API.greeting.random();
-                if (result.status === 200 && result.data) {
-                    this.greetingText = result.data.text;
-                    const list = result.data.suggestions;
-                    if (Array.isArray(list) && list.length > 0) {
-                        // 去重：AI 可能生成重复建议，重复的 v-for key 会导致 DOM 插入异常
-                        const unique = [];
-                        const seen = {};
-                        list.forEach(function (text) {
-                            const key = String(text);
-                            if (key && !seen[key]) {
-                                seen[key] = true;
-                                unique.push(text);
-                            }
-                        });
-                        this.suggestions = unique.map(function (text, i) {
-                            return { icon: SUGGESTION_ICONS[i % SUGGESTION_ICONS.length], text: text };
-                        });
-                    }
-                } else {
-                    this.greetingText = '你好！今天有什么可以帮你的吗？';
-                }
-            } catch (error) {
-                console.error('获取问候语失败:', error);
-            }
-        },
-
-        /** 点击建议提问：通过本地事件把文案填进发送框（由 send-area 接收并聚焦） */
-        useSuggestion(text) {
-            if (this.wsBus) {
-                this.wsBus.emit('send-area:fill', text);
-            }
-        },
-
-        /** 读取消息扩展里的本轮 token 用量（无则返回 null，用于 v-if） */
-        messageUsage(msg) {
-            return (msg && msg.extension && msg.extension.chat_usage) || null;
-        },
-
-        /** token 数字压缩：1234 -> 1.2k，1048576 -> 1.0M */
-        formatTokens(n) {
-            if (n == null || isNaN(n)) return '-';
-            n = Number(n);
-            if (n < 1000) return String(n);
-            if (n < 1000000) return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'k';
-            return (n / 1000000).toFixed(1) + 'M';
-        },
-
-        /** 本轮用量紧凑摘要：优先总 token，缺失时退回输入 token */
-        tokenSummary(usage) {
-            if (!usage) return '';
-            var value = usage.total_tokens != null ? usage.total_tokens : usage.prompt_tokens;
-            return this.formatTokens(value);
-        },
-
-        /** 本轮用量明细行（供悬浮提示展示） */
-        tokenBreakdown(usage) {
-            if (!usage) return [];
-            var fmt = this.formatTokens.bind(this);
-            var rows = [];
-            var add = function (label, value) {
-                if (value != null) {
-                    rows.push({ label: label, value: fmt(value) });
-                }
-            };
-            add('输入', usage.prompt_tokens);
-            add('输出', usage.completion_tokens);
-            if (usage.cached_tokens != null) add('缓存输入', usage.cached_tokens);
-            if (usage.reasoning_tokens != null) add('思考', usage.reasoning_tokens);
-            add('合计', usage.total_tokens);
-            return rows;
-        },
-
         /**
-         * 生成一条消息的 v-memo 依赖键：任何会影响该消息渲染输出的字段变化都会让键变化，
-         * 从而只重建该消息所在分组。长度类字段覆盖流式追加；id / 状态 / 分支 / 显式 _v
-         * 覆盖结构性变更（历史消息的这两项不变 → 分组被 memo 掉，不参与每帧重渲染）。
-         * @param {object} msg - 消息对象
-         * @returns {string} 依赖键
+         * 助手头像 URL（本地文件走代理），供落地页子组件使用。
+         * 消息头像走 messageAreaContext.actions.getMessageAvatar（含加载失败兜底）；
+         * 落地页的兜底在子组件里，这里只做 URL 解析。
          */
-        messageMemoKey(msg) {
-            let key = (msg.role || '') + '#' + (msg.id || '') + '#' + (msg._v || 0) + '#';
-            // 本轮请求状态（连接中/思考中）只渲染在在途气泡上：并入在途消息的键，
-            // 状态切换只重建这一条所在分组，历史分组仍被 memo 挡住
-            if (this.isStreamingMsg(msg)) {
-                key += '#' + (this.requestState || '') + '#';
-            }
-            key += (msg.name || '') + '#' + (msg.createTime || '') + '#';
-            key += msg.reasoningContent ? msg.reasoningContent.length : 0;
-            if (msg.contents) {
-                for (let i = 0; i < msg.contents.length; i++) {
-                    const c = msg.contents[i];
-                    key += '|' + (c.type || '') + ':' + (c.content ? String(c.content).length : 0)
-                        + ':' + (c.url || '');
-                }
-            }
-            if (msg.toolCalls) {
-                for (let i = 0; i < msg.toolCalls.length; i++) {
-                    const t = msg.toolCalls[i];
-                    key += '|' + t.name + ':' + (t.arguments ? t.arguments.length : 0);
-                }
-            }
-            if (msg.extension) {
-                key += '|' + (msg.extension.status || '') + ':' + (msg.extension.ttsAudio ? 1 : 0);
-            }
-            key += '|' + (msg.siblingIndex != null ? msg.siblingIndex : '')
-                 + ':' + (msg.siblingCount != null ? msg.siblingCount : '');
-            return key;
-        },
-
-        /**
-         * 取消息正文（contents[0] 的文本）。
-         * 语义契约：正文恒为首块且可编辑；其后的文本块与附件只展示，不参与编辑，
-         * 因此编辑草稿、重发等"正文操作"一律只认首块，不拼接其它文本块。
-         * @param {object} msg - 消息对象
-         * @returns {string} 正文文本；首块不是文本时返回空串
-         */
-        bodyText(msg) {
-            const first = msg && msg.contents && msg.contents[0];
-            return first && first.type === 'text' ? (first.content || '') : '';
-        },
-
-        /** 正文 Markdown（缓存到 content 对象的 text 槽：历史消息只解析一次） */
-        renderContent(content) {
-            return memoHtml(content, 'text', content.content, this.$md.render);
-        },
-
-        /** 思考过程 Markdown（缓存到 message 对象的 reasoning 槽） */
-        renderReasoning(msg) {
-            return memoHtml(msg, 'reasoning', msg.reasoningContent, this.$md.render);
-        },
-
-        /** 工具结果 Markdown（缓存到 content 对象的 tool 槽） */
-        renderToolResult(content) {
-            const parsed = this.$toolParsed(content);
-            return memoHtml(content, 'tool', parsed ? parsed.result : '', this.$md.render);
-        },
-
-        /** 工具调用参数 Markdown（非流式整段渲染；缓存到 message 对象的 calls 槽） */
-        renderToolCalls(msg) {
-            return memoHtml(msg, 'calls', this.toolCallsMarkdown(msg), this.$md.render);
-        },
-
-        /**
-         * 带缓存的工具结果 JSON 解析（模板中使用）。
-         * 避免每次 Vue 更新都对同一 content 重复 JSON.parse。
-         *
-         * 工具消息的 contents[0] 是工具结果 JSON；其后的文本块是追加的展示内容
-         * （后台任务完成通知等），不是 JSON。解析不出来一律返回 null，交给模板按纯文本
-         * 渲染——这里绝不能抛：渲染期异常会让 Vue 把整个消息区替换成空节点，页面被顶飞。
-         * @param {object} content - 消息的 content 对象
-         * @returns {object|null} 解析后的工具结果；不是工具结果 JSON 时返回 null
-         */
-        $toolParsed(content) {
-            let raw = content.content;
-            if (content._rawJson !== raw) {
-                content._rawJson = raw;
-                try {
-                    content._parsed = raw ? JSON.parse(raw) : null;
-                } catch (e) {
-                    content._parsed = null;
-                }
-            }
-            return content._parsed || null;
-        },
-
-        /**
-         * 获取工具消息的聚合执行状态（模板中使用）。
-         * 在折叠的头部显示成功/失败图标和颜色。
-         * 非 JSON 的追加文本块只是展示内容，不参与状态判定。
-         * @param {object} msg - 工具消息对象
-         * @returns {{ succeed: boolean, icon: string, color: string, text: string }}
-         */
-        $toolStatus(msg) {
-            if (msg.extension && msg.extension.status === 'executing') {
-                return { succeed: true, icon: 'circle-dot', color: '#faad14', text: '执行中…' };
-            }
-            if (!msg.contents || msg.contents.length === 0) {
-                return { succeed: true, icon: 'circle-check', color: '#52c41a', text: '执行成功' };
-            }
-            let allSucceed = true;
-            for (let content of msg.contents) {
-                if (content.type !== 'text') continue;
-                let parsed = this.$toolParsed(content);
-                if (!parsed) continue;
-                if (!parsed.succeed) {
-                    allSucceed = false;
-                    break;
-                }
-            }
-            return allSucceed
-                ? { succeed: true, icon: 'circle-check', color: '#52c41a', text: '执行成功' }
-                : { succeed: false, icon: 'circle-x', color: '#ff4d4f', text: '执行失败' };
-        },
-
-        /** 获取消息对应的头像 URL */
-        getMessageAvatar(msg) {
-            if (msg.role === 'user' && this.userAvatarError) return '';
-            if (msg.role === 'assistant' && this.assistantAvatarError) return '';
-            const avatar = msg.role === 'user'
-                ? this.userSettings.avatar
-                : this.assistantSettings.avatar;
-            if (!avatar) return '';
-            if (avatar.startsWith('data:')) return avatar;
-            if (!/^https?:\/\//i.test(avatar)) {
-                return API.fileProxyUrl(avatar);
-            }
-            return avatar;
-        },
-
-        /** 获取消息头像的默认首字母 */
-        getAvatarInitial(msg) {
-            if (msg.role === 'user') {
-                return (this.userSettings.username || 'U').charAt(0);
-            }
-            return (this.assistantSettings.assistantName || 'A').charAt(0);
-        },
-
-        /**
-         * 左右切换兄弟分支
-         * @param {object} msg - 当前消息对象
-         * @param {string} direction - 'left' 或 'right'
-         */
-        async switchBranch(msg, direction) {
-            try {
-                const result = await API.message.switchBranch(msg.id, direction);
-                if (result.status === 200) {
-                    if (this.currentSessionId) {
-                        await this.sessionStore.selectSession(this.sessionStore.state.currentSession);
-                    }
-                } else {
-                    ElementPlus.ElMessage.error(result.message || '切换分支失败');
-                }
-            } catch (error) {
-                ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
-                console.error('切换分支失败:', error);
-            }
-        },
-
-        /**
-         * 重新生成助手回复（replace 模式）：找到父用户消息后委托 store 重发
-         * @param {object} msg - 助手消息对象
-         */
-        replaceBranch(msg) {
-            const parentMsg = this.currentMessages.find(m => m.id === msg.parentId);
-            if (!parentMsg) {
-                ElementPlus.ElMessage.error('未找到对应的用户消息');
-                return;
-            }
-            const userText = this.bodyText(parentMsg);
-            if (!userText) {
-                ElementPlus.ElMessage.error('用户消息内容为空');
-                return;
-            }
-            this.sessionStore.replaceBranch(msg.id, userText);
-        },
-
-        /**
-         * 进入编辑模式：设置 currentEditId 并初始化草稿
-         * @param {object} msg - 用户消息对象
-         */
-        startEdit(msg) {
-            this.currentEditId = msg.id;
-            this.editTargetRole = 'user';
-            this.editDraft = this.bodyText(msg);
-            this.focusEditTextarea();
-        },
-
-        /**
-         * 确认编辑：发送 edit 请求并清除编辑状态
-         * @param {object} msg - 用户消息对象
-         */
-        confirmEdit(msg) {
-            if (!this.editDraft.trim()) {
-                ElementPlus.ElMessage.error('消息内容不能为空');
-                return;
-            }
-            this.sessionStore.editMessage(msg.id, this.editDraft);
-            this.clearEditState();
-        },
-
-        /** 取消编辑 */
-        cancelEdit() {
-            this.clearEditState();
-        },
-
-        /**
-         * 删除用户消息及其所有子孙消息
-         * @param {object} msg - 用户消息对象
-         */
-        async deleteUserMessage(msg) {
-            try {
-                const result = await API.message.deleteUser(msg.id);
-                if (result.status === 200) {
-                    ElementPlus.ElMessage.success('消息已删除');
-                    await this.sessionStore.selectSession(this.sessionStore.state.currentSession);
-                } else {
-                    ElementPlus.ElMessage.error(result.message || '删除消息失败');
-                }
-            } catch (error) {
-                ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
-                console.error('删除消息失败:', error);
-            }
-        },
-
-        /**
-         * 进入助手消息编辑模式
-         * @param {object} msg - 助手消息对象
-         */
-        startAssistantEdit(msg) {
-            this.currentEditId = msg.id;
-            this.editTargetRole = 'assistant';
-            this.editDraft = this.bodyText(msg);
-            this.focusEditTextarea();
-        },
-
-        /**
-         * 确认编辑助手消息
-         * @param {object} msg - 助手消息对象
-         */
-        async confirmAssistantEdit(msg) {
-            if (!this.editDraft.trim()) {
-                ElementPlus.ElMessage.error('消息内容不能为空');
-                return;
-            }
-            try {
-                const result = await API.message.editAssistant({ id: msg.id, content: this.editDraft });
-                if (result.status === 200) {
-                    const targetMsg = this.currentMessages.find(m => m.id === msg.id);
-                    if (targetMsg && Array.isArray(targetMsg.contents)) {
-                        // 只改正文首块：附件与追加的展示块原样保留，与后端 editAssistantMessage 同口径
-                        const others = targetMsg.contents.slice(1);
-                        targetMsg.contents.splice(0, targetMsg.contents.length,
-                            { type: 'text', content: this.editDraft }, ...others);
-                        // 编辑可能等长替换（长度键检测不到），显式标记以触发该分组重建
-                        targetMsg._v = (targetMsg._v || 0) + 1;
-                    }
-                    this.$nextTick(() => {
-                        MermaidUtils.renderAll();
-                    });
-                    ElementPlus.ElMessage.success('消息已更新');
-                } else {
-                    ElementPlus.ElMessage.error(result.message || '更新消息失败');
-                }
-            } catch (error) {
-                ElementPlus.ElMessage.error('网络请求失败，请检查网络连接');
-                console.error('更新消息失败:', error);
-            } finally {
-                this.clearEditState();
-            }
-        },
-
-        /** 取消助手消息编辑 */
-        cancelAssistantEdit() {
-            this.clearEditState();
-        },
-
-        /** 清空编辑态 */
-        clearEditState() {
-            this.currentEditId = null;
-            this.editDraft = '';
-            this.editTargetRole = null;
-        },
-
-        /** 聚焦编辑框（双重 rAF 确保 DOM 就绪且 lucide 刷新不影响 focus） */
-        focusEditTextarea() {
-            this.$nextTick(() => {
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        const el = document.querySelector('.message-edit-textarea');
-                        if (el) el.focus();
-                    });
-                });
-            });
-        },
-
-        /**
-         * 复制消息的原始文本到剪贴板
-         * @param {object} msg - 消息对象
-         */
-        copyMessage(msg) {
-            // 只复制正文（首块）：追加的展示块与思考过程都不进剪贴板
-            this.writeToClipboard(this.bodyText(msg));
-        },
-
-        /**
-         * 写入剪贴板，优先使用现代 API，失败则降级到临时 textarea
-         * @param {string} text - 要复制的文本
-         */
-        async writeToClipboard(text) {
-            try {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    await navigator.clipboard.writeText(text);
-                    ElementPlus.ElMessage.success('已复制到剪贴板');
-                    return;
-                }
-            } catch (e) {
-                console.warn('navigator.clipboard.writeText 失败，尝试降级方案', e);
-            }
-            try {
-                const textarea = document.createElement('textarea');
-                textarea.value = text;
-                textarea.style.position = 'fixed';
-                textarea.style.left = '-9999px';
-                textarea.style.top = '-9999px';
-                document.body.appendChild(textarea);
-                textarea.focus();
-                textarea.select();
-                const success = document.execCommand('copy');
-                document.body.removeChild(textarea);
-                if (success) {
-                    ElementPlus.ElMessage.success('已复制到剪贴板');
-                } else {
-                    ElementPlus.ElMessage.error('复制失败，请手动复制');
-                }
-            } catch (e) {
-                console.error('降级复制方案也失败', e);
-                ElementPlus.ElMessage.error('复制失败，请手动复制');
-            }
-        },
-
-        /** 消息气泡 🔊：重播整轮完整音频（委托 store → 发送区） */
-        playMessageAudio(msg) {
-            this.sessionStore.playMessageAudio(msg);
-        },
-
-        /* ---------- 折叠/展开 ---------- */
-
-        /**
-         * 判断指定消息是否处于"思考中"（流式且只有思维链）
-         * @param {object} msg - 消息对象
-         * @returns {boolean}
-         */
-        isThinkingMsg(msg) {
-            if (!this.isStreaming || !(msg.role === 'assistant' && msg.id && msg.id.startsWith('streaming_'))) return false;
-            const hasReasoning = msg.reasoningContent != null && msg.reasoningContent.length > 0;
-            // 正文是否开始看首块（contents[0]）：末尾可能是附件，看末块会永远判成"正文还没开始"
-            const bodyStarted = this.bodyText(msg).length > 0;
-            return hasReasoning && !bodyStarted;
-        },
-
-        /**
-         * 是否为当前正在流式输出的助手消息（为 true 时正文 / 思考过程 / 工具参数改走按块渲染）
-         * @param {object} msg - 消息对象
-         * @returns {boolean}
-         */
-        isStreamingMsg(msg) {
-            return this.isStreaming && msg.role === 'assistant'
-                && msg.id && String(msg.id).startsWith('streaming_');
-        },
-
-        /**
-         * 工具调用参数的 markdown 文本：流式分块渲染与非流式整段渲染共用同一份拼装逻辑。
-         * @param {object} msg - 消息对象
-         * @returns {string} markdown 文本
-         */
-        toolCallsMarkdown(msg) {
-            return msg.toolCalls.map(t => [
-                '```' + t.name,
-                t.arguments ? this.$md.beautify(t.arguments) : '',
-                '```'
-            ].join(NL)).join(NL + NL);
-        },
-
-        /**
-         * 合并同一帧内的多次图标刷新：流式期间每个 chunk 都会更新组件，
-         * 直接调 lucide.createIcons() 会在同一帧里反复全量扫描 DOM。
-         */
-        scheduleIconRefresh() {
-            if (this._iconRefreshPending) return;
-            this._iconRefreshPending = true;
-            requestAnimationFrame(() => {
-                this._iconRefreshPending = false;
-                if (typeof lucide === 'undefined') return;
-                // 流式期间避免全量扫描（会随消息数线性变慢，是掉帧主因之一）：
-                //   1) 只重扫当前活动分组，覆盖工具状态图标等动态变化；
-                //   2) 再补扫本轮新出现、尚未渲染的图标（整列表重建时用）。
-                if (this.isStreaming) {
-                    const active = this.$el.querySelectorAll('.is-active-group');
-                    for (let i = 0; i < active.length; i++) {
-                        lucide.createIcons({ root: active[i] });
-                    }
-                    const fresh = this.$el.querySelectorAll('[data-lucide]:not([data-lucide-rendered])');
-                    if (fresh.length) {
-                        lucide.createIcons({ nodes: fresh });
-                    }
-                } else {
-                    lucide.createIcons({ root: this.$el });
-                }
-            });
-        },
-
-        /**
-         * 合并同一帧内的多次 mermaid 重渲染请求。
-         * mermaid 异步渲染完成后调用，触发组件重渲染以把源码占位换成 SVG。
-         */
-        scheduleMermaidRefresh() {
-            if (this._mermaidRefreshPending) return;
-            this._mermaidRefreshPending = true;
-            requestAnimationFrame(() => {
-                this._mermaidRefreshPending = false;
-                // 计数变化 → 所有分组依赖变化 → 含 mermaid 的块用新 SVG 替换源码占位
-                // （不能再用 $forceUpdate：v-memo 命中时它不会重建被 memo 的分组）
-                this.mermaidNonce++;
-            });
-        },
-
-        /**
-         * 判断指定消息的指定区域是否处于折叠状态
-         * @param {string} msgId - 消息 ID
-         * @param {string} section - 区域标识：'thinking' | 'tool' | 'toolcalls'
-         * @returns {boolean} 是否折叠
-         */
-        isCollapsed(msgId, section) {
-            const key = msgId + '_' + section;
-            if (this.collapsedState[key] !== undefined) {
-                return this.collapsedState[key];
-            }
-            // 默认：思考过程展开，工具信息和工具调用折叠
-            return section === 'tool' || section === 'toolcalls';
-        },
-
-        /**
-         * 切换指定消息指定区域的折叠/展开状态
-         * @param {string} msgId - 消息 ID
-         * @param {string} section - 区域标识
-         */
-        toggleCollapse(msgId, section) {
-            // 折叠态是组件局部状态；v-memo 命中时 Vue 不会重读它，靠计数显式触发分组重建
-            this.collapseNonce++;
-            const key = msgId + '_' + section;
-            const currentlyCollapsed = this.isCollapsed(msgId, section);
-
-            const el = document.querySelector(`[data-collapse-key="${key}"]`);
-            if (!el) {
-                this.collapsedState[key] = !currentlyCollapsed;
-                return;
-            }
-
-            if (currentlyCollapsed) {
-                // === 展开 ===
-                el.style.transition = 'none';
-                const targetHeight = el.scrollHeight;
-                el.style.maxHeight = '0px';
-
-                this.collapsedState[key] = false;
-
-                this.$nextTick(() => {
-                    el.offsetHeight; // 强制重排
-                    el.style.transition = '';
-                    el.style.maxHeight = targetHeight + 'px';
-
-                    const onEnd = () => {
-                        el.style.maxHeight = '';
-                        el.style.transition = '';
-                        el.removeEventListener('transitionend', onEnd);
-                    };
-                    el.addEventListener('transitionend', onEnd);
-                });
-            } else {
-                // === 收起 ===
-                el.style.transition = 'none';
-                el.style.maxHeight = el.scrollHeight + 'px';
-
-                this.collapsedState[key] = true;
-
-                this.$nextTick(() => {
-                    el.offsetHeight; // 强制重排
-                    el.style.transition = '';
-                    el.style.maxHeight = '0px';
-                });
-            }
+        assistantAvatar: function () {
+            return this.$fileUrl.proxy(this.assistantSettings.avatar);
         }
     },
 
     mounted: function () {
         if (typeof lucide !== 'undefined') lucide.createIcons();
-        this.fetchGreeting();
         // 代码块复制按钮（v-html 生成，无法用 Vue @click，走事件委托）
         this._onDocClick = (e) => {
             const btn = e.target.closest('.code-copy-btn');
@@ -1092,26 +147,15 @@ const MessageArea = {
             const wrapper = btn.closest('.code-block-wrapper');
             const code = wrapper && wrapper.querySelector('pre code');
             if (code) {
-                this.writeToClipboard(code.textContent);
+                this.context.actions.writeToClipboard(code.textContent);
             }
         };
         document.addEventListener('click', this._onDocClick);
-        // mermaid 异步渲染成功后重渲染，把流式中的源码占位替换成 SVG（合并到一帧）
-        this._offMermaid = this.$md.onMermaidRendered(() => this.scheduleMermaidRefresh());
     },
 
     beforeUnmount: function () {
         if (this._onDocClick) {
             document.removeEventListener('click', this._onDocClick);
         }
-        if (this._offMermaid) {
-            this._offMermaid();
-            this._offMermaid = null;
-        }
-    },
-
-    updated: function () {
-        // 流式期间图标只可能出现在刚重建的最后一块里，同一帧合并成一次刷新
-        this.scheduleIconRefresh();
     }
 };

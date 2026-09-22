@@ -1,0 +1,50 @@
+/* ============================================
+   Message Area Compress — 上下文压缩卡片
+   长对话总结旧历史期间，顶替流式空占位出现在消息尾部
+
+   ⚠ 类名统一 msg-compress-* 前缀，与同目录 msg-hero-* 各走各的；
+     改名前先全局搜重名（旧事故：同名类名被另一份 CSS 命中覆盖）。
+   ⚠ 旋转动画复用 message-area.css 里的 @keyframes loading-spin
+     （全站约定：转圈统一用它，不另造一套）。
+   ⚠ --msg-rail-reserve 来自父级 .message-area-panel，靠 CSS 变量继承拿到。
+   ============================================ */
+
+.msg-compress-card {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: min(520px, 86%);
+    margin: 0 0 2px var(--msg-rail-reserve, 36px);
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--main-color) 30%, transparent);
+    /* 实底（不透明）：聊天背景图 + 半透明底会让这行字糊成一团，视线抓不住；
+       透明度只用来稀释主题色染色，不再让背景透上来 */
+    background: color-mix(in srgb, var(--main-color) 12%, #fff);
+    font-size: var(--text-sm, 12px);
+    line-height: 1.5;
+    color: var(--text-secondary, #606266);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    animation: msg-compress-in 0.25s ease;
+}
+
+.msg-compress-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--main-color, lightsalmon);
+}
+
+.msg-compress-spin {
+    animation: loading-spin 1s linear infinite;
+}
+
+.msg-compress-card.is-done .msg-compress-icon {
+    color: #52c41a;
+}
+
+@keyframes msg-compress-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}

@@ -230,100 +230,9 @@
     40%           { opacity: 1;   transform: translateY(-3px); }
 }
 
-/* ---- 新对话落地页 ---- */
-.new-chat-hero {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 10px;
-    padding: 0 16px 8px;
-    animation: hero-fade-in 0.5s ease;
-}
-
-.hero-avatar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 72px;
-    height: 72px;
-    margin-bottom: 6px;
-    border-radius: 50%;
-    overflow: hidden;
-    color: var(--main-color);
-    background: color-mix(in srgb, var(--main-color) 14%, #fff);
-    box-shadow: 0 0 0 8px color-mix(in srgb, var(--main-color) 12%, transparent);
-}
-
-.hero-avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.hero-avatar-icon {
-    width: 34px;
-    height: 34px;
-}
-
-.hero-greeting {
-    margin: 0;
-    max-width: 640px;
-    font-size: 24px;
-    font-weight: 700;
-    line-height: 1.5;
-    color: var(--text-primary, #333);
-}
-
-.hero-subtitle {
-    margin: 0;
-    font-size: 14px;
-    color: var(--text-muted, #999);
-}
-
-.hero-suggestions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    width: 100%;
-    max-width: 560px;
-    margin-top: 14px;
-}
-
-.hero-suggestion {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 14px;
-    border: 1px solid #ebeef5;
-    border-radius: 12px;
-    background: #fff;
-    font-family: inherit;
-    font-size: 13.5px;
-    color: var(--text-secondary, #666);
-    text-align: left;
-    cursor: pointer;
-    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease, color 0.18s ease;
-}
-
-.hero-suggestion:hover {
-    border-color: var(--main-color);
-    color: var(--text-primary, #333);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
-    transform: translateY(-2px);
-}
-
-.hero-suggestion-icon {
-    flex-shrink: 0;
-    width: 18px;
-    height: 18px;
-    color: var(--main-color);
-}
-
-@keyframes hero-fade-in {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-}
+/* ---- 新对话落地页 ----
+   样式已随组件拆到 components/message-area/message-area-hero/message-area-hero.css
+   （类名 msg-hero-*）。本文件不再保留 .new-chat-hero / .hero-* 规则。 */
 
 /* ============================================
    消息行 & 气泡
@@ -916,22 +825,7 @@
         font-size: var(--text-xs, 11px);
     }
 
-    .new-chat-hero {
-        gap: 8px;
-    }
-
-    .hero-avatar {
-        width: 60px;
-        height: 60px;
-    }
-
-    .hero-greeting {
-        font-size: 20px;
-    }
-
-    .hero-suggestions {
-        grid-template-columns: 1fr;
-    }
+    /* 落地页（.msg-hero-*）的移动端适配也在 message-area-hero.css 里 */
 
     .message-edit-textarea {
         min-width: 200px;
@@ -1037,105 +931,18 @@
 
 /* ============================================
    本轮 token 消耗
+   样式已随组件拆到 components/message-area/message-area-tokens/
+   message-area-tokens.css（类名 msg-tokens-*），包括那条
+   「在操作按钮行内靠右」的 margin-left:auto —— 已写在组件根元素上，
+   不再由父级 .message-area-bubble-actions 代管。
    ============================================ */
-/* 位于操作按钮行内：右对齐，与图标按钮同高 */
-.message-area-bubble-actions .message-token-usage {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-}
-
-.message-token-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 1px 8px;
-    border: 1px solid rgba(128, 128, 128, 0.25);
-    border-radius: 10px;
-    background: rgba(128, 128, 128, 0.06);
-    font-size: 11px;
-    line-height: 18px;
-    color: var(--text-muted, #909399);
-    cursor: default;
-    user-select: none;
-    font-variant-numeric: tabular-nums;
-}
-
-.message-token-badge i {
-    opacity: 0.8;
-}
-
-/* 悬浮明细（teleport 到 body，故为全局，浅色卡片） */
-.message-token-tooltip.el-popper.is-light {
-    padding: 8px 10px;
-    border: 1px solid #ebeef5;
-    border-radius: 8px;
-}
-
-.message-token-tip {
-    min-width: 130px;
-    font-size: 12px;
-    line-height: 1.7;
-}
-
-.message-token-tip-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-}
-
-.message-token-tip-label {
-    color: var(--text-muted, #909399);
-}
-
-.message-token-tip-value {
-    color: var(--text-primary, #303133);
-    font-variant-numeric: tabular-nums;
-}
 
 /* ============================================
    上下文压缩卡片
+   样式已随组件拆到 components/message-area/message-area-compress/
+   message-area-compress.css（类名 msg-compress-*）。
+   ⚠ 它的转圈动画仍复用本文件上方的 @keyframes loading-spin，别删。
    ============================================ */
-/* 顶替流式空占位出现在消息尾部：说明长对话正在总结旧历史，避免「等待回复」处呆等 */
-.ctx-compress-card {
-    align-self: flex-start;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    max-width: min(520px, 86%);
-    margin: 0 0 2px var(--msg-rail-reserve, 36px);
-    padding: 8px 12px;
-    border-radius: 10px;
-    border: 1px solid color-mix(in srgb, var(--main-color) 30%, transparent);
-    /* 实底（不透明）：聊天背景图 + 半透明底会让这行字糊成一团，视线抓不住；
-       透明度只用来稀释主题色染色，不再让背景透上来 */
-    background: color-mix(in srgb, var(--main-color) 12%, #fff);
-    font-size: var(--text-sm, 12px);
-    line-height: 1.5;
-    color: var(--text-secondary, #606266);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-    animation: ctx-compress-in 0.25s ease;
-}
-
-.ctx-compress-icon {
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-    color: var(--main-color, lightsalmon);
-}
-
-.ctx-compress-spin {
-    animation: loading-spin 1s linear infinite;
-}
-
-.ctx-compress-card.is-done .ctx-compress-icon {
-    color: #52c41a;
-}
-
-@keyframes ctx-compress-in {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-}
 
 /* ============================================
    消息内容块之间的切断线

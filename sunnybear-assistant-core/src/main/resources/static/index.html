@@ -211,6 +211,7 @@
     <script src="utils/mermaid.js"></script>
     <script src="utils/file-url.js"></script>
     <script src="utils/message-utils.js"></script>
+    <script src="utils/token-format.js"></script>
     <!-- 图片查看器（灯箱）：点图在本页浮层里放大，不再跳新标签页 -->
     <script src="components/image-viewer/image-viewer.js"></script>
     <!-- 禁用浏览器原生右键菜单（后续由自定义菜单接管） -->
@@ -248,6 +249,15 @@
     <script src="components/mascot/mascot.js"></script>
     <script src="components/send-area/send-area.js"></script>
     <script src="components/mark-tracker/mark-tracker.js"></script>
+    <!-- message-area 的子组件：必须先于 message-area.js -->
+    <script src="components/message-area/message-area-context.js"></script>
+    <script src="components/message-area/message-area-group/message-area-group.js"></script>
+    <script src="components/message-area/message-area-user/message-area-user.js"></script>
+    <script src="components/message-area/message-area-assistant/message-area-assistant.js"></script>
+    <script src="components/message-area/message-area-tool/message-area-tool.js"></script>
+    <script src="components/message-area/message-area-hero/message-area-hero.js"></script>
+    <script src="components/message-area/message-area-compress/message-area-compress.js"></script>
+    <script src="components/message-area/message-area-tokens/message-area-tokens.js"></script>
     <script src="components/message-area/message-area.js"></script>
     <!-- 样式 -->
     <link rel="stylesheet" href="css/scrollbar.css"/>
@@ -261,6 +271,9 @@
     <link rel="stylesheet" href="components/shell-panel/shell-panel.css"/>
     <link rel="stylesheet" href="components/chat-sidebar/chat-sidebar.css"/>
     <link rel="stylesheet" href="components/message-area/message-area.css"/>
+    <link rel="stylesheet" href="components/message-area/message-area-hero/message-area-hero.css"/>
+    <link rel="stylesheet" href="components/message-area/message-area-compress/message-area-compress.css"/>
+    <link rel="stylesheet" href="components/message-area/message-area-tokens/message-area-tokens.css"/>
     <link rel="stylesheet" href="components/message-topbar/message-topbar.css"/>
     <link rel="stylesheet" href="components/chat-session-name/chat-session-name.css"/>
     <link rel="stylesheet" href="components/send-area/send-area.css"/>
@@ -619,6 +632,13 @@
     app.component('command-suggest', CommandSuggest);
     app.component('agent-log-sidebar', AgentLogSidebar);
     app.component('message-topbar', MessageTopbar);
+    app.component('message-area-group', MessageAreaGroup);
+    app.component('message-area-user', MessageAreaUser);
+    app.component('message-area-assistant', MessageAreaAssistant);
+    app.component('message-area-tool', MessageAreaTool);
+    app.component('message-area-hero', MessageAreaHero);
+    app.component('message-area-compress', MessageAreaCompress);
+    app.component('message-area-tokens', MessageAreaTokens);
     app.component('message-area', MessageArea);
     app.component('send-area', SendArea);
     app.component('mascot', Mascot);
