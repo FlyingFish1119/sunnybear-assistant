@@ -1,0 +1,8 @@
+{
+  "server": "ws://127.0.0.1:11451/bro/comfyui-bridge",
+  "comfyui": "http://127.0.0.1:8188",
+  "workflowPath": "./ComfyUI-workflow-api",
+  "name": "My ComfyUI Agent",
+  "username": "username",
+  "password": "password"
+}
