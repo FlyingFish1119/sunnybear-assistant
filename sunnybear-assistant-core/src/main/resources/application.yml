@@ -64,6 +64,8 @@ plug:
 
 engine:
   tool:
+    jev-danger:
+      threshold: 0.15
     extension:
       dir: tool-extension/
     mcp:

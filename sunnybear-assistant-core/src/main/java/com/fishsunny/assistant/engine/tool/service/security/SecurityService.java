@@ -30,8 +30,11 @@ import com.fishsunny.assistant.engine.tool.instance.security.DecodeTool;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
 import jakarta.annotation.Nullable;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -186,8 +189,11 @@ public class SecurityService {
     /**
      * 预审判定「危险」的概率门槛：高于该值才转交专业子 Agent 复审。
      * 取值偏低（召回优先）：宁可多交一次子 Agent，也不放过可疑操作。
+     * 日常命令经过测试大多在0.1以下
      */
-    private static final double PRESCREEN_DANGER_THRESHOLD = 0.4;
+    @Value("${engine.tool.jev-danger.threshold:0.15}")
+    @Getter
+    private double prescreenDangerThreshold = 0.15;
 
     /**
      * 用 Jev 的 Noul 模式对操作做一次快速的二元预审：该操作是否危险。
@@ -213,7 +219,7 @@ public class SecurityService {
                     .build();
 
             Double dangerous = jevClient.send(jevRequest).mappingNoul(PRESCREEN_KEY);
-            return dangerous != null && dangerous > PRESCREEN_DANGER_THRESHOLD;
+            return dangerous != null && dangerous > prescreenDangerThreshold;
         } catch (Exception e) {
             log.warn("Jev 安全预审失败，转交专业审查子 Agent：{}", e.getMessage());
             return true;
