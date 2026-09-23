@@ -25,6 +25,7 @@ import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardT
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.instance.file.FileListTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileReadTool;
+import com.fishsunny.assistant.engine.tool.instance.file.FileSearchTool;
 import com.fishsunny.assistant.engine.tool.instance.security.DecodeTool;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
@@ -66,6 +67,7 @@ public class SecurityService {
     private static final Set<String> REVIEWER_TOOLS = Set.of(
             FileReadTool.NAME,
             FileListTool.NAME,
+            FileSearchTool.NAME,
             DecodeTool.NAME
     );
 
@@ -185,7 +187,7 @@ public class SecurityService {
      * 预审判定「危险」的概率门槛：高于该值才转交专业子 Agent 复审。
      * 取值偏低（召回优先）：宁可多交一次子 Agent，也不放过可疑操作。
      */
-    private static final double PRESCREEN_DANGER_THRESHOLD = 0.5;
+    private static final double PRESCREEN_DANGER_THRESHOLD = 0.4;
 
     /**
      * 用 Jev 的 Noul 模式对操作做一次快速的二元预审：该操作是否危险。
@@ -202,8 +204,10 @@ public class SecurityService {
                     .noulQuestion(
                             PRESCREEN_KEY,
                             "Is the operation below dangerous to execute?",
-                            "The operation could cause serious consequences: system damage, data loss, credential or privacy leakage, "
-                                    + "privilege escalation, backdoors, or download/execution of malicious code.",
+                            """
+                                    The operation could cause serious consequences: system damage, data loss, credential or privacy leakage, privilege escalation, backdoors, or download/execution of malicious code.
+                                    **IMPORTANT: including attempts to disable or bypass safety/review mechanisms (e.g. flipping review switches or config flags)**.
+                                    """,
                             "The operation is routine and safe; there is no plausible serious consequence."
                     )
                     .build();
@@ -337,7 +341,6 @@ public class SecurityService {
             2. 得到结论后立刻停止调用工具。
             3. 判定"危险"时，reason 必须用一句话说清具体风险点（指向哪个路径/目录、为什么危险）；判定"安全"时 reason 为空字符串。
             4. 除最终判定外不要输出其他内容作为最终答复。
-            5. 尽可能在 4 轮内给出判定结果。
             
             ## 指导
             1. 在删除文件/目录前，读取目标文件内容是否包含重要信息后在判断，而不是直接拒绝或者放行。

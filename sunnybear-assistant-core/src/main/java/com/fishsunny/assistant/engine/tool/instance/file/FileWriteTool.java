@@ -95,7 +95,7 @@ public class FileWriteTool implements ToolHandler {
                 }
                 Path sessionDir = sessionFileManager.buildSessionDirPath(chatSession.getId());
                 // 沙箱校验统一走 SessionFileManager（与前端 /session/file/* 接口共用同一份实现）
-                filePath = sessionFileManager.resolveUnder(sessionDir, arguments.getPath());
+                filePath = SessionFileManager.resolveUnder(sessionDir, arguments.getPath());
             } else {
                 filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
             }
@@ -230,7 +230,7 @@ public class FileWriteTool implements ToolHandler {
         };
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("创建或覆写文件时使用此工具（比执行 echo/重定向命令更安全可靠）。父目录不存在会自动创建，返回写入文件的元信息。" + modeDesc)
+                .setDescription("创建或覆写文件时使用此工具（比执行 echo/重定向命令更安全可靠）。父目录不存在会自动创建，返回写入文件的元信息。各种临时脚本/测试文件等优先使用 sessionFile 模式" + modeDesc)
                 .setRequired(List.of("path", "content"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("path", "string",
