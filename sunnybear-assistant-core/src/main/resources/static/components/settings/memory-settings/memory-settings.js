@@ -44,6 +44,20 @@ const MemorySettings = {
             </div>
         </div>
 
+        <div class="settings-item" @click="confirmAutoGroup" :style="saving.autogroup ? 'opacity:.6;pointer-events:none' : ''">
+            <div class="settings-item-left">
+                <div class="settings-item-icon"><i data-lucide="wand-2" style="width:16px;height:16px"></i></div>
+                <div class="settings-item-info">
+                    <span class="settings-item-label">自动分组</span>
+                    <span class="settings-item-desc">{{ saving.autogroup ? 'AI 正在整理分组...' : '让 AI 自动为全部记忆重新分类' }}</span>
+                </div>
+            </div>
+            <div class="settings-item-right">
+                <span v-if="saving.autogroup" class="btn-spinner"></span>
+                <span v-else class="settings-item-value">运行</span>
+            </div>
+        </div>
+
         <el-dialog v-model="dialogs.memorymanage" title="" width="800px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close @open="fetchMemoryList">
             <template #header>
                 <div class="dialog-header-wrap">
@@ -52,25 +66,32 @@ const MemorySettings = {
                 </div>
             </template>
             <div style="margin-bottom:16px;display:flex;justify-content:flex-end">
-                <button type="button" class="dialog-btn dialog-btn-save" @click="openMemoryEdit(null)" style="padding:6px 16px;font-size:13px">
+                <button type="button" class="dialog-btn dialog-btn-save dialog-btn-compact" @click="openMemoryEdit(null)">
                     <i data-lucide="plus" style="width:14px;height:14px"></i> 添加记忆
                 </button>
             </div>
             <div v-if="memoryLoading" style="text-align:center;padding:40px;color:#909399">加载中...</div>
             <div v-else-if="memoryList.length === 0" style="text-align:center;padding:40px;color:#909399">暂无记忆，点击上方按钮添加</div>
             <div v-else class="entry-list">
-                <div v-for="item in memoryList" :key="item.id" class="entry-item">
-                    <div class="entry-item-body">
-                        <div class="entry-item-content">{{ item.content }}</div>
-                        <div class="entry-item-time">{{ formatTime(item.createTime) }}</div>
+                <div v-for="group in groupedMemoryList" :key="group.name" class="entry-group">
+                    <div class="entry-group-header">
+                        <i data-lucide="folder" style="width:15px;height:15px"></i>
+                        <span class="entry-group-name">{{ group.name }}</span>
+                        <span class="entry-group-count">{{ group.items.length }}</span>
                     </div>
-                    <div class="entry-item-actions">
-                        <button type="button" class="entry-action-btn edit" @click="openMemoryEdit(item)" title="编辑">
-                            <i data-lucide="pencil" style="width:15px;height:15px"></i>
-                        </button>
-                        <button type="button" class="entry-action-btn delete" @click="confirmDeleteMemory(item)" title="删除">
-                            <i data-lucide="trash-2" style="width:15px;height:15px"></i>
-                        </button>
+                    <div v-for="item in group.items" :key="item.id" class="entry-item">
+                        <div class="entry-item-body">
+                            <div class="entry-item-content">{{ item.content }}</div>
+                            <div class="entry-item-time">{{ formatTime(item.createTime) }}</div>
+                        </div>
+                        <div class="entry-item-actions">
+                            <button type="button" class="entry-action-btn edit" @click="openMemoryEdit(item)" title="编辑">
+                                <i data-lucide="pencil" style="width:15px;height:15px"></i>
+                            </button>
+                            <button type="button" class="entry-action-btn delete" @click="confirmDeleteMemory(item)" title="删除">
+                                <i data-lucide="trash-2" style="width:15px;height:15px"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -92,6 +113,12 @@ const MemorySettings = {
                 <el-form-item label="内容">
                     <textarea class="settings-textarea" v-model="memoryEditForm.content" rows="6" placeholder="输入记忆内容"></textarea>
                 </el-form-item>
+                <el-form-item label="分组">
+                    <el-select v-model="memoryEditForm.groupName" filterable allow-create default-first-option
+                               placeholder="选择分组，或直接输入新分组名" style="width:100%">
+                        <el-option v-for="g in groupOptions" :key="g" :label="g" :value="g"></el-option>
+                    </el-select>
+                </el-form-item>
             </el-form>
             <template #footer>
                 <div class="dialog-footer">
@@ -112,9 +139,35 @@ const MemorySettings = {
             dialogs: { memorymanage: false, memoryedit: false },
             memoryList: [],
             memoryLoading: false,
-            memoryEditForm: { id: null, content: '' },
+            memoryEditForm: { id: null, content: '', groupName: '' },
             enable: false
         };
+    },
+
+    computed: {
+        /** 列表按分组分节（组的先后 = 组内条目在列表中的出现次序），对齐记忆抽屉的分组语义 */
+        groupedMemoryList() {
+            const order = [];
+            const byGroup = {};
+            for (const item of this.memoryList) {
+                const g = item.groupName || '未分类';
+                if (!byGroup[g]) {
+                    byGroup[g] = [];
+                    order.push(g);
+                }
+                byGroup[g].push(item);
+            }
+            return order.map(name => ({ name: name, items: byGroup[name] }));
+        },
+
+        /** 分组下拉选项：现有各组（含兜底的「未分类」），供编辑弹窗回选 / 手输新建 */
+        groupOptions() {
+            const names = new Set(['未分类']);
+            for (const item of this.memoryList) {
+                names.add(item.groupName || '未分类');
+            }
+            return Array.from(names);
+        }
     },
 
     watch: {
@@ -174,9 +227,9 @@ const MemorySettings = {
 
         openMemoryEdit(item) {
             if (item) {
-                this.memoryEditForm = { id: item.id, content: item.content };
+                this.memoryEditForm = { id: item.id, content: item.content, groupName: item.groupName || '未分类' };
             } else {
-                this.memoryEditForm = { id: null, content: '' };
+                this.memoryEditForm = { id: null, content: '', groupName: '未分类' };
             }
             this.dialogs.memoryedit = true;
             this.$nextTick(() => lucide.createIcons());
@@ -191,7 +244,8 @@ const MemorySettings = {
             try {
                 const body = {
                     content: this.memoryEditForm.content.trim(),
-                    mode: this.memoryEditForm.id ? 'update' : 'add'
+                    mode: this.memoryEditForm.id ? 'update' : 'add',
+                    groupName: this.memoryEditForm.groupName || '未分类'
                 };
                 if (this.memoryEditForm.id) {
                     body.id = this.memoryEditForm.id;
@@ -209,6 +263,40 @@ const MemorySettings = {
                 console.error(e);
             } finally {
                 this.saving.memoryentry = false;
+            }
+        },
+
+        async confirmAutoGroup() {
+            if (this.saving.autogroup) return;
+            if (this.memoryList.length === 0) {
+                ElementPlus.ElMessage.warning('暂无记忆，无需分组');
+                return;
+            }
+            try {
+                await this.$refs.confirmDialog.show({
+                    title: '自动分组',
+                    message: '将调用 AI 对全部记忆重新分类，可能需要一些时间，是否继续？',
+                    confirmText: '开始分组',
+                    cancelText: '取消',
+                    type: 'warning'
+                });
+            } catch (e) {
+                return;
+            }
+            this.saving.autogroup = true;
+            try {
+                const r = await API.memory.autoGroup();
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('自动分组完成');
+                    await this.fetchMemoryList(true);
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '自动分组失败');
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(e);
+            } finally {
+                this.saving.autogroup = false;
             }
         },
 

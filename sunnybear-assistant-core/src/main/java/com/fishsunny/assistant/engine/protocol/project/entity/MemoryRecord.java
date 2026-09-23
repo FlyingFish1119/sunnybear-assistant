@@ -18,8 +18,13 @@ import java.time.LocalDateTime;
 @Accessors(chain = true)
 public class MemoryRecord {
 
+    /** 默认分组名：不带分组的新增（含老接口、工具调用）都落这里 */
+    public static final String GROUP_UNCLASSIFIED = "未分类";
+
     private Integer id;
     private String content;
+    /** 分组名（如「我是谁」「我的习惯」），存量数据默认「未分类」 */
+    private String groupName;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

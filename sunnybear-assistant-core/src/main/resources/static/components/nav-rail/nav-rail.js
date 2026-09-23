@@ -10,13 +10,47 @@
  * Emits:
  *   select(key) — 点击某个按钮，携带按钮的 key（父级接功能用）
  *
- * 当前阶段：只搭骨架。按钮清单 items 是组件内部的占位数据，
- * 真正的功能（跳转 / 开关 / 弹窗）后续在 onSelect 里按 key 分发，
- * 或把 items 提成 props 由外面注入——等需求明确了再改，先不提前设计。
+ * 按钮清单不写死在组件里，由 RailPlugins 注册表提供（注册方在 index.html 末尾）。
  *
  * 图标：沿用项目的 lucide 约定（data-lucide 由 lucide 替换成 svg），
- * 所以 mounted 里自己补一次 createIcons，不依赖父级的 updated 时机。
+ * 所以 mounted/updated 里自己补 createIcons，不依赖父级的 updated 时机。
  */
+
+/**
+ * 导航轨注册表（全局单例），配方照抄 TopbarPlugins（message-topbar.js）：
+ * 注册一条同时接通「按钮 + 面板挂载 + 互斥开合」三层，新增面板只需一行注册。
+ *
+ * register(key, entry)：
+ *   key             按钮 / 面板的唯一标识（也是高亮与互斥的 key）
+ *   entry.icon      lucide 图标名
+ *   entry.label     按钮文字（title / aria-label）
+ *   entry.component 面板组件对象（可选）：有值则由主模板 v-for 动态挂载；
+ *                   面板需实现 toggle()/close() 与 visible 状态、并发 visible-change 事件
+ *   entry.order     排序权重，小的在前（默认 0）
+ * 同 key 重复注册以后者为准。
+ */
+const RailPlugins = (function () {
+    const entries = Object.create(null);
+    const order = [];
+
+    function register(key, entry) {
+        if (!key || !entry) return;
+        if (!(key in entries)) order.push(key);
+        entries[key] = Object.assign({}, entry, { key: key });
+    }
+
+    return {
+        register: register,
+        /** 按 order 升序返回已注册项（nav-rail 取按钮、主模板取面板都走这） */
+        snapshot: function () {
+            return order
+                .map(function (k) { return entries[k]; })
+                .sort(function (a, b) { return (a.order || 0) - (b.order || 0); })
+                .slice();
+        }
+    };
+})();
+
 const NavRail = {
     name: 'NavRail',
 
@@ -51,14 +85,11 @@ const NavRail = {
 
     emits: ['select'],
 
-    data() {
-        return {
-            // 按钮清单：目前只有「会话文件」和「命令」接了真实面板
-            items: [
-                { key: 'files', icon: 'folder-open',    label: '会话文件' },
-                { key: 'shell', icon: 'chevrons-right', label: '命令' }
-            ]
-        };
+    computed: {
+        /** 按钮清单来自 RailPlugins 注册表（注册方在 index.html 末尾），组件内不写死 */
+        items() {
+            return RailPlugins.snapshot();
+        }
     },
 
     methods: {
@@ -70,5 +101,13 @@ const NavRail = {
 
     mounted() {
         if (window.lucide) window.lucide.createIcons();
+    },
+
+    updated() {
+        // 运行时才注册的按钮（插件页同款时机）会是还没替换的 <i>，
+        // 更新后补一次 createIcons，把新图标换成 svg
+        this.$nextTick(function () {
+            if (window.lucide) window.lucide.createIcons();
+        });
     }
 };

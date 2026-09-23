@@ -420,6 +420,13 @@ body {
     to { transform: rotate(360deg); }
 }
 
+/* 弹窗工具栏里的小号按钮（如「添加记忆」）：桌面右上角紧凑摆放；
+   窄屏被 .dialog-btn 的全宽规则接管，自动抬成全宽大按钮 */
+.dialog-btn-compact {
+    padding: 6px 16px;
+    font-size: 13px;
+}
+
 /* el-form-item 间距微调 */
 .settings-dialog .el-form-item {
     margin-bottom: 16px;
@@ -535,6 +542,55 @@ body {
     flex-shrink: 0;
 }
 
+/* 记忆按分组分节：组头（文件夹图标 + 组名 + 条数徽标），组间加横线 */
+.entry-group + .entry-group {
+    border-top: 1px solid #ebeef5;
+}
+
+.entry-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: #fafbfc;
+    border-bottom: 1px solid #f0f2f5;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.entry-group-header i {
+    color: var(--main-color);
+    flex-shrink: 0;
+}
+
+.entry-group-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.entry-group-count {
+    flex-shrink: 0;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: #eef1f6;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 最后一组的最后一条不再压底线（列表边框自己收口） */
+.entry-list .entry-group:last-child .entry-item:last-child {
+    border-bottom: none;
+}
+
 /* ============================================
    响应式
    ============================================ */
@@ -641,6 +697,16 @@ body {
 
     .dialog-header-wrap span {
         font-size: 15px;
+    }
+
+    /* 移动端触控补课：操作按钮抬到 40px；全屏弹窗下列表高度放开、交给页面体滚动 */
+    .entry-action-btn {
+        width: 40px;
+        height: 40px;
+    }
+
+    .entry-list {
+        max-height: none;
     }
 
     .form-group-title {

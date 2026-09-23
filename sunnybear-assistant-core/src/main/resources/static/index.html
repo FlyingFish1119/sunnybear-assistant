@@ -235,6 +235,8 @@
     <script src="components/nav-rail/nav-rail.js"></script>
     <!-- 会话文件双层抽屉（资源树 + 编辑器 / 图片预览） -->
     <script src="components/session-files/session-files.js"></script>
+    <!-- 记忆双层抽屉（分组列表 + 组内条目就地编辑） -->
+    <script src="components/memory-panel/memory-panel.js"></script>
     <!-- 命令面板（单层大抽屉）：异步跑 shell 命令，边跑边吐输出；不支持交互式程序 -->
     <script src="components/shell-panel/shell-panel.js"></script>
     <script src="components/file-upload/file-upload.js"></script>
@@ -268,6 +270,8 @@
     <link rel="stylesheet" href="components/nav-rail/nav-rail.css"/>
     <!-- 会话文件双层抽屉 -->
     <link rel="stylesheet" href="components/session-files/session-files.css"/>
+    <!-- 记忆双层抽屉 -->
+    <link rel="stylesheet" href="components/memory-panel/memory-panel.css"/>
     <!-- 终端面板（单层大抽屉） -->
     <link rel="stylesheet" href="components/shell-panel/shell-panel.css"/>
     <link rel="stylesheet" href="components/chat-sidebar/chat-sidebar.css"/>
@@ -359,22 +363,20 @@
              必须放在 send-area 之后 —— Teleport 的目标得先存在 -->
         <mascot :main-color="mainColor"></mascot>
     </div>
-    <!-- 会话文件双层抽屉（fixed 浮层，放在哪儿都不占布局） -->
-    <session-files ref="sessionFiles"
-                   :main-color="mainColor"
-                   @visible-change="onPanelVisible('files', $event)"></session-files>
-    <!-- 终端面板（fixed 浮层，同上） -->
-    <shell-panel ref="shellPanel"
-                 :main-color="mainColor"
-                 @visible-change="onPanelVisible('shell', $event)"></shell-panel>
+    <!-- 导航轨面板：由 RailPlugins 注册表驱动（定义在 nav-rail.js、注册在本文件末尾），
+         v-for 动态挂载 + 函数 ref 收集实例；面板互斥见 onRailSelect/closeRailPanels -->
+    <component v-for="panel in railPanels"
+               :key="panel.key"
+               :is="panel.component"
+               :ref="el => setRailPanelRef(panel.key, el)"
+               :main-color="mainColor"
+               @visible-change="onPanelVisible(panel.key, $event)"
+    ></component>
 </div>
 
 <script>
-    /**
-     * 导航轨上「有真面板」的按钮 key → 组件 ref 名。
-     * 面板之间互斥，同一时刻只留一个，所以这份映射也用来「把其余面板收掉」。
-     */
-    const RAIL_PANEL_REFS = { files: 'sessionFiles', shell: 'shellPanel' };
+    // 面板与按钮由 RailPlugins 注册表驱动（定义在 nav-rail.js、注册在本文件末尾），
+    // 实例经函数 ref 收进 app 实例的 railPanelRefs，互斥逻辑见 onRailSelect/closeRailPanels。
 
     const app = Vue.createApp({
         data() {
@@ -398,6 +400,10 @@
         computed : {
             wsUrl: function () {
                 return API.ws.url
+            },
+            /** 导航轨面板清单：注册表里带 component 的项（纯按钮不挂载） */
+            railPanels() {
+                return RailPlugins.snapshot().filter(e => e.component);
             },
             backgroundStyle() {
                 const bg = this.userSettings.background;
@@ -437,22 +443,35 @@
              * 高亮却跑到另一个按钮上，眼睛看着就是对不上的。
              */
             onRailSelect(key) {
-                const refName = RAIL_PANEL_REFS[key];
-                if (!refName) {
-                    return;   // 查不到对应面板：什么都不做
+                const panel = this.railPanelRefs && this.railPanelRefs[key];
+                if (!panel) {
+                    return;   // 注册表里没有面板（或还没挂上）：什么都不做
                 }
                 this.closeRailPanels(key);
-                const panel = this.$refs[refName];
-                if (panel) panel.toggle();
+                panel.toggle();
             },
 
             /** 收起导航轨上除 exceptKey 之外的面板（面板互斥） */
             closeRailPanels(exceptKey) {
-                Object.keys(RAIL_PANEL_REFS).forEach(panelKey => {
+                const refs = this.railPanelRefs || {};
+                Object.keys(refs).forEach(panelKey => {
                     if (panelKey === exceptKey) return;
-                    const panel = this.$refs[RAIL_PANEL_REFS[panelKey]];
+                    const panel = refs[panelKey];
                     if (panel && panel.visible) panel.close();
                 });
+            },
+
+            /**
+             * 动态面板的函数 ref：按注册 key 把实例收进 this.railPanelRefs。
+             * 不放 data —— 实例只在方法里按 key 取，不参与渲染，免得被包成响应式。
+             */
+            setRailPanelRef(key, el) {
+                if (!this.railPanelRefs) this.railPanelRefs = Object.create(null);
+                if (el) {
+                    this.railPanelRefs[key] = el;
+                } else {
+                    delete this.railPanelRefs[key];
+                }
             },
 
             /**
@@ -646,7 +665,17 @@
     app.component('mascot', Mascot);
     app.component('mark-tracker', MarkTracker);
     app.component('session-files', SessionFiles);
+    app.component('memory-panel', MemoryPanel);
     app.component('shell-panel', ShellPanel);
+
+    /**
+     * 导航轨注册：一条同时接通「按钮 + 面板挂载 + 互斥开合」，
+     * 以后加面板 = 这里加一行（组件实现 toggle()/close() 与 visible、并发 visible-change 即可）。
+     * order 决定轨上按钮顺序：会话文件 → 记忆 → 命令。
+     */
+    RailPlugins.register('files',  { icon: 'folder-open',    label: '会话文件', component: SessionFiles, order: 10 });
+    RailPlugins.register('memory', { icon: 'brain',          label: '记忆',     component: MemoryPanel,  order: 20 });
+    RailPlugins.register('shell',  { icon: 'chevrons-right', label: '命令',     component: ShellPanel,   order: 30 });
 
     app.use(ElementPlus);
     // 自定义指令（放在 ElementPlus 之后注册，确保同名指令以自定义实现为准）

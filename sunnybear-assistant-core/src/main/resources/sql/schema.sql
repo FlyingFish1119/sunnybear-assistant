@@ -75,9 +75,11 @@ CREATE TABLE IF NOT EXISTS session_knowledge (
 CREATE INDEX IF NOT EXISTS idx_session_knowledge_session_id ON session_knowledge(session_id);
 
 -- ChatMemory 建表语句
+-- group_name：分组名（如「我是谁」「我的习惯」），存量库由 MemorySchemaMigration 幂等补列并回填「未分类」
 CREATE TABLE IF NOT EXISTS chat_memory (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     content     TEXT NOT NULL,
+    group_name  TEXT NOT NULL DEFAULT '未分类',
     create_time TEXT NOT NULL,
     update_time TEXT NOT NULL
 );

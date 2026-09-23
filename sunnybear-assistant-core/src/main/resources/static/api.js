@@ -386,7 +386,13 @@ const API = (function () {
         memory: {
             list: function () { return get('memory/list'); },
             save: function (data) { return post('memory/save', data); },
-            delete: function (id) { return get('memory/delete?id=' + encodeURIComponent(id)); }
+            delete: function (id) { return get('memory/delete?id=' + encodeURIComponent(id)); },
+            /** 分组重命名：组下所有记忆一起改名 */
+            groupRename: function (oldName, newName) {
+                return post('memory/group/rename', { oldName: oldName, newName: newName });
+            },
+            /** 自动分组：调用 AI 对全部记忆重新分类 */
+            autoGroup: function () { return post('memory/group/auto'); }
         },
 
         /* ---------- 任务提示词 ---------- */

@@ -18,6 +18,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
+import org.springframework.util.StringUtils;
 
 import java.sql.*;
 import java.time.LocalDateTime;
@@ -45,6 +46,7 @@ public class MemoryRepositoryImplement implements MemoryRepository {
             MemoryRecord record = new MemoryRecord();
             record.setId(rs.getInt("id"));
             record.setContent(rs.getString("content"));
+            record.setGroupName(rs.getString("group_name"));
             try {
                 record.setCreateTime(LocalDateTime.parse(rs.getString("create_time"), FORMATTER));
                 record.setUpdateTime(LocalDateTime.parse(rs.getString("update_time"), FORMATTER));
@@ -59,18 +61,20 @@ public class MemoryRepositoryImplement implements MemoryRepository {
     @Override
     public MemoryRecord insert(MemoryRecord record) {
         String sql = """
-                INSERT INTO chat_memory (content, create_time, update_time)
-                VALUES (?, ?, ?)
+                INSERT INTO chat_memory (content, group_name, create_time, update_time)
+                VALUES (?, ?, ?, ?)
                 """;
 
         String now = LocalDateTime.now().format(FORMATTER);
+        String groupName = StringUtils.hasText(record.getGroupName()) ? record.getGroupName().trim() : MemoryRecord.GROUP_UNCLASSIFIED;
         KeyHolder keyHolder = new GeneratedKeyHolder();
 
         jdbcTemplate.update((Connection con) -> {
             PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
             ps.setString(1, record.getContent());
-            ps.setString(2, now);
+            ps.setString(2, groupName);
             ps.setString(3, now);
+            ps.setString(4, now);
             return ps;
         }, keyHolder);
 
@@ -80,17 +84,25 @@ public class MemoryRepositoryImplement implements MemoryRepository {
 
     @Override
     public MemoryRecord update(MemoryRecord record) {
+        // group_name 为空表示调用方没带分组（如老设置页），保持原分组不动；带了才刷
         String sql = """
                 UPDATE chat_memory
                 SET content = ?,
+                    group_name = COALESCE(NULLIF(TRIM(?), ''), group_name),
                     update_time = ?
                 WHERE id = ?
                 """;
 
         String now = LocalDateTime.now().format(FORMATTER);
-        jdbcTemplate.update(sql, record.getContent(), now, record.getId());
+        jdbcTemplate.update(sql, record.getContent(), record.getGroupName(), now, record.getId());
 
         return selectById(record.getId());
+    }
+
+    @Override
+    public int renameGroup(String oldName, String newName) {
+        String sql = "UPDATE chat_memory SET group_name = ?, update_time = ? WHERE group_name = ?";
+        return jdbcTemplate.update(sql, newName.trim(), LocalDateTime.now().format(FORMATTER), oldName.trim());
     }
 
     @Override

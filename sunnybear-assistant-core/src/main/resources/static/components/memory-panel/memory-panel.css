@@ -1,0 +1,396 @@
+/* ============================================================
+   Memory Panel —— 记忆双层抽屉（分组列表 + 组内条目）
+   ------------------------------------------------------------
+   结构与会话文件面板同款：遮罩 + 两层浮层抽屉（都从左往右依次展开）
+     · 第一层 .mp-drawer--groups   分组列表（贴着导航轨滑出）
+     · 第二层 .mp-drawer--entries  组内条目（在第一层右边接着展开）
+   两层可共存：点开一个组不收起列表，方便连着翻几个组。
+
+   宽度：第一层 300px、第二层 560px，窄屏按比例收。
+   移动端（≤768px）导航轨隐藏，遮罩与抽屉从 0 起算，两层叠满屏。
+   ============================================================ */
+
+/* 导航轨宽度：遮罩要给它让位，否则遮罩一盖导航轨就点不动了 */
+.mp-overlay{
+    --mp-rail-w: 56px;
+    --mp-group-w: 300px;
+    --mp-entry-w: 560px;
+
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: var(--mp-rail-w);
+    z-index: 1200;                 /* 高于页面内容，低于 el-dialog（2000 档）与 toast */
+    display: flex;
+    background: rgba(17, 24, 39, 0.28);
+}
+
+/* ---- 抽屉公共件 ---- */
+.mp-drawer{
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100%;
+    box-sizing: border-box;
+    background: #fff;
+    box-shadow: 0 0 28px rgba(17, 24, 39, 0.18);
+}
+
+.mp-drawer--groups{
+    flex: none;
+    width: var(--mp-group-w);
+    border-right: 1px solid rgba(0, 0, 0, 0.06);
+    animation: mp-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.mp-drawer--entries{
+    flex: 1;
+    max-width: var(--mp-entry-w);
+    animation: mp-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes mp-slide-in{
+    from{ opacity: 0; transform: translateX(-22px); }
+    to  { opacity: 1; transform: translateX(0); }
+}
+
+/* ---- 抽屉头部 ---- */
+.mp-head{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 52px;
+    padding: 0 10px 0 14px;
+    box-sizing: border-box;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+}
+
+.mp-title{
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary, #333);
+}
+
+.mp-title svg{
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: var(--main-color, lightsalmon);
+}
+
+.mp-title-text{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mp-btn{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mp-btn svg{ width: 16px; height: 16px; display: block; }
+.mp-btn:hover{ background: #f2f2f2; color: #333; }
+.mp-btn:disabled{ opacity: 0.45; cursor: not-allowed; }
+
+/* ---- 第一层：分组列表 ---- */
+.mp-list{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 8px 12px;
+    scrollbar-width: thin;
+}
+
+.mp-group-row{
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding-right: 4px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #333;
+    user-select: none;
+}
+
+.mp-group-row:hover{ background: #f4f5f7; }
+.mp-group-row.is-active{ background: color-mix(in srgb, var(--main-color, #FFA07A) 16%, #fff); }
+
+.mp-group-row .mp-row-icon{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    color: color-mix(in srgb, var(--main-color, #FFA07A) 78%, #6b6258);
+}
+
+.mp-group-row .mp-row-icon svg{ width: 15px; height: 15px; display: block; }
+
+.mp-row-name{
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mp-row-count{
+    flex: none;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    background: #f0f1f3;
+    font-size: 11px;
+    color: var(--text-muted, #999);
+    font-variant-numeric: tabular-nums;
+}
+
+/* 行尾操作：hover 才出现，避免列表被一堆图标塞满 */
+.mp-row-actions{
+    flex: none;
+    display: none;
+    align-items: center;
+    gap: 2px;
+}
+
+.mp-group-row:hover .mp-row-actions{ display: flex; }
+.mp-group-row:hover .mp-row-count{ display: none; }
+
+.mp-row-btn{
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #777;
+    cursor: pointer;
+    flex: none;
+}
+
+.mp-row-btn svg{ width: 13px; height: 13px; display: block; }
+.mp-row-btn:hover{ background: #e8eaed; color: #333; }
+.mp-row-btn.is-danger:hover{ background: #fdecec; color: #e5484d; }
+.mp-row-btn:disabled{ opacity: 0.4; cursor: not-allowed; }
+.mp-row-btn:disabled:hover{ background: transparent; color: #777; }
+
+.mp-empty,
+.mp-hint{
+    padding: 18px 12px;
+    font-size: 12.5px;
+    color: var(--text-muted, #999);
+    text-align: center;
+    line-height: 1.6;
+}
+
+/* ---- 第二层：组内条目 ---- */
+.mp-entries{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 8px 10px 12px;
+    background: #fbfbfc;
+    scrollbar-width: thin;
+}
+
+.mp-entry{
+    margin-bottom: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 9px;
+    background: #fff;
+}
+
+.mp-entry.is-editing{
+    border-color: color-mix(in srgb, var(--main-color, #FFA07A) 46%, #fff);
+    box-shadow: 0 2px 10px rgba(17, 24, 39, 0.06);
+}
+
+/* 收起态：一行内容头 */
+.mp-entry-row{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 7px 8px 7px 11px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #333;
+}
+
+.mp-entry-text{
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.5;
+}
+
+.mp-entry-time{
+    flex: none;
+    font-size: 11px;
+    color: var(--text-muted, #999);
+    font-variant-numeric: tabular-nums;
+}
+
+.mp-entry-actions{
+    flex: none;
+    display: none;
+    align-items: center;
+    gap: 2px;
+}
+
+.mp-entry-row:hover .mp-entry-actions{ display: flex; }
+.mp-entry-row:hover .mp-entry-time{ display: none; }
+
+/* 展开态：就地编辑区 */
+.mp-entry-edit{
+    padding: 8px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.mp-edit-bar{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.mp-group-select{
+    flex: 1;
+    min-width: 0;
+}
+
+/* Element Plus 的 select 撑满自己那格（settings 里同款控件，这里只是接进编辑条） */
+.mp-entry-edit .el-select{
+    width: 100%;
+}
+
+.mp-edit-spacer{ flex: 1; }
+
+.mp-edit-state{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--text-muted, #999);
+    white-space: nowrap;
+}
+
+.mp-status-dot{
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #c9ccd1;
+    flex: none;
+}
+
+.mp-status-dot.is-dirty{ background: #f0a02a; }
+.mp-status-dot.is-saving{ background: #3b82f6; }
+.mp-status-dot.is-saved{ background: #2fb344; }
+.mp-status-dot.is-error{ background: #e5484d; }
+
+.mp-textarea{
+    width: 100%;
+    min-height: 76px;
+    padding: 8px 10px;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
+    background: #fff;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #333;
+    resize: vertical;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.15s ease;
+}
+
+.mp-textarea:focus{
+    border-color: color-mix(in srgb, var(--main-color, #FFA07A) 62%, #fff);
+}
+
+.mp-edit-error{
+    font-size: 12px;
+    color: #e5484d;
+    line-height: 1.5;
+}
+
+/* ---- 第二层底部状态条 ---- */
+.mp-status{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 30px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+    font-size: 11.5px;
+    color: var(--text-muted, #999);
+}
+
+.mp-status-path{
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mp-status-count{
+    flex: none;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 跟随系统的「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce){
+    .mp-drawer--groups,
+    .mp-drawer--entries{ animation: none; }
+}
+
+/* ---- 窄屏：导航轨不显示，抽屉从 0 起算；第二层盖在第一层上 ---- */
+@media (max-width: 768px){
+    .mp-overlay{
+        --mp-rail-w: 0px;
+        --mp-group-w: 78vw;
+        --mp-entry-w: 100vw;
+    }
+
+    .mp-drawer--entries{
+        position: absolute;
+        left: 0;
+        right: 0;
+        max-width: none;
+    }
+}

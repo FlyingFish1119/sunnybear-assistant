@@ -25,4 +25,11 @@ public interface MemoryRepository {
     MemoryRecord selectById(Integer id);
 
     List<MemoryRecord> selectAll();
+
+    /**
+     * 分组重命名：把 oldName 组下所有记忆刷成 newName
+     *
+     * @return 受影响条数（原组名不存在返回 0）
+     */
+    int renameGroup(String oldName, String newName);
 }

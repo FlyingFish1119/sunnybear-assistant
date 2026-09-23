@@ -56,7 +56,8 @@ public class PostMemoryTool implements ToolHandler {
                 .setParameters(List.of(
                         new ToolRegister.Parameters("mode", "string", "操作模式：add（新增）或 update（修改已有记忆）"),
                         new ToolRegister.Parameters("content", "string", "记忆内容。一句话一个事实，简洁独立。如'用户叫张三，是一名 Java 后端开发'"),
-                        new ToolRegister.Parameters("id", "integer", "（update 模式必填）要修改的记忆 ID")
+                        new ToolRegister.Parameters("id", "integer", "（update 模式必填）要修改的记忆 ID"),
+                        new ToolRegister.Parameters("group", "string", "（可选）分组名，如「我是谁」「我的习惯」；不填归入「未分类」，填一个新名字会自动新建分组")
                 ));
     }
 
@@ -92,7 +93,7 @@ public class PostMemoryTool implements ToolHandler {
             // 确认机制：写入前必须用户确认（无审查/定时任务由 SecurityService 统一裁决）
             ask(context, mode, original, arguments);
 
-            MemoryRecord saved = memoryService.addOrUpdateMemory(arguments.getId(), arguments.getContent(), mode);
+            MemoryRecord saved = memoryService.addOrUpdateMemory(arguments.getId(), arguments.getContent(), arguments.getGroup(), mode);
             String actionName = "add".equals(mode) ? "新增" : "修改";
             return new ToolExecutor.ToolExecuteResponse(name(),
                     String.format("记忆%s成功:\n  ID: %s\n  内容: %s", actionName, saved.getId(), saved.getContent()));
@@ -111,10 +112,14 @@ public class PostMemoryTool implements ToolHandler {
     private void ask(Map<String, Object> context, String mode, MemoryRecord original, Arguments arguments) throws Exception {
         StringBuilder message = new StringBuilder("### 核心记忆写入确认\n\n");
         if ("add".equals(mode)) {
+            String group = StringUtils.hasText(arguments.getGroup())
+                    ? arguments.getGroup().trim()
+                    : "未分类";
             message.append("AI 请求新增一条核心记忆：\n\n")
                     .append("| 操作 | 内容 |\n")
                     .append("|------|------|\n")
-                    .append("| 记忆内容 | ").append(arguments.getContent()).append(" |\n");
+                    .append("| 记忆内容 | ").append(arguments.getContent()).append(" |\n")
+                    .append("| 分组 | ").append(group).append(" |\n");
         } else {
             message.append("AI 请求修改一条核心记忆：\n\n")
                     .append("| 操作 | 内容 |\n")
@@ -142,5 +147,6 @@ public class PostMemoryTool implements ToolHandler {
         private String mode;
         private String content;
         private Integer id;
+        private String group;
     }
 }

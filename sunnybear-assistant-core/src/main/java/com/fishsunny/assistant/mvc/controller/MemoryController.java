@@ -45,7 +45,7 @@ public class MemoryController {
         }
     }
 
-    /** 新增或更新记忆。id 为空表示新增，非空表示更新。 */
+    /** 新增或更新记忆。id 为空表示新增，非空表示更新。groupName 可空：新增落「未分类」，更新不动原分组 */
     @PostMapping("/save")
     public RestResponse save(@RequestBody(required = false) MemorySaveRequest body) {
         if (body == null) {
@@ -63,7 +63,7 @@ public class MemoryController {
                 return new RestResponse().error("模式仅支持 add 或 update");
             }
 
-            MemoryRecord saved = memoryService.addOrUpdateMemory(id, content, mode);
+            MemoryRecord saved = memoryService.addOrUpdateMemory(id, content, body.groupName(), mode);
             return new RestResponse().success(saved);
         } catch (Exception e) {
             log.error("保存记忆失败", e);
@@ -73,7 +73,42 @@ public class MemoryController {
 
     /** 新增/更新记忆的请求体；id 为空表示新增 */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record MemorySaveRequest(Integer id, String content, String mode) {
+    public record MemorySaveRequest(Integer id, String content, String groupName, String mode) {
+    }
+
+    /** 分组重命名请求体：组下所有记忆一起改名 */
+    @PostMapping("/group/rename")
+    public RestResponse renameGroup(@RequestBody(required = false) GroupRenameRequest body) {
+        if (body == null || !StringUtils.hasText(body.oldName()) || !StringUtils.hasText(body.newName())) {
+            return new RestResponse().error("oldName 和 newName 不能为空");
+        }
+        try {
+            int changed = memoryService.renameGroup(body.oldName(), body.newName());
+            if (changed == 0) {
+                return new RestResponse().error("分组不存在: " + body.oldName());
+            }
+            return new RestResponse().success(changed + " 条记忆已改名");
+        } catch (Exception e) {
+            log.error("分组重命名失败", e);
+            return new RestResponse().error("分组重命名失败: " + e.getMessage());
+        }
+    }
+
+    /** 自动分组：调用 AI 对全部记忆重新分类，返回更新后的记忆列表 */
+    @PostMapping("/group/auto")
+    public RestResponse autoGroup() {
+        try {
+            List<MemoryRecord> list = memoryService.autoGroup();
+            return new RestResponse().success(list);
+        } catch (Exception e) {
+            log.error("自动分组失败", e);
+            return new RestResponse().error("自动分组失败: " + e.getMessage());
+        }
+    }
+
+    /** 分组重命名请求体：组下所有记忆一起改名 */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record GroupRenameRequest(String oldName, String newName) {
     }
 
     /** 删除记忆 */
