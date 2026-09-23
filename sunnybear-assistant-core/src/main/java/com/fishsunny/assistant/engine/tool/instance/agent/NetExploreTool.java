@@ -12,6 +12,7 @@ package com.fishsunny.assistant.engine.tool.instance.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
+import com.fishsunny.assistant.engine.protocol.project.entity.KnowledgeRecord;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.processor.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
@@ -24,6 +25,7 @@ import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
+import com.fishsunny.assistant.mvc.service.KnowledgeService;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -57,16 +59,19 @@ public class NetExploreTool implements SubAgentToolHandler {
     private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
     private final SecurityService securityService;
+    private final KnowledgeService knowledgeService;
 
     public NetExploreTool(ObjectMapper objectMapper,
                           @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                           EasyReActProcessor easyReActProcessor,
                           SecurityService securityService,
+                          KnowledgeService knowledgeService,
                           @Lazy ToolExecutor toolExecutor) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
         this.easyReActProcessor = easyReActProcessor;
         this.securityService = securityService;
+        this.knowledgeService = knowledgeService;
         this.toolExecutor = toolExecutor;
 
         register = new ToolRegister()
@@ -82,6 +87,17 @@ public class NetExploreTool implements SubAgentToolHandler {
                 .setDescription("收集目标，描述你需要收集什么信息。例如'AI 安全的最新进展'、'微服务架构最佳实践'");
 
         register.setParameters(List.of(targetParam));
+    }
+
+    /**
+     * 向 agent_tool 申报本子 Agent 的 extension 扩展字段。
+     * 好莱坞原则：AgentTool 构造时只负责聚合各子 Agent 的申报，不认识任何具体字段。
+     */
+    @Override
+    public List<ToolRegister.Parameters> extensionProperties() {
+        return List.of(new ToolRegister.Parameters(
+                "addToKnowledge", "boolean",
+                "为 true 时，探索完成后自动将最终收集报告存入知识库（intro 由 Cub 生成）"));
     }
 
     @Override
@@ -122,14 +138,45 @@ public class NetExploreTool implements SubAgentToolHandler {
             // ========== 执行循环，捕获 AI 的最终报告 ==========
             String finalReport = easyReActProcessor.execute(missionAISettings, request, context, null );
 
-            // ========== 组装返回结果 ==========
-            return new ToolExecutor.ToolExecuteResponse(name(), finalReport);
+            // ========== 组装返回结果（扩展选项要求入库时，先入库再返回） ==========
+            String result = finalReport;
+            if (isAddToKnowledge(arguments.getExtension())) {
+                result = saveToKnowledge(finalReport);
+            }
+            return new ToolExecutor.ToolExecuteResponse(name(), result);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
         } catch (Exception e) {
             log.error("NetExploreTool 执行异常: {}", e.getMessage(), e);
             throw new ToolExecutor.ToolExecuteException("网络探索子 Agent 执行失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 把最终报告存入知识库：先调 generateIntro（Cub）生成简介，再以 add 模式落库。
+     * 入库失败不影响探索结果本身——在报告末尾追加一行说明后原样返回。
+     */
+    private String saveToKnowledge(String report) {
+        try {
+            String intro = knowledgeService.generateIntro(report);
+            KnowledgeRecord saved = knowledgeService.addOrUpdateKnowledge(null, intro, report, "add");
+            return report + "\n\n> 📚 已存入知识库：ID " + saved.getId() + "，简介：" + saved.getIntro();
+        } catch (Exception e) {
+            log.warn("收集报告存入知识库失败: {}", e.getMessage());
+            return report + "\n\n> ⚠️ 报告存入知识库失败：" + e.getMessage();
+        }
+    }
+
+    /**
+     * 读取 extension 里的 addToKnowledge 开关。
+     * 缺失、null 或非 true 均视为 false——是否入库由主 Agent 显式声明，不默认开。
+     */
+    private boolean isAddToKnowledge(Map<String, Object> extension) {
+        if (extension == null) {
+            return false;
+        }
+        Object value = extension.get("addToKnowledge");
+        return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     /**
@@ -233,5 +280,7 @@ public class NetExploreTool implements SubAgentToolHandler {
     @Accessors(chain = true)
     private static class Arguments {
         private String target;
+        /** agent_tool 透传的扩展参数；字段由各子 Agent 申报，未申报的键会被忽略 */
+        private Map<String, Object> extension;
     }
 }

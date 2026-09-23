@@ -81,5 +81,9 @@ public interface KnowledgeService {
     public record KnowledgeSection(String text, boolean hasNew) {
     }
 
+    /**
+     * 用 Cub 模型为知识内容生成一段约 50 字的简介（用于检索匹配与展示）。
+     * 生成失败或返回空时回退为 content 原文，保证简介字段始终可用。
+     */
     String generateIntro(String content);
 }

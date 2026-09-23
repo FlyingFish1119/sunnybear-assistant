@@ -9,27 +9,20 @@ package com.fishsunny.assistant.engine.tool.instance.knowledge;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.engine.ChatHttpHandler;
-import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.KnowledgeRecord;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.KnowledgeToolKit;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
-import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 知识库添加/修改工具
@@ -44,19 +37,13 @@ public class PostKnowledgeTool implements ToolHandler {
 
     public static final String NAME = "post_knowledge_tool";
 
-    private final ChatHttpHandler chatHttpHandler;
-    private final AISettings aiSettings;
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
     private final KnowledgeService knowledgeService;
 
     public PostKnowledgeTool(ObjectMapper objectMapper,
-                             ChatHttpHandler chatHttpHandler,
-                             @Qualifier(AISettings.CUB) AISettings aiSettings,
                              KnowledgeService knowledgeService) {
         this.objectMapper = objectMapper;
-        this.chatHttpHandler = chatHttpHandler;
-        this.aiSettings = aiSettings;
         this.knowledgeService = knowledgeService;
 
         register = new ToolRegister()
@@ -87,7 +74,7 @@ public class PostKnowledgeTool implements ToolHandler {
         }
 
         String mode = arguments.getMode().trim().toLowerCase();
-        String intro = generateIntro(arguments.getContent());
+        String intro = knowledgeService.generateIntro(arguments.getContent());
         try {
             KnowledgeRecord saved = knowledgeService.addOrUpdateKnowledge(
                     arguments.getId(), intro, arguments.getContent(), mode);
@@ -100,43 +87,6 @@ public class PostKnowledgeTool implements ToolHandler {
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("知识条目操作失败: " + e.getMessage());
         }
-    }
-
-    private String generateIntro(String content) {
-        String prompt = """
-                你是一名知识库编辑。请根据下面的知识内容，写一段简洁的【简介】用于知识条目的检索与展示。
-
-                要求：
-                1. 约 50 个字左右，比标题内容更丰富，但远短于完整内容。
-                2. 概括内容的核心主题与要点，便于后续语义匹配时命中。
-                3. 直接输出简介文本，不要加引号、不要加任何前缀或解释。
-                """;
-
-        ChatRequest chatRequest = new ChatRequest()
-                .loadSettings(aiSettings)
-                .setMessages(List.of(
-                        new ChatMessage().system(prompt),
-                        new ChatMessage().user(content)
-                        )
-                );
-
-        AtomicReference<String> intro = new AtomicReference<>();
-        ChatHttpHandler.TranslateData translateData = new ChatHttpHandler.TranslateData(
-                UUID.randomUUID().toString(),
-                aiSettings.getAdapterName(),
-                chatRequest
-        );
-        ChatHttpHandler.TranslateHandler translateHandler = new ChatHttpHandler.TranslateHandler(null,
-                ((result, lastRes) -> intro.set(result.content())));
-        ChatHttpHandler.TranslateOption translateOption = new ChatHttpHandler.TranslateOption()
-                .setStream(aiSettings.getStream());
-        try {
-            chatHttpHandler.translate(translateData, translateHandler, translateOption);
-        } catch (Exception e) {
-            log.warn("Failed to generate intro: {}", e.getMessage());
-            intro.set(content);
-        }
-        return intro.get();
     }
 
     @Override

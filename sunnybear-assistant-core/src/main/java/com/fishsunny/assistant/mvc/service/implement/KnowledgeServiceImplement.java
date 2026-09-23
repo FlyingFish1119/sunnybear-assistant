@@ -10,21 +10,27 @@ package com.fishsunny.assistant.mvc.service.implement;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.jev.JevClient;
 import com.fishsunny.assistant.engine.jev.JevResponseMapper;
 import com.fishsunny.assistant.engine.jev.request.JevRequest;
+import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.KnowledgeRecord;
 import com.fishsunny.assistant.engine.protocol.project.entity.SessionKnowledgeRecord;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.mvc.dao.KnowledgeRepository;
 import com.fishsunny.assistant.mvc.dao.SessionKnowledgeRepository;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
+import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.KnowledgeSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @Service
@@ -40,17 +46,23 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     private final KnowledgeSettings knowledgeSettings;
     private final ObjectMapper objectMapper;
     private final JevClient jevClient;
+    private final ChatHttpHandler chatHttpHandler;
+    private final AISettings cubAISettings;
 
     public KnowledgeServiceImplement(KnowledgeRepository knowledgeRepository,
                                      SessionKnowledgeRepository sessionKnowledgeRepository,
                                      KnowledgeSettings knowledgeSettings,
                                      ObjectMapper objectMapper,
-                                     JevClient jevClient) {
+                                     JevClient jevClient,
+                                     ChatHttpHandler chatHttpHandler,
+                                     @Qualifier(AISettings.CUB) AISettings cubAISettings) {
         this.knowledgeRepository = knowledgeRepository;
         this.sessionKnowledgeRepository = sessionKnowledgeRepository;
         this.knowledgeSettings = knowledgeSettings;
         this.objectMapper = objectMapper;
         this.jevClient = jevClient;
+        this.chatHttpHandler = chatHttpHandler;
+        this.cubAISettings = cubAISettings;
     }
 
 
@@ -160,9 +172,34 @@ public class KnowledgeServiceImplement implements KnowledgeService {
         log.info("已清空会话 {} 的知识注入记录", sessionId);
     }
 
+    /**
+     * 用 Cub 为知识内容生成约 50 字简介。
+     * 走 translate 同步调用；失败或返回空时回退为 content 原文，保证简介字段始终可用。
+     */
     @Override
     public String generateIntro(String content) {
-        return "";
+        String prompt = """
+                你是一名知识库编辑。请根据下面的知识内容，写一段简洁的【简介】用于知识条目的检索与展示。
+
+                要求：
+                1. 约 50 个字左右，比标题内容更丰富，但远短于完整内容。
+                2. 概括内容的核心主题与要点，便于后续语义匹配时命中。
+                3. 直接输出简介文本，不要加引号、不要加任何前缀或解释。
+                """;
+
+        ChatRequest chatRequest = new ChatRequest().quickBuild(prompt, content, cubAISettings);
+
+        AtomicReference<String> intro = new AtomicReference<>();
+        try {
+            chatHttpHandler.translate(
+                    new ChatHttpHandler.TranslateData(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), chatRequest),
+                    new ChatHttpHandler.TranslateHandler(null, (result, lastRes) -> intro.set(result.content())),
+                    new ChatHttpHandler.TranslateOption().setStream(cubAISettings.getStream()));
+        } catch (Exception e) {
+            log.warn("生成知识简介失败: {}", e.getMessage());
+            return content;
+        }
+        return StringUtils.hasText(intro.get()) ? intro.get().trim() : content;
     }
 
     // ========================= 匹配与注入 =========================
