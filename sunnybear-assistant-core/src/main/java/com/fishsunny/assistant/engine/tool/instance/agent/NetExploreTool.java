@@ -97,7 +97,7 @@ public class NetExploreTool implements SubAgentToolHandler {
     public List<ToolRegister.Parameters> extensionProperties() {
         return List.of(new ToolRegister.Parameters(
                 "addToKnowledge", "boolean",
-                "为 true 时，探索完成后自动将最终收集报告存入知识库（intro 由 Cub 生成）"));
+                "适用于 " + NAME + "；为 true 时，探索完成后自动将最终收集报告存入知识库"));
     }
 
     @Override

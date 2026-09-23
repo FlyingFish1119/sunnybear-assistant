@@ -1,5 +1,5 @@
 name: project-stats
-description: 统计当前项目的文件数量、代码行数和按类型分布（支持 Java/JS/Python/Go 等常见源码）
+description: 统计项目文件数量、体积、类型分布与源码行数（跳过 lib/target/node_modules 等依赖与构建目录；行数区分代码/空行/注释）
 type: powershell
 parameters:
   - name: path
@@ -8,72 +8,15 @@ parameters:
     required: false
 script: |
   chcp 65001 > $null
-  $root = "{{path}}"
-  if (-not $root -or $root -match '\{\{') { $root = "." }
-  $root = Resolve-Path $root
-
-  Write-Host "Project: $root"
-  Write-Host ""
-
-  # Common source code extensions
-  $codeExts = @(".java",".kt",".scala",".py",".js",".ts",".jsx",".tsx",".go",".rs",".cpp",".c",".h",".hpp",".cs",".php",".rb",".swift",".m",".mm",".xml",".json",".yaml",".yml",".sql",".sh",".ps1",".md")
-
-  $allFiles = Get-ChildItem -Path $root -Recurse -File | Where-Object {
-      $full = $_.FullName
-      -not ($full -match "\\(target|build|dist|node_modules|lib|\.git|\.idea|\.vscode|out|bin|obj)\\")
+  $py = "E:\project\sunnybear-assistant\sunnybear-assistant-core\tool-extension\dev\project_stats.py"
+  if (-not (Test-Path $py)) {
+    Write-Host "找不到脚本: $py"
+    exit 1
   }
-
-  $totalFiles = $allFiles.Count
-  $totalSizeKB = [math]::Round(($allFiles | Measure-Object -Property Length -Sum).Sum / 1KB, 2)
-
-  Write-Host "=== Overview ==="
-  Write-Host "Total files: $totalFiles"
-  Write-Host "Total size: ${totalSizeKB} KB"
-  Write-Host ""
-
-  # Stats by extension
-  $extStats = $allFiles | Group-Object Extension | ForEach-Object {
-      [PSCustomObject]@{
-          Extension  = if ($_.Name) { $_.Name } else { "(none)" }
-          FileCount  = $_.Count
-          TotalSizeKB = [math]::Round(($_.Group | Measure-Object -Property Length -Sum).Sum / 1KB, 2)
-      }
-  } | Sort-Object FileCount -Descending
-
-  Write-Host "=== File Types (Top 15) ==="
-  $extStats | Select-Object -First 15 | Format-Table Extension, FileCount, TotalSizeKB -AutoSize | Out-String | Write-Host
-
-  # Source lines of code
-  $codeFiles = $allFiles | Where-Object { $codeExts -contains $_.Extension.ToLower() }
-  $totalLines = 0
-  $lineStats = @()
-
-  foreach ($file in $codeFiles) {
-      try {
-          $lines = (Get-Content $file.FullName | Measure-Object).Count
-          $totalLines += $lines
-          $lineStats += [PSCustomObject]@{
-              Extension = $file.Extension.ToLower()
-              Lines     = $lines
-          }
-      } catch {
-          # Skip unreadable files
-      }
+  $argv = @()
+  $target = "{{path}}"
+  if ($target -and ($target -notmatch '\{\{')) {
+    $argv += @("--path", $target)
   }
-
-  $groupedLines = $lineStats | Group-Object Extension | ForEach-Object {
-      [PSCustomObject]@{
-          Extension = $_.Name
-          FileCount = $_.Count
-          CodeLines = ($_.Group | Measure-Object -Property Lines -Sum).Sum
-      }
-  } | Sort-Object CodeLines -Descending
-
-  Write-Host "=== Source Lines of Code ==="
-  Write-Host "Source files: $($codeFiles.Count)"
-  Write-Host "Estimated total lines: $totalLines"
-  Write-Host ""
-  Write-Host "By type:"
-  $groupedLines | Format-Table Extension, FileCount, CodeLines -AutoSize | Out-String | Write-Host
-
-  Write-Host "Done."
+  & python $py @argv 2>&1
+  exit $LASTEXITCODE
