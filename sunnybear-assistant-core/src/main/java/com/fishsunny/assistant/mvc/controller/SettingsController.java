@@ -681,6 +681,7 @@ public class SettingsController {
             return new RestResponse().error("Invalid settings");
         }
         knowledgeSettings.setEnable(Boolean.TRUE.equals(settings.getEnable()));
+        knowledgeSettings.setConfidenceThreshold(settings.getConfidenceThreshold());
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(knowledgeSettingsPath), knowledgeSettings);
         } catch (Exception e) {

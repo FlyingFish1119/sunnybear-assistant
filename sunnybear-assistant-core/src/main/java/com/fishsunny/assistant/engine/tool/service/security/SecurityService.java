@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.dto.ToolAsk;
+import com.fishsunny.assistant.engine.jev.JevClient;
+import com.fishsunny.assistant.engine.jev.request.JevRequest;
 import com.fishsunny.assistant.engine.protocol.project.AgentLogEntry;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
@@ -27,6 +29,7 @@ import com.fishsunny.assistant.engine.tool.instance.security.DecodeTool;
 import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.settings.AISettings;
 import jakarta.annotation.Nullable;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
@@ -49,6 +52,7 @@ import java.util.function.Consumer;
  * fail-closed：子 Agent 若未返回可识别判定或调查轮次超限，抛 {@link ToolExecutor.ToolExecuteException}，
  * 让工具停止执行（与旧 DangerChecker"无法识别格式则停止"语义一致）。
  */
+@Slf4j
 @Component
 public class SecurityService {
 
@@ -72,15 +76,18 @@ public class SecurityService {
     private final ToolExecutor toolExecutor;
     private final AISettings aiSettings;
     private final ObjectMapper objectMapper;
+    private final JevClient jevClient;
 
     public SecurityService(EasyReActProcessor easyReActProcessor,
                            @Lazy ToolExecutor toolExecutor,
                            @Qualifier(AISettings.MISSION) AISettings aiSettings,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           JevClient jevClient) {
         this.easyReActProcessor = easyReActProcessor;
         this.toolExecutor = toolExecutor;
         this.aiSettings = aiSettings;
         this.objectMapper = objectMapper;
+        this.jevClient = jevClient;
     }
 
     public void ask(String toolName, String message, @Nullable Integer timeout, Map<String, Object> context) throws Exception {
@@ -111,6 +118,9 @@ public class SecurityService {
 
     /**
      * 对一次将要执行的操作做 AI 安全审查。
+     * <p>
+     * 先用 Jev 做二元预审（是否危险）：判定安全则直接放行，判定危险（或预审失败）才转交
+     * 专业审查子 Agent 复审并给出具体 reason。
      *
      * @param context              工具执行上下文（供子 Agent 内部工具使用，如 chatSession）
      * @param operationDescription 待评估操作的描述（命令 / 写文件路径与内容 / 编辑 diff / 删除目标等）
@@ -127,6 +137,11 @@ public class SecurityService {
 
         // 从 ctx 里的 messages 快照取最近一条用户问题（判断用户意图用），缺失则为空
         String userQuestion = extractLastUserQuestion(context);
+
+        // 1. Jev 二元预审：不危险直接放行；危险（或无法判断）才转交专业审查子 Agent 复审
+        if (!prescreenDangerous(description, userQuestion)) {
+            return ReviewResult.safe();
+        }
 
         List<StandardToolRegister> reviewerTools =
                 StandardToolRegister.buildToolRegisterByHandlers(toolExecutor, REVIEWER_TOOLS);
@@ -159,6 +174,65 @@ public class SecurityService {
                     "AI 安全审查子 Agent 调查轮次超过上限（" + MAX_TOOL_ROUNDS + " 轮），已中止审查，操作未执行。");
         }
         return parseVerdict(finalText);
+    }
+
+    // ======================== Jev 预审 ========================
+
+    /** Jev 预审问题 id（模型看不到，仅用于取回答案）。 */
+    private static final String PRESCREEN_KEY = "dangerous";
+
+    /**
+     * 预审判定「危险」的概率门槛：高于该值才转交专业子 Agent 复审。
+     * 取值偏低（召回优先）：宁可多交一次子 Agent，也不放过可疑操作。
+     */
+    private static final double PRESCREEN_DANGER_THRESHOLD = 0.5;
+
+    /**
+     * 用 Jev 的 Noul 模式对操作做一次快速的二元预审：该操作是否危险。
+     * <p>
+     * 返回 true 表示「可疑/危险」，需要交给专业审查子 Agent 复审（顺带取得具体 reason）；
+     * 返回 false 表示判定安全，直接放行。Jev 调用失败时返回 true，回退到专业子 Agent（fail-safe）。
+     * <p>
+     * 之所以只做二元粗筛而非让 Jev 定论：Jev 擅长识别危险模式（命令/代码），但难以理解复杂的用户意图，
+     * 故只让它当「过滤器」，最终判定仍由能读文件、解码取证的子 Agent 负责。
+     */
+    private boolean prescreenDangerous(String description, String userQuestion) {
+        try {
+            JevRequest jevRequest = JevRequest.Builder.create(buildPrescreenState(description, userQuestion))
+                    .noulQuestion(
+                            PRESCREEN_KEY,
+                            "Is the operation below dangerous to execute?",
+                            "The operation could cause serious consequences: system damage, data loss, credential or privacy leakage, "
+                                    + "privilege escalation, backdoors, or download/execution of malicious code.",
+                            "The operation is routine and safe; there is no plausible serious consequence."
+                    )
+                    .build();
+
+            Double dangerous = jevClient.send(jevRequest).mappingNoul(PRESCREEN_KEY);
+            return dangerous != null && dangerous > PRESCREEN_DANGER_THRESHOLD;
+        } catch (Exception e) {
+            log.warn("Jev 安全预审失败，转交专业审查子 Agent：{}", e.getMessage());
+            return true;
+        }
+    }
+
+    /** 组装预审 state：待评估操作 + 触发它的用户消息（用于理解意图）。 */
+    private static String buildPrescreenState(String description, String userQuestion) {
+        if (!StringUtils.hasText(userQuestion)) {
+            return """
+                    Operation to evaluate:
+
+                    ${description}""".replace("${description}", description);
+        }
+        return """
+                Operation to evaluate:
+
+                ${description}
+
+                User request that triggered this operation (for intent):
+
+                ${question}""".replace("${description}", description)
+                .replace("${question}", userQuestion);
     }
 
     // ======================== 判定解析（fail-closed） ========================

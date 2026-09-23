@@ -258,8 +258,8 @@ public class SettingsLoader {
     // ============================== 知识库设置 ==============================
 
     /**
-     * 读取并解析知识库设置文件（扁平结构，仅含 enable 开关），装配为 Spring Bean。
-     * 知识库注入默认关闭（enable=false），与旧版本文件缺失时的语义一致。
+     * 读取并解析知识库设置文件（扁平结构，含 enable 开关与置信度阈值），装配为 Spring Bean。
+     * 知识库注入默认关闭（enable=false），阈值默认 0.25，与旧版本文件缺失时的语义一致。
      */
     @Bean
     public KnowledgeSettings knowledgeSettings() {
@@ -276,8 +276,9 @@ public class SettingsLoader {
 
         try {
             KnowledgeSettings settings = objectMapper.readValue(settingsFile, KnowledgeSettings.class);
-            log.info("知识库设置文件加载成功: {}，内容: enable={}", settingsFile.getAbsolutePath(),
-                    settings == null ? null : settings.getEnable());
+            log.info("知识库设置文件加载成功: {}，内容: enable={}, confidenceThreshold={}", settingsFile.getAbsolutePath(),
+                    settings == null ? null : settings.getEnable(),
+                    settings == null ? null : settings.getConfidenceThreshold());
             if (settings == null) {
                 return new KnowledgeSettings().setEnable(false);
             }

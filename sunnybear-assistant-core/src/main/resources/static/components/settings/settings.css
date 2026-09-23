@@ -687,3 +687,20 @@ body {
         -webkit-box-orient: vertical;
     }
 }
+
+/* ---- 知识库置信度阈值滑轨 ---- */
+.knowledge-threshold .settings-item-right {
+    width: 280px;
+}
+
+@media (max-width: 640px) {
+    .knowledge-threshold {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .knowledge-threshold .settings-item-right {
+        width: 100%;
+        margin-left: 0;
+    }
+}

@@ -10,24 +10,21 @@ package com.fishsunny.assistant.mvc.service.implement;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fishsunny.assistant.engine.ChatHttpHandler;
-import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
+import com.fishsunny.assistant.engine.jev.JevClient;
+import com.fishsunny.assistant.engine.jev.JevResponseMapper;
+import com.fishsunny.assistant.engine.jev.request.JevRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.KnowledgeRecord;
 import com.fishsunny.assistant.engine.protocol.project.entity.SessionKnowledgeRecord;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.mvc.dao.KnowledgeRepository;
 import com.fishsunny.assistant.mvc.dao.SessionKnowledgeRepository;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
-import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.KnowledgeSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @Service
@@ -42,21 +39,18 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     private final SessionKnowledgeRepository sessionKnowledgeRepository;
     private final KnowledgeSettings knowledgeSettings;
     private final ObjectMapper objectMapper;
-    private final AISettings cubAISettings;
-    private final ChatHttpHandler chatHttpHandler;
+    private final JevClient jevClient;
 
     public KnowledgeServiceImplement(KnowledgeRepository knowledgeRepository,
                                      SessionKnowledgeRepository sessionKnowledgeRepository,
                                      KnowledgeSettings knowledgeSettings,
                                      ObjectMapper objectMapper,
-                                     @Qualifier(AISettings.CUB) AISettings cubAISettings,
-                                     ChatHttpHandler chatHttpHandler) {
+                                     JevClient jevClient) {
         this.knowledgeRepository = knowledgeRepository;
         this.sessionKnowledgeRepository = sessionKnowledgeRepository;
         this.knowledgeSettings = knowledgeSettings;
         this.objectMapper = objectMapper;
-        this.cubAISettings = cubAISettings;
-        this.chatHttpHandler = chatHttpHandler;
+        this.jevClient = jevClient;
     }
 
 
@@ -186,10 +180,10 @@ public class KnowledgeServiceImplement implements KnowledgeService {
         // 2. 加载 session 已注入的知识 ID 集合
         Set<Integer> injectedIds = getInjectedKnowledgeIds(sessionId);
 
-        // 3. 让 cub 从全部条目中选出与当前问题相关的条目
-        List<Integer> selectedIds = selectKnowledgeByCub(allEntries, queryText);
+        // 3. 让 jev 从全部条目中选出与当前问题相关的条目
+        List<Integer> selectedIds = selectKnowledgeByJev(allEntries, queryText);
         if (selectedIds == null) {
-            // cub 调用/解析失败，降级为只注入历史已注入条目
+            // jev 调用/解析失败，降级为只注入历史已注入条目
             return new KnowledgeSection(buildFromExistingOnly(sessionId), false);
         }
 
@@ -201,7 +195,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
         for (Integer id : selectedIds) {
             if (id != null && validIds.contains(id) && injectedIds.add(id)) {
                 hasNew = true;
-                log.debug("知识库 cub 选择新条目: id={}", id);
+                log.debug("知识库 jev 选择新条目: id={}", id);
             }
         }
         // 本轮没有新条目，只注入历史已注入条目（不视为本轮命中）
@@ -233,76 +227,41 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     }
 
     /**
-     * 调用 cub 模型，从全部知识条目中选出与用户问题相关的条目 id 列表。
+     * 调用 jev 模型，从全部知识条目中选出与用户问题相关的条目 id 列表。
+     * <p>
+     * 采用 jev 的 noul 模式：state 为用户当前问题，为每条知识条目各提一个
+     * 「该条目是否与当前问题相关」的是/否问题，全部塞进同一次请求（服务端并行作答）。
+     * 每个问题独立返回「是」的概率，不受条目数量归一化影响；概率高于阈值的条目即被选中，
+     * 因此召回数量不设上限。
      *
-     * @return 选中的条目 id 列表；cub 调用或解析失败时返回 null（由调用方降级为历史注入）
+     * @return 选中的条目 id 列表；jev 调用或解析失败时返回 null（由调用方降级为历史注入）
      */
-    private List<Integer> selectKnowledgeByCub(List<KnowledgeRecord> allEntries, String queryText) {
+    private List<Integer> selectKnowledgeByJev(List<KnowledgeRecord> allEntries, String queryText) {
         try {
-            StringBuilder entriesText = new StringBuilder();
+            JevRequest.Builder builder = JevRequest.Builder.create(queryText);
             for (KnowledgeRecord entry : allEntries) {
-                entriesText.append(entry.getId()).append(". ").append(entry.getIntro()).append("\n");
+                builder.noulQuestion(
+                        String.valueOf(entry.getId()),
+                        "Is the knowledge entry \"" + entry.getIntro()
+                                + "\" relevant to the user's current question and helpful for answering it?",
+                        "The knowledge entry covers information the user's current question needs, or is clearly related to it.",
+                        "The knowledge entry is unrelated to the user's current question."
+                );
             }
-            String prompt = """
-            你是一个知识库条目选择器。用户正在进行一段对话，你需要从知识库条目中选出与用户当前问题相关、对回答有帮助的条目。
+            JevRequest jevRequest = builder.build();
 
-            [知识库条目]
-            ${entries}
-
-            [用户当前问题]
-            ${query}
-
-            要求：
-            1. 只输出一个 JSON 对象，格式为
-            {
-                "ids": []
-            }
-            例如：
-            {
-                "ids": [1, 3, 5]
-            }
-            2. 只选择与用户当前问题明显相关的条目；如果都不相关，输出：{"ids": []}。
-            3. 只根据条目简介判断相关性。
-            """.replace("${entries}", entriesText.toString().trim())
-            .replace("${query}", queryText);
-
-            ChatRequest request = new ChatRequest()
-                    .loadSettings(new AISettings().copy(cubAISettings).json())
-                    .setMessages(List.of(new ChatMessage().user(prompt)));
-
-            AtomicReference<String> rawJson = new AtomicReference<>();
-            chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request,
-                    cubAISettings.getStream(), null,
-                    (result, lastRes) -> rawJson.set(result.content()));
-
-            List<Integer> ids = parseKnowledgeIds(rawJson.get());
-            if (ids == null) {
-                log.warn("知识库 cub 选择解析失败，降级为历史注入。raw={}", rawJson.get());
-                return null;
+            JevResponseMapper responseMapper = jevClient.send(jevRequest);
+            double threshold = knowledgeSettings.getConfidenceThreshold();
+            List<Integer> ids = new ArrayList<>();
+            for (KnowledgeRecord entry : allEntries) {
+                Double probability = responseMapper.mappingNoul(entry.getId().toString());
+                if (probability != null && probability > threshold) {
+                    ids.add(entry.getId());
+                }
             }
             return ids;
         } catch (Exception e) {
-            log.error("知识库 cub 选择调用失败: {}", e.getMessage(), e);
-            return null;
-        }
-    }
-
-    /**
-     * 从 cub 返回的文本中解析知识条目 id 列表，期望格式：{"ids": [1, 3, 5]}
-     * 容错处理 ```json 代码块包裹。
-     */
-    private List<Integer> parseKnowledgeIds(String raw) {
-        if (!StringUtils.hasText(raw)) {
-            return null;
-        }
-        String json = raw.trim()
-                .replaceAll("^```(json)?\\s*", "")
-                .replaceAll("```\\s*$", "")
-                .trim();
-        try {
-            return objectMapper.readValue(json, new TypeReference<Map<String, List<Integer>>>() {}).get("ids");
-        } catch (Exception e) {
-            log.warn("解析 cub 知识选择结果失败: {}", e.getMessage());
+            log.error("知识库 jev 选择调用失败: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -327,7 +286,7 @@ public class KnowledgeServiceImplement implements KnowledgeService {
     }
 
     /**
-     * 当 cub 挑选失败/无新条目时，仅基于已有注入构建知识片段（不匹配新条目）。
+     * 当 jev 挑选失败/无新条目时，仅基于已有注入构建知识片段（不匹配新条目）。
      */
     private String buildFromExistingOnly(String sessionId) {
         Set<Integer> injectedIds = getInjectedKnowledgeIds(sessionId);
