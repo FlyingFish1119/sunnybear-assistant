@@ -160,6 +160,11 @@ public class KnowledgeServiceImplement implements KnowledgeService {
         log.info("已清空会话 {} 的知识注入记录", sessionId);
     }
 
+    @Override
+    public String generateIntro(String content) {
+        return "";
+    }
+
     // ========================= 匹配与注入 =========================
 
     @Override

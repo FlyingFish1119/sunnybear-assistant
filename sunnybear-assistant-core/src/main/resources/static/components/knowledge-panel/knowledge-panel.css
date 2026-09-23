@@ -1,0 +1,308 @@
+/* ============================================================
+   Knowledge Panel —— 知识库双层抽屉
+   ------------------------------------------------------------
+   结构：遮罩 + 两层浮层抽屉（都从左往右依次展开）
+     · 第一层 .kp-drawer--list     条目列表（贴着导航轨滑出）
+     · 第二层 .kp-drawer--editor   双段编辑区（上 intro 1/4，下 content 3/4）
+
+   宽度：第一层 320px、第二层 640px，窄屏按比例收。
+   移动端（≤768px）导航轨隐藏，遮罩与抽屉从 0 起算，第二层盖满屏。
+   ============================================================ */
+
+.kp-overlay{
+    --kp-rail-w: 56px;
+    --kp-list-w: 320px;
+    --kp-editor-w: 640px;
+
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: var(--kp-rail-w);
+    z-index: 1200;
+    display: flex;
+    background: rgba(17, 24, 39, 0.28);
+}
+
+/* ---- 抽屉公共件 ---- */
+.kp-drawer{
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100%;
+    box-sizing: border-box;
+    background: #fff;
+    box-shadow: 0 0 28px rgba(17, 24, 39, 0.18);
+}
+
+.kp-drawer--list{
+    flex: none;
+    width: var(--kp-list-w);
+    border-right: 1px solid rgba(0, 0, 0, 0.06);
+    animation: kp-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.kp-drawer--editor{
+    flex: 1;
+    max-width: var(--kp-editor-w);
+    animation: kp-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes kp-slide-in{
+    from{ opacity: 0; transform: translateX(-22px); }
+    to  { opacity: 1; transform: translateX(0); }
+}
+
+/* ---- 抽屉头部 ---- */
+.kp-head{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 52px;
+    padding: 0 10px 0 14px;
+    box-sizing: border-box;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+}
+
+.kp-title{
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary, #333);
+}
+
+.kp-title svg{
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: var(--main-color, lightsalmon);
+}
+
+.kp-title-text{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kp-btn{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.kp-btn svg{ width: 16px; height: 16px; display: block; }
+.kp-btn:hover{ background: #f2f2f2; color: #333; }
+.kp-btn:disabled{ opacity: 0.45; cursor: not-allowed; }
+
+/* ---- 第一层：条目列表 ---- */
+.kp-list{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 8px 12px;
+    scrollbar-width: thin;
+}
+
+.kp-row{
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 4px 4px 4px 6px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #333;
+    user-select: none;
+}
+
+.kp-row:hover{ background: #f4f5f7; }
+.kp-row.is-active{ background: color-mix(in srgb, var(--main-color, #FFA07A) 16%, #fff); }
+
+.kp-row-icon{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    color: #8a8f98;
+}
+
+.kp-row-icon svg{ width: 15px; height: 15px; display: block; }
+
+.kp-row-body{
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.kp-row-name{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.kp-row-time{
+    font-size: 11px;
+    color: var(--text-muted, #999);
+    font-variant-numeric: tabular-nums;
+}
+
+.kp-row-actions{
+    flex: none;
+    display: none;
+    align-items: center;
+    gap: 2px;
+}
+
+.kp-row:hover .kp-row-actions{ display: flex; }
+
+.kp-row-btn{
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #777;
+    cursor: pointer;
+}
+
+.kp-row-btn svg{ width: 13px; height: 13px; display: block; }
+.kp-row-btn:hover{ background: #e8eaed; color: #333; }
+.kp-row-btn.is-danger:hover{ background: #fdecec; color: #e5484d; }
+
+.kp-empty,
+.kp-hint{
+    padding: 18px 12px;
+    font-size: 12.5px;
+    color: var(--text-muted, #999);
+    text-align: center;
+    line-height: 1.6;
+}
+
+/* ---- 第二层：双段编辑区 ---- */
+.kp-edit-body{
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: #fbfbfc;
+}
+
+.kp-seg{
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* 上 1/4 简介，下 3/4 正文 */
+.kp-seg--intro{ flex: 1; }
+.kp-seg--content{ flex: 3; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+
+.kp-seg-label{
+    flex: none;
+    padding: 5px 12px 3px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-muted, #999);
+    background: #f3f4f6;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    user-select: none;
+}
+
+.kp-editor-host{
+    flex: 1;
+    min-height: 0;
+    position: relative;
+}
+
+.kp-editor-host .ace_editor{
+    position: absolute;
+    inset: 0;
+    font-size: 13px;
+}
+
+/* ---- 状态条 ---- */
+.kp-status{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 30px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+    font-size: 11.5px;
+    color: var(--text-muted, #999);
+}
+
+.kp-status-dot{
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #c9ccd1;
+    flex: none;
+}
+
+.kp-status-dot.is-dirty{ background: #f0a02a; }
+.kp-status-dot.is-saving{ background: #3b82f6; }
+.kp-status-dot.is-saved{ background: #2fb344; }
+.kp-status-dot.is-error{ background: #e5484d; }
+
+.kp-status-action{
+    flex: none;
+    cursor: pointer;
+    color: #4b5563;
+}
+
+.kp-status-action:hover{ text-decoration: underline; }
+
+.kp-status-id{
+    flex: 1;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce){
+    .kp-drawer--list,
+    .kp-drawer--editor{ animation: none; }
+}
+
+/* ---- 窄屏：导航轨不显示，第二层盖在第一层上 ---- */
+@media (max-width: 768px){
+    .kp-overlay{
+        --kp-rail-w: 0px;
+        --kp-list-w: 78vw;
+        --kp-editor-w: 100vw;
+    }
+
+    .kp-drawer--editor{
+        position: absolute;
+        left: 0;
+        right: 0;
+        max-width: none;
+    }
+}

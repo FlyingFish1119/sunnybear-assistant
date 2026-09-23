@@ -1,0 +1,83 @@
+/* ============================================================
+   Knowledge Manage Settings —— 知识条目管理 / 编辑弹窗
+   ------------------------------------------------------------
+   两个弹窗原生宽 900px，窄视口用 max-width 兜底不伸出屏幕。
+   编辑弹窗不依赖 settings.css 的全屏/高度那套全局规则：
+   body 自己定高 + 纵向 flex，编辑区 flex:1 填满，各断点一致。
+   编辑区上下两段（上 intro 1/4，下 content 3/4），
+   与导航轨知识库面板（knowledge-panel）同一套分段视觉。
+   ============================================================ */
+
+/* ---- 视口兜底：width=900px 放不下时贴边，右半截不再被挡 ---- */
+.settings-dialog--kb{
+    max-width: calc(100vw - 32px);
+}
+
+/* ---- 编辑弹窗：body 自己管高度，不等全局规则 ---- */
+.kb-edit-dialog .el-dialog__body{
+    display: flex;
+    flex-direction: column;
+    /* 桌面：固定一截高度，编辑区在里面填满 → 底下不留白 */
+    height: min(52vh, 480px);
+    max-height: none;
+    overflow: hidden;
+}
+
+.kb-edit-wrap{
+    flex: 1 1 auto;
+    /* 兜底固定高度：父级没被撑出确定高度时（Ace 绝对定位不占流内高度），
+       光靠 flex:1 会塌成只剩标签一行 */
+    height: min(52vh, 480px);
+    min-height: 240px;
+    display: flex;
+    flex-direction: column;
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: #fff;
+}
+
+.kb-edit-seg{
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.kb-edit-seg--intro{ flex: 1; }
+.kb-edit-seg--content{ flex: 3; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+
+.kb-edit-label{
+    flex: none;
+    padding: 5px 12px 3px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-muted, #999);
+    background: #f3f4f6;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    user-select: none;
+}
+
+.kb-edit-host{
+    flex: 1;
+    min-height: 0;
+    position: relative;
+}
+
+.kb-edit-host .ace_editor{
+    position: absolute;
+    inset: 0;
+    font-size: 13px;
+}
+
+/* ---- 窄屏（settings-dialog 全屏那一档）：
+        body 被全局规则 flex:1 撑满整页时跟着长、吃满剩余空间；
+        撑不开时（height:auto）退回 wrap 自身的固定高度，不塌缩 ---- */
+@media (max-width: 768px){
+    .kb-edit-dialog .el-dialog__body{
+        height: auto;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+    }
+}

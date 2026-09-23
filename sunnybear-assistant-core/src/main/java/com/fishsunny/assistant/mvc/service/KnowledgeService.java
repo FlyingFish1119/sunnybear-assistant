@@ -80,4 +80,6 @@ public interface KnowledgeService {
      */
     public record KnowledgeSection(String text, boolean hasNew) {
     }
+
+    String generateIntro(String content);
 }

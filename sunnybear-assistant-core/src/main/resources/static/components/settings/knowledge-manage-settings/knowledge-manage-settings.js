@@ -3,6 +3,8 @@
  *
  * 展示：管理知识条目（条目数量摘要，列表自行加载）
  * 修改：管理对话框内查看全部条目，支持添加、编辑、删除（删除经确认弹窗）
+ * 编辑弹窗上下两段 Ace 编辑器：上 1/4 简介 intro、下 3/4 正文 content，
+ * 与导航轨知识库面板同一套编辑体验；保存仍走底部按钮（手动保存）
  * 添加 / 编辑 / 删除后自行刷新列表
  */
 const KnowledgeManageSettings = {
@@ -30,7 +32,7 @@ const KnowledgeManageSettings = {
             </div>
         </div>
 
-        <el-dialog v-model="dialogs.knowledgemanage" title="" width="800px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close @open="fetchKnowledgeList">
+        <el-dialog v-model="dialogs.knowledgemanage" title="" width="900px" class="settings-dialog settings-dialog--kb" :close-on-click-modal="false" destroy-on-close @open="fetchKnowledgeList">
             <template #header>
                 <div class="dialog-header-wrap">
                     <i data-lucide="book-open" style="width:20px;height:20px"></i>
@@ -68,21 +70,23 @@ const KnowledgeManageSettings = {
             </template>
         </el-dialog>
 
-        <el-dialog v-model="dialogs.knowledgeedit" title="" width="720px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
+        <el-dialog v-model="dialogs.knowledgeedit" title="" width="900px" class="settings-dialog settings-dialog--kb kb-edit-dialog" :close-on-click-modal="false" destroy-on-close @open="mountEditors" @closed="destroyEditors">
             <template #header>
                 <div class="dialog-header-wrap">
                     <i data-lucide="book-open" style="width:20px;height:20px"></i>
                     <span>{{ knowledgeEditForm.id ? '编辑知识条目' : '添加知识条目' }}</span>
                 </div>
             </template>
-            <el-form :model="knowledgeEditForm" label-width="80px" label-position="left">
-                <el-form-item label="简介">
-                    <textarea class="settings-textarea" v-model="knowledgeEditForm.intro" rows="2" placeholder="输入知识简介（约 50 字，比标题内容更丰富，对话时据此挑选注入）" maxlength="200"></textarea>
-                </el-form-item>
-                <el-form-item label="内容">
-                    <textarea class="settings-textarea" v-model="knowledgeEditForm.content" rows="6" placeholder="输入知识内容"></textarea>
-                </el-form-item>
-            </el-form>
+            <div class="kb-edit-wrap">
+                <div class="kb-edit-seg kb-edit-seg--intro">
+                    <div class="kb-edit-label">简介 intro · 约 50 字，对话时据此挑选注入</div>
+                    <div ref="introHost" class="kb-edit-host"></div>
+                </div>
+                <div class="kb-edit-seg kb-edit-seg--content">
+                    <div class="kb-edit-label">内容 content</div>
+                    <div ref="contentHost" class="kb-edit-host"></div>
+                </div>
+            </div>
             <template #footer>
                 <div class="dialog-footer">
                     <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.knowledgeedit = false">取消</button>
@@ -102,7 +106,9 @@ const KnowledgeManageSettings = {
             dialogs: { knowledgemanage: false, knowledgeedit: false },
             knowledgeList: [],
             knowledgeLoading: false,
-            knowledgeEditForm: { id: null, intro: '', content: '' }
+            knowledgeEditForm: { id: null, intro: '', content: '' },
+            introEditor: null,
+            contentEditor: null
         };
     },
 
@@ -140,7 +146,66 @@ const KnowledgeManageSettings = {
             this.$nextTick(() => lucide.createIcons());
         },
 
+        /* ---------- 双段 Ace 编辑器 ---------- */
+        mountEditors() {
+            this.destroyEditors();
+            if (!window.ace) return;
+            // mode/theme 都在本地 lib/ace 下，basePath 必须指过去（断网也不去默认 CDN 找）
+            window.ace.config.set('basePath', API.BASE_PATH + 'lib/ace/');
+            this.introEditor = this.createEditor(this.$refs.introHost, this.knowledgeEditForm.intro || '');
+            this.contentEditor = this.createEditor(this.$refs.contentHost, this.knowledgeEditForm.content || '');
+            // 弹窗入场动画结束后宿主尺寸才定型，补一次 resize 免得编辑区留白/裁切
+            requestAnimationFrame(() => {
+                if (this.introEditor) this.introEditor.resize();
+                if (this.contentEditor) this.contentEditor.resize();
+            });
+        },
+
+        createEditor(host, value) {
+            if (!host) return null;
+            const editor = window.ace.edit(host);
+            editor.setTheme('ace/theme/textmate');
+            editor.session.setMode('ace/mode/markdown');
+            editor.session.setUseWorker(false);
+            editor.session.setUseWrapMode(true);
+            editor.setOptions({
+                fontSize: '13px',
+                showPrintMargin: false,
+                tabSize: 4,
+                useSoftTabs: true
+            });
+            editor.setValue(value, -1);
+            editor.clearSelection();
+            editor.commands.addCommand({
+                name: 'saveKnowledgeEntry',
+                bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
+                exec: () => this.saveKnowledgeEntry()
+            });
+            return editor;
+        },
+
+        destroyEditors() {
+            [this.introEditor, this.contentEditor].forEach(editor => {
+                if (editor) {
+                    try {
+                        editor.destroy();
+                    } catch (e) {
+                        /* 宿主已被移除时 destroy 可能抛错，忽略即可 */
+                    }
+                }
+            });
+            this.introEditor = null;
+            this.contentEditor = null;
+        },
+
         async saveKnowledgeEntry() {
+            // 编辑器在场时以编辑器内容为准（v-model 不经过 Ace，需要手动回读）
+            if (this.introEditor) {
+                this.knowledgeEditForm.intro = this.introEditor.getValue();
+            }
+            if (this.contentEditor) {
+                this.knowledgeEditForm.content = this.contentEditor.getValue();
+            }
             if (!this.knowledgeEditForm.intro.trim()) {
                 ElementPlus.ElMessage.warning('简介不能为空');
                 return;
@@ -199,6 +264,10 @@ const KnowledgeManageSettings = {
                 }
             }
         }
+    },
+
+    beforeUnmount() {
+        this.destroyEditors();
     },
 
     mounted() {
