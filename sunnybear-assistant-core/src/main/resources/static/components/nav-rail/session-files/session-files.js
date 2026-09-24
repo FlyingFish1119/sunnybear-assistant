@@ -816,16 +816,6 @@ const SessionFiles = {
                 });
                 task.percent = this.uploadPercent(task);
 
-                // 已合并过（例如刷新后重选同一文件）：直接按完成处理
-                if (info.completed && info.path) {
-                    task.status = 'done';
-                    task.percent = 100;
-                    task.loaded = file.size;
-                    await this.refreshPath(info.path);
-                    this.finishUploadTask(task.id);
-                    return true;
-                }
-
                 const pending = [];
                 for (let i = 0; i < totalChunks; i++) {
                     if (!received.has(i)) pending.push(i);

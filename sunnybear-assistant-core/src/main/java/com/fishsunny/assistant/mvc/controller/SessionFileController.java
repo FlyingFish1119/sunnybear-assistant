@@ -15,24 +15,25 @@ package com.fishsunny.assistant.mvc.controller;
  */
 
 import com.fishsunny.assistant.dto.RestResponse;
+import com.fishsunny.assistant.utils.FileResponseBuilder;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 
 @RestController
 @RequestMapping("/session/file")
@@ -88,30 +89,23 @@ public class SessionFileController {
     }
 
     /**
-     * 原样输出文件字节，供图片预览 / 二进制下载使用。
+     * 流式输出文件，供图片预览 / 二进制下载 / 断点续传使用。
      * <p>路径同样走会话沙箱解析 —— 不用 /file/proxy 是因为那边走的是「引用」形态，
      * 只认 {sessionId}:{文件名}、不吃子目录，这里要支持 sub/dir/a.png。
+     * <p>带 Range 头时返回 206 + 指定片段（浏览器下载续传、音视频拖动进度依赖它）。
      */
     @GetMapping("/raw")
-    public ResponseEntity<byte[]> raw(@RequestParam(required = false) String sessionId,
-                                      @RequestParam(required = false) String path) {
+    public ResponseEntity<?> raw(@RequestParam(required = false) String sessionId,
+                                 @RequestParam(required = false) String path,
+                                 @RequestHeader(value = HttpHeaders.RANGE, required = false) String range) {
         if (!StringUtils.hasText(sessionId) || !StringUtils.hasText(path)) {
             return ResponseEntity.badRequest().build();
         }
         try {
-            byte[] data = sessionFileManager.readSessionBytes(sessionId, path);
-            if (data == null) {
-                return ResponseEntity.notFound().build();
-            }
-            String contentType = Files.probeContentType(sessionFileManager.resolveSessionFilePath(sessionId, path));
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.parseMediaType(
-                    contentType != null ? contentType : MediaType.APPLICATION_OCTET_STREAM_VALUE));
-            // 文件可能随时被改写，别让浏览器缓存住旧内容
-            headers.setCacheControl("no-cache");
-            return new ResponseEntity<>(data, headers, HttpStatus.OK);
+            Path file = sessionFileManager.resolveSessionFilePath(sessionId, path);
+            return FileResponseBuilder.build(file, Files.probeContentType(file), range);
         } catch (Exception e) {
-            log.warn("读取会话文件字节失败: sessionId={}, path={}", sessionId, path, e);
+            log.warn("读取会话文件失败: sessionId={}, path={}", sessionId, path, e);
             return ResponseEntity.badRequest().build();
         }
     }

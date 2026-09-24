@@ -15,23 +15,24 @@ package com.fishsunny.assistant.mvc.controller;
 
 import com.fishsunny.assistant.dto.RestResponse;
 import com.fishsunny.assistant.utils.CoreFileManager;
+import com.fishsunny.assistant.utils.FileResponseBuilder;
 import lombok.Data;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 
 @RestController
 @RequestMapping("/core/file")
@@ -78,26 +79,21 @@ public class CoreFileController {
         }
     }
 
-    /** 原样输出文件字节，供图片预览 / 加载到发送栏 / 二进制下载使用 */
+    /**
+     * 流式输出文件，供图片预览 / 加载到发送栏 / 二进制下载 / 断点续传使用。
+     * <p>带 Range 头时返回 206 + 指定片段（浏览器下载续传、音视频拖动进度依赖它）。
+     */
     @GetMapping("/raw")
-    public ResponseEntity<byte[]> raw(@RequestParam(required = false) String path) {
+    public ResponseEntity<?> raw(@RequestParam(required = false) String path,
+                                 @RequestHeader(value = HttpHeaders.RANGE, required = false) String range) {
         if (!StringUtils.hasText(path)) {
             return ResponseEntity.badRequest().build();
         }
         try {
-            byte[] data = coreFileManager.readCoreBytes(path);
-            if (data == null) {
-                return ResponseEntity.notFound().build();
-            }
-            String contentType = Files.probeContentType(coreFileManager.resolveCoreFilePath(path));
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.parseMediaType(
-                    contentType != null ? contentType : MediaType.APPLICATION_OCTET_STREAM_VALUE));
-            // 文件可能随时被改写，别让浏览器缓存住旧内容
-            headers.setCacheControl("no-cache");
-            return new ResponseEntity<>(data, headers, HttpStatus.OK);
+            Path file = coreFileManager.resolveCoreFilePath(path);
+            return FileResponseBuilder.build(file, Files.probeContentType(file), range);
         } catch (Exception e) {
-            log.warn("读取核心文件字节失败: path={}", path, e);
+            log.warn("读取核心文件失败: path={}", path, e);
             return ResponseEntity.badRequest().build();
         }
     }

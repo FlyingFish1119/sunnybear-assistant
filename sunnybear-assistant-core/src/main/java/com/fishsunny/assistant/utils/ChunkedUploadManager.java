@@ -109,6 +109,13 @@ public class ChunkedUploadManager {
         Path dir = stagingDir(uploadId);
         Files.createDirectories(dir);
         Meta meta = readMeta(dir);
+        // 残留的"已完成"标记（旧版本数据）一律清掉：完成态不再代表可续传，
+        // 同一文件重新上传应当重新走一遍，而不是被当成"上次已完成"直接跳过
+        if (meta != null && meta.isCompleted()) {
+            deleteStagingDir(dir);
+            Files.createDirectories(dir);
+            meta = null;
+        }
         if (meta == null) {
             meta = new Meta();
             meta.setUploadId(uploadId);
@@ -226,22 +233,23 @@ public class ChunkedUploadManager {
             throw e;
         }
 
-        // 分片已无用，删掉；meta 保留（completed=true）以便 complete/status 幂等
-        for (int i = 0; i < meta.getTotalChunks(); i++) {
-            Files.deleteIfExists(dir.resolve(partName(i)));
-        }
         String relativePath = relativePathOf(meta, target);
-        meta.setCompleted(true);
-        meta.setResultPath(relativePath);
-        writeMeta(dir, meta);
+        // 合并成功即清空暂存目录（含 meta）：完成态不保留，否则同一文件再次上传时
+        // 会命中同一个 uploadId、被"已完成"标记挡住而实际不传
+        deleteStagingDir(dir);
         log.info("分片上传合并完成: uploadId={}, chunks={}, -> {}", id, meta.getTotalChunks(), relativePath);
-        return buildStatus(id, meta, dir);
+        return new UploadStatus(id, meta.getTotalChunks(), allIndexes(meta.getTotalChunks()), true, relativePath, true);
     }
 
     /** 放弃上传并清空暂存目录 */
     public void abort(String uploadId) throws IOException {
         String id = requireUploadId(uploadId);
-        Path dir = stagingDir(id);
+        deleteStagingDir(stagingDir(id));
+        log.info("分片上传已放弃: uploadId={}", id);
+    }
+
+    /** 递归删除整个暂存目录（含 meta / 分片 / 临时文件）；目录不存在视为已完成 */
+    private void deleteStagingDir(Path dir) throws IOException {
         if (!Files.exists(dir)) {
             return;
         }
@@ -250,11 +258,10 @@ public class ChunkedUploadManager {
                 try {
                     Files.deleteIfExists(p);
                 } catch (IOException e) {
-                    log.warn("清理分片失败: {}", p, e);
+                    log.warn("清理上传暂存文件失败: {}", p, e);
                 }
             });
         }
-        log.info("分片上传已放弃: uploadId={}", id);
     }
 
     /**
