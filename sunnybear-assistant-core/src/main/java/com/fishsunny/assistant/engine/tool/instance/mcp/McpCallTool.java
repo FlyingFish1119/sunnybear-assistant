@@ -61,7 +61,7 @@ public class McpCallTool implements ToolHandler, MultimodalResultAble {
         ToolRegister.Parameters serverNameParam = new ToolRegister.Parameters()
                 .setParameterName("serverName")
                 .setType("string")
-                .setDescription("MCP Server 连接名，对应 application.yml 中 engine.tool.mcp.clients[].server-name，例如 mcp-server");
+                .setDescription("MCP Server 连接名，对应设置中 MCP Server 的 serverName，例如 mcp-server");
 
         ToolRegister.Parameters toolNameParam = new ToolRegister.Parameters()
                 .setParameterName("toolName")

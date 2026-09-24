@@ -3,6 +3,7 @@ package com.fishsunny.assistant.engine.tool.service.mcp;
 /*
  * @Usage MCP (Model Context Protocol) 客户端门面 —— 按 transport 为每个配置的 MCP Server 装配对应传输实现，
  *        负责工具清单汇总（含分页合并）与工具调用。连接懒加载、会话复用，会话失效由客户端自动重建。
+ *        配置来源为 settings/mcp_settings.json；设置页保存后调用 {@link #reload} 热替换，无需重启。
  *
  * @Project sunnybear-assistant-core
  * @Author FlyingFish-SunnyBear
@@ -10,6 +11,7 @@ package com.fishsunny.assistant.engine.tool.service.mcp;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.settings.McpSettings;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,19 +29,46 @@ public class McpClientService {
     /** 工具分页拉取上限，防止服务端游标永不结束导致死循环 */
     private static final int MAX_PAGES = 100;
 
+    private final HttpClient httpClient;
+    private final ObjectMapper objectMapper;
+
     /** serverName → 客户端，配置顺序即遍历顺序 */
     private final Map<String, McpClient> clients = new LinkedHashMap<>();
 
-    public McpClientService(McpProperties properties, HttpClient httpClient, ObjectMapper objectMapper) {
-        for (McpProperties.Client client : properties.getClients()) {
-            clients.put(client.getServerName(), create(client, httpClient, objectMapper));
-        }
+    /** 当前配置快照；reload 时整体替换 */
+    private volatile List<McpSettings.Client> configs = List.of();
+
+    public McpClientService(McpSettings settings, HttpClient httpClient, ObjectMapper objectMapper) {
+        this.httpClient = httpClient;
+        this.objectMapper = objectMapper;
+        reload(settings);
     }
 
-    private static McpClient create(McpProperties.Client client, HttpClient httpClient, ObjectMapper objectMapper) {
+    /**
+     * 用最新配置重建全部客户端：先关掉旧连接（含 stdio 子进程），再按新配置装配。
+     * 设置页保存后调用，使改动立即生效。
+     */
+    public synchronized void reload(McpSettings settings) {
+        closeAll();
+        clients.clear();
+        configs = settings == null || settings.getClients() == null
+                ? List.of()
+                : List.copyOf(settings.getClients());
+        for (McpSettings.Client client : configs) {
+            clients.put(client.getServerName(), create(client));
+        }
+        log.info("MCP 客户端已装配 {} 个 Server: {}", clients.size(), clients.keySet());
+    }
+
+    private McpClient create(McpSettings.Client client) {
         return client.isStdio()
                 ? new McpStdioClient(client, objectMapper)
                 : new McpHttpClient(client, httpClient, objectMapper);
+    }
+
+    /** 当前已配置的 Server 列表（顺序即配置顺序），供清单工具枚举 */
+    public List<McpSettings.Client> clients() {
+        return configs;
     }
 
     /** 拉取指定 server 的全部工具（自动遍历分页合并）；未配置的 serverName 抛 IllegalArgumentException */
@@ -69,6 +98,10 @@ public class McpClientService {
     /** 应用关闭时终止 stdio 子进程，避免进程泄漏 */
     @PreDestroy
     public void close() {
+        closeAll();
+    }
+
+    private void closeAll() {
         for (Map.Entry<String, McpClient> entry : clients.entrySet()) {
             try {
                 entry.getValue().close();

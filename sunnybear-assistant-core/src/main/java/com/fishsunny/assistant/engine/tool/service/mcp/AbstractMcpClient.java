@@ -13,6 +13,7 @@ package com.fishsunny.assistant.engine.tool.service.mcp;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.settings.McpSettings;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
@@ -30,7 +31,7 @@ public abstract class AbstractMcpClient implements McpClient {
     /** 会话失效后的重建次数上限（1 次初始 + 1 次重建），防止对端持续失效导致死循环 */
     private static final int MAX_RETRY = 2;
 
-    protected final McpProperties.Client client;
+    protected final McpSettings.Client client;
 
     protected final ObjectMapper objectMapper;
 
@@ -41,7 +42,7 @@ public abstract class AbstractMcpClient implements McpClient {
     /** 握手协商出的协议版本，后续请求使用 */
     protected volatile String negotiatedProtocolVersion = PROTOCOL_VERSION;
 
-    protected AbstractMcpClient(McpProperties.Client client, ObjectMapper objectMapper) {
+    protected AbstractMcpClient(McpSettings.Client client, ObjectMapper objectMapper) {
         this.client = client;
         this.objectMapper = objectMapper;
     }

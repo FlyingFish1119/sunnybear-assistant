@@ -2,7 +2,7 @@ package com.fishsunny.assistant.engine.tool.instance.mcp;
 
 /*
  * @Usage 列出 MCP Server 提供的工具清单（名称、描述、入参 Schema），
- *        不传 serverName 时遍历 application.yml 中所有已配置的 MCP Server
+ *        不传 serverName 时遍历设置中所有已配置的 MCP Server
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
@@ -17,8 +17,8 @@ import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.McpToolKit;
 import com.fishsunny.assistant.engine.tool.service.mcp.McpClientService;
 import com.fishsunny.assistant.engine.tool.service.mcp.McpListToolsResult;
-import com.fishsunny.assistant.engine.tool.service.mcp.McpProperties;
 import com.fishsunny.assistant.engine.tool.service.mcp.McpTool;
+import com.fishsunny.assistant.settings.McpSettings;
 import lombok.Data;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
@@ -37,13 +37,11 @@ public class McpListTool implements ToolHandler {
     private static final Integer TIMEOUT_MS = 30_000;
 
     private final McpClientService mcpClientService;
-    private final McpProperties mcpProperties;
     private final ObjectMapper objectMapper;
     private final ToolRegister register;
 
-    public McpListTool(McpClientService mcpClientService, McpProperties mcpProperties, ObjectMapper objectMapper) {
+    public McpListTool(McpClientService mcpClientService, ObjectMapper objectMapper) {
         this.mcpClientService = mcpClientService;
-        this.mcpProperties = mcpProperties;
         this.objectMapper = objectMapper;
 
         register = new ToolRegister()
@@ -57,7 +55,7 @@ public class McpListTool implements ToolHandler {
         ToolRegister.Parameters serverNameParam = new ToolRegister.Parameters()
                 .setParameterName("serverName")
                 .setType("string")
-                .setDescription("MCP Server 连接名，对应 application.yml 中 engine.tool.mcp.clients[].server-name，例如 mcp-server。不传则列出全部 server");
+                .setDescription("MCP Server 连接名，对应设置中 MCP Server 的 serverName，例如 mcp-server。不传则列出全部 server");
 
         register.setParameters(List.of(serverNameParam));
     }
@@ -68,30 +66,30 @@ public class McpListTool implements ToolHandler {
         String serverName = arguments == null ? null : arguments.getServerName();
 
         // 指定了 serverName 只查该 server，否则遍历全部已配置的 server
-        List<McpProperties.Client> targets = new ArrayList<>();
+        List<McpSettings.Client> targets = new ArrayList<>();
         if (StringUtils.hasText(serverName)) {
-            McpProperties.Client target = mcpProperties.getClients().stream()
+            McpSettings.Client target = mcpClientService.clients().stream()
                     .filter(client -> serverName.equals(client.getServerName()))
                     .findFirst()
                     .orElseThrow(() -> new ToolExecutor.ToolExecuteException(
                             "未找到名为 [" + serverName + "] 的 MCP Server 配置，可用的有: " + serverNames()));
             targets.add(target);
         } else {
-            targets.addAll(mcpProperties.getClients());
+            targets.addAll(mcpClientService.clients());
         }
         if (targets.isEmpty()) {
-            throw new ToolExecutor.ToolExecuteException("application.yml 中未配置任何 MCP Server（engine.tool.mcp.clients）");
+            throw new ToolExecutor.ToolExecuteException("尚未配置任何 MCP Server（可在左侧导航轨的 MCP 面板中添加）");
         }
 
         StringBuilder output = new StringBuilder();
-        for (McpProperties.Client target : targets) {
+        for (McpSettings.Client target : targets) {
             output.append(renderServer(target)).append("\n");
         }
         return new ToolExecutor.ToolExecuteResponse(name(), output.toString().trim());
     }
 
     /** 渲染单个 server 的工具清单；查询失败不影响其余 server */
-    private String renderServer(McpProperties.Client target) {
+    private String renderServer(McpSettings.Client target) {
         StringBuilder output = new StringBuilder("## MCP Server [").append(target.getServerName()).append("]");
         try {
             McpListToolsResult result = mcpClientService.listTools(target.getServerName());
@@ -121,8 +119,8 @@ public class McpListTool implements ToolHandler {
     }
 
     private String serverNames() {
-        return mcpProperties.getClients().stream()
-                .map(McpProperties.Client::getServerName)
+        return mcpClientService.clients().stream()
+                .map(McpSettings.Client::getServerName)
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("(无)");
     }

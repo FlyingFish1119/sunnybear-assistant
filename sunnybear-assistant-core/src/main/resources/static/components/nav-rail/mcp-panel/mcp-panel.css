@@ -1,0 +1,322 @@
+/* ============================================================
+   MCP Panel —— MCP Server 双层抽屉
+   ------------------------------------------------------------
+   结构：遮罩 + 两层浮层抽屉（都从左往右依次展开）
+     · 第一层 .mcp-drawer--list   Server 列表（贴着导航轨滑出）
+     · 第二层 .mcp-drawer--editor 连接编辑器（跳条件渲染，接着往右展开）
+
+   宽度：第一层 300px、第二层 560px，窄屏按比例收。
+   移动端（≤768px）导航轨隐藏，遮罩与抽屉从 0 起算，第二层盖满屏。
+   ============================================================ */
+
+.mcp-overlay{
+    --mcp-rail-w: 56px;
+    --mcp-list-w: 300px;
+    --mcp-editor-w: 560px;
+
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: var(--mcp-rail-w);
+    z-index: 1200;                 /* 高于页面内容，低于 el-dialog 与 toast */
+    display: flex;
+    background: rgba(17, 24, 39, 0.28);
+}
+
+/* ---- 抽屉公共件 ---- */
+.mcp-drawer{
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100%;
+    box-sizing: border-box;
+    background: #fff;
+    box-shadow: 0 0 28px rgba(17, 24, 39, 0.18);
+}
+
+.mcp-drawer--list{
+    flex: none;
+    width: var(--mcp-list-w);
+    border-right: 1px solid rgba(0, 0, 0, 0.06);
+    animation: mcp-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.mcp-drawer--editor{
+    flex: 1;
+    max-width: var(--mcp-editor-w);
+    animation: mcp-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes mcp-slide-in{
+    from{ opacity: 0; transform: translateX(-22px); }
+    to  { opacity: 1; transform: translateX(0); }
+}
+
+/* ---- 抽屉头部 ---- */
+.mcp-head{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 52px;
+    padding: 0 10px 0 14px;
+    box-sizing: border-box;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+}
+
+.mcp-title{
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary, #333);
+}
+
+.mcp-title svg{
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: var(--main-color, lightsalmon);
+}
+
+.mcp-title-text{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcp-btn{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mcp-btn svg{ width: 16px; height: 16px; display: block; }
+.mcp-btn:hover{ background: #f2f2f2; color: #333; }
+.mcp-btn:disabled{ opacity: 0.45; cursor: not-allowed; }
+
+/* ---- 第一层：Server 列表 ---- */
+.mcp-list{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 8px 12px;
+    scrollbar-width: thin;
+}
+
+.mcp-row{
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 5px 4px 5px 6px;
+    box-sizing: border-box;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #333;
+    user-select: none;
+}
+
+.mcp-row:hover{ background: #f4f5f7; }
+.mcp-row.is-active{ background: color-mix(in srgb, var(--main-color, #FFA07A) 16%, #fff); }
+
+.mcp-row-icon{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    color: color-mix(in srgb, var(--main-color, #FFA07A) 78%, #6b6258);
+}
+
+.mcp-row-icon svg{ width: 16px; height: 16px; display: block; }
+
+.mcp-row-body{
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.mcp-row-name{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.mcp-row-sub{
+    font-size: 11px;
+    color: var(--text-muted, #999);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mcp-row-actions{
+    flex: none;
+    display: none;
+    align-items: center;
+    gap: 2px;
+}
+
+.mcp-row:hover .mcp-row-actions{ display: flex; }
+
+.mcp-row-btn{
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #777;
+    cursor: pointer;
+}
+
+.mcp-row-btn svg{ width: 13px; height: 13px; display: block; }
+.mcp-row-btn:hover{ background: #e8eaed; color: #333; }
+.mcp-row-btn.is-danger:hover{ background: #fdecec; color: #e5484d; }
+
+.mcp-empty,
+.mcp-hint{
+    padding: 18px 12px;
+    font-size: 12.5px;
+    color: var(--text-muted, #999);
+    text-align: center;
+    line-height: 1.6;
+}
+
+/* ---- 第二层：连接编辑器 ---- */
+.mcp-form{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px 18px 24px;
+    background: #fbfbfc;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    scrollbar-width: thin;
+}
+
+.mcp-field{
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mcp-field-label{
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    letter-spacing: 0.02em;
+}
+
+.mcp-input,
+.mcp-textarea{
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
+    background: #fff;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #333;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 0.15s ease;
+}
+
+.mcp-input{
+    height: 36px;
+    padding: 0 11px;
+}
+
+.mcp-textarea{
+    min-height: 72px;
+    padding: 8px 11px;
+    resize: vertical;
+}
+
+.mcp-input:focus,
+.mcp-textarea:focus{
+    border-color: color-mix(in srgb, var(--main-color, #FFA07A) 62%, #fff);
+}
+
+.mcp-form .el-input-number{ width: 160px; }
+
+/* ---- 状态条 ---- */
+.mcp-status{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 30px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+    font-size: 11.5px;
+    color: var(--text-muted, #999);
+}
+
+.mcp-status-dot{
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #c9ccd1;
+    flex: none;
+}
+
+.mcp-status-dot.is-dirty{ background: #f0a02a; }
+.mcp-status-dot.is-saving{ background: #3b82f6; }
+.mcp-status-dot.is-saved{ background: #2fb344; }
+.mcp-status-dot.is-error{ background: #e5484d; }
+
+.mcp-status-action{
+    flex: none;
+    cursor: pointer;
+    color: #4b5563;
+}
+
+.mcp-status-action:hover{ text-decoration: underline; }
+
+/* 跟随系统的「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce){
+    .mcp-drawer--list,
+    .mcp-drawer--editor{ animation: none; }
+}
+
+/* ---- 窄屏：导航轨不显示，第二层盖在第一层上 ---- */
+@media (max-width: 768px){
+    .mcp-overlay{
+        --mcp-rail-w: 0px;
+        --mcp-list-w: 78vw;
+        --mcp-editor-w: 100vw;
+    }
+
+    .mcp-drawer--editor{
+        position: absolute;
+        left: 0;
+        right: 0;
+        max-width: none;
+    }
+}

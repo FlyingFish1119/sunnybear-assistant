@@ -51,6 +51,7 @@ public class SettingsLoader {
     private static final String KNOWLEDGE_SETTINGS_JSON = "knowledge_settings.json";
     private static final String MEMORY_SETTINGS_JSON = "memory_settings.json";
     private static final String TOOLKIT_SETTINGS_JSON = "toolkit_settings.json";
+    private static final String MCP_SETTINGS_JSON = "mcp_settings.json";
 
     // ============================== 字段 & 构造 ==============================
 
@@ -65,6 +66,7 @@ public class SettingsLoader {
     private String knowledgeSettingsPath;
     private String memorySettingsPath;
     private String toolKitSettingsPath;
+    private String mcpSettingsPath;
 
     @PostConstruct
     public void init() {
@@ -75,6 +77,7 @@ public class SettingsLoader {
         knowledgeSettingsPath = basePath + "/" + KNOWLEDGE_SETTINGS_JSON;
         memorySettingsPath = basePath + "/" + MEMORY_SETTINGS_JSON;
         toolKitSettingsPath = basePath + "/" + TOOLKIT_SETTINGS_JSON;
+        mcpSettingsPath = basePath + "/" + MCP_SETTINGS_JSON;
     }
 
     private final ObjectMapper objectMapper;
@@ -350,6 +353,41 @@ public class SettingsLoader {
             log.error("读取工具集可见性设置文件失败: {}，原因: {}，将使用默认设置（全部按代码声明）",
                     settingsFile.getAbsolutePath(), e.getMessage(), e);
             return new ToolKitSettings();
+        }
+    }
+
+    // ============================== MCP Server 配置 ==============================
+
+    /**
+     * 读取并解析 MCP Server 配置（clients 列表），装配为 Spring Bean。
+     * 文件缺失或解析失败时返回空配置 —— MCP 工具照常注册，只是没有可用的 server。
+     */
+    @Bean
+    public McpSettings mcpSettings() {
+        File settingsFile = new File(mcpSettingsPath);
+
+        if (!settingsFile.exists()) {
+            log.warn("MCP 设置文件不存在: {}，将使用空配置", settingsFile.getAbsolutePath());
+            return new McpSettings();
+        }
+        if (!settingsFile.isFile()) {
+            log.warn("MCP 设置路径不是一个有效的文件: {}，将使用空配置", settingsFile.getAbsolutePath());
+            return new McpSettings();
+        }
+
+        try {
+            McpSettings settings = objectMapper.readValue(settingsFile, McpSettings.class);
+            if (settings == null) {
+                return new McpSettings();
+            }
+            log.info("MCP 设置文件加载成功: {}，已配置 {} 个 Server",
+                    settingsFile.getAbsolutePath(),
+                    settings.getClients() == null ? 0 : settings.getClients().size());
+            return settings;
+        } catch (IOException e) {
+            log.error("读取 MCP 设置文件失败: {}，原因: {}，将使用空配置",
+                    settingsFile.getAbsolutePath(), e.getMessage(), e);
+            return new McpSettings();
         }
     }
 

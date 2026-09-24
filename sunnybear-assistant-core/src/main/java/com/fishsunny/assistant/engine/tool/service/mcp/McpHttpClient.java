@@ -11,6 +11,7 @@ package com.fishsunny.assistant.engine.tool.service.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.settings.McpSettings;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;
@@ -38,7 +39,7 @@ public class McpHttpClient extends AbstractMcpClient {
     /** 握手后非空；随每次响应头刷新 */
     private volatile String sessionId;
 
-    public McpHttpClient(McpProperties.Client client, HttpClient httpClient, ObjectMapper objectMapper) {
+    public McpHttpClient(McpSettings.Client client, HttpClient httpClient, ObjectMapper objectMapper) {
         super(client, objectMapper);
         this.httpClient = httpClient;
     }

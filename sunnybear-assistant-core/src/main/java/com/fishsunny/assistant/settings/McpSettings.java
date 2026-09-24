@@ -1,16 +1,17 @@
-package com.fishsunny.assistant.engine.tool.service.mcp;
+package com.fishsunny.assistant.settings;
 
 /*
- * @Usage MCP 配置属性（engine.tool.mcp 前缀）
+ * @Usage MCP Server 配置（settings/mcp_settings.json）
+ *        仅承载「具体连接配置」；是否注册 MCP 工具集由 application.yml 的
+ *        engine.tool.mcp.enable 控制（启动期条件装配，不放这里）。
  *
  * @Project sunnybear-assistant-core
  * @Author FlyingFish-SunnyBear
- * @Date 2026/8/25 11:04
+ * @Date 2026/9/24
  */
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -18,9 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 @Data
-@Component
-@ConfigurationProperties(prefix = "engine.tool.mcp")
-public class McpProperties {
+public class McpSettings {
 
     private List<Client> clients = new ArrayList<>();
 
@@ -54,7 +53,8 @@ public class McpProperties {
 
         private String clientName = "MCP Client";
 
-        /** 是否走 stdio 子进程传输；transport 不区分大小写 */
+        /** 是否走 stdio 子进程传输；transport 不区分大小写（派生属性，不参与 JSON 读写） */
+        @JsonIgnore
         public boolean isStdio() {
             return "stdio".equalsIgnoreCase(transport);
         }

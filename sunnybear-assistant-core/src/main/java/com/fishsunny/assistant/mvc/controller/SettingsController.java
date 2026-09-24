@@ -14,9 +14,11 @@ import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.instance.os.CommandTool;
 import com.fishsunny.assistant.engine.tool.instance.os.ExtensionScriptTool;
 import com.fishsunny.assistant.engine.tool.service.ToolVisibilityPolicy;
+import com.fishsunny.assistant.engine.tool.service.mcp.McpClientService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.KnowledgeSettings;
+import com.fishsunny.assistant.settings.McpSettings;
 import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.settings.ToolKitSettings;
 import com.fishsunny.assistant.settings.UserSettings;
@@ -69,6 +71,7 @@ public class SettingsController {
     private final String knowledgeSettingsPath;
     private final String memorySettingsPath;
     private final String toolKitSettingsPath;
+    private final String mcpSettingsPath;
 
     // ========================= 设置 Bean =========================
     private final UserSettings userSettings;
@@ -76,6 +79,8 @@ public class SettingsController {
     private final MemorySettings memorySettings;
     private final KnowledgeSettings knowledgeSettings;
     private final ToolKitSettings toolKitSettings;
+    private final McpSettings mcpSettings;
+    private final McpClientService mcpClientService;
     private final List<ToolKit> toolKits;
     private final ToolVisibilityPolicy toolVisibilityPolicy;
     private final Map<String, AISettings> aiSettingsMap;
@@ -91,10 +96,13 @@ public class SettingsController {
             @Value("${knowledge-settings.path:settings/knowledge_settings.json}") String knowledgeSettingsPath,
             @Value("${memory-settings.path:settings/memory_settings.json}") String memorySettingsPath,
             @Value("${toolkit-settings.path:settings/toolkit_settings.json}") String toolKitSettingsPath,
+            @Value("${mcp-settings.path:settings/mcp_settings.json}") String mcpSettingsPath,
             UserSettings userSettings,
             AssistantSettings assistantSettings,
             MemorySettings memorySettings,
             ToolKitSettings toolKitSettings,
+            McpSettings mcpSettings,
+            McpClientService mcpClientService,
             List<ToolKit> toolKits,
             ToolVisibilityPolicy toolVisibilityPolicy,
             @Qualifier(AISettings.CHAT) AISettings chatAISettings,
@@ -123,11 +131,14 @@ public class SettingsController {
         this.knowledgeSettingsPath = knowledgeSettingsPath;
         this.memorySettingsPath = memorySettingsPath;
         this.toolKitSettingsPath = toolKitSettingsPath;
+        this.mcpSettingsPath = mcpSettingsPath;
         this.userSettings = userSettings;
         this.assistantSettings = assistantSettings;
         this.memorySettings = memorySettings;
         this.knowledgeSettings = knowledgeSettings;
         this.toolKitSettings = toolKitSettings;
+        this.mcpSettings = mcpSettings;
+        this.mcpClientService = mcpClientService;
         this.toolKits = toolKits;
         this.toolVisibilityPolicy = toolVisibilityPolicy;
         this.aiSettingsMap = new LinkedHashMap<>();
@@ -667,6 +678,76 @@ public class SettingsController {
     }
 
     public record ToolView(String name, String description) {
+    }
+
+    // ==================== MCP Server 配置 ====================
+
+    @RequestMapping("/mcp/get")
+    public RestResponse getMcpSettings() {
+        return new RestResponse().success(mcpSettings);
+    }
+
+    /**
+     * 保存 MCP Server 配置并热生效：校验通过后落盘 mcp_settings.json，
+     * 再让 McpClientService 重建全部连接（含关闭旧的 stdio 子进程），无需重启。
+     */
+    @PostMapping("/mcp/save")
+    public RestResponse saveMcpSettings(@RequestBody(required = false) McpSettings settings) {
+        if (settings == null || settings.getClients() == null) {
+            return new RestResponse().error("Invalid settings");
+        }
+
+        List<McpSettings.Client> sanitized = new ArrayList<>();
+        Set<String> names = new java.util.HashSet<>();
+        for (McpSettings.Client client : settings.getClients()) {
+            if (client == null || !StringUtils.hasText(client.getServerName())) {
+                return new RestResponse().error("每个 MCP Server 都需要填写 serverName");
+            }
+            String serverName = client.getServerName().trim();
+            if (!names.add(serverName)) {
+                return new RestResponse().error("MCP Server 名称重复: " + serverName);
+            }
+            client.setServerName(serverName);
+
+            boolean stdio = client.isStdio();
+            client.setTransport(stdio ? "stdio" : "http");
+            if (stdio) {
+                if (!StringUtils.hasText(client.getCommand())) {
+                    return new RestResponse().error("MCP Server [" + serverName + "] transport=stdio 需要填写 command");
+                }
+            } else if (!StringUtils.hasText(client.getUrl())) {
+                return new RestResponse().error("MCP Server [" + serverName + "] transport=http 需要填写 url");
+            }
+
+            if (client.getTimeoutS() == null || client.getTimeoutS() <= 0) {
+                client.setTimeoutS(20);
+            }
+            if (client.getArgs() == null) {
+                client.setArgs(new ArrayList<>());
+            }
+            if (client.getEnv() == null) {
+                client.setEnv(new LinkedHashMap<>());
+            }
+            sanitized.add(client);
+        }
+
+        mcpSettings.setClients(sanitized);
+
+        File settingsFile = new File(mcpSettingsPath);
+        File parent = settingsFile.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            log.error("创建 MCP 设置目录失败: {}", parent.getAbsolutePath());
+            return new RestResponse().error("保存失败");
+        }
+        try {
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(settingsFile, mcpSettings);
+        } catch (Exception e) {
+            log.error("保存 MCP 设置失败: {}", e.getMessage());
+            return new RestResponse().error("保存失败");
+        }
+
+        mcpClientService.reload(mcpSettings);
+        return new RestResponse().success("保存成功");
     }
 
     @RequestMapping("/knowledgesettings/get")

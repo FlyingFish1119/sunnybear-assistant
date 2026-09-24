@@ -13,6 +13,7 @@ package com.fishsunny.assistant.engine.tool.service.mcp;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.MissingNode;
+import com.fishsunny.assistant.settings.McpSettings;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
 
@@ -47,7 +48,7 @@ public class McpStdioClient extends AbstractMcpClient {
 
     private BufferedWriter stdin;
 
-    public McpStdioClient(McpProperties.Client client, ObjectMapper objectMapper) {
+    public McpStdioClient(McpSettings.Client client, ObjectMapper objectMapper) {
         super(client, objectMapper);
     }
 

@@ -184,6 +184,10 @@ const API = (function () {
                 list: function () { return get('settings/tools/kits'); },
                 save: function (data) { return post('settings/toolkit/save', data); }
             },
+            mcp: {
+                get: function () { return get('settings/mcp/get'); },
+                save: function (data) { return post('settings/mcp/save', data); }
+            },
             knowledgesettings: {
                 get: function () { return get('settings/knowledgesettings/get'); },
                 save: function (data) { return post('settings/knowledge/save', data); }
