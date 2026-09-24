@@ -212,6 +212,8 @@
     <script src="utils/file-url.js"></script>
     <script src="utils/message-utils.js"></script>
     <script src="utils/token-format.js"></script>
+    <!-- 地址栏状态同步：选择会话时写 ?sessionId=，刷新后据此恢复 -->
+    <script src="utils/url-state.js"></script>
     <!-- 图片查看器（灯箱）：点图在本页浮层里放大，不再跳新标签页 -->
     <script src="components/image-viewer/image-viewer.js"></script>
     <!-- 禁用浏览器原生右键菜单（后续由自定义菜单接管） -->
@@ -410,6 +412,10 @@
             wsUrl: function () {
                 return API.ws.url
             },
+            /** 当前会话 id：用于把选中的会话同步进地址栏（刷新后可恢复） */
+            currentSessionId: function () {
+                return this.sessionStore ? this.sessionStore.currentSessionId : undefined;
+            },
             /** 导航轨面板清单：注册表里带 component 的项（纯按钮不挂载） */
             railPanels() {
                 return RailPlugins.snapshot().filter(e => e.component);
@@ -439,6 +445,14 @@
                     document.documentElement.style.setProperty('--el-color-primary', val);
                 },
                 immediate: true
+            },
+            // 会话切换 / 新建（id 变 undefined）时同步地址栏，供刷新恢复
+            currentSessionId(val) {
+                if (val) {
+                    UrlState.write('sessionId', val);
+                } else {
+                    UrlState.remove('sessionId');
+                }
             }
         },
 
@@ -534,7 +548,33 @@
                     this.fetchUserSettings(),
                     this.fetchAssistantSettings()
                 ]);
+                await this.restoreSessionFromUrl();
                 this.outLoading();
+            },
+
+            /**
+             * 刷新后按地址栏的 ?sessionId= 恢复上次查看的会话。
+             * 会话不在已加载列表里时，直接按 id 拉取；已被删除则清掉参数。
+             */
+            async restoreSessionFromUrl() {
+                const id = UrlState.read('sessionId');
+                if (!id || !this.sessionStore) return;
+                try {
+                    let session = this.sessionStore.getSessionById(id);
+                    if (!session) {
+                        const result = await API.session.get(id);
+                        if (result && result.status === 200 && result.data) {
+                            session = result.data;
+                        }
+                    }
+                    if (session) {
+                        await this.sessionStore.selectSession(session);
+                    } else {
+                        UrlState.remove('sessionId');
+                    }
+                } catch (e) {
+                    console.error('从 URL 恢复会话失败:', e);
+                }
             },
 
             async fetchUserSettings() {

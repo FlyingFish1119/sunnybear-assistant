@@ -22,9 +22,19 @@ const CharacterSettingsButton = {
         mainColor: { type: String, default: 'lightsalmon' }
     },
 
+    inject: {
+        // 页面级共享状态（character_index.html 注入）：取当前角色 id 带入设置页
+        characterPage: { default: null }
+    },
+
     methods: {
         go: function () {
-            window.location.href = API.BASE_PATH + 'plug/character/character_settings.html';
+            var id = this.characterPage && this.characterPage.characterId;
+            var url = API.BASE_PATH + 'plug/character/character_settings.html';
+            if (id) {
+                url += '?characterId=' + encodeURIComponent(id);
+            }
+            window.location.href = url;
         }
     },
 

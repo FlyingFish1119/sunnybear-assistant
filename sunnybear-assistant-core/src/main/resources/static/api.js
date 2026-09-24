@@ -206,6 +206,8 @@ const API = (function () {
         /* ---------- 会话 ---------- */
         session: {
             getAll: function (type) { return get('session/get/all?type=' + encodeURIComponent(type || 'chat')); },
+            /** 按 id 获取单个会话（不存在时 data 为 null） */
+            get: function (id) { return get('session/get?sessionId=' + encodeURIComponent(id)); },
             /**
              * keyset 分页获取会话（侧边栏无限滚动用）。
              * 首屏不传 beforeTime/beforeId；翻页传上一页最旧一条的 updateTime + id。

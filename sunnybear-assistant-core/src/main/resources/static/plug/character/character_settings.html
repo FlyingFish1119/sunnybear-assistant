@@ -16,6 +16,7 @@
     <script src="../../utils/lucide-safe.js"></script>
     <script src="../../api.js"></script>
     <script src="character-api.js"></script>
+    <script src="../../utils/url-state.js"></script>
     <script src="../../components/confirm-dialog/confirm-dialog.js"></script>
     <link rel="stylesheet" href="../../components/confirm-dialog/confirm-dialog.css"/>
     <script src="components/glossary-manager/glossary-manager.js"></script>
@@ -1202,6 +1203,8 @@ const app = Vue.createApp({
             destroyingDb: false,
             savingUser: false,
             selectedId: null,
+            /** 从地址栏带入的当前角色 id：未切换角色时原样带回对话页 */
+            currentCharacterId: null,
             isEdit: false,
             sidebarCollapsed: false,
             sidebarOpen: false,
@@ -1277,7 +1280,12 @@ const app = Vue.createApp({
     methods: {
         $api(path) { return API.BASE_PATH + path; },
 
-        goBack() { window.location.href = this.$api('plug/character/character_index.html'); },
+        goBack() {
+            // 未切换角色时把当前角色 id 带回对话页；已切换则用新选中的角色
+            var id = this.selectedId || this.currentCharacterId;
+            var url = this.$api('plug/character/character_index.html');
+            window.location.href = id ? url + '?characterId=' + encodeURIComponent(id) : url;
+        },
 
         toggleSidebar() {
             if (window.innerWidth >= 769) {
@@ -1362,6 +1370,8 @@ const app = Vue.createApp({
         selectCharacter(c) {
             this.closeSidebar();
             this.selectedId = c.id;
+            this.currentCharacterId = c.id;
+            UrlState.write('characterId', c.id);
             this.isEdit = true;
             this.showAdvanced = false;
             this.showChatSelect = false;
@@ -1401,6 +1411,8 @@ const app = Vue.createApp({
         createCharacter() {
             this.closeSidebar();
             this.selectedId = null;
+            this.currentCharacterId = null;
+            UrlState.remove('characterId');
             this.isEdit = true;
             this.showAdvanced = false;
             this.showTools = false;
@@ -1419,6 +1431,8 @@ const app = Vue.createApp({
         },
         cancelEdit() {
             this.selectedId = null;
+            this.currentCharacterId = null;
+            UrlState.remove('characterId');
             this.isEdit = false;
             this.showAdvanced = false;
             this.form = {
@@ -1612,6 +1626,10 @@ const app = Vue.createApp({
                     if (!isUpdate && r.data) {
                         this.selectedId = r.data.id;
                     }
+                    if (this.selectedId) {
+                        this.currentCharacterId = this.selectedId;
+                        UrlState.write('characterId', this.selectedId);
+                    }
                     ElementPlus.ElMessage.success(isUpdate ? '角色已更新' : '角色已创建');
                     if (this.form.mainColor) this.mainColor = this.form.mainColor;
                     await this.fetchCharacters();
@@ -1645,7 +1663,10 @@ const app = Vue.createApp({
                 const r = await API.character.delete(this.selectedId);
                 if (r.status === 200) {
                     ElementPlus.ElMessage.success('角色已删除');
-                    this.selectedId = null; this.isEdit = false; this.showAdvanced = false;
+                    this.selectedId = null;
+                    this.currentCharacterId = null;
+                    UrlState.remove('characterId');
+                    this.isEdit = false; this.showAdvanced = false;
                     this.form = {
                         name: '', avatar: '', background: '',
                         mainColor: 'lightsalmon', opacity: 0.85,
@@ -1827,7 +1848,13 @@ const app = Vue.createApp({
 
     async mounted() {
         lucide.createIcons();
+        // 地址栏可能带 characterId（从对话页点设置 / 刷新）：记下并在列表就绪后预选
+        this.currentCharacterId = UrlState.read('characterId');
         await Promise.all([this.fetchCharacters(), this.fetchAdapterList(), this.fetchUserSettings()]);
+        if (this.currentCharacterId) {
+            const c = this.characters.find(x => x.id === this.currentCharacterId);
+            if (c) this.selectCharacter(c);
+        }
         this.$nextTick(() => lucide.createIcons());
 
         // Ctrl+S / Cmd+S 保存角色
