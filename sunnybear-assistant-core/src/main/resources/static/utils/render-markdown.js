@@ -24,6 +24,82 @@
  *   renderMermaid(container) 保留给直接插入 .mermaid 占位的场景（聊天外的插件页）与回合结束兜底。
  *   utils/mermaid.js 是它的兼容壳。
  */
+/**
+ * 消息内原始 HTML 的 Shadow DOM 沙盒。
+ *
+ * 为什么需要：marked v15 移除了 sanitize，模型输出的 raw HTML 会经 v-html 进入页面。
+ * 一旦出现整页 <style>，其选择器会污染全局样式，整个会话区直接不可用。
+ *
+ * 做法：块级原始 HTML 不直接拼进消息，而是塞进自定义元素
+ * <md-html-block data-html="...">，由本元素把内容挂进自己的 shadow root：
+ *   · <style> 只在 shadow 树内生效，不会外泄到页面（CSS 作用域隔离）；
+ *   · 宿主加 contain:layout paint，把 position:fixed 之类的覆盖限制在宿主盒内，防整屏遮挡；
+ *   · 再对 shadow 内容做一层轻量加固：删掉 iframe/object/embed/form 等会覆盖或外联的元素，
+ *     剥掉 on* 事件属性与 javascript:/data: 等危险 URL。
+ * 注意：这不是 DOMPurify 级别的安全边界（不做 mXSS 对抗），
+ * 定位是「模型发癫也不会把页面/会话搞挂」。本工具自己生成的 code/mermaid/katex
+ * HTML 不走这里，完全不受影响。
+ */
+(function registerMarkdownSandbox() {
+    if (typeof customElements === 'undefined' || customElements.get('md-html-block')) return;
+
+    var BASE_CSS = '<style>'
+        + ':host{display:block;color:inherit;font:inherit;}'
+        + 'a{color:var(--main-color,#ffa07a);}'
+        + 'img,video{max-width:100%;}'
+        + '</style>';
+
+    /** 会整屏覆盖 / 外联加载的元素，直接删掉 */
+    var DROP_TAGS = { script: 1, iframe: 1, object: 1, embed: 1, link: 1, meta: 1, base: 1, form: 1 };
+    /** 需要校验协议的属性 */
+    var URL_ATTRS = { href: 1, src: 1, 'xlink:href': 1, formaction: 1, action: 1 };
+    var DANGEROUS_URL_RE = /^(?:javascript|vbscript|data|blob):/i;
+
+    /** 轻量加固：删危险元素、on* 事件属性、危险协议 URL（只在 shadow 树内执行） */
+    function harden(root) {
+        var nodes = root.querySelectorAll('*');
+        for (var i = 0; i < nodes.length; i++) {
+            var el = nodes[i];
+            if (DROP_TAGS[el.tagName.toLowerCase()]) {
+                el.remove();
+                continue;
+            }
+            var attrs = el.attributes;
+            for (var j = attrs.length - 1; j >= 0; j--) {
+                var name = attrs[j].name.toLowerCase();
+                if (name.indexOf('on') === 0) {
+                    el.removeAttribute(attrs[j].name);
+                } else if (URL_ATTRS[name]
+                    && DANGEROUS_URL_RE.test(attrs[j].value.replace(/[\u0000-\u0020\u007F]+/g, ''))) {
+                    el.removeAttribute(attrs[j].name);
+                }
+            }
+        }
+    }
+
+    class MdHtmlBlock extends HTMLElement {
+        connectedCallback() {
+            if (this._mdShadow) return;
+            var html = this.getAttribute('data-html') || '';
+            this.removeAttribute('data-html');
+            var root = this.attachShadow({ mode: 'open' });
+            root.innerHTML = BASE_CSS + html;
+            harden(root);
+            this._mdShadow = root;
+        }
+    }
+    customElements.define('md-html-block', MdHtmlBlock);
+
+    // 宿主样式：外层 !important 会压过模型 shadow 里的 :host 规则，
+    // 防止模型用 :host{position:fixed} 让宿主自身脱离文档流、盖住界面。
+    if (!document.getElementById('md-html-block-style')) {
+        var style = document.createElement('style');
+        style.id = 'md-html-block-style';
+        style.textContent = 'md-html-block{display:block;position:static !important;contain:layout paint;}';
+        (document.head || document.documentElement).appendChild(style);
+    }
+})();
+
 const MarkdownUtils = (function () {
 
     /* ---- 编辑工具 diff 渲染辅助 ---- */
@@ -31,6 +107,53 @@ const MarkdownUtils = (function () {
     /** HTML 转义（diff 分支自行拼 HTML 用） */
     function escapeHtml(s) {
         return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    /** 属性值转义（比 escapeHtml 多转义引号，供自行拼标签时用） */
+    function escapeAttr(s) {
+        return escapeHtml(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    /**
+     * URL 协议白名单：拒绝 javascript: / vbscript: / data: / blob: 等危险协议。
+     * marked v15 的 cleanUrl 只做 encodeURI，不拦协议，所以这里自行兜一层。
+     * 先把空白与控制字符去掉再判前缀，防止 `java\tscript:` 这类混淆写法绕过。
+     *
+     * @param {string} url 原始链接
+     * @returns {string|null} 安全则原样返回，危险协议返回 null
+     */
+    function safeUrl(url) {
+        if (url == null) return '';
+        var probe = String(url).replace(/[\u0000-\u0020\u007F]+/g, '').toLowerCase();
+        return /^(?:javascript|vbscript|data|blob):/.test(probe) ? null : url;
+    }
+
+    /** file/proxy URL 重写：补上 BASE_PATH（云上部署时页面可能不在根路径） */
+    function rewriteProxyUrls(html) {
+        return html.replace(/(src|href)="(\/?)(file\/proxy\?[^"]+)"/g,
+            function (match, attr, slash, rest) {
+                return attr + '="' + API.BASE_PATH + rest + '"';
+            });
+    }
+
+    /**
+     * 行内原始 HTML 的保守白名单：只放行纯格式标签，且剥掉所有属性。
+     * 行内 token 是「单个标签」（开/闭各一个），无法像块级那样整段进 Shadow DOM，
+     * 所以退而求其次：白名单标签名 + 丢弃属性，其余一律转义。
+     * 因为不保留任何属性，<span style=...> / <img onerror=...> 之类没有攻击面；
+     * 锚定整段匹配也顺带挡住了 <span/onload=x> 这种浏览器会当成属性的怪异写法。
+     */
+    var SAFE_INLINE_TAGS = {
+        span: 1, b: 1, strong: 1, i: 1, em: 1, u: 1, s: 1, del: 1, ins: 1, mark: 1,
+        small: 1, sub: 1, sup: 1, code: 1, kbd: 1, samp: 1, var: 1, abbr: 1, cite: 1,
+        q: 1, br: 1, wbr: 1, time: 1, ruby: 1, rt: 1, rp: 1
+    };
+    var INLINE_TAG_RE = /^<(\/?)([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^>]*)?\/?>$/;
+
+    function sanitizeInlineHtml(raw) {
+        var m = raw.match(INLINE_TAG_RE);
+        if (!m || !SAFE_INLINE_TAGS[m[2].toLowerCase()]) return escapeHtml(raw);
+        return (m[1] ? '</' : '<') + m[2].toLowerCase() + '>';
     }
 
     /** 是否为编辑工具产出的 diff：存在以 + / - 开头的「行号|内容」行 */
@@ -79,6 +202,44 @@ const MarkdownUtils = (function () {
         // 单个换行也渲染成 <br>（GFM 行为），避免必须敲两次回车才换行
         breaks: true,
         renderer: {
+            /**
+             * 原始 HTML：
+             *   · 块级 —— 整段丢进 <md-html-block> 沙盒（Shadow DOM），
+             *     <style> 不外泄、position:fixed 覆盖被 contain 限制；
+             *   · 行内 —— 白名单标签名 + 剥属性（行内没法整段进 Shadow DOM）。
+             * 本工具自己生成的 code/mermaid/katex HTML 走各自 renderer，不经过这里。
+             */
+            html: function (obj) {
+                if (obj.block) {
+                    return '<md-html-block data-html="'
+                        + escapeAttr(rewriteProxyUrls(obj.text))
+                        + '"></md-html-block>';
+                }
+                return sanitizeInlineHtml(obj.text);
+            },
+            /**
+             * 链接：协议白名单。默认渲染器对危险协议只会退化成纯文本，这里保持一致，
+             * 但额外拦掉 data:/blob: 等。
+             */
+            link: function (obj) {
+                var href = safeUrl(obj.href);
+                var text = this.parser.parseInline(obj.tokens);
+                if (href === null) return text;
+                return '<a href="' + escapeAttr(href) + '"'
+                    + (obj.title ? ' title="' + escapeAttr(obj.title) + '"' : '')
+                    + '>' + text + '</a>';
+            },
+            /** 图片：同样走协议白名单，危险协议退化为转义后的 alt 文本 */
+            image: function (obj) {
+                var src = safeUrl(obj.href);
+                var alt = obj.tokens
+                    ? this.parser.parseInline(obj.tokens, this.parser.textRenderer)
+                    : obj.text;
+                if (src === null) return escapeHtml(alt);
+                return '<img src="' + escapeAttr(src) + '" alt="' + escapeAttr(alt) + '"'
+                    + (obj.title ? ' title="' + escapeAttr(obj.title) + '"' : '')
+                    + '>';
+            },
             code: function (obj) {
                 var text = obj.text;
                 var lang = obj.lang;
@@ -161,10 +322,7 @@ const MarkdownUtils = (function () {
             // Markdown 渲染
             html = marked.parse(processed);
             // 重写 file/proxy URL，补上 BASE_PATH（云上部署时页面可能不在根路径）
-            html = html.replace(/(src|href)="(\/?)(file\/proxy\?[^"]+)"/g,
-                function (match, attr, slash, rest) {
-                    return attr + '="' + API.BASE_PATH + rest + '"';
-                });
+            html = rewriteProxyUrls(html);
             // 还原公式：用 KaTeX 渲染替换占位符
             mathBlocks.forEach(function (block, id) {
                 var placeholder = (block.type === 'block' ? '\x00MB' : '\x00MI') + id + '\x00';
@@ -175,7 +333,8 @@ const MarkdownUtils = (function () {
                 html = html.replace(placeholder, rendered);
             });
         } catch (e) {
-            html = text;
+            // 解析异常时也绝不能把原文直接交给 v-html：转义后再按换行展开，宁可显示纯文本
+            html = escapeHtml(text).replace(/\n/g, '<br>');
         }
         return html;
     }

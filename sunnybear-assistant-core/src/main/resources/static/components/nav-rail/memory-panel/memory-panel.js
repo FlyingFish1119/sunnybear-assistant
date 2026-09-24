@@ -41,6 +41,10 @@ const MemoryPanel = {
                 <button class="mp-btn" title="新增分组" @click="newGroup">
                     <i data-lucide="folder-plus"></i>
                 </button>
+                <button class="mp-btn" title="自动分组" :class="{ 'is-loading': autoGroupLoading }"
+                        :disabled="autoGroupLoading" @click="autoGroup">
+                    <i :data-lucide="autoGroupLoading ? 'loader-2' : 'wand-2'"></i>
+                </button>
                 <button class="mp-btn" title="刷新" @click="refreshAll()">
                     <i data-lucide="refresh-cw"></i>
                 </button>
@@ -170,6 +174,7 @@ const MemoryPanel = {
             allItems: [],
             groups: [],
             rootLoading: false,
+            autoGroupLoading: false,
 
             /* 第二层：当前打开的组 */
             viewerOpen: false,
@@ -367,6 +372,45 @@ const MemoryPanel = {
                 }
             } catch (e) {
                 if (window.SbToast) window.SbToast.error('重命名失败: ' + e.message);
+            }
+        },
+
+        /** 自动分组：调 AI 对全部记忆重新分类，跑完整表重聚合 */
+        async autoGroup() {
+            if (this.autoGroupLoading) return;
+            if (this.allItems.length === 0) {
+                if (window.SbToast) window.SbToast.warning('暂无记忆，无需分组');
+                return;
+            }
+            const dialog = this.$refs.confirmDialog;
+            if (!dialog) return;
+            try {
+                await dialog.show({
+                    title: '自动分组',
+                    message: '将调用 AI 对全部记忆重新分类，可能需要一些时间，是否继续？',
+                    confirmText: '开始分组',
+                    cancelText: '取消',
+                    type: 'warning'
+                });
+            } catch (e) {
+                return;   // 取消
+            }
+            // 有未保存的就地编辑先落盘，免得刷新时被服务端数据冲掉
+            if (this.editingKey && this.dirty) await this.saveNow();
+
+            this.autoGroupLoading = true;
+            try {
+                const res = await API.memory.autoGroup();
+                if (res.status === 200) {
+                    if (window.SbToast) window.SbToast.success('自动分组完成');
+                    await this.refreshAll(true);
+                } else if (window.SbToast) {
+                    window.SbToast.error(res.message || '自动分组失败');
+                }
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('自动分组失败: ' + e.message);
+            } finally {
+                this.autoGroupLoading = false;
             }
         },
 
