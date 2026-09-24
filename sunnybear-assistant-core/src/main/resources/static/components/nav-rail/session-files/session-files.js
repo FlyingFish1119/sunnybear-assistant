@@ -28,6 +28,14 @@
  *   open()     — 打开并回到根目录
  *   closeAll() — 关闭面板（含内容区）
  */
+
+/* 超过该大小走分片断点上传；以下沿用单请求 multipart（受 50MB 限制） */
+const SF_LARGE_FILE_THRESHOLD = 32 * 1024 * 1024;
+/* 分片大小：8MB，远低于后端 multipart 限制，单片失败只重传这一片 */
+const SF_CHUNK_SIZE = 8 * 1024 * 1024;
+/* 分片并发数：2 足够打满一般磁盘/带宽，又不至于把小块请求堆成风暴 */
+const SF_CHUNK_CONCURRENCY = 2;
+
 const SessionFiles = {
     name: 'SessionFiles',
 
@@ -103,6 +111,31 @@ const SessionFiles = {
                     </div>
                     <div v-for="dir in loadingDirs" :key="'loading-' + dir" class="sf-tree-loading">加载中…</div>
                 </template>
+            </div>
+            <!-- 大文件分片上传进度：进行中可取消，失败/取消可重试（后端已收分片会被跳过） -->
+            <div v-if="uploadTasks.length" class="sf-uploads">
+                <div v-for="task in uploadTasks" :key="task.id" class="sf-upload">
+                    <div class="sf-upload-head">
+                        <span class="sf-upload-name" :title="task.name">{{ task.name }}</span>
+                        <span class="sf-upload-state" :class="'is-' + task.status">
+                            {{ task.status === 'done' ? '完成'
+                               : (task.status === 'error' ? '失败'
+                               : (task.status === 'canceled' ? '已取消' : task.percent + '%')) }}
+                        </span>
+                    </div>
+                    <div class="sf-upload-bar">
+                        <div class="sf-upload-bar-fill" :class="'is-' + task.status"
+                             :style="{ width: (task.status === 'done' ? 100 : task.percent) + '%' }"></div>
+                    </div>
+                    <div class="sf-upload-foot">
+                        <span>{{ formatSize(task.loaded) }} / {{ formatSize(task.total) }}</span>
+                        <span v-if="task.status === 'uploading'" class="sf-upload-act" @click="cancelUpload(task)">取消</span>
+                        <template v-else-if="task.status === 'error' || task.status === 'canceled'">
+                            <span class="sf-upload-act" @click="retryUpload(task)">重试</span>
+                            <span class="sf-upload-act" @click="dismissUpload(task)">移除</span>
+                        </template>
+                    </div>
+                </div>
             </div>
         </aside>
 
@@ -180,7 +213,10 @@ const SessionFiles = {
             dirty: false,
             saving: false,
             saveFailed: false,
-            savedTip: ''
+            savedTip: '',
+
+            /* 大文件分片上传任务：{ id, file, dir, name, total, loaded, percent, status, message, cancelled } */
+            uploadTasks: []
         };
     },
 
@@ -689,6 +725,12 @@ const SessionFiles = {
             if (!files.length) return;
             let okCount = 0;
             for (const file of files) {
+                // 大文件走分片断点上传（不受 50MB multipart 限制，可续传）
+                if (file.size > SF_LARGE_FILE_THRESHOLD) {
+                    const ok = await this.uploadLargeFile(file, dirPath || '');
+                    if (ok) okCount++;
+                    continue;
+                }
                 try {
                     const res = await this.fileApi().upload(file, dirPath);
                     if (res.status === 200) {
@@ -704,6 +746,181 @@ const SessionFiles = {
             if (okCount > 0 && window.SbToast) {
                 window.SbToast.success('已存入' + (this.mode === 'core' ? '核心库 ' : '会话 ') + okCount + ' 个文件');
             }
+        },
+
+        /* ---------- 分片断点上传（大文件） ---------- */
+
+        /** FNV-1a 32 位哈希（带种子），用于从文件元信息生成稳定的 uploadId */
+        fnv1a(str, seed) {
+            let h = seed >>> 0;
+            for (let i = 0; i < str.length; i++) {
+                h ^= str.charCodeAt(i);
+                h = Math.imul(h, 16777619) >>> 0;
+            }
+            return h >>> 0;
+        },
+
+        /** 稳定 uploadId：同一文件 + 同一目标 → 同一 id，刷新/重试后仍可续传 */
+        makeUploadId(file, dirPath) {
+            const raw = [this.mode, this.sessionId || '', dirPath || '',
+                file.name, file.size, file.lastModified].join('|');
+            const a = this.fnv1a(raw, 0x811c9dc5);
+            const b = this.fnv1a(raw, 0x01000193);
+            return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+        },
+
+        /** 新建一条上传任务并返回；同 id 的旧任务先移除（重试场景） */
+        beginUploadTask(file, dirPath) {
+            const id = this.makeUploadId(file, dirPath);
+            const task = {
+                id: id,
+                file: file,
+                dir: dirPath || '',
+                name: file.name,
+                total: file.size,
+                loaded: 0,
+                percent: 0,
+                status: 'uploading',   // uploading | done | error | canceled
+                message: '',
+                cancelled: false
+            };
+            this.uploadTasks = this.uploadTasks.filter(t => t.id !== id);
+            this.uploadTasks.push(task);
+            // 返回响应式代理而非裸对象，保证后续 task.loaded/percent 的改动能驱动视图
+            return this.uploadTasks[this.uploadTasks.length - 1];
+        },
+
+        /** 大文件分片上传主流程：init（取断点）→ 补缺口 → complete */
+        async uploadLargeFile(file, dirPath) {
+            const task = this.beginUploadTask(file, dirPath);
+            try {
+                const totalChunks = Math.ceil(file.size / SF_CHUNK_SIZE);
+                const initRes = await API.upload.init({
+                    uploadId: task.id,
+                    scope: this.mode,
+                    sessionId: this.sessionId || null,
+                    dir: task.dir,
+                    name: file.name,
+                    size: file.size,
+                    totalChunks: totalChunks
+                });
+                if (initRes.status !== 200) throw new Error(initRes.message || '初始化失败');
+                const info = initRes.data || {};
+                const received = new Set(info.received || []);
+
+                // 断点：已收到的分片计入进度
+                task.loaded = 0;
+                received.forEach(i => {
+                    const start = i * SF_CHUNK_SIZE;
+                    task.loaded += Math.min(SF_CHUNK_SIZE, file.size - start);
+                });
+                task.percent = this.uploadPercent(task);
+
+                // 已合并过（例如刷新后重选同一文件）：直接按完成处理
+                if (info.completed && info.path) {
+                    task.status = 'done';
+                    task.percent = 100;
+                    task.loaded = file.size;
+                    await this.refreshPath(info.path);
+                    this.finishUploadTask(task.id);
+                    return true;
+                }
+
+                const pending = [];
+                for (let i = 0; i < totalChunks; i++) {
+                    if (!received.has(i)) pending.push(i);
+                }
+                await this.uploadChunks(task, pending);
+                if (task.cancelled) {
+                    task.status = 'canceled';
+                    task.message = '已取消';
+                    return false;
+                }
+
+                const doneRes = await API.upload.complete(task.id);
+                if (doneRes.status !== 200) throw new Error(doneRes.message || '合并失败');
+                task.status = 'done';
+                task.percent = 100;
+                task.loaded = file.size;
+                await this.refreshPath((doneRes.data && doneRes.data.path) || task.dir);
+                this.finishUploadTask(task.id);
+                return true;
+            } catch (e) {
+                if (task.cancelled) {
+                    task.status = 'canceled';
+                    task.message = '已取消';
+                } else {
+                    task.status = 'error';
+                    task.message = e.message || '上传失败';
+                    if (window.SbToast) window.SbToast.error('「' + file.name + '」上传失败：' + task.message);
+                }
+                return false;
+            }
+        },
+
+        /** 并发上传缺口分片（首个错误即中止其余 worker） */
+        async uploadChunks(task, indexes) {
+            const file = task.file;
+            let cursor = 0;
+            let firstError = null;
+            const workerCount = Math.max(1, Math.min(SF_CHUNK_CONCURRENCY, indexes.length));
+            const workers = [];
+            for (let w = 0; w < workerCount; w++) {
+                workers.push((async () => {
+                    while (!firstError && !task.cancelled) {
+                        const pos = cursor++;
+                        if (pos >= indexes.length) return;
+                        const i = indexes[pos];
+                        try {
+                            const start = i * SF_CHUNK_SIZE;
+                            const end = Math.min(file.size, start + SF_CHUNK_SIZE);
+                            const blob = file.slice(start, end);
+                            const res = await API.upload.chunk(task.id, i, blob);
+                            if (res.status !== 200) throw new Error(res.message || '分片上传失败');
+                            task.loaded += blob.size;
+                            task.percent = this.uploadPercent(task);
+                        } catch (e) {
+                            if (!firstError) firstError = e;
+                        }
+                    }
+                })());
+            }
+            await Promise.all(workers);
+            if (firstError) throw firstError;
+        },
+
+        uploadPercent(task) {
+            if (!task.total) return 0;
+            return Math.min(99, Math.round(task.loaded * 100 / task.total));
+        },
+
+        /** 完成态任务短暂展示后自动移除；失败/取消态保留供重试或手动移除 */
+        finishUploadTask(id) {
+            setTimeout(() => {
+                this.uploadTasks = this.uploadTasks.filter(t => t.id !== id);
+            }, 2500);
+        },
+
+        /** 取消上传：worker 轮询 cancelled 标记停下，并通知后端清理暂存分片 */
+        cancelUpload(task) {
+            if (task.status !== 'uploading') return;
+            task.cancelled = true;
+            task.status = 'canceled';
+            task.message = '已取消';
+            API.upload.abort(task.id).catch(() => {});
+        },
+
+        /** 重试：清除取消标记后重跑；后端已存分片会被 status 跳过 */
+        retryUpload(task) {
+            task.cancelled = false;
+            task.status = 'uploading';
+            task.message = '';
+            this.uploadLargeFile(task.file, task.dir);
+        },
+
+        /** 从进度列表移除一条（失败/取消态） */
+        dismissUpload(task) {
+            this.uploadTasks = this.uploadTasks.filter(t => t !== task);
         },
 
         /* ---------- 加载到发送栏 / 提升为核心 ---------- */

@@ -47,6 +47,19 @@ const API = (function () {
     }
 
     /**
+     * 原始二进制 POST（body 直接是 Blob），供分片上传使用。
+     * 不走 multipart，因此不受 spring.servlet.multipart 的大小限制。
+     */
+    async function postBinary(path, blob) {
+        const response = await fetch(BASE_PATH + path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: blob
+        });
+        return response.json();
+    }
+
+    /**
      * 上传文件（multipart/form-data）。
      * @param {string} path - 接口路径
      * @param {File} file - 文件对象
@@ -90,6 +103,22 @@ const API = (function () {
         router: {
             /** 拉取全局页面路由清单（供 router.html 使用） */
             list: function () { return get('router/list'); }
+        },
+
+        /* ---------- 分片断点上传（大文件） ---------- */
+        upload: {
+            /** 初始化 / 恢复上传；data: {uploadId, scope, sessionId, dir, name, size, totalChunks} */
+            init: function (data) { return post('upload/init', data); },
+            /** 查询已收到的分片序号（断点） */
+            status: function (uploadId) { return get('upload/status?uploadId=' + encodeURIComponent(uploadId)); },
+            /** 上传单个分片（blob 为该分片原始字节） */
+            chunk: function (uploadId, index, blob) {
+                return postBinary('upload/chunk?uploadId=' + encodeURIComponent(uploadId) + '&index=' + index, blob);
+            },
+            /** 合并所有分片并落盘，返回最终相对路径 */
+            complete: function (uploadId) { return post('upload/complete?uploadId=' + encodeURIComponent(uploadId)); },
+            /** 放弃上传并清理暂存分片 */
+            abort: function (uploadId) { return post('upload/abort?uploadId=' + encodeURIComponent(uploadId)); }
         },
 
         /** 文件代理 URL（用于图片/音视频等本地文件的展示） */
