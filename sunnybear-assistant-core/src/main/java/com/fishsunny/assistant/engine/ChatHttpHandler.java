@@ -25,6 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.Iterator;
@@ -106,7 +107,8 @@ public class ChatHttpHandler {
         private Boolean enableTTS = false;
     }
 
-    public void translate(TranslateData data, TranslateHandler handler, TranslateOption option) throws Exception {
+    // 如果为 true，则表示有工具调用，需要进行 ReAct
+    public boolean translate(TranslateData data, TranslateHandler handler, TranslateOption option) throws Exception {
         String passId = data.passId();
         String adapterName = data.adapterName();
         Boolean stream = option.getStream();
@@ -253,6 +255,8 @@ public class ChatHttpHandler {
                 );
                 onComplete.onComplete(result, lastConverted);
             }
+            // 返回是否有工具调用
+            return !CollectionUtils.isEmpty(adapter.getToolCalls());
         } finally {
             // 结束/中断/超时都通知泵线程停止并尽力关闭底层流，Stream.close() 会取消订阅
             // 释放连接与 JDK HttpClient 的 Direct ByteBuffer

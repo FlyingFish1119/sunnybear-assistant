@@ -8,6 +8,7 @@ const SLASH_COMMANDS = [
     { name: '/preview', desc: '显示当前处理后的系统提示词', usage: '/preview', icon: 'scroll-text' },
     { name: '/fast-search', desc: '联网快速搜索并整理为易读简报', usage: '/fast-search <关键字>', icon: 'search' },
     { name: '/extensions', desc: '列出当前可用的扩展脚本', usage: '/extensions', icon: 'file-code' },
+    { name: '/init', desc: '探索本地目录并生成项目结构报告到核心文件', usage: '/init <path>', icon: 'folder-search' },
 ];
 
 /**
