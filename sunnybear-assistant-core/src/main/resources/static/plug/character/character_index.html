@@ -257,10 +257,8 @@
     TopbarPlugins.registerSlot('topbar-left', CharacterNameTag, 0);
     TopbarPlugins.registerSlot('topbar-right', CharacterDbButton, 0);
     ChatSidebarPlugins.registerSlot('sidebar-footer', CharacterSettingsButton, 0);
-    // 角色页不需要的内置顶栏元素：模型名、Agent Log（页面无接收方）、
-    // 上下文用量环、知识库命中闪现（角色页不发该信号）
+    // 角色页不需要的内置顶栏元素：模型名、上下文用量环、知识库命中闪现（角色页不发该信号）
     TopbarPlugins.hideBuiltin('model');
-    TopbarPlugins.hideBuiltin('agent-log');
     TopbarPlugins.hideBuiltin('ctx-gauge');
     TopbarPlugins.hideBuiltin('knowledge-flash');
     // 角色会话没有「定时器」概念，隐藏 chat/cron 切换按钮；

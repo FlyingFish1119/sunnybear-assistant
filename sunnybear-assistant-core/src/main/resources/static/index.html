@@ -359,7 +359,6 @@
             :user-settings="userSettings"
             :assistant-settings="assistantSettings"
         ></message-area>
-        <agent-log-sidebar :main-color="mainColor"></agent-log-sidebar>
         <send-area
             ref="sendArea"
             :main-color="mainColor"
@@ -656,7 +655,6 @@
     app.component('chat-connection', ChatConnection);
     app.component('auto-resize-textarea', AutoResizeTextarea);
     app.component('command-suggest', CommandSuggest);
-    app.component('agent-log-sidebar', AgentLogSidebar);
     app.component('message-topbar', MessageTopbar);
     app.component('message-area-group', MessageAreaGroup);
     app.component('message-area-user', MessageAreaUser);
@@ -687,6 +685,9 @@
 
     // 发送区右侧：模型切换入口（设置页简化版）
     SendAreaPlugins.registerSlot('toolbar-right', ModelSwitcher, 0);
+
+    // 顶栏右侧：Agent Log 开关（按钮 + 面板由组件自身组装；插件页不注册即无此入口）
+    TopbarPlugins.registerSlot('topbar-right', AgentLogSidebar, 0);
 
     app.use(ElementPlus);
     // 自定义指令（放在 ElementPlus 之后注册，确保同名指令以自定义实现为准）

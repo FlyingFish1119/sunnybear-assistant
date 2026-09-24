@@ -1,18 +1,22 @@
 /**
- * Agent Log 浮窗组件 — 展示子 Agent 中间执行日志
+ * Agent Log 组件 — 顶栏开关 + 右侧子 Agent 执行日志浮窗
  *
- * 浮动在消息区右侧，不参与 flex 布局，不挤压消息面板。
+ * 以「插件」形态存在：核心页 index.html 通过
+ *   TopbarPlugins.registerSlot('topbar-right', AgentLogSidebar, 0)
+ * 把它挂进顶栏右栏；插件页不注册即完全无此入口，无需 hideBuiltin 反向下线。
  *
- * 自包含：日志与展开态均由组件内部持有，并自行通过 WsBus 订阅/处理：
- *   - 订阅 'AGENT_LOG' 信号，追加当前会话的子 Agent 日志；
- *   - 订阅本地事件 'agent-log:toggle'（顶部栏按钮）切换展开态；
- *   - 订阅本地事件 'agent-log:clear'（切会话/新建会话）清空日志；
- *   - 展开态变化时广播本地事件 'agent-log:visibility' 供顶部栏回显按钮高亮。
+ * 组件自包含：开关按钮渲染在顶栏槽内；日志面板经 Teleport 投放到
+ * .message-area-wrapper 下（绝对定位于消息区右侧，不参与 flex 布局）。
+ * 展开态由组件内部持有，按钮高亮与面板开合天然同步，不再走 WsBus 事件流转。
+ *
+ * 数据订阅：
+ *   - 'AGENT_LOG' 信号，追加当前会话的子 Agent 日志；
+ *   - 本地事件 'agent-log:clear'（切会话/新建会话）清空日志。
  *
  * Props:
  *   mainColor — String  主题色
  *
- * 依赖注入（均可选，插件页缺失时降级）：
+ * 依赖注入（均可选，缺失时降级）：
  *   wsBus        — WebSocket 消息总线
  *   sessionStore — 会话仓库（用于按当前会话过滤日志）
  *
@@ -23,42 +27,49 @@ const AgentLogSidebar = {
     name: 'AgentLogSidebar',
 
     template: `
-    <div class="agent-log-sidebar" :class="{ collapsed: !visible }">
-        <div class="agent-log-header" :style="{ borderBottomColor: mainColor }">
-            <div class="agent-log-header-title">
-                <i data-lucide="activity" style="width: 16px; height: 16px;"></i>
-                <span>Agent Log</span>
-                <span v-if="logs.length > 0" class="agent-log-badge">{{ logs.length }}</span>
-            </div>
-            <button class="agent-log-close-btn" @click="toggle" title="关闭面板">
-                <i data-lucide="x" style="width: 16px; height: 16px;"></i>
-            </button>
-        </div>
-        <div class="agent-log-list" ref="logList">
-            <div v-if="logs.length === 0" class="agent-log-empty">
-                <i data-lucide="scroll-text" style="width: 28px; height: 28px;"></i>
-                <span>暂无子 Agent 日志</span>
-                <span class="agent-log-empty-hint">执行 task_run 等子任务时将在此显示中间过程</span>
-            </div>
-            <div v-for="entry in logs" :key="entry.id" class="agent-log-entry"
-                 :class="{ expanded: expandedId === entry.id }">
-                <div class="agent-log-entry-header" @click="toggleEntry(entry)">
-                    <span class="agent-log-dot" :class="'dot-' + entry.phase"></span>
-                    <span v-if="entry.iteration > 0" class="agent-log-iter">#{{ entry.iteration }}</span>
-                    <span class="agent-log-title">{{ entry.title }}</span>
-                    <span class="agent-log-time">{{ formatTime(entry.timestamp) }}</span>
-                    <i v-if="entry.content" class="agent-log-expand-icon"
-                       :class="{ rotated: expandedId === entry.id }"
-                       data-lucide="chevron-down"
-                       style="width: 12px; height: 12px;"></i>
+    <button class="sidebar-toggle-btn" @click="toggle"
+            :title="visible ? '折叠 Agent Log' : '展开 Agent Log'"
+            :style="visible ? {color: mainColor} : {}">
+        <i data-lucide="activity" style="width: 18px; height: 18px;"></i>
+    </button>
+    <teleport v-if="anchorReady" to=".message-area-wrapper">
+        <div class="agent-log-sidebar" :class="{ collapsed: !visible }">
+            <div class="agent-log-header" :style="{ borderBottomColor: mainColor }">
+                <div class="agent-log-header-title">
+                    <i data-lucide="activity" style="width: 16px; height: 16px;"></i>
+                    <span>Agent Log</span>
+                    <span v-if="logs.length > 0" class="agent-log-badge">{{ logs.length }}</span>
                 </div>
-                <div v-if="entry.content && expandedId === entry.id" class="agent-log-entry-body">
-                    <pre>{{ entry.content }}</pre>
+                <button class="agent-log-close-btn" @click="toggle" title="关闭面板">
+                    <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                </button>
+            </div>
+            <div class="agent-log-list" ref="logList">
+                <div v-if="logs.length === 0" class="agent-log-empty">
+                    <i data-lucide="scroll-text" style="width: 28px; height: 28px;"></i>
+                    <span>暂无子 Agent 日志</span>
+                    <span class="agent-log-empty-hint">执行 task_run 等子任务时将在此显示中间过程</span>
+                </div>
+                <div v-for="entry in logs" :key="entry.id" class="agent-log-entry"
+                     :class="{ expanded: expandedId === entry.id }">
+                    <div class="agent-log-entry-header" @click="toggleEntry(entry)">
+                        <span class="agent-log-dot" :class="'dot-' + entry.phase"></span>
+                        <span v-if="entry.iteration > 0" class="agent-log-iter">#{{ entry.iteration }}</span>
+                        <span class="agent-log-title">{{ entry.title }}</span>
+                        <span class="agent-log-time">{{ formatTime(entry.timestamp) }}</span>
+                        <i v-if="entry.content" class="agent-log-expand-icon"
+                           :class="{ rotated: expandedId === entry.id }"
+                           data-lucide="chevron-down"
+                           style="width: 12px; height: 12px;"></i>
+                    </div>
+                    <div v-if="entry.content && expandedId === entry.id" class="agent-log-entry-body">
+                        <pre>{{ entry.content }}</pre>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-    <div class="agent-log-overlay" :class="{ visible: visible && isMobile }" @click="toggle"></div>
+        <div class="agent-log-overlay" :class="{ visible: visible && isMobile }" @click="toggle"></div>
+    </teleport>
     `,
 
     props: {
@@ -76,7 +87,10 @@ const AgentLogSidebar = {
             logs: [],
             visible: false,
             expandedId: null,
-            isMobile: window.innerWidth < 769
+            isMobile: window.innerWidth < 769,
+            // Teleport 目标就绪标记：面板要投放到 .message-area-wrapper，
+            // 初始 patch 时该元素可能尚未入文档，等 mounted（post-flush）再开启
+            anchorReady: false
         };
     },
 
@@ -88,12 +102,6 @@ const AgentLogSidebar = {
                 });
             },
             deep: false
-        },
-        visible: function (val) {
-            // 广播展开态，供顶部栏按钮回显高亮（兄弟组件解耦）
-            if (this.wsBus) {
-                this.wsBus.emit('agent-log:visibility', val);
-            }
         }
     },
 
@@ -104,7 +112,10 @@ const AgentLogSidebar = {
         };
         window.addEventListener('resize', this._onResize);
 
-        // 自行订阅 Agent Log 信号与本地事件（wsBus 由 app.provide 注入）
+        // 投放目标此时已在文档中（mounted 为 post-flush），开启 Teleport
+        this.anchorReady = !!document.querySelector('.message-area-wrapper');
+
+        // 订阅 Agent Log 信号与本地事件（wsBus 由 app.provide 注入）
         if (this.wsBus) {
             this._unsubAgentLog = this.wsBus.on('AGENT_LOG', (payload) => {
                 try {
@@ -113,7 +124,6 @@ const AgentLogSidebar = {
                     console.error('解析 AGENT_LOG 失败:', e);
                 }
             });
-            this._unsubToggle = this.wsBus.on('agent-log:toggle', () => this.toggle());
             this._unsubClear = this.wsBus.on('agent-log:clear', () => this.clearLogs());
         }
     },
@@ -123,7 +133,6 @@ const AgentLogSidebar = {
             window.removeEventListener('resize', this._onResize);
         }
         if (this._unsubAgentLog) { this._unsubAgentLog(); this._unsubAgentLog = null; }
-        if (this._unsubToggle) { this._unsubToggle(); this._unsubToggle = null; }
         if (this._unsubClear) { this._unsubClear(); this._unsubClear = null; }
     },
 

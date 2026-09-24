@@ -2,16 +2,13 @@
  * 顶部信息栏组件
  *
  * 展示：菜单（侧边栏开关）、模型名、会话名（可双击编辑）、待确认工具/提问入口、
- *       知识库命中闪现、连接状态指示器、Agent Log 开关。
+ *       知识库命中闪现、连接状态指示器。
  *
  * 组件自包含连接指示器（chat-connection，内部建立 WebSocket 并交接给 WsBus），
  * 并自行通过 WsBus 订阅 ###KNOWLEDGE_HIT### 信号触发知识命中闪现。
  *
  * 工具确认 / 结构化提问弹窗也内聚在本组件内（与展开入口同处），组件自行通过
  * ref 调用其 expand()，并监听 pending-change 维护入口角标数量。
- *
- * Agent Log 按钮通过 WsBus 本地事件与 agent-log-sidebar 解耦：
- * 点击时 emit 'agent-log:toggle'，并订阅 'agent-log:visibility' 回显按钮高亮。
  *
  * 模型展示文本由本组件自行计算：启动时拉取 chat / chat_pro 设置，
  * 结合注入 store 的 currentSession.enablePro 决定显示哪个模型。
@@ -52,7 +49,6 @@
  *   'pending-question'  待回答提问入口
  *   'knowledge-flash'   知识库命中闪现
  *   'connection'        连接状态指示器
- *   'agent-log'         Agent Log 开关
  */
 const TopbarPlugins = (function () {
     const slotsByAnchor = Object.create(null);
@@ -142,12 +138,7 @@ const MessageTopbar = {
                 <i data-lucide="database"></i>
             </span>
             <chat-connection v-if="!isHidden('connection')" :ws-url="wsUrl"></chat-connection>
-            <button v-if="!isHidden('agent-log')" class="sidebar-toggle-btn" @click="toggleAgentLog"
-                    :title="agentLogVisible ? '折叠 Agent Log' : '展开 Agent Log'"
-                    :style="agentLogVisible ? {color: mainColor} : {}">
-                <i data-lucide="activity" style="width: 18px; height: 18px;"></i>
-            </button>
-            <!-- 右栏插件槽（锚点 'topbar-right'，如数据库面板按钮等） -->
+            <!-- 右栏插件槽（锚点 'topbar-right'，如 Agent Log 开关、数据库面板按钮等） -->
             <component v-for="(slot, si) in rightSlots"
                        :key="'topbar-right-' + si"
                        :is="slot.component"
@@ -184,8 +175,6 @@ const MessageTopbar = {
             // 被插件隐藏的内置元素 key 集合
             hiddenBuiltins: TopbarPlugins.hiddenSnapshot(),
             knowledgeFlashVisible: false,
-            // Agent Log 展开态（由 sidebar 通过 'agent-log:visibility' 回显）
-            agentLogVisible: false,
             // 顶部入口角标：待确认工具请求数 / 待回答提问数（由内聚的弹窗组件上报）
             pendingToolCount: 0,
             pendingQuestionCount: 0,
@@ -307,13 +296,6 @@ const MessageTopbar = {
             }
         },
 
-        /** 切换 Agent Log：通过本地事件通知 agent-log-sidebar */
-        toggleAgentLog: function () {
-            if (this.wsBus) {
-                this.wsBus.emit('agent-log:toggle');
-            }
-        },
-
         /** token 数字压缩：1234 -> 1.2k，1048576 -> 1.0M */
         formatTokens: function (n) {
             if (n == null || isNaN(n)) return '-';
@@ -345,9 +327,6 @@ const MessageTopbar = {
     mounted: function () {
         this.fetchChatSettings();
         if (this.wsBus) {
-            this._unsubAgentLogVisibility = this.wsBus.on('agent-log:visibility', (val) => {
-                this.agentLogVisible = !!val;
-            });
             // 自行订阅知识库命中信号（原由父组件兜底分发后经 ref 调用）
             this._unsubKnowledgeHit = this.wsBus.on('KNOWLEDGE_HIT', () => this.flashKnowledge());
             // 模型设置在别处（如发送区模型切换）保存后，同步顶栏展示的模型名
@@ -364,10 +343,6 @@ const MessageTopbar = {
 
     beforeUnmount: function () {
         clearTimeout(this._knowledgeFlashTimer);
-        if (this._unsubAgentLogVisibility) {
-            this._unsubAgentLogVisibility();
-            this._unsubAgentLogVisibility = null;
-        }
         if (this._unsubKnowledgeHit) {
             this._unsubKnowledgeHit();
             this._unsubKnowledgeHit = null;
