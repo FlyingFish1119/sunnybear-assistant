@@ -2,7 +2,7 @@
  * 助手设置组件
  *
  * 展示：助手信息条目（名称/头像摘要）
- * 修改：对话框内编辑助手名称、上传/清除头像
+ * 修改：对话框内编辑助手名称、助手设定（系统提示词）、上传/清除头像
  * 保存成功后 emit('saved')，由父组件刷新全部设置
  */
 const AssistantSettings = {
@@ -23,7 +23,7 @@ const AssistantSettings = {
                 <div class="settings-item-icon"><i data-lucide="sparkles" style="width:16px;height:16px"></i></div>
                 <div class="settings-item-info">
                     <span class="settings-item-label">助手信息</span>
-                    <span class="settings-item-desc">助手名称、头像</span>
+                    <span class="settings-item-desc">助手名称、头像、助手设定</span>
                 </div>
             </div>
             <div class="settings-item-right">
@@ -62,6 +62,13 @@ const AssistantSettings = {
                     <input ref="assistantAvatarInput" type="file" accept="image/*" style="display:none"
                         @change="onAssistantAvatarFileChange">
                 </el-form-item>
+                <el-form-item label="助手设定">
+                    <textarea class="settings-textarea" v-model="assistantForm.prompt" rows="12"
+                        placeholder="系统提示词 / 人设（可选），支持 \${current_time}、\${model_name} 变量"></textarea>
+                    <div style="font-size:12px;color:#909399;line-height:1.6;margin-top:4px">
+                        作为系统提示词注入对话，可用变量：\${current_time}、\${model_name}、\${ip_address}。
+                    </div>
+                </el-form-item>
             </el-form>
             <template #footer>
                 <div class="dialog-footer">
@@ -78,7 +85,7 @@ const AssistantSettings = {
     data() {
         return {
             dialogs: { assistant: false },
-            assistantForm: { assistantName: '', avatar: '' }
+            assistantForm: { assistantName: '', avatar: '', prompt: '' }
         };
     },
 
@@ -96,7 +103,8 @@ const AssistantSettings = {
         openDialog() {
             this.assistantForm = {
                 assistantName: this.settings.assistantName || '',
-                avatar: this.settings.avatar || ''
+                avatar: this.settings.avatar || '',
+                prompt: this.settings.prompt || ''
             };
             this.dialogs.assistant = true;
             this.$nextTick(() => lucide.createIcons());
@@ -143,7 +151,8 @@ const AssistantSettings = {
                 return;
             }
             this.postSave('settings/assistant/save', {
-                assistantName: this.assistantForm.assistantName.trim()
+                assistantName: this.assistantForm.assistantName.trim(),
+                prompt: this.assistantForm.prompt
             }, 'assistant');
         }
     },

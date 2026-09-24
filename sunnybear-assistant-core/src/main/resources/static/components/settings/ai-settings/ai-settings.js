@@ -48,7 +48,7 @@ const AiParamRow = {
  *
  * 展示：对话模型 / 高级对话模型 / 小熊崽模型 / OCR / 任务模型 / TaskAI 六个条目
  * 修改：共享对话框编辑各类型的适配器、模型、流式/思考、高级参数（可折叠）
- * System Prompt 仅对话模型（chat）可配置；其余类型由系统内置固定
+ * 助手设定（System Prompt）已移至「助手设置」，此处不再配置
  * 适配器列表在组件挂载时自行加载
  * 保存成功后 emit('saved')，由父组件刷新全部设置
  */
@@ -174,9 +174,6 @@ const AiSettings = {
                     </el-select>
                     <div v-if="modelListHint" style="font-size:12px;color:#909399;line-height:1.6;margin-top:4px">{{ modelListHint }}</div>
                 </el-form-item>
-                <el-form-item label="System Prompt" v-if="aiDialogType === 'chat'">
-                    <textarea class="settings-textarea" v-model="aiForm.prompt" rows="3" placeholder="系统提示词（可选）"></textarea>
-                </el-form-item>
                 <el-form-item label="流式输出">
                     <el-switch v-model="aiForm.stream" active-text="开启" inactive-text="关闭"></el-switch>
                 </el-form-item>
@@ -252,7 +249,7 @@ const AiSettings = {
             // 当前 AI 对话框的类型 (chat/chat_pro/cub/ocr/mission/task)
             aiDialogType: 'chat',
             showAiAdvanced: false,
-            aiForm: { prompt: '', adapterName: '', model: '', stream: false, thinking: false, reasoningEffort: null, temperature: 1, top_p: 1, maxTokens: 4096, frequencyPenalty: 0, presencePenalty: 0, customFieldsText: '' },
+            aiForm: { adapterName: '', model: '', stream: false, thinking: false, reasoningEffort: null, temperature: 1, top_p: 1, maxTokens: 4096, frequencyPenalty: 0, presencePenalty: 0, customFieldsText: '' },
             // 可用适配器列表
             adapterList: [],
             // 当前适配器返回的可选模型列表（为空时仍可手动输入）
@@ -295,7 +292,6 @@ const AiSettings = {
             this.aiDialogType = type;
             const ai = this.settings[type] || {};
             this.aiForm = {
-                prompt: ai.prompt || '',
                 adapterName: ai.adapterName || '',
                 model: ai.model || '',
                 stream: ai.stream == null ? false : ai.stream,
@@ -342,8 +338,6 @@ const AiSettings = {
                 customFields = parsed;
             }
             const body = {
-                // 仅对话模型可配置提示词；其余类型提示词由系统内置固定，保存时清空
-                prompt: this.aiDialogType === 'chat' ? this.aiForm.prompt : '',
                 adapterName: this.aiForm.adapterName.trim(),
                 model: this.aiForm.model.trim(),
                 stream: this.aiForm.stream,

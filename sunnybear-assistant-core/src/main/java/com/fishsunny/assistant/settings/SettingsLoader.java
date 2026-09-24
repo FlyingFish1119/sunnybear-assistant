@@ -173,13 +173,7 @@ public class SettingsLoader {
     @Bean(AISettings.CHAT_PRO)
     public AISettings chatProAISettings() {
         initAISettingsFile();
-        AISettings chatPro = aiSettingsCache.getOrDefault(AISettings.CHAT_PRO, new AISettings());
-        // 若 prompt 为空，从 chat 继承
-        if (!org.springframework.util.StringUtils.hasText(chatPro.getPrompt())) {
-            AISettings chat = aiSettingsCache.getOrDefault(AISettings.CHAT, new AISettings());
-            chatPro.setPrompt(chat.getPrompt());
-        }
-        return chatPro;
+        return aiSettingsCache.getOrDefault(AISettings.CHAT_PRO, new AISettings());
     }
 
     @Bean(AISettings.OCR)

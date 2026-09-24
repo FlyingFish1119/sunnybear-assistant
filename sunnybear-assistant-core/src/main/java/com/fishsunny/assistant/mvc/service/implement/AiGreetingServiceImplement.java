@@ -18,6 +18,7 @@ import com.fishsunny.assistant.mvc.dao.AiGreetingRepository;
 import com.fishsunny.assistant.mvc.service.AiGreetingService;
 import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.settings.AssistantSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -46,20 +47,20 @@ public class AiGreetingServiceImplement implements AiGreetingService {
     private final ChatHttpHandler chatHttpHandler;
     private final MemoryService memoryService;
     private final AISettings missionAISettings;
-    private final AISettings chatAISettings;
+    private final AssistantSettings assistantSettings;
     private final TaskExecutor taskExecutor;
 
     public AiGreetingServiceImplement(AiGreetingRepository aiGreetingRepository,
                                       ChatHttpHandler chatHttpHandler,
                                       MemoryService memoryService,
                                       @Qualifier(AISettings.MISSION) AISettings missionAISettings,
-                                      @Qualifier(AISettings.CHAT) AISettings chatAISettings,
+                                      AssistantSettings assistantSettings,
                                       @Qualifier("chatAsyncExecutor") TaskExecutor taskExecutor) {
         this.aiGreetingRepository = aiGreetingRepository;
         this.chatHttpHandler = chatHttpHandler;
         this.memoryService = memoryService;
         this.missionAISettings = missionAISettings;
-        this.chatAISettings = chatAISettings;
+        this.assistantSettings = assistantSettings;
         this.taskExecutor = taskExecutor;
     }
 
@@ -120,7 +121,7 @@ public class AiGreetingServiceImplement implements AiGreetingService {
                             角色设定：
                             %s
                             %s""",
-                            SUGGESTIONS_PER_PERIOD, currentDate, timeOfDay, timeDesc, chatAISettings.getPrompt(), memoryHint);
+                            SUGGESTIONS_PER_PERIOD, currentDate, timeOfDay, timeDesc, assistantSettings.getPrompt(), memoryHint);
 
                     try {
                         String generatedText = callGenerator(generatorSystemPrompt, userPrompt);

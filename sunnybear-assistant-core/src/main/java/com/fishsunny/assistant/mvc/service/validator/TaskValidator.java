@@ -13,6 +13,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.TaskStep;
 import com.fishsunny.assistant.exception.UserException;
 import org.springframework.util.StringUtils;
 
+@Deprecated
 public class TaskValidator {
 
     public static void createTask(Task task) {

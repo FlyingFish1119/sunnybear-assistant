@@ -17,7 +17,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.Task;
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskPrompt;
 import com.fishsunny.assistant.engine.protocol.project.entity.TaskStep;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.processor.EasyReActProcessor;
+import com.fishsunny.assistant.utils.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.*;

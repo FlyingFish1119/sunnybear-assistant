@@ -34,4 +34,14 @@ public class AssistantSettings {
         this.avatar = avatar == null ? "" : avatar;
         return this;
     }
+
+    /** 助手设定（系统提示词 / 人设） */
+    private String prompt;
+    public String getPrompt() {
+        return prompt == null ? "" : prompt;
+    }
+    public AssistantSettings setPrompt(String prompt) {
+        this.prompt = prompt == null ? "" : prompt;
+        return this;
+    }
 }

@@ -10,7 +10,6 @@ package com.fishsunny.assistant.websocket.processor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.constants.ControlSign;
-import com.fishsunny.assistant.constants.PromptReplaceVariable;
 import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.cancel.ChatCancelContext;
 import com.fishsunny.assistant.utils.ContextCompressor;
@@ -26,11 +25,8 @@ import com.fishsunny.assistant.engine.tool.service.ToolVisibilityPolicy;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
-import com.fishsunny.assistant.mvc.service.KnowledgeService;
-import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
-import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
@@ -45,8 +41,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
-import java.net.InetAddress;
-import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -57,26 +51,20 @@ import java.util.*;
 public class ChatProcessor {
 
     private final AssistantSettings assistantSettings;
-    private final MemorySettings memorySettings;
     private final AISettings aiSettings;
     private final AISettings chatProAISettings;
     private final ChatHttpHandler chatHttpHandler;
     private final ToolExecutor toolExecutor;
-    private final KnowledgeService knowledgeService;
-    private final MemoryService memoryService;
+    private final ChatPromptService chatPromptService;
     private final SlashCommandExecutor slashCommandExecutor;
     private final SessionFileManager sessionFileManager;
     private final ToolVisibilityPolicy toolVisibilityPolicy;
     private final ContextCompressor contextCompressor;
     private final StandardChatTranslateFactory standardChatTranslateFactory;
 
-    public ChatProcessor(ChatMessageService chatMessageService,
-                            ChatSessionService chatSessionService,
-                            AssistantSettings assistantSettings,
-                            MemorySettings memorySettings,
+    public ChatProcessor(AssistantSettings assistantSettings,
                             ToolExecutor toolExecutor,
-                            KnowledgeService knowledgeService,
-                            MemoryService memoryService,
+                            ChatPromptService chatPromptService,
                             @Qualifier(AISettings.CHAT) AISettings aiSettings,
                             @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
                             SlashCommandExecutor slashCommandExecutor,
@@ -84,15 +72,11 @@ public class ChatProcessor {
                             SessionFileManager sessionFileManager,
                             ToolVisibilityPolicy toolVisibilityPolicy,
                             ContextCompressor contextCompressor,
-                            SessionMessageBus sessionMessageBus,
-                            BackgroundToolResponseBus backgroundToolResponseBus,
                             StandardChatTranslateFactory standardChatTranslateFactory
                          ) {
         this.assistantSettings = assistantSettings;
-        this.memorySettings = memorySettings;
         this.toolExecutor = toolExecutor;
-        this.knowledgeService = knowledgeService;
-        this.memoryService = memoryService;
+        this.chatPromptService = chatPromptService;
         this.aiSettings = aiSettings;
         this.chatProAISettings = chatProAISettings;
         this.slashCommandExecutor = slashCommandExecutor;
@@ -148,7 +132,7 @@ public class ChatProcessor {
         if (chatProvider.getSystemProvider() != null) {
             systemPrompt = chatProvider.getSystemProvider().apply(context);
         } else {
-            systemPrompt = defaultSystemPrompt(context, activeAISettings, effectiveAISettings.getModel(), session);
+            systemPrompt = chatPromptService.defaultSystemPrompt(context, activeAssistantSettings, effectiveAISettings.getModel(), session);
         }
 
         List<ChatMessage> messages = new ArrayList<>();
@@ -199,60 +183,6 @@ public class ChatProcessor {
         reactLoop(effectiveAISettings, enableTts, reActDependence, reActOption, reActData);
 
         return collector;
-    }
-
-    private String defaultSystemPrompt(ChatProvider.SystemProviderContext context, AISettings activeAISettings, String effectiveModelName, WebSocketSession session) throws Exception {
-        ChatSession chatSession = context.chatSession();
-        List<ChatMessage> originMessages = context.originMessages();
-
-        // 替换变量（系统提示词始终使用 chat 的 prompt，模型名使用实际生效的模型）
-        StringBuilder systemPrompt = new StringBuilder(activeAISettings.getPrompt()
-                .replace(PromptReplaceVariable.CURRENT_TIME, LocalDate.now().toString())
-                .replace(PromptReplaceVariable.MODEL_NAME, effectiveModelName)
-                .replace(PromptReplaceVariable.IP_ADDRESS, InetAddress.getLocalHost().toString()));
-
-        injectKnowledgePrompt(originMessages, chatSession, systemPrompt, session);
-        injectMemoryPrompt(systemPrompt);
-
-        return systemPrompt.toString();
-    }
-
-    private void injectKnowledgePrompt(List<ChatMessage> originMessages, ChatSession chatSession, StringBuilder systemPrompt, WebSocketSession session) {
-        // 知识库注入：依据用户最新消息自动挑选相关知识条目注入上下文
-        try {
-            ChatMessage lastUserMsg = ObjectUtils.getLast(originMessages);
-            if (lastUserMsg == null) {
-                return;
-            }
-            String queryText = lastUserMsg.resolveText();
-            KnowledgeService.KnowledgeSection knowledgeResult = knowledgeService.buildKnowledgeSection(chatSession.getId(), queryText);
-            if (!StringUtils.hasText(knowledgeResult.text())) {
-                return;
-            }
-            systemPrompt.append(knowledgeResult.text());
-            if (!knowledgeResult.hasNew()) {
-                return;
-            }
-            // 控制信号通知前端：仅当本轮去重后注入了新知识条目时才推送命中信号
-            session.sendMessage(new TextMessage(ControlSign.SIGN_KNOWLEDGE_HIT + chatSession.getId()));
-        } catch (Exception e) {
-            log.warn("知识库匹配失败: {}", e.getMessage());
-        }
-    }
-
-    private void injectMemoryPrompt(StringBuilder systemPrompt) {
-        // 记忆注入开关：关闭后对话不再注入记忆（不影响记忆 CRUD 与问候语个性化）
-        if (!Boolean.TRUE.equals(memorySettings.getEnable())) {
-            return;
-        }
-        try {
-            String memorySection = memoryService.buildMemorySection();
-            if (StringUtils.hasText(memorySection)) {
-                systemPrompt.append(memorySection);
-            }
-        } catch (Exception e) {
-            log.warn("核心记忆注入失败: {}", e.getMessage());
-        }
     }
 
     /**

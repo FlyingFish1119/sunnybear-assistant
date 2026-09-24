@@ -12,6 +12,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.exception.UserException;
 import org.springframework.util.StringUtils;
 
+@Deprecated
 public class ChatMessageValidator {
 
     public static void save(ChatMessage chatMessage) throws UserException {

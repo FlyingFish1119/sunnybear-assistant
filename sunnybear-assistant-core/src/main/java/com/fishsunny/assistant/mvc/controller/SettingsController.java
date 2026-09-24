@@ -237,8 +237,6 @@ public class SettingsController {
         }
         AISettings chatProAISettings = aiSettingsMap.get(AISettings.CHAT_PRO);
         chatProAISettings.copy(settings);
-        // 强制 prompt 为 null，chat_pro 始终从 chat 继承系统提示词
-        chatProAISettings.setPrompt(null);
         aiSettingsMap.put(AISettings.CHAT_PRO, chatProAISettings);
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
@@ -914,6 +912,7 @@ public class SettingsController {
             return new RestResponse().error("Invalid settings");
         }
         assistantSettings.setAssistantName(settings.getAssistantName());
+        assistantSettings.setPrompt(settings.getPrompt());
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(assistantSettingsPath), assistantSettings);
         } catch (Exception e) {

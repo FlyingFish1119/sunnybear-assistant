@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.protocol.project.processor;
+package com.fishsunny.assistant.utils;
 
 /*
  * @Usage 工具调用循环 - 轻量 ReAct agent loop，给定 ChatRequest 执行 AI 工具调用循环，返回最终文本
@@ -21,7 +21,6 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.settings.AISettings;
-import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.slf4j.Logger;

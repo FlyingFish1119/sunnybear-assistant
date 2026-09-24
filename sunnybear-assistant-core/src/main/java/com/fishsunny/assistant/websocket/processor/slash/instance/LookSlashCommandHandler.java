@@ -112,10 +112,10 @@ public class LookSlashCommandHandler extends SlashCommandHandler {
                     .append("\n\n");
         }
 
-        // 提取 chat AI 的系统提示词，与待总结文本一同放入 user prompt
+        // 提取助手设定的系统提示词，与待总结文本一同放入 user prompt
         String prompt = args.size() < 2 ? "" : args.get(1);
         String focusLine = StringUtils.hasText(prompt) ? "请重点关注以下方面：" + prompt + "\n" : "";
-        String chatSystemPrompt = StringUtils.hasText(chatAiSettings.getPrompt()) ? chatAiSettings.getPrompt() : "（无特殊助手设定）";
+        String chatSystemPrompt = StringUtils.hasText(assistantSettings.getPrompt()) ? assistantSettings.getPrompt() : "（无特殊助手设定）";
 
         String systemPrompt = """
                 # 角色

@@ -148,8 +148,8 @@ public class FastSearchSlashCommandHandler extends SlashCommandHandler {
         }
 
         // ========== 第二步：交给 chat ai 提炼成人可读的简报（保留助手人设） ==========
-        String assistantPersona = StringUtils.hasText(chatAiSettings.getPrompt())
-                ? chatAiSettings.getPrompt() : "（无特殊助手设定）";
+        String assistantPersona = StringUtils.hasText(assistantSettings.getPrompt())
+                ? assistantSettings.getPrompt() : "（无特殊助手设定）";
 
         String systemPrompt = """
                 # 角色
