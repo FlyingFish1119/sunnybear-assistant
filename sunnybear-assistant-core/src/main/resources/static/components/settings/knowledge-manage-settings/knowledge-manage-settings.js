@@ -79,8 +79,18 @@ const KnowledgeManageSettings = {
             </template>
             <div class="kb-edit-wrap">
                 <div class="kb-edit-seg kb-edit-seg--intro">
-                    <div class="kb-edit-label">简介 intro · 约 50 字，对话时据此挑选注入</div>
+                    <div class="kb-edit-label kb-edit-label--row">
+                        <span>简介 intro · 约 50 字，对话时据此挑选注入</span>
+                        <button type="button" class="kb-regen-btn" :disabled="regenLoading" @click="regenIntro">
+                            <i data-lucide="sparkles" style="width:12px;height:12px"></i>
+                            {{ regenLoading ? '生成中...' : '重新生成' }}
+                        </button>
+                    </div>
                     <div ref="introHost" class="kb-edit-host"></div>
+                    <div v-if="regenLoading" class="kb-intro-loading">
+                        <span class="kb-spinner"></span>
+                        <span>生成简介中…</span>
+                    </div>
                 </div>
                 <div class="kb-edit-seg kb-edit-seg--content">
                     <div class="kb-edit-label">内容 content</div>
@@ -108,7 +118,8 @@ const KnowledgeManageSettings = {
             knowledgeLoading: false,
             knowledgeEditForm: { id: null, intro: '', content: '' },
             introEditor: null,
-            contentEditor: null
+            contentEditor: null,
+            regenLoading: false
         };
     },
 
@@ -196,6 +207,34 @@ const KnowledgeManageSettings = {
             });
             this.introEditor = null;
             this.contentEditor = null;
+        },
+
+        /** 依据当前 content 重新生成 intro，写入简介编辑器（不自动保存，走底部保存按钮） */
+        async regenIntro() {
+            if (this.regenLoading || !this.contentEditor || !this.introEditor) return;
+            const content = this.contentEditor.getValue().trim();
+            if (!content) {
+                ElementPlus.ElMessage.warning('内容不能为空，无法生成简介');
+                return;
+            }
+            this.regenLoading = true;
+            if (this.introEditor) this.introEditor.setReadOnly(true);
+            try {
+                const r = await API.knowledge.introGenerate(content);
+                if (r.status === 200 && r.data) {
+                    this.introEditor.setValue(r.data, -1);
+                    this.introEditor.clearSelection();
+                    ElementPlus.ElMessage.success('简介已重新生成，确认后保存');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '生成简介失败');
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('生成简介失败');
+                console.error(e);
+            } finally {
+                if (this.introEditor) this.introEditor.setReadOnly(false);
+                this.regenLoading = false;
+            }
         },
 
         async saveKnowledgeEntry() {

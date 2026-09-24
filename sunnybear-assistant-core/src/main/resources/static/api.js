@@ -371,6 +371,8 @@ const API = (function () {
             get: function (id) { return get('knowledge/get?id=' + encodeURIComponent(id)); },
             save: function (data) { return post('knowledge/save', data); },
             delete: function (id) { return get('knowledge/delete?id=' + encodeURIComponent(id)); },
+            /** 根据内容重新生成简介（仅返回结果，不落库） */
+            introGenerate: function (content) { return post('knowledge/intro/generate', { content: content }); },
             /** 查询某会话已注入的知识条目列表 */
             sessionList: function (sessionId) { return get('knowledge/session/list?sessionId=' + encodeURIComponent(sessionId)); },
             /** 从会话注入列表中移除一条知识条目 */

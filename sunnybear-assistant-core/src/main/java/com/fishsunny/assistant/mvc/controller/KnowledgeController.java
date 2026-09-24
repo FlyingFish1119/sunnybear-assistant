@@ -98,6 +98,26 @@ public class KnowledgeController {
     public record KnowledgeSaveRequest(Integer id, String intro, String content, String mode) {
     }
 
+    /** 根据内容重新生成简介（仅返回生成结果，不落库，由前端确认后保存） */
+    @PostMapping("/intro/generate")
+    public RestResponse generateIntro(@RequestBody(required = false) KnowledgeIntroRequest body) {
+        if (body == null || !StringUtils.hasText(body.content())) {
+            return new RestResponse().error("内容不能为空");
+        }
+        try {
+            String intro = knowledgeService.generateIntro(body.content());
+            return new RestResponse().success(intro);
+        } catch (Exception e) {
+            log.error("生成知识简介失败", e);
+            return new RestResponse().error("生成知识简介失败: " + e.getMessage());
+        }
+    }
+
+    /** 生成简介的请求体 */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record KnowledgeIntroRequest(String content) {
+    }
+
     /** 删除知识条目 */
     @RequestMapping("/delete")
     public RestResponse delete(@RequestParam("id") Integer id) {

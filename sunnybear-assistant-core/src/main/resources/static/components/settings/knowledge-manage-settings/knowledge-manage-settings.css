@@ -43,8 +43,33 @@
     min-height: 0;
 }
 
-.kb-edit-seg--intro{ flex: 1; }
+.kb-edit-seg--intro{ flex: 1; position: relative; }
 .kb-edit-seg--content{ flex: 3; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+
+/* 重新生成简介时的遮罩 + 转圈，盖住整个 intro 段并锁住输入 */
+.kb-intro-loading{
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.72);
+    font-size: 12px;
+    color: #6b7280;
+    user-select: none;
+}
+
+.kb-spinner{
+    width: 22px;
+    height: 22px;
+    border: 2.5px solid rgba(0, 0, 0, 0.12);
+    border-top-color: var(--main-color, lightsalmon);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
 
 .kb-edit-label{
     flex: none;
@@ -57,6 +82,33 @@
     border-bottom: 1px solid rgba(0, 0, 0, 0.05);
     user-select: none;
 }
+
+/* 标签行右侧放「重新生成」按钮 */
+.kb-edit-label--row{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.kb-regen-btn{
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-color, #dcdfe6);
+    border-radius: var(--radius-sm, 4px);
+    background: #fff;
+    color: #4b5563;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.kb-regen-btn:hover{ background: #f2f2f2; color: #333; }
+.kb-regen-btn:disabled{ opacity: 0.6; cursor: not-allowed; }
 
 .kb-edit-host{
     flex: 1;

@@ -19,6 +19,9 @@ import lombok.Data;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -27,6 +30,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -51,6 +55,9 @@ public class FileReadTool implements ToolHandler {
     /** 统计行数时允许扫描的最大文件大小，超过则不统计（避免为大文件长时间扫描） */
     private static final long LINE_COUNT_MAX_BYTES = 64 * 1024 * 1024L;
 
+    /** 单行默认最多返回的字符数；超过则截断并提示续读位置，可通过 charLimit 调整 */
+    private static final int DEFAULT_MAX_LINE_CHARS = 2000;
+
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
 
@@ -60,7 +67,8 @@ public class FileReadTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("读取文件内容的首选工具（比执行 cat/type 命令更安全，无输出限制）。支持多文件并行读取，各文件可独立指定行范围，单文件失败不影响其他文件。" +
-                        "默认开启安全模式（safe=true）：读取大文件时只返回文件基础信息而不返回正文，避免撑爆上下文；确需读取正文时显式设置 safe=false。")
+                        "默认开启安全模式（safe=true）：读取大文件时只返回文件基础信息而不返回正文，避免撑爆上下文；确需读取正文时显式设置 safe=false。" +
+                        "超长单行默认截断到 " + DEFAULT_MAX_LINE_CHARS + " 字符并提示续读位置，可用 startChar/charLimit 分窗口读取。")
                 .setRequired(List.of("paths"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("paths", "array",
@@ -70,7 +78,9 @@ public class FileReadTool implements ToolHandler {
                                         List.of(
                                                 new ToolRegister.Parameters("path", "string", "文件路径"),
                                                 new ToolRegister.Parameters("startLine", "integer", "起始行，从 1 开始，不填则从头读"),
-                                                new ToolRegister.Parameters("endLine", "integer", "结束行，包含该行，不填则读到结尾")),
+                                                new ToolRegister.Parameters("endLine", "integer", "结束行，包含该行，不填则读到结尾"),
+                                                new ToolRegister.Parameters("startChar", "integer", "起始字符位置，从 1 开始，用于读取超长单行的后半段，不填则从行首"),
+                                                new ToolRegister.Parameters("charLimit", "integer", "每行最多返回的字符数，默认 " + DEFAULT_MAX_LINE_CHARS + "，用于限制超长单行的输出")),
                                         List.of("path"))),
                         new ToolRegister.Parameters("safe", "boolean",
                                 "安全模式，默认 true。开启时读取大文件（超过 " + ToolKit.formatSize(SAFE_MAX_BYTES)
@@ -130,8 +140,9 @@ public class FileReadTool implements ToolHandler {
     }
 
     /**
-     * 读取单个文件的文本内容（含元数据头），使用 FileSpec 中的行范围。
+     * 读取单个文件的文本内容（含元数据头），使用 FileSpec 中的行范围与字符窗口。
      * safe 为 true 时，超过体积上限的文件只返回基础信息。
+     * 超长单行按 startChar/charLimit 截取，避免整行灌入上下文。
      */
     private String readFileContent(Path filePath, FileSpec spec, boolean safe) throws Exception {
         BasicFileAttributes attrs = Files.readAttributes(filePath, BasicFileAttributes.class);
@@ -141,38 +152,41 @@ public class FileReadTool implements ToolHandler {
             return buildSafeModeNotice(filePath, attrs, countLines(filePath, attrs.size()));
         }
 
-        List<String> allLines = Files.readAllLines(filePath);
-        int totalLines = allLines.size();
-
-        if (totalLines == 0) {
-            return "文件为空，共 0 行。";
-        }
-
-        // 该文件的行范围，行号从 1 开始
         int startLine = spec.getStartLine() == null ? 1 : spec.getStartLine();
-        int endLine = spec.getEndLine() == null ? totalLines : spec.getEndLine();
+        int endLine = spec.getEndLine() == null ? Integer.MAX_VALUE : spec.getEndLine();
+        int startChar = spec.getStartChar() == null ? 1 : spec.getStartChar();
+        int charLimit = spec.getCharLimit() == null ? DEFAULT_MAX_LINE_CHARS : spec.getCharLimit();
 
-        // 验证行号
+        // 验证行号与字符窗口
         if (startLine < 1) {
             throw new ToolExecutor.ToolExecuteException("startLine 不能小于 1，当前值: " + startLine);
         }
         if (endLine < 1) {
             throw new ToolExecutor.ToolExecuteException("endLine 不能小于 1，当前值: " + endLine);
         }
-        if (startLine > totalLines) {
-            throw new ToolExecutor.ToolExecuteException(
-                    "startLine(" + startLine + ") 超出文件总行数(" + totalLines + ")");
-        }
-        if (endLine > totalLines) {
-            endLine = totalLines;
-        }
         if (startLine > endLine) {
             throw new ToolExecutor.ToolExecuteException(
                     "startLine(" + startLine + ") 不能大于 endLine(" + endLine + ")");
         }
+        if (startChar < 1) {
+            throw new ToolExecutor.ToolExecuteException("startChar 不能小于 1，当前值: " + startChar);
+        }
+        if (charLimit < 1) {
+            throw new ToolExecutor.ToolExecuteException("charLimit 不能小于 1，当前值: " + charLimit);
+        }
 
-        // 提取指定范围的行
-        List<String> selectedLines = allLines.subList(startLine - 1, endLine);
+        // 流式扫描：不把整个文件读入内存，只保留选中行、且每行最多 charLimit 个字符
+        LineScan scan = scanLines(filePath, startLine, endLine, startChar, charLimit);
+        long totalLines = scan.totalLines();
+
+        if (totalLines == 0) {
+            return "文件为空，共 0 行。";
+        }
+        if (startLine > totalLines) {
+            throw new ToolExecutor.ToolExecuteException(
+                    "startLine(" + startLine + ") 超出文件总行数(" + totalLines + ")");
+        }
+        int effectiveEndLine = (int) Math.min((long) endLine, totalLines);
 
         // 根据文件扩展名推断语言标识
         String language = ToolKit.inferLanguage(filePath);
@@ -180,17 +194,101 @@ public class FileReadTool implements ToolHandler {
         StringBuilder sb = new StringBuilder();
         appendMetadata(sb, filePath, attrs, totalLines);
         sb.append("\n");
-        sb.append("内容（第 ").append(startLine).append(" ~ ").append(endLine)
+        sb.append("内容（第 ").append(startLine).append(" ~ ").append(effectiveEndLine)
                 .append(" 行，共 ").append(totalLines).append(" 行）:\n");
         sb.append("````").append(language).append("\n");
 
-        for (int i = 0; i < selectedLines.size(); i++) {
-            int lineNumber = startLine + i;
-            sb.append(String.format("%6d| ", lineNumber)).append(selectedLines.get(i)).append("\n");
+        for (LineView view : scan.lines()) {
+            sb.append(String.format("%6d| ", view.lineNo())).append(view.text());
+            if (view.truncated()) {
+                long shownEnd = (long) startChar + view.text().length() - 1;
+                sb.append("  …[本行共 ").append(view.length()).append(" 字符，已显示 ")
+                        .append(startChar).append("~").append(shownEnd)
+                        .append("，续读请设 startChar=").append(shownEnd + 1).append("]");
+            } else if (view.text().isEmpty() && view.length() > 0) {
+                sb.append("  …[本行共 ").append(view.length()).append(" 字符，startChar=")
+                        .append(startChar).append(" 超出范围]");
+            }
+            sb.append("\n");
         }
 
         sb.append("````").append("\n");
         return sb.toString();
+    }
+
+    /**
+     * 流式扫描文件：统计总行数，并抽取 [startLine, endLine] 范围内每行从 startChar 起的 charLimit 个字符。
+     * 逐字符读取，超长单行也只保留窗口片段，不会整体驻留内存。
+     */
+    private LineScan scanLines(Path filePath, int startLine, int endLine,
+                               int startChar, int charLimit) throws IOException {
+        List<LineView> views = new ArrayList<>();
+        long totalLines = 0;
+        long lineNo = 1;
+        long lineLength = 0;
+        boolean lineHasContent = false;
+        boolean pendingCr = false;
+        StringBuilder window = new StringBuilder();
+
+        try (Reader reader = Files.newBufferedReader(filePath, StandardCharsets.UTF_8)) {
+            char[] buf = new char[8192];
+            int n;
+            while ((n = reader.read(buf)) != -1) {
+                for (int i = 0; i < n; i++) {
+                    char c = buf[i];
+
+                    // 上一轮遇到 \r，本轮是 \n：CRLF 视为一个换行，吞掉 \n
+                    if (pendingCr) {
+                        pendingCr = false;
+                        if (c == '\n') {
+                            continue;
+                        }
+                    }
+
+                    if (c == '\n' || c == '\r') {
+                        if (lineNo >= startLine && lineNo <= endLine) {
+                            views.add(buildLineView((int) lineNo, window, lineLength, startChar));
+                        }
+                        totalLines++;
+                        lineNo++;
+                        lineLength = 0;
+                        lineHasContent = false;
+                        window.setLength(0);
+                        if (c == '\r') {
+                            pendingCr = true;
+                        }
+                        continue;
+                    }
+
+                    lineHasContent = true;
+                    if (lineNo >= startLine && lineNo <= endLine) {
+                        lineLength++;
+                        if (lineLength >= startChar && window.length() < charLimit) {
+                            window.append(c);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 文件末尾仍有未以换行结尾的一行
+        if (lineHasContent) {
+            if (lineNo >= startLine && lineNo <= endLine) {
+                views.add(buildLineView((int) lineNo, window, lineLength, startChar));
+            }
+            totalLines++;
+        }
+
+        return new LineScan(totalLines, views);
+    }
+
+    /**
+     * 由窗口片段构建行视图，并判断该行是否被截断
+     */
+    private LineView buildLineView(int lineNo, StringBuilder window, long lineLength, int startChar) {
+        String text = window.toString();
+        boolean truncated = lineLength - (startChar - 1L) > text.length();
+        return new LineView(lineNo, text, lineLength, truncated);
     }
 
     /**
@@ -315,6 +413,18 @@ public class FileReadTool implements ToolHandler {
         }
     }
 
+    /**
+     * 单行视图：行号、窗口文本、该行完整字符数、是否被截断
+     */
+    private record LineView(int lineNo, String text, long length, boolean truncated) {
+    }
+
+    /**
+     * 文件扫描结果：总行数 + 选中行的视图
+     */
+    private record LineScan(long totalLines, List<LineView> lines) {
+    }
+
     @Data
     private static class Arguments {
         private List<FileSpec> paths;
@@ -326,5 +436,7 @@ public class FileReadTool implements ToolHandler {
         private String path;
         private Integer startLine;
         private Integer endLine;
+        private Integer startChar;
+        private Integer charLimit;
     }
 }

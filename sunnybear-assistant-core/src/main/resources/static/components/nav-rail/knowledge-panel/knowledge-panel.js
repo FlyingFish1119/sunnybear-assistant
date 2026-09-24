@@ -80,6 +80,9 @@ const KnowledgePanel = {
                     <i data-lucide="book-open"></i>
                     <span class="kp-title-text">{{ current.intro || '知识条目' }}</span>
                 </div>
+                <button class="kp-btn" title="根据内容重新生成简介" :disabled="regenLoading" @click="regenIntro">
+                    <i data-lucide="sparkles"></i>
+                </button>
                 <button class="kp-btn" title="保存（Ctrl+S）" :disabled="!dirty || saving" @click="saveNow">
                     <i data-lucide="save"></i>
                 </button>
@@ -91,6 +94,10 @@ const KnowledgePanel = {
                 <div class="kp-seg kp-seg--intro">
                     <div class="kp-seg-label">简介 intro</div>
                     <div ref="introHost" class="kp-editor-host"></div>
+                    <div v-if="regenLoading" class="kp-intro-loading">
+                        <span class="kp-spinner"></span>
+                        <span>生成简介中…</span>
+                    </div>
                 </div>
                 <div class="kp-seg kp-seg--content">
                     <div class="kp-seg-label">内容 content</div>
@@ -133,7 +140,8 @@ const KnowledgePanel = {
             dirty: false,
             saving: false,
             saveFailed: false,
-            savedTip: ''
+            savedTip: '',
+            regenLoading: false
         };
     },
 
@@ -332,6 +340,33 @@ const KnowledgePanel = {
                 if (window.SbToast) window.SbToast.error('保存失败: ' + e.message);
             } finally {
                 this.saving = false;
+            }
+        },
+
+        /** 依据当前 content 重新生成 intro，写入编辑器（触发 dirty，需用户确认后保存） */
+        async regenIntro() {
+            if (this.regenLoading || !this.contentEditor || !this.introEditor) return;
+            const content = this.contentEditor.getValue().trim();
+            if (!content) {
+                if (window.SbToast) window.SbToast.warning('内容不能为空，无法生成简介');
+                return;
+            }
+            this.regenLoading = true;
+            this.introEditor.setReadOnly(true);
+            try {
+                const res = await API.knowledge.introGenerate(content);
+                if (res.status === 200 && res.data) {
+                    this.introEditor.setValue(res.data, -1);
+                    this.introEditor.clearSelection();
+                    if (window.SbToast) window.SbToast.success('简介已重新生成，确认后保存');
+                } else if (window.SbToast) {
+                    window.SbToast.error(res.message || '生成简介失败');
+                }
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('生成简介失败: ' + e.message);
+            } finally {
+                if (this.introEditor) this.introEditor.setReadOnly(false);
+                this.regenLoading = false;
             }
         },
 
