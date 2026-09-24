@@ -15,6 +15,7 @@
  *
  * 模型展示文本由本组件自行计算：启动时拉取 chat / chat_pro 设置，
  * 结合注入 store 的 currentSession.enablePro 决定显示哪个模型。
+ * 别处（如发送区模型切换）保存模型后经 wsBus 的 'settings:model-updated' 事件同步。
  * 插件页可通过 sessionStore.configure({ getModelDisplay }) 覆盖这段展示。
  *
  * 插件扩展：通过全局注册表 TopbarPlugins 按锚点插入扩展组件（左栏 / 右栏），
@@ -349,6 +350,15 @@ const MessageTopbar = {
             });
             // 自行订阅知识库命中信号（原由父组件兜底分发后经 ref 调用）
             this._unsubKnowledgeHit = this.wsBus.on('KNOWLEDGE_HIT', () => this.flashKnowledge());
+            // 模型设置在别处（如发送区模型切换）保存后，同步顶栏展示的模型名
+            this._unsubModelUpdated = this.wsBus.on('settings:model-updated', (payload) => {
+                if (!payload) return;
+                if (payload.type === 'chat_pro') {
+                    this.chatProModel = payload.model;
+                } else {
+                    this.chatModel = payload.model;
+                }
+            });
         }
     },
 
@@ -361,6 +371,10 @@ const MessageTopbar = {
         if (this._unsubKnowledgeHit) {
             this._unsubKnowledgeHit();
             this._unsubKnowledgeHit = null;
+        }
+        if (this._unsubModelUpdated) {
+            this._unsubModelUpdated();
+            this._unsubModelUpdated = null;
         }
     },
 

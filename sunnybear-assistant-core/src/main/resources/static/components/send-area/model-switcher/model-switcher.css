@@ -1,0 +1,225 @@
+/* ============================================
+   Model Switcher — 发送区模型切换入口（插件）
+   触发按钮 + 浮层面板；仅对话 / 高级两种模型配置
+   ============================================ */
+
+.model-switcher {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.model-switcher-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 170px;
+    padding: 4px 8px;
+    border: 1px solid #eceef1;
+    border-radius: 10px;
+    background: #fafbfc;
+    color: #666;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.model-switcher-toggle:hover {
+    background: #f2f3f5;
+    color: #333;
+    border-color: #e0e2e6;
+}
+
+.model-switcher-toggle.is-open {
+    color: var(--main-color, lightsalmon);
+    border-color: color-mix(in srgb, var(--main-color, lightsalmon) 45%, #fff);
+    background: color-mix(in srgb, var(--main-color, lightsalmon) 12%, #fff);
+}
+
+.model-switcher-toggle i,
+.model-switcher-toggle svg {
+    width: 14px;
+    height: 14px;
+    flex: none;
+}
+
+.model-switcher-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.model-switcher-caret {
+    transition: transform 0.2s ease;
+}
+
+.model-switcher-toggle.is-open .model-switcher-caret {
+    transform: rotate(180deg);
+}
+
+/* 点击面板外部关闭（低于面板、高于看板熊） */
+.model-switcher-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+}
+
+.model-switcher-panel {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    z-index: 60;
+    width: 300px;
+    max-width: calc(100vw - 24px);
+    padding: 12px;
+    box-sizing: border-box;
+    background: #fff;
+    border: 1px solid #eceef1;
+    border-radius: 14px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+    transform-origin: bottom right;
+}
+
+/* ---- 打开 / 关闭动画 ---- */
+.model-switcher-fade-enter-active,
+.model-switcher-fade-leave-active {
+    transition: opacity 0.18s ease;
+}
+
+.model-switcher-fade-enter-from,
+.model-switcher-fade-leave-to {
+    opacity: 0;
+}
+
+.model-switcher-pop-enter-active {
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.model-switcher-pop-leave-active {
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.model-switcher-pop-enter-from,
+.model-switcher-pop-leave-to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+}
+
+.model-switcher-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    margin-bottom: 12px;
+    background: #f4f5f7;
+    border-radius: 10px;
+}
+
+.model-switcher-tabs button {
+    flex: 1;
+    padding: 6px 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #666;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.model-switcher-tabs button.active {
+    background: #fff;
+    color: var(--main-color, lightsalmon);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.model-switcher-field {
+    margin-bottom: 12px;
+}
+
+.model-switcher-field > label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    color: #909399;
+}
+
+/* 滑块两侧留白，避免「低 / 最深」标记贴边 */
+.model-switcher-field .el-slider {
+    padding: 0 12px;
+    box-sizing: border-box;
+}
+
+/* 刻度文字绝对定位、会溢出滑块盒子；用 padding 预留空间，
+   避免它与下方保存按钮的 margin 折叠后重叠 */
+.model-switcher-field--slider {
+    padding-bottom: 16px;
+}
+
+.model-switcher-clear {
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: #b9bec7;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.model-switcher-clear:hover {
+    color: var(--main-color, lightsalmon);
+}
+
+.model-switcher-unset {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: #f7f8fa;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #b9bec7;
+}
+
+.model-switcher-unset button {
+    border: none;
+    background: transparent;
+    color: var(--main-color, lightsalmon);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.model-switcher-actions {
+    display: flex;
+    justify-content: flex-end;
+    /* 与上方滑块刻度「最深」拉开距离，避免贴住保存按钮 */
+    margin-top: 14px;
+}
+
+.model-switcher-save {
+    padding: 7px 18px;
+    border: none;
+    border-radius: 9px;
+    background: var(--main-color, lightsalmon);
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+}
+
+.model-switcher-save:hover:not(:disabled) {
+    filter: brightness(0.94);
+}
+
+.model-switcher-save:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+/* 小屏：模型名收窄，避免挤压工具行 */
+@media (max-width: 768px) {
+    .model-switcher-toggle {
+        max-width: 104px;
+    }
+}

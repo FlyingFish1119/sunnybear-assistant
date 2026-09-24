@@ -15,8 +15,9 @@ const SLASH_COMMANDS = [
  * 发送区插件注册表（全局单例）。
  *
  * 插件按锚点插入扩展组件：
- *   'toolbar'   工具栏图标区（TTS / 上传 / 步骤清单之后），如角色页的私聊/移交按钮
- *   'overlay'   输入区上方的浮层区（发送区容器内、composer 之前），如私聊面板
+ *   'toolbar'        工具栏图标区（TTS / 上传 / 步骤清单之后），如角色页的私聊/移交按钮
+ *   'toolbar-right'  工具行右侧（快捷键提示之后），如模型切换入口
+ *   'overlay'        输入区上方的浮层区（发送区容器内、composer 之前），如私聊面板
  * 组件会收到 prop: { mainColor, inputText } 并 inject sendArea（本组件实例），
  * 可读写输入内容（sendArea.inputText）或调用其方法。
  */
@@ -138,7 +139,14 @@ const SendArea = {
                                    :is="slot.component"
                                    :main-color="mainColor"></component>
                     </div>
-                    <span class="send-area-hint">Ctrl+Enter 发送</span>
+                    <div class="send-area-toolbar-right">
+                        <span class="send-area-hint">Ctrl+Enter 发送</span>
+                        <!-- 工具行右侧插件槽（锚点 'toolbar-right'，如模型切换入口） -->
+                        <component v-for="(slot, si) in toolbarRightSlots"
+                                   :key="'send-toolbar-right-' + si"
+                                   :is="slot.component"
+                                   :main-color="mainColor"></component>
+                    </div>
                 </div>
             </div>
             <!-- 发送/停止按钮：右侧整高竖块，与输入区用分隔线隔开，图标居中。
@@ -193,6 +201,8 @@ const SendArea = {
         return {
             // 工具栏插件槽（锚点 'toolbar'）
             toolbarSlots: SendAreaPlugins.snapshot('toolbar'),
+            // 工具行右侧插件槽（锚点 'toolbar-right'）
+            toolbarRightSlots: SendAreaPlugins.snapshot('toolbar-right'),
             // 浮层插件槽（锚点 'overlay'）
             overlaySlots: SendAreaPlugins.snapshot('overlay'),
             // 输入框内容（组件内部状态）

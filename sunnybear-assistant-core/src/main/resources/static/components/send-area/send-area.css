@@ -102,6 +102,14 @@
     gap: 2px;
 }
 
+/* ---- 工具行右侧：快捷键提示 + 插件槽（锚点 'toolbar-right'） ---- */
+.send-area-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
 /* ---- 方形图标按钮（上传 / 语音） ---- */
 .send-area-icon-btn {
     display: flex;
