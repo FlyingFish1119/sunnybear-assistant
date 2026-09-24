@@ -105,12 +105,19 @@ public class CloneAssistantTool implements SubAgentToolHandler {
                         适合：可以独立交付的工作——探索目录、联查资料、改代码、跑任务这类完整执行段。\
                         不适合：一句话能答复的事、方案讨论、必须由你亲自拍板的判断。""")
                 .setRequired(List.of("target"))
-                .setParameters(List.of(new ToolRegister.Parameters(
-                        "target", "string",
-                        """
-                        要执行的任务，像交接工作一样交代清楚：目标、验收标准、已知的背景与约束。\
-                        首次召唤时它会以此生成专属执行方案并常驻整个会话，所以第一次要说透；\
-                        后续召唤它可以接着上次的进展继续干，不用重复交代。""")));
+                .setParameters(List.of(
+                        new ToolRegister.Parameters(
+                                "target", "string",
+                                """
+                                要执行的任务，像交接工作一样交代清楚：目标、验收标准、已知的背景与约束。\
+                                首次召唤时它会以此生成专属执行方案并常驻整个会话，所以第一次要说透；\
+                                后续召唤它可以接着上次的进展继续干，不用重复交代。"""),
+                        new ToolRegister.Parameters(
+                                "clear", "boolean",
+                                """
+                                是否清空该执行体已积累的执行记录（消息树与专属执行方案）后重头开始，默认 false。\
+                                适用于上一轮执行跑偏、上下文已污染，或想换一个全新任务方向时；\
+                                为 true 时会先清理当前进度，再按本次 target 重新走一遍完整流程。""")));
     }
 
     @Override
@@ -131,6 +138,11 @@ public class CloneAssistantTool implements SubAgentToolHandler {
         ChatSession chatSession = (ChatSession) context.get("chatSession");
 
         try {
+            // 0. clear=true 时先清空已有执行记录，再走后续完整流程
+            if (Boolean.TRUE.equals(arguments.getClear())) {
+                clearSession(chatSession.getId());
+            }
+
             // 1. 首次召唤时由 Cub 生成本任务的专注执行系统提示词并落盘；之后直接复用
             Path promptFile = sessionFileManager.prepareSessionFile(chatSession.getId(), MISSION_PROMPT_FILE);
             String missionPrompt = readMissionPrompt(promptFile);
@@ -274,6 +286,20 @@ public class CloneAssistantTool implements SubAgentToolHandler {
             - **收在结果上。** 最终回复讲清楚做了什么、结果如何、验证依据；没做完或被问题卡住的，\
               明确说明卡在哪、需要什么。""";
 
+    // ==================== 执行记录清理 ====================
+
+    /**
+     * 清空该会话内执行体积攒的执行记录：消息树与专属执行方案。
+     * 文件不存在属正常路径，忽略；清理后由后续流程重新生成方案、从空树开始。
+     */
+    private void clearSession(String sessionId) throws Exception {
+        Path treeFile = sessionFileManager.prepareSessionFile(sessionId, MESSAGE_TREE_FILE);
+        Path promptFile = sessionFileManager.prepareSessionFile(sessionId, MISSION_PROMPT_FILE);
+        Files.deleteIfExists(treeFile);
+        Files.deleteIfExists(promptFile);
+        log.info("执行型子 Agent 已清空执行记录: session={}", sessionId);
+    }
+
     // ==================== 专注提示词读写 ====================
 
     /**
@@ -343,5 +369,6 @@ public class CloneAssistantTool implements SubAgentToolHandler {
     @Accessors(chain = true)
     private static class Arguments {
         private String target;
+        private Boolean clear;
     }
 }

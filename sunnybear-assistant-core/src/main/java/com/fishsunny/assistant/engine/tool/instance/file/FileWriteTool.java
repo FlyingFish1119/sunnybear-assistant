@@ -131,17 +131,16 @@ public class FileWriteTool implements ToolHandler {
                 }
             }
 
-            // 执行文件写入
-            File file = filePath.toFile();
-            File parentDir = file.getParentFile();
-            if (parentDir != null && !parentDir.exists()) {
-                boolean created = parentDir.mkdirs();
-                if (!created) {
-                    throw new ToolExecutor.ToolExecuteException("无法创建父目录: " + parentDir.getAbsolutePath());
-                }
-            }
-
             synchronized (FileToolKit.class) {
+                // 执行文件写入
+                File file = filePath.toFile();
+                File parentDir = file.getParentFile();
+                if (parentDir != null && !parentDir.exists()) {
+                    boolean created = parentDir.mkdirs();
+                    if (!created) {
+                        throw new ToolExecutor.ToolExecuteException("无法创建父目录: " + parentDir.getAbsolutePath());
+                    }
+                }
                 Files.writeString(filePath, arguments.getContent(), StandardCharsets.UTF_8);
             }
 
