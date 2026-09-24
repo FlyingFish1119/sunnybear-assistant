@@ -5,14 +5,14 @@
      · 第一层 .kp-drawer--list     条目列表（贴着导航轨滑出）
      · 第二层 .kp-drawer--editor   双段编辑区（上 intro 1/4，下 content 3/4）
 
-   宽度：第一层 320px、第二层 640px，窄屏按比例收。
+   宽度：第一层 320px、第二层 60%，窄屏按比例收。
    移动端（≤768px）导航轨隐藏，遮罩与抽屉从 0 起算，第二层盖满屏。
    ============================================================ */
 
 .kp-overlay{
     --kp-rail-w: 56px;
     --kp-list-w: 320px;
-    --kp-editor-w: 640px;
+    --kp-editor-w: 60%;
 
     position: fixed;
     top: 0;
