@@ -11,11 +11,14 @@ package com.fishsunny.assistant.engine.tool.instance.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
+import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +33,7 @@ import java.util.Map;
 @Slf4j
 @ToolKitComponent(AgentToolKit.class)
 @ConditionalOnExpression("${engine.tool.agent.enable:true}")
-public class AgentTool implements ToolHandler {
+public class AgentTool implements ToolHandler, MultimodalResultAble {
 
     public static final String NAME = "agent_tool";
 
@@ -44,6 +47,14 @@ public class AgentTool implements ToolHandler {
     private final Map<String, ToolHandler> registry;
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
+
+    /**
+     * 当前线程最近一次路由到的子 Agent。
+     * <p>用于 {@link #writeFile} 回落到子 Agent 自己的落盘实现：ToolExecutor 只按外层 handler
+     * 判断是否要落盘，经 agent_tool 路由时外层是 AgentTool，拿不到具体子 Agent，
+     * 所以这里在 action 里记一笔，落盘阶段再取出来分派。
+     */
+    private final ThreadLocal<ToolHandler> routedSubAgent = new ThreadLocal<>();
 
     public AgentTool(ObjectMapper objectMapper, List<SubAgentToolHandler> subAgents) {
         this.objectMapper = objectMapper;
@@ -120,13 +131,34 @@ public class AgentTool implements ToolHandler {
                 subArguments.put(PARAM_EXTENSION, arguments.getExtension());
             }
             String subArgumentsJson = objectMapper.writeValueAsString(subArguments);
+            // 记下路由目标：执行完 ToolExecutor 会调用本类 writeFile 落盘多模态结果，
+            // 届时需要按子 Agent 自己的实现来落盘
+            routedSubAgent.set(subAgent);
             return subAgent.action(subArgumentsJson, context);
         } catch (ToolExecutor.ToolExecuteException e) {
+            routedSubAgent.remove();
             throw e;
         } catch (Exception e) {
+            routedSubAgent.remove();
             log.error("AgentTool 路由子 Agent[{}] 执行异常: {}", subAgent.name(), e.getMessage(), e);
             throw new ToolExecutor.ToolExecuteException("子 Agent[" + subAgent.name() + "] 执行失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 落盘多模态结果：转发给最近路由到的子 Agent 的实现。
+     * <p>子 Agent 未实现 {@link MultimodalResultAble} 时回落到默认逻辑（把 base64 落盘并回写引用）。
+     */
+    @Override
+    public void writeFile(List<MultimodalContent> contents, SessionFileManager sessionFileManager,
+                          String sessionId) throws java.io.IOException {
+        ToolHandler subAgent = routedSubAgent.get();
+        routedSubAgent.remove();
+        if (subAgent instanceof MultimodalResultAble multimodalSubAgent) {
+            multimodalSubAgent.writeFile(contents, sessionFileManager, sessionId);
+            return;
+        }
+        MultimodalResultAble.super.writeFile(contents, sessionFileManager, sessionId);
     }
 
     @Override

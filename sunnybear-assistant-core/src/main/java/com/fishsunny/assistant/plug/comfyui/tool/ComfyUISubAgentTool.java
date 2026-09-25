@@ -183,7 +183,7 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler, MultimodalResul
         }
     }
 
-    /** 从 ComfyUI 拉取生成图。raw=false 立即落盘记录引用；raw=true 只取 base64，不进正文 */
+    /** 从 ComfyUI 拉取生成图。raw=false 立即落盘记录引用；raw=true 保留 base64 供多模态返回 */
     private List<GeneratedImage> fetchImages(List<String> filenames, String sessionId, boolean raw) {
         List<GeneratedImage> images = new ArrayList<>();
         if (filenames.isEmpty() || sessionId == null) return images;
@@ -231,7 +231,8 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler, MultimodalResul
         ToolExecutor.ToolExecuteResponse response =
                 new ToolExecutor.ToolExecuteResponse(name(), result.toString());
         if (raw) {
-            // raw：图片作为多模态内容直接返回给外层模型查看，正文不含 markdown 图片链接
+            // raw：图片作为多模态内容直接返回给外层模型查看，正文不含 markdown 图片链接。
+            // 落盘与引用回写由 MultimodalResultAble 统一处理（经 agent_tool 路由时由 AgentTool 转发）
             for (GeneratedImage image : images) {
                 response.modalContent(image.fileName(), ContentType.IMAGE, image.base64());
             }
