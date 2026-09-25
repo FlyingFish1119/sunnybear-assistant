@@ -6,7 +6,7 @@ import com.fishsunny.assistant.engine.tool.instance.file.FileDeleteTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileDownloadTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileEditTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileWriteTool;
-import com.fishsunny.assistant.engine.tool.instance.image.ImageCaptionTool;
+import com.fishsunny.assistant.engine.tool.instance.image.ViewCaptionTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.instance.os.CommandTool;
@@ -50,7 +50,7 @@ public class ToolSettingsController {
             @Qualifier(FileEditTool.SETTINGS) FileEditTool.Settings fileEditToolSettings,
             @Qualifier(FileDeleteTool.SETTINGS) FileDeleteTool.Settings fileDeleteToolSettings,
             @Qualifier(FileDownloadTool.SETTINGS) FileDownloadTool.Settings fileDownloadToolSettings,
-            @Qualifier(ImageCaptionTool.SETTINGS) ImageCaptionTool.Settings imageCaptionToolSettings,
+            @Qualifier(ViewCaptionTool.SETTINGS) ViewCaptionTool.Settings viewCaptionToolSettings,
             @Qualifier(WebReaderTool.SETTINGS) WebReaderTool.Settings webReaderToolSettings) {
         this.objectMapper = objectMapper;
         this.toolSettingsPath = toolSettingsPath;
@@ -62,7 +62,7 @@ public class ToolSettingsController {
         this.toolSettingsMap.put(FileEditTool.SETTINGS, fileEditToolSettings);
         this.toolSettingsMap.put(FileDeleteTool.SETTINGS, fileDeleteToolSettings);
         this.toolSettingsMap.put(FileDownloadTool.SETTINGS, fileDownloadToolSettings);
-        this.toolSettingsMap.put(ImageCaptionTool.SETTINGS, imageCaptionToolSettings);
+        this.toolSettingsMap.put(ViewCaptionTool.SETTINGS, viewCaptionToolSettings);
         this.toolSettingsMap.put(WebReaderTool.SETTINGS, webReaderToolSettings);
     }
 
@@ -108,10 +108,10 @@ public class ToolSettingsController {
         return new RestResponse().success(fileDownloadToolSettings);
     }
 
-    @RequestMapping("/imagecaption/get")
-    public RestResponse getImageCaptionToolSettings() {
-        ImageCaptionTool.Settings imageCaptionToolSettings = (ImageCaptionTool.Settings) toolSettingsMap.get(ImageCaptionTool.SETTINGS);
-        return new RestResponse().success(imageCaptionToolSettings);
+    @RequestMapping("/viewcaption/get")
+    public RestResponse getViewCaptionToolSettings() {
+        ViewCaptionTool.Settings viewCaptionToolSettings = (ViewCaptionTool.Settings) toolSettingsMap.get(ViewCaptionTool.SETTINGS);
+        return new RestResponse().success(viewCaptionToolSettings);
     }
 
     @RequestMapping("/webreadertool/get")
@@ -322,17 +322,17 @@ public class ToolSettingsController {
         return new RestResponse().success("保存成功");
     }
 
-    @PostMapping("/imagecaption/save")
-    public RestResponse saveImageCaptionToolSettings(@RequestBody(required = false) ImageCaptionTool.Settings settings) {
+    @PostMapping("/viewcaption/save")
+    public RestResponse saveViewCaptionToolSettings(@RequestBody(required = false) ViewCaptionTool.Settings settings) {
         if (settings == null) {
             return new RestResponse().error("Invalid settings");
         }
         if (settings.getMaxLength() == null || settings.getMaxLength() < 0) {
             return new RestResponse().error("Invalid settings");
         }
-        ImageCaptionTool.Settings captionTool = (ImageCaptionTool.Settings) toolSettingsMap.get(ImageCaptionTool.SETTINGS);
+        ViewCaptionTool.Settings captionTool = (ViewCaptionTool.Settings) toolSettingsMap.get(ViewCaptionTool.SETTINGS);
         captionTool.setMaxLength(settings.getMaxLength());
-        toolSettingsMap.put(ImageCaptionTool.SETTINGS, captionTool);
+        toolSettingsMap.put(ViewCaptionTool.SETTINGS, captionTool);
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(toolSettingsPath), toolSettingsMap);
         } catch (Exception e) {

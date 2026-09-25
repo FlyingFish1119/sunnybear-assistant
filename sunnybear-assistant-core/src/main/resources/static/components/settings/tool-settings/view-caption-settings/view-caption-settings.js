@@ -1,12 +1,12 @@
 /**
- * 图片识别工具设置组件
+ * 图片/视频识别（view_caption_tool）设置组件
  *
- * 展示：图片识别条目（识别分辨率摘要）
+ * 展示：识别条目（识别分辨率摘要）
  * 修改：条目右侧输入框直接编辑最大边长（分辨率，像素），失焦/回车即保存
  * 保存成功后 emit('saved')，由父组件刷新全部设置
  */
-const ImageCaptionSettings = {
-    name: 'ImageCaptionSettings',
+const ViewCaptionSettings = {
+    name: 'ViewCaptionSettings',
 
     mixins: [SettingsCommon],
 
@@ -28,7 +28,7 @@ const ImageCaptionSettings = {
             </div>
             <div class="settings-item-right">
                 <input class="settings-inline-number" type="number" min="0" step="50"
-                       v-model.number="currentMaxLength" :disabled="saving.imagecaption" @change="onMaxLengthChange">
+                       v-model.number="currentMaxLength" :disabled="saving.viewcaption" @change="onMaxLengthChange">
                 <span class="settings-item-value">px</span>
             </div>
         </div>
@@ -54,7 +54,7 @@ const ImageCaptionSettings = {
                 this.currentMaxLength = this.settings.maxLength != null ? this.settings.maxLength : 500;
                 return;
             }
-            const ok = await this.postSave('settings/imagecaption/save', { maxLength: v }, 'imagecaption');
+            const ok = await this.postSave('settings/viewcaption/save', { maxLength: v }, 'viewcaption');
             if (!ok) this.currentMaxLength = this.settings.maxLength != null ? this.settings.maxLength : 500;
         }
     },

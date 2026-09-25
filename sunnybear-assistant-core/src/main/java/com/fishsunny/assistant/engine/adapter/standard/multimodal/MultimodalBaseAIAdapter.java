@@ -34,6 +34,7 @@ import com.fishsunny.assistant.engine.protocol.standard.content.StandardContent;
 import com.fishsunny.assistant.engine.protocol.standard.content.audio.StandardAudioContent;
 import com.fishsunny.assistant.engine.protocol.standard.content.image.StandardImageContent;
 import com.fishsunny.assistant.engine.protocol.standard.content.text.StandardTextContent;
+import com.fishsunny.assistant.engine.protocol.standard.content.video.StandardVideoContent;
 import com.fishsunny.assistant.engine.protocol.standard.tools.request.StandardToolRequest;
 import com.fishsunny.assistant.engine.protocol.standard.tools.request.StandardToolRequestFunction;
 import com.fishsunny.assistant.utils.Base64Utils;
@@ -183,8 +184,10 @@ public abstract class MultimodalBaseAIAdapter extends AIAdapter {
                 continue;
             }
             if (content instanceof VideoContent videoContent) {
-                // OpenAI Chat Completions API 不支持 video_url 类型，跳过并记录日志
-                log.warn("当前多模态协议(OpenAI)不支持视频内容，已跳过: {}", videoContent.getUrl());
+                // 直接按 OpenAI 兼容的 video_url 内容块透传：Kimi（kimi-k2.6 / kimi-k3）等支持；
+                // 不支持该类型的端点会自行报错，错误可见即可，不在本地静默丢弃
+                standardContents.add(new StandardVideoContent(videoContent.getUrl()));
+                continue;
             }
         }
         return standardContents;
@@ -206,6 +209,10 @@ public abstract class MultimodalBaseAIAdapter extends AIAdapter {
                 String mimeType = Base64Utils.getMimeTypeByExtension(format);
                 String dataUri = "data:" + mimeType + ";base64," + audioContent.getInput_audio().getData();
                 contents.add(new AudioContent(dataUri));
+                continue;
+            }
+            if (standardContent instanceof StandardVideoContent videoContent) {
+                contents.add(new VideoContent(videoContent.getVideo_url().getUrl()));
             }
         }
         return contents;

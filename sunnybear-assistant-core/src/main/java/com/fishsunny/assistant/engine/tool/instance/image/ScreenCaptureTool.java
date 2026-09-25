@@ -20,7 +20,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
-import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
+import com.fishsunny.assistant.engine.tool.instance.ViewToolKit;
 import com.fishsunny.assistant.engine.tool.service.SystemPrompts;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.image.ScaleImageHelper;
@@ -39,8 +39,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
-@ToolKitComponent(ImageToolKit.class)
-@ConditionalOnExpression("${engine.tool.image.enable:true} && ${engine.tool.image.screen-capture.enable:true}")
+@ToolKitComponent(ViewToolKit.class)
+@ConditionalOnExpression("${engine.tool.view.enable:true} && ${engine.tool.view.screen-capture.enable:true}")
 public class ScreenCaptureTool implements ToolHandler, MultimodalResultAble {
 
     public static final String NAME = "screen_capture_tool";

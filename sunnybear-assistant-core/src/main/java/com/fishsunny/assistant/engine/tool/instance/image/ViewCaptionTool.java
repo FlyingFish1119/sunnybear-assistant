@@ -20,9 +20,11 @@ import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
-import com.fishsunny.assistant.engine.tool.instance.ImageToolKit;
+import com.fishsunny.assistant.engine.tool.instance.ViewToolKit;
 import com.fishsunny.assistant.engine.tool.service.SystemPrompts;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.utils.Base64Utils;
+import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
 import com.fishsunny.assistant.utils.image.ScaleImageHelper;
 import lombok.Data;
@@ -46,19 +48,25 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
-@ToolKitComponent(ImageToolKit.class)
-@ConditionalOnExpression("${engine.tool.image.enable:true} && ${engine.tool.image.image-caption.enable:true}")
-public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
+@ToolKitComponent(ViewToolKit.class)
+@ConditionalOnExpression("${engine.tool.view.enable:true} && ${engine.tool.view.view-caption.enable:true}")
+public class ViewCaptionTool implements ToolHandler, MultimodalResultAble {
 
-    public static final String NAME = "image_caption_tool";
-    public static final String SETTINGS = "image_caption_tool_settings";
+    public static final String NAME = "view_caption_tool";
+    public static final String SETTINGS = "view_caption_tool_settings";
 
-    /** capture_type 常量：analyze = 现有行为（内部 AI 识别返回文本）；raw = 直接把原图以多模态 content 数组返回 */
+    /** capture_type 常量：analyze = 现有行为（内部 AI 识别返回文本）；raw = 直接把原图/原视频以多模态 content 数组返回 */
     private static final String CAPTURE_TYPE_ANALYZE = "analyze";
     private static final String CAPTURE_TYPE_RAW = "raw";
 
     private static final Long MAX_TIMEOUT = 15L;
     private static final Integer DEFAULT_IMAGE_LENGTH = 1024;
+
+    /**
+     * 视频大小上限（字节）：视频不再缩放、整段 base64 进请求体，过大既撑爆内存也过不了
+     * 上游请求体限制（Kimi 约 100MB），超过直接给出可操作的提示。
+     */
+    private static final long MAX_VIDEO_BYTES = 50L * 1024 * 1024;
 
     private final ToolRegister register;
 
@@ -69,7 +77,7 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
     private final Settings settings;
 
     @Autowired
-    public ImageCaptionTool(@Qualifier(AISettings.OCR) AISettings aiSettings,
+    public ViewCaptionTool(@Qualifier(AISettings.OCR) AISettings aiSettings,
                             ChatHttpHandler chatHttpHandler,
                             ObjectMapper objectMapper,
                             @Qualifier(SETTINGS) Settings settings,
@@ -83,23 +91,23 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
 
         register = new ToolRegister()
                 .setName(NAME)
-                .setDescription("识别和理解图片内容，或（captureType=raw）直接把原图以多模态 content 数组返回给上层模型查看。支持网络链接和本地文件路径。analyze 模式返回中文描述，适用于描述图片、识别图中文字、分析图表等。")
+                .setDescription("识别和理解图片或视频内容，或（captureType=raw）直接把原图/原视频以多模态 content 数组返回给上层模型查看。支持网络链接和本地文件路径。analyze 模式返回中文描述，适用于描述图片、描述视频、识别图中文字、分析图表等。")
                 .setRequired(List.of("url"));
 
         ToolRegister.Parameters urlParam = new ToolRegister.Parameters()
                 .setParameterName("url")
                 .setType("string")
-                .setDescription("图片的URL地址。支持 http/https 网络链接，也支持本地文件绝对路径。");
+                .setDescription("图片或视频的URL地址。支持 http/https 网络链接，也支持本地文件绝对路径。");
 
         ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
                 .setParameterName("target")
                 .setType("string")
-                .setDescription("识别目标，告诉AI你希望从图片中重点了解什么。例如：'描述图片整体内容'、'识别图中的文字'、'判断图片中是否包含错误弹窗'、'分析图表中的数据趋势'。不填则默认对图片进行全面描述。captureType=raw 时忽略。");
+                .setDescription("识别目标，告诉AI你希望从图片/视频中重点了解什么。例如：'描述图片整体内容'、'描述视频讲了什么'、'识别图中的文字'、'判断图片中是否包含错误弹窗'、'分析图表中的数据趋势'。不填则默认对图片/视频进行全面描述。captureType=raw 时忽略。");
 
         ToolRegister.Parameters captureTypeParam = new ToolRegister.Parameters()
                 .setParameterName("captureType")
                 .setType("string")
-                .setDescription("返回方式。可选值：'analyze'（默认，内部 AI 识别图片并返回中文描述）或 'raw'（不调用 AI，直接把原图以多模态内容返回，由你直接查看图片分析）。默认为 'analyze'。");
+                .setDescription("返回方式。可选值：'analyze'（默认，内部 AI 识别并返回中文描述）或 'raw'（不调用 AI，直接把原图/原视频以多模态内容返回，由你直接查看分析）。默认为 'analyze'。");
 
         register.setParameters(List.of(urlParam, targetParam, captureTypeParam));
     }
@@ -129,19 +137,21 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
 
     /**
      * raw 模式：不调用内部 AI，按内部 OCR 同一套解析（网络 data URI / 本地文件缩放）
-     * 拿到图片后落盘为会话目录下的图片文件，并以多模态 tool content 数组返回，供外层模型直接查看原图。
+     * 拿到媒体后落盘为会话目录下的文件，并以多模态 tool content 数组返回，供外层模型直接查看原图/原视频。
      */
     private ToolExecutor.ToolExecuteResponse executeRawImageMode(Arguments arguments) throws Exception {
-        String dataUri = findImage(arguments);
-        byte[] bytes = ScaleImageHelper.base64ToByteArray(dataUri);
-        if (bytes.length == 0) {
-            throw new ToolExecutor.ToolExecuteException("图片数据为空，无法执行 raw 图片返回模式");
+        String dataUri = findMedia(arguments);
+        boolean isVideo = ContentType.VIDEO.equals(ObjectUtils.detectFileType(dataUri));
+        byte[] bytes = Base64Utils.decodeBase64FromDataUri(dataUri);
+        if (bytes == null || bytes.length == 0) {
+            throw new ToolExecutor.ToolExecuteException("媒体数据为空，无法执行 raw 返回模式");
         }
         String fileName = UUID.randomUUID() + "." + extractImageSubtype(dataUri);
-        String result = "已获取图片。\n"
-                + "图片已保存至会话文件目录：" + fileName;
+        String result = (isVideo ? "已获取视频。" : "已获取图片。") + "\n"
+                + (isVideo ? "视频" : "图片") + "已保存至会话文件目录：" + fileName;
         return new ToolExecutor.ToolExecuteResponse(name(), result)
-                .modalContent(fileName, ContentType.IMAGE, ScaleImageHelper.byteArrayToBase64(bytes));
+                .modalContent(fileName, isVideo ? ContentType.VIDEO : ContentType.IMAGE,
+                        ObjectUtils.encodeToDataUrl(fileName, bytes));
     }
 
     /**
@@ -166,16 +176,24 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
     }
 
     /**
-     * image 模式：处理图片URL，构建 ImageContent 发送给 AI。
+     * image/video 模式：处理媒体URL，构建 ImageContent / VideoContent 发送给 AI。
      */
     private ToolExecutor.ToolExecuteResponse executeImageMode(Arguments arguments) throws Exception {
-
-        String userPrompt = "请用中文解释图片中的内容。\n[任务目标]\n" + arguments.getTarget();
+        String dataUri = findMedia(arguments);
+        boolean isVideo = ContentType.VIDEO.equals(ObjectUtils.detectFileType(dataUri));
+        String userPrompt = (isVideo ? "请用中文描述视频中的内容。" : "请用中文解释图片中的内容。")
+                + "\n[任务目标]\n" + arguments.getTarget();
+        ChatMessage userMessage = new ChatMessage();
+        if (isVideo) {
+            userMessage.userWithVideo(userPrompt, dataUri);
+        } else {
+            userMessage.userWithImage(userPrompt, dataUri);
+        }
         ChatRequest request = new ChatRequest()
                 .loadSettings(aiSettings)
                 .setMessages(List.of(
                         new ChatMessage().system(SystemPrompts.OCR),
-                        new ChatMessage().userWithImage(userPrompt, findImage(arguments))
+                        userMessage
                 ));
         return execute(request);
     }
@@ -189,7 +207,12 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
         return new ToolExecutor.ToolExecuteResponse(name(), caption.get());
     }
 
-    private String findImage(Arguments arguments) throws Exception {
+    /**
+     * 读取本地/网络媒体并返回 data URI。
+     * <p>图片按 maxLength 缩放后再编码（内部 OCR 同一套口径）；视频不做图像缩放，
+     * 按真实 MIME 编码原样返回——以前把视频塞进 ImageIO 当图片处理，拿到的是 NPE 或乱码。
+     */
+    private String findMedia(Arguments arguments) throws Exception {
         if (arguments.getUrl().startsWith("http")) {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(new URI(arguments.getUrl()))
@@ -201,18 +224,30 @@ public class ImageCaptionTool implements ToolHandler, MultimodalResultAble {
                 if (response.statusCode() != 200) {
                     throw new ToolExecutor.ToolExecuteException(data);
                 }
-                if (!data.startsWith("data:image")) {
-                    throw new ToolExecutor.ToolExecuteException("返回的图片格式错误");
+                if (!data.startsWith("data:image") && !data.startsWith("data:video")) {
+                    throw new ToolExecutor.ToolExecuteException("返回的媒体格式错误，只支持图片或视频 data URI");
                 }
                 return data;
             }
         } else {
             File file = new File(arguments.getUrl());
+            if (!file.exists() || !file.isFile()) {
+                throw new ToolExecutor.ToolExecuteException("本地文件不存在：" + arguments.getUrl());
+            }
+            String type = ObjectUtils.detectFileTypeByExtension(arguments.getUrl());
+            if (ContentType.VIDEO.equals(type) && file.length() > MAX_VIDEO_BYTES) {
+                throw new ToolExecutor.ToolExecuteException("视频文件过大（"
+                        + (file.length() / 1024 / 1024) + "MB），请截取片段后重试");
+            }
             try (InputStream inputStream = new FileInputStream(file)) {
                 byte[] bytes = inputStream.readAllBytes();
-                MultipartScaleImageHelper helper = new MultipartScaleImageHelper(bytes);
-                byte[] afterScale = helper.scaleImage(settings.getMaxLength());
-                return ScaleImageHelper.byteArrayToBase64(afterScale);
+                if (ContentType.IMAGE.equals(type)) {
+                    MultipartScaleImageHelper helper = new MultipartScaleImageHelper(bytes);
+                    byte[] afterScale = helper.scaleImage(settings.getMaxLength());
+                    return ScaleImageHelper.byteArrayToBase64(afterScale);
+                }
+                // 视频等不做图像缩放，按真实 MIME 编码
+                return ObjectUtils.encodeToDataUrl(arguments.getUrl(), bytes);
             }
         }
     }

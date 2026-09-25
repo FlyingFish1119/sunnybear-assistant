@@ -197,9 +197,9 @@ const API = (function () {
                 get: function () { return get('settings/filedownload/get'); },
                 save: function (data) { return post('settings/filedownload/save', data); }
             },
-            imagecaption: {
-                get: function () { return get('settings/imagecaption/get'); },
-                save: function (data) { return post('settings/imagecaption/save', data); }
+            viewcaption: {
+                get: function () { return get('settings/viewcaption/get'); },
+                save: function (data) { return post('settings/viewcaption/save', data); }
             },
             webreadertool: {
                 get: function () { return get('settings/webreadertool/get'); },

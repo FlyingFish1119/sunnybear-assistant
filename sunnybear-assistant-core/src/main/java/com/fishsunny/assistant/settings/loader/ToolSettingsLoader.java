@@ -6,7 +6,7 @@ import com.fishsunny.assistant.engine.tool.instance.file.FileDeleteTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileDownloadTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileEditTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileWriteTool;
-import com.fishsunny.assistant.engine.tool.instance.image.ImageCaptionTool;
+import com.fishsunny.assistant.engine.tool.instance.image.ViewCaptionTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.instance.os.CommandTool;
@@ -93,7 +93,7 @@ public class ToolSettingsLoader {
                 .setMaxOutputSize(32768L).setSafetyOutputSize(8192L));
         defaults.put(WebSearchTool.SETTINGS, new WebSearchTool.Settings("", ""));
         defaults.put(ExtensionScriptTool.SETTINGS, new ExtensionScriptTool.Settings());
-        defaults.put(ImageCaptionTool.SETTINGS, new ImageCaptionTool.Settings());
+        defaults.put(ViewCaptionTool.SETTINGS, new ViewCaptionTool.Settings());
         defaults.put(FileWriteTool.SETTINGS, new FileWriteTool.Settings());
         defaults.put(FileEditTool.SETTINGS, new FileEditTool.Settings());
         defaults.put(FileDeleteTool.SETTINGS, new FileDeleteTool.Settings());
@@ -172,14 +172,18 @@ public class ToolSettingsLoader {
         return objectMapper.convertValue(data, FileDownloadTool.Settings.class);
     }
 
-    @Bean(ImageCaptionTool.SETTINGS)
-    public ImageCaptionTool.Settings imageCaptionToolSettings() {
+    @Bean(ViewCaptionTool.SETTINGS)
+    public ViewCaptionTool.Settings viewCaptionToolSettings() {
         initToolSettingsFile();
-        Object data = toolSettingsCache.get(ImageCaptionTool.SETTINGS);
+        Object data = toolSettingsCache.get(ViewCaptionTool.SETTINGS);
         if (data == null) {
-            return new ImageCaptionTool.Settings();
+            // 兼容旧 key：image_caption_tool_settings（ViewCaptionTool 更名前的持久化键）
+            data = toolSettingsCache.get("image_caption_tool_settings");
         }
-        return objectMapper.convertValue(data, ImageCaptionTool.Settings.class);
+        if (data == null) {
+            return new ViewCaptionTool.Settings();
+        }
+        return objectMapper.convertValue(data, ViewCaptionTool.Settings.class);
     }
 
     @Bean(WebReaderTool.SETTINGS)

@@ -10,27 +10,26 @@ package com.fishsunny.assistant.engine.tool.instance;
 
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Component
-@ConditionalOnProperty(name = "engine.tool.image.enable", havingValue = "true", matchIfMissing = true)
-public class ImageToolKit extends ToolKit {
+@ConditionalOnProperty(name = "engine.tool.view.enable", havingValue = "true", matchIfMissing = true)
+public class ViewToolKit extends ToolKit {
 
-    public ImageToolKit(List<ToolHandler> tools) {
+    public ViewToolKit(List<ToolHandler> tools) {
         super(tools);
     }
 
     @Override
     public String displayName() {
-        return "图像";
+        return "视觉";
     }
 
     @Override
     public String description() {
-        return "图片内容识别与屏幕截图";
+        return "图片/视频内容识别与屏幕截图";
     }
 }

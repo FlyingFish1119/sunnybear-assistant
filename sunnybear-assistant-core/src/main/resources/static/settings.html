@@ -31,7 +31,7 @@
     <script src="components/settings/tool-settings/file-download-settings/file-download-settings.js"></script>
     <script src="components/settings/tool-settings/extension-script-settings/extension-script-settings.js"></script>
     <script src="components/settings/tool-kit-settings/tool-kit-settings.js"></script>
-    <script src="components/settings/tool-settings/image-caption-settings/image-caption-settings.js"></script>
+    <script src="components/settings/tool-settings/view-caption-settings/view-caption-settings.js"></script>
     <script src="components/settings/tool-settings/web-reader-settings/web-reader-settings.js"></script>
     <script src="components/settings/knowledge-params-settings/knowledge-params-settings.js"></script>
     <script src="components/settings/knowledge-manage-settings/knowledge-manage-settings.js"></script>
@@ -274,7 +274,7 @@
                 <file-delete-settings :settings="fileDeleteSettings" @saved="fetchAllSettings"></file-delete-settings>
                 <file-download-settings :settings="fileDownloadSettings" @saved="fetchAllSettings"></file-download-settings>
                 <extension-script-settings :settings="extensionScriptSettings" @saved="fetchAllSettings"></extension-script-settings>
-                <image-caption-settings :settings="imageCaptionSettings" @saved="fetchAllSettings"></image-caption-settings>
+                <view-caption-settings :settings="viewCaptionSettings" @saved="fetchAllSettings"></view-caption-settings>
                 <web-reader-settings :settings="webReaderSettings" @saved="fetchAllSettings"></web-reader-settings>
             </div>
         </div>
@@ -362,7 +362,7 @@ const app = Vue.createApp({
             fileEditSettings: {},
             fileDeleteSettings: {},
             fileDownloadSettings: {},
-            imageCaptionSettings: {},
+            viewCaptionSettings: {},
             webReaderSettings: {},
             extensionScriptSettings: {},
             knowledgeSettings: {},
@@ -417,7 +417,7 @@ const app = Vue.createApp({
                 { key: 'fileEditSettings', url: 'settings/fileedit/get' },
                 { key: 'fileDeleteSettings', url: 'settings/filedelete/get' },
                 { key: 'fileDownloadSettings', url: 'settings/filedownload/get' },
-                { key: 'imageCaptionSettings', url: 'settings/imagecaption/get' },
+                { key: 'viewCaptionSettings', url: 'settings/viewcaption/get' },
                 { key: 'webReaderSettings', url: 'settings/webreadertool/get' },
                 { key: 'extensionScriptSettings', url: 'settings/extensionscript/get' },
                 { key: 'knowledgeSettings', url: 'settings/knowledgesettings/get' },
@@ -491,7 +491,7 @@ app.component('file-delete-settings', FileDeleteSettings);
 app.component('file-download-settings', FileDownloadSettings);
 app.component('extension-script-settings', ExtensionScriptSettings);
 app.component('tool-kit-settings', ToolKitSettings);
-app.component('image-caption-settings', ImageCaptionSettings);
+app.component('view-caption-settings', ViewCaptionSettings);
 app.component('web-reader-settings', WebReaderSettings);
 app.component('knowledge-params-settings', KnowledgeParamsSettings);
 app.component('knowledge-manage-settings', KnowledgeManageSettings);
