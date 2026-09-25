@@ -1,12 +1,14 @@
 package com.fishsunny.assistant.plug.comfyui.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.engine.ContentType;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.utils.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
@@ -31,7 +33,7 @@ import java.util.*;
 
 @ToolKitComponent(AgentToolKit.class)
 @ConditionalOnExpression("${engine.tool.agent.enable:true} && ${plug.comfyui.tool.agent.enable:true}")
-public class ComfyUISubAgentTool implements SubAgentToolHandler {
+public class ComfyUISubAgentTool implements SubAgentToolHandler, MultimodalResultAble {
 
     public static final String NAME = "comfyui_tool";
 
@@ -134,10 +136,11 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler {
                     new EasyReActProcessor.AgentLoopHook(null, hook));
 
             // ========== 拉取图片并存到 session ==========
-            List<String> imageMarkdowns = fetchAndSaveImages(generatedFiles, sessionId);
+            boolean raw = resolveRaw(arguments.getExtension());
+            List<GeneratedImage> images = fetchImages(generatedFiles, sessionId, raw);
 
             // ========== 组装返回 ==========
-            return assembleResponse(finalReport, imageMarkdowns);
+            return assembleResponse(finalReport, images, raw);
 
         } catch (Exception e) {
             log.error("ComfyUISubAgentTool 执行异常: {}", e.getMessage(), e);
@@ -157,10 +160,33 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler {
         }
     }
 
-    /** 从 ComfyUI 拉取图片 Base64，存入 session 目录，返回 markdown 图片引用列表 */
-    private List<String> fetchAndSaveImages(List<String> filenames, String sessionId) {
-        List<String> markdowns = new ArrayList<>();
-        if (filenames.isEmpty() || sessionId == null) return markdowns;
+    /** 从 extension 解析 raw 开关，缺省 false */
+    private boolean resolveRaw(Map<String, Object> extension) {
+        if (extension == null) {
+            return false;
+        }
+        Object value = extension.get("raw");
+        if (value instanceof Boolean b) {
+            return b;
+        }
+        return value != null && "true".equalsIgnoreCase(value.toString().trim());
+    }
+
+    /**
+     * 生成图：raw=false 时只留会话引用（组装 markdown 用）；
+     * raw=true 时保留 base64，落盘与引用回写交给 {@link MultimodalResultAble} 统一处理。
+     */
+    private record GeneratedImage(String fileName, String base64, String ref) {
+        String markdown() {
+            String proxyUrl = "/file/proxy?path=" + URLEncoder.encode(ref, StandardCharsets.UTF_8);
+            return "![生成图 - " + fileName + "](" + proxyUrl + ")";
+        }
+    }
+
+    /** 从 ComfyUI 拉取生成图。raw=false 立即落盘记录引用；raw=true 只取 base64，不进正文 */
+    private List<GeneratedImage> fetchImages(List<String> filenames, String sessionId, boolean raw) {
+        List<GeneratedImage> images = new ArrayList<>();
+        if (filenames.isEmpty() || sessionId == null) return images;
 
         for (String fname : filenames) {
             try {
@@ -172,32 +198,45 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler {
                 String base64 = vr.getBase64();
                 if (!StringUtils.hasText(base64)) continue;
 
-                byte[] bytes = Base64.getDecoder().decode(base64);
-                String ref = sessionFileManager.writeSessionFile(sessionId, fname, bytes);
-
-                // Markdown 图片引用，走 /file/proxy 代理（由代理端按当前 basePath 解析引用）
-                String proxyUrl = "/file/proxy?path=" + URLEncoder.encode(ref, StandardCharsets.UTF_8);
-                markdowns.add("![生成图 - " + fname + "](" + proxyUrl + ")");
-                log.info("图片已保存: {}", ref);
+                if (raw) {
+                    // 只给出会话内文件名，落盘由 MultimodalResultAble 统一处理
+                    images.add(new GeneratedImage(fname, base64, null));
+                } else {
+                    byte[] bytes = Base64.getDecoder().decode(base64);
+                    String ref = sessionFileManager.writeSessionFile(sessionId, fname, bytes);
+                    images.add(new GeneratedImage(fname, null, ref));
+                    log.info("图片已保存: {}", ref);
+                }
             } catch (Exception e) {
                 log.warn("拉取图片失败 [{}]: {}", fname, e.getMessage());
             }
         }
-        return markdowns;
+        return images;
     }
 
-    private ToolExecutor.ToolExecuteResponse assembleResponse(String finalReport, List<String> imageMarkdowns) {
-        StringBuilder result = new StringBuilder();
-        result.append(finalReport.trim());
+    private ToolExecutor.ToolExecuteResponse assembleResponse(String finalReport,
+                                                              List<GeneratedImage> images,
+                                                              boolean raw) {
+        StringBuilder result = new StringBuilder(finalReport.trim());
 
-        if (!imageMarkdowns.isEmpty()) {
+        if (!images.isEmpty()) {
             result.append("\n\n");
-            for (String md : imageMarkdowns) {
-                result.append(md).append("\n");
+            for (GeneratedImage image : images) {
+                result.append(raw
+                        ? "生成图：" + image.fileName() + "\n"
+                        : image.markdown() + "\n");
             }
         }
 
-        return new ToolExecutor.ToolExecuteResponse(name(), result.toString());
+        ToolExecutor.ToolExecuteResponse response =
+                new ToolExecutor.ToolExecuteResponse(name(), result.toString());
+        if (raw) {
+            // raw：图片作为多模态内容直接返回给外层模型查看，正文不含 markdown 图片链接
+            for (GeneratedImage image : images) {
+                response.modalContent(image.fileName(), ContentType.IMAGE, image.base64());
+            }
+        }
+        return response;
     }
 
     // ==================== 提示词 ====================
@@ -246,9 +285,21 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler {
         return register;
     }
 
+    @Override
+    public List<ToolRegister.Parameters> extensionProperties() {
+        return List.of(new ToolRegister.Parameters()
+                .setParameterName("raw")
+                .setType("boolean")
+                .setDescription("适用于 " + NAME + "；是否以原始图片方式返回生成图，默认 false。" +
+                        "false：图片以 markdown 链接展示；" +
+                        "true：图片作为多模态内容直接返回给模型查看，正文不再输出 markdown 链接。"));
+    }
+
     @Data
     @Accessors(chain = true)
     private static class Arguments {
         private String target;
+        /** 扩展选项，由 agent_tool 透传；raw 控制生成图的返回形式 */
+        private Map<String, Object> extension;
     }
 }
