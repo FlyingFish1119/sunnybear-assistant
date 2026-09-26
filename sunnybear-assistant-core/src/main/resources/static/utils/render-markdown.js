@@ -137,10 +137,11 @@ const MarkdownUtils = (function () {
     }
 
     /**
-     * 行内原始 HTML 的保守白名单：只放行纯格式标签，且剥掉所有属性。
+     * 行内原始 HTML 的保守白名单：只放行纯格式标签，属性仅保留过滤后的 style。
      * 行内 token 是「单个标签」（开/闭各一个），无法像块级那样整段进 Shadow DOM，
-     * 所以退而求其次：白名单标签名 + 丢弃属性，其余一律转义。
-     * 因为不保留任何属性，<span style=...> / <img onerror=...> 之类没有攻击面；
+     * 所以退而求其次：白名单标签名 + 属性白名单，其余一律转义。
+     * style 只放行表现型声明（颜色 / 字体 / 边框等），并丢掉 position、url()、表达式、
+     * 反斜杠转义等可能覆盖界面或外联的写法；on* / class 等其余属性一律丢弃。
      * 锚定整段匹配也顺带挡住了 <span/onload=x> 这种浏览器会当成属性的怪异写法。
      */
     var SAFE_INLINE_TAGS = {
@@ -148,12 +149,63 @@ const MarkdownUtils = (function () {
         small: 1, sub: 1, sup: 1, code: 1, kbd: 1, samp: 1, var: 1, abbr: 1, cite: 1,
         q: 1, br: 1, wbr: 1, time: 1, ruby: 1, rt: 1, rp: 1
     };
-    var INLINE_TAG_RE = /^<(\/?)([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^>]*)?\/?>$/;
+    var INLINE_TAG_RE = /^<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:\s[^>]*)?)\/?>$/;
+    var INLINE_ATTR_RE = /([^\s"'<>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+
+    /** 表现型 CSS 属性白名单：不含 position / z-index / display / float / transform 等 */
+    var SAFE_STYLE_PROPS = {
+        color: 1, background: 1, 'background-color': 1,
+        font: 1, 'font-family': 1, 'font-size': 1, 'font-style': 1,
+        'font-variant': 1, 'font-weight': 1,
+        'line-height': 1, 'letter-spacing': 1, 'word-spacing': 1,
+        'text-align': 1, 'text-indent': 1, 'text-shadow': 1, 'text-transform': 1,
+        'text-decoration': 1, 'text-decoration-color': 1, 'text-decoration-line': 1,
+        'text-decoration-style': 1,
+        'white-space': 1, 'vertical-align': 1, opacity: 1,
+        border: 1, 'border-color': 1, 'border-style': 1, 'border-width': 1,
+        'border-radius': 1, 'box-shadow': 1,
+        padding: 1, margin: 1
+    };
+    /** 值里出现这些就整条声明丢弃：外联加载、表达式执行、CSS 转义混淆 */
+    var UNSAFE_STYLE_VALUE_RE = /(?:url\s*\(|expression\s*\(|javascript:|@import|[\\<>])/i;
+
+    function sanitizeInlineStyle(style) {
+        if (!style) return '';
+        var decls = String(style).split(';');
+        var out = [];
+        for (var i = 0; i < decls.length; i++) {
+            var idx = decls[i].indexOf(':');
+            if (idx === -1) continue;
+            var prop = decls[i].slice(0, idx).trim().toLowerCase();
+            var value = decls[i].slice(idx + 1).trim();
+            if (!prop || !value || !SAFE_STYLE_PROPS[prop]) continue;
+            if (UNSAFE_STYLE_VALUE_RE.test(value)) continue;
+            out.push(prop + ':' + value);
+        }
+        return out.join(';');
+    }
+
+    /** 从标签属性串里取出 style 的值（支持双引号 / 单引号 / 无引号） */
+    function extractInlineStyle(attrText) {
+        if (!attrText) return '';
+        var re = new RegExp(INLINE_ATTR_RE.source, 'g');
+        var match;
+        while ((match = re.exec(attrText)) !== null) {
+            if (match[1].toLowerCase() !== 'style') continue;
+            if (match[2] !== undefined) return match[2];
+            if (match[3] !== undefined) return match[3];
+            return match[4] !== undefined ? match[4] : '';
+        }
+        return '';
+    }
 
     function sanitizeInlineHtml(raw) {
         var m = raw.match(INLINE_TAG_RE);
         if (!m || !SAFE_INLINE_TAGS[m[2].toLowerCase()]) return escapeHtml(raw);
-        return (m[1] ? '</' : '<') + m[2].toLowerCase() + '>';
+        var name = m[2].toLowerCase();
+        if (m[1]) return '</' + name + '>';
+        var style = sanitizeInlineStyle(extractInlineStyle(m[3]));
+        return style ? '<' + name + ' style="' + escapeAttr(style) + '">' : '<' + name + '>';
     }
 
     /** 是否为编辑工具产出的 diff：存在以 + / - 开头的「行号|内容」行 */
