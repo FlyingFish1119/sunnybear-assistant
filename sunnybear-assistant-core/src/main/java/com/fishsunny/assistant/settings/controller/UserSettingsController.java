@@ -73,6 +73,7 @@ public class UserSettingsController {
                 Boolean.TRUE.equals(settings.getEnableAutoSwitchModel()));
         userSettings.setProModelThreshold(settings.getProModelThreshold());
         userSettings.setContextTokenLimit(settings.getContextTokenLimit());
+        userSettings.setMaxImageEdgePixel(settings.getMaxImageEdgePixel());
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(userSettingsPath), userSettings);
         } catch (Exception e) {

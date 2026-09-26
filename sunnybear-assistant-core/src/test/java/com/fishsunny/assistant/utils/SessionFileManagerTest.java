@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SessionFileManagerTest {
 
     /** 传 null 配置 → basePath 回落到 user.dir，不影响引用解析逻辑的验证 */
-    private final SessionFileManager manager = new SessionFileManager(null);
+    private final SessionFileManager manager = new SessionFileManager(null, null);
 
     private static final String SESSION_ID = "1ec3a342-06ae-4c0e-b5a4-ccf42ff7d535";
 

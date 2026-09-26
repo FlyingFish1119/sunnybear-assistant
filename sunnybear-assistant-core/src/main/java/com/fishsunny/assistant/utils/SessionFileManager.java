@@ -22,11 +22,17 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.content.fi
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.video.VideoContent;
+import com.fishsunny.assistant.settings.UserSettings;
+import com.fishsunny.assistant.utils.image.MultipartScaleImageHelper;
+import com.fishsunny.assistant.utils.image.ScaleImageHelper;
 import jakarta.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -50,12 +56,15 @@ public class SessionFileManager {
 
     private final String basePath;
 
-    public SessionFileManager(AssistantPathConfig assistantPathConfig) {
+    private final UserSettings userSettings;
+
+    public SessionFileManager(AssistantPathConfig assistantPathConfig, UserSettings userSettings) {
         if (assistantPathConfig == null || !StringUtils.hasText(assistantPathConfig.getFileBasePath())) {
             this.basePath = System.getProperty("user.dir");
         } else {
             this.basePath = assistantPathConfig.getFileBasePath();
         }
+        this.userSettings = userSettings;
     }
 
     /** 会话根目录：{basePath}/session/{sessionId} */
@@ -421,9 +430,9 @@ public class SessionFileManager {
             }
             if (content instanceof ImageContent imageContent) {
                 String url = imageContent.getUrl();
-                // 已是 data URI（如多模态 tool 结果经同轮复用），直接透传，无需读取本地文件
+                // 已是 data URI（如多模态 tool 结果经同轮复用），无需读取本地文件，但同样按设置压缩
                 if (url.startsWith("data:")) {
-                    messageContents.add(new ImageContent(url));
+                    messageContents.add(new ImageContent(compressImageDataUrl(url)));
                     continue;
                 }
                 try {
@@ -432,7 +441,8 @@ public class SessionFileManager {
                         log.warn("Image file not found: {}", url);
                         continue;
                     }
-                    String dataUrl = ObjectUtils.encodeToDataUrl(url, bytes);
+                    byte[] scaled = downscaleImage(ObjectUtils.getFileExtension(url), bytes);
+                    String dataUrl = ObjectUtils.encodeToDataUrl(url, scaled);
                     messageContents.add(new ImageContent(dataUrl));
                 } catch (Exception e) {
                     log.error("Error loading image file: {}", url, e);
@@ -495,6 +505,70 @@ public class SessionFileManager {
             }
         }
         return messageContents;
+    }
+
+    /**
+     * 发送给模型前按用户设置压缩图片：最长边超过 {@link UserSettings#getMaxImageEdgePixel()} 时等比缩小。
+     * <p>上限 &lt;= 0（关闭）、图片已达上限、格式无法解码或压缩失败时，一律返回原字节，保证不影响发送。
+     */
+    private byte[] downscaleImage(String extension, byte[] bytes) {
+        int maxEdge = userSettings == null ? 0 : userSettings.getMaxImageEdgePixel();
+        if (maxEdge <= 0 || bytes == null || bytes.length == 0) {
+            return bytes;
+        }
+        try {
+            BufferedImage image = ImageIO.read(new ByteArrayInputStream(bytes));
+            if (image == null || Math.max(image.getWidth(), image.getHeight()) <= maxEdge) {
+                return bytes;
+            }
+            return new MultipartScaleImageHelper(bytes, normalizeImageFormat(extension)).scaleImage(maxEdge);
+        } catch (Exception e) {
+            log.warn("图片压缩失败，按原图发送: {}", e.getMessage());
+            return bytes;
+        }
+    }
+
+    /** 已是 data URI 的图片同样压缩（多模态 tool 结果同轮复用场景），压缩失败返回原值 */
+    private String compressImageDataUrl(String dataUrl) {
+        int maxEdge = userSettings == null ? 0 : userSettings.getMaxImageEdgePixel();
+        if (maxEdge <= 0) {
+            return dataUrl;
+        }
+        try {
+            int mimeStart = dataUrl.indexOf(':') + 1;
+            int mimeEnd = dataUrl.indexOf(';');
+            if (mimeStart <= 0 || mimeEnd <= mimeStart) {
+                return dataUrl;
+            }
+            String mimeType = dataUrl.substring(mimeStart, mimeEnd);
+            int slash = mimeType.indexOf('/');
+            if (slash < 0 || !mimeType.startsWith("image/")) {
+                return dataUrl;
+            }
+            String extension = mimeType.substring(slash + 1);
+            int plus = extension.indexOf('+');
+            if (plus >= 0) {
+                extension = extension.substring(0, plus);
+            }
+            byte[] bytes = ScaleImageHelper.base64ToByteArray(dataUrl);
+            byte[] scaled = downscaleImage(extension, bytes);
+            if (scaled == bytes) {
+                return dataUrl;
+            }
+            return ObjectUtils.encodeToDataUrl("image." + extension, scaled);
+        } catch (Exception e) {
+            log.warn("data URI 图片压缩失败，按原图发送: {}", e.getMessage());
+            return dataUrl;
+        }
+    }
+
+    /** ImageIO 写盘名归一：jpeg → jpg；空扩展名兜底 png */
+    private String normalizeImageFormat(String extension) {
+        String ext = extension == null ? "" : extension.toLowerCase();
+        if (ext.isEmpty()) {
+            return "png";
+        }
+        return "jpeg".equals(ext) ? "jpg" : ext;
     }
 
     private void requireSessionId(String sessionId) {

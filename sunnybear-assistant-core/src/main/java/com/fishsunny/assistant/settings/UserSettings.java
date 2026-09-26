@@ -105,4 +105,17 @@ public class UserSettings {
     public Long getContextTokenLimit() {
         return contextTokenLimit;
     }
+
+    /**
+     * 图片最长边像素上限：发送给模型前，图片最长边超过该值时等比压缩，用于控制请求体积。
+     * &lt;= 0 表示不压缩；null 取默认值 1024。
+     */
+    private Integer maxImageEdgePixel;
+    public UserSettings setMaxImageEdgePixel(Integer maxImageEdgePixel) {
+        this.maxImageEdgePixel = maxImageEdgePixel;
+        return this;
+    }
+    public Integer getMaxImageEdgePixel() {
+        return maxImageEdgePixel == null ? 1024 : maxImageEdgePixel;
+    }
 }
