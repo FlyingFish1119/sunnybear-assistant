@@ -93,13 +93,15 @@ const MessageTopbar = {
             </button>
             <span v-if="!isHidden('model')" class="model-name-tag">{{ displayModel }} ·</span>
             <chat-session-name v-if="!isHidden('session-name')" :main-color="mainColor"></chat-session-name>
-            <!-- 上下文用量环：显示离自动压缩还剩多少（已用比例越高越满） -->
+            <!-- 上下文用量环：显示离自动压缩还剩多少（已用比例越高越满）；点击可手动压缩 -->
             <el-tooltip v-if="!isHidden('ctx-gauge') && contextRatio !== null"
                         effect="light"
                         placement="bottom"
                         :show-after="80"
                         :content="contextTip">
-                <div class="ctx-gauge" :class="contextLevel" :style="{'--main-color': mainColor}">
+                <div class="ctx-gauge" :class="contextLevel"
+                     :style="{'--main-color': mainColor}"
+                     @click="onGaugeClick">
                     <svg viewBox="0 0 24 24" width="20" height="20">
                         <circle class="ctx-gauge-track" cx="12" cy="12" r="9"></circle>
                         <circle class="ctx-gauge-fill" cx="12" cy="12" r="9"
@@ -152,7 +154,10 @@ const MessageTopbar = {
                   @pending-change="pendingToolCount = $event"></tool-confirm>
     <tool-question ref="toolQuestion"
                    :main-color="mainColor"
-                   @pending-change="pendingQuestionCount = $event"></tool-question>`,
+                   @pending-change="pendingQuestionCount = $event"></tool-question>
+
+    <!-- 手动压缩确认弹窗（点击用量环触发） -->
+    <confirm-dialog ref="compressConfirm" :main-color="mainColor"></confirm-dialog>`,
 
     props: {
         mainColor:      { type: String,  default: 'lightsalmon' },
@@ -267,7 +272,7 @@ const MessageTopbar = {
             var limit = this.formatTokens(this.contextLimit);
             var left = this.formatTokens(Math.max(0, this.contextLimit - this.contextUsed));
             var percent = Math.round(this.contextRatio * 100);
-            return '上下文已用 ' + percent + '%（' + used + ' / ' + limit + '），剩余 ' + left + '，达上限将自动压缩';
+            return '上下文已用 ' + percent + '%（' + used + ' / ' + limit + '），剩余 ' + left + '，可点击立即压缩（达上限会自动压缩）';
         }
     },
 
@@ -294,6 +299,27 @@ const MessageTopbar = {
             if (this.wsBus) {
                 this.wsBus.emit('sidebar:toggle');
             }
+        },
+
+        /**
+         * 点击用量环：空闲时弹确认框，确认后立即手动压缩（走 HTTP 接口，见 sessionStore.manualCompressContext）。
+         * 请求在途 / 流式中 / 已在压缩时不允许触发。
+         */
+        onGaugeClick: function () {
+            var store = this.sessionStore;
+            if (!store || !store.currentSessionId) return;
+            if (store.busy || store.compressState) {
+                ElementPlus.ElMessage.warning('请等本轮结束再压缩');
+                return;
+            }
+            this.$refs.compressConfirm.show({
+                title: '压缩上下文',
+                message: '将把较早的对话历史总结为摘要，压缩后不可撤销。',
+                confirmText: '立即压缩',
+                type: 'warning'
+            }).then(function () {
+                store.manualCompressContext();
+            }).catch(function () {});
         },
 
         /** token 数字压缩：1234 -> 1.2k，1048576 -> 1.0M */

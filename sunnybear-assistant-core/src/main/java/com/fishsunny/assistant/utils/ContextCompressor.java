@@ -46,7 +46,9 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
@@ -81,6 +83,9 @@ public class ContextCompressor {
             7. 只输出摘要本身，不要任何前言、解释或代码块包裹。
             """;
 
+    /** 正在进行手动压缩的会话 id 集合：防止同一会话被连点触发重复压缩 */
+    private final Set<String> compressingSessions = ConcurrentHashMap.newKeySet();
+
     private final UserSettings userSettings;
     private final AISettings missionAISettings;
     private final ChatHttpHandler chatHttpHandler;
@@ -102,37 +107,86 @@ public class ContextCompressor {
      *
      * @param request     当前请求（会被就地修改）
      * @param chatSession 会话
-     * @param session     用于推送刷新信号的总线 WebSocket 会话
+     * @param session     用于推送刷新信号的总线 WebSocket 会话；为 null 时只压缩不推送
      */
     public void maybeCompress(ChatRequest request, ChatSession chatSession, WebSocketSession session) {
+        if (!ChatSession.TYPE_CHAT.equals(chatSession.getType())) {
+            return;
+        }
+        Long limit = userSettings.getContextTokenLimit();
+        if (limit == null || limit <= 0) {
+            return;
+        }
+        List<ChatMessage> messages = request.getMessages();
+        if (messages == null || messages.size() <= 2) {
+            return;
+        }
+        // 只用真实 usage：最近一条带 chat_usage.prompt_tokens 的 assistant 消息，
+        // 其 prompt_tokens 就是那一次请求的真实输入上下文长度。拿不到 usage 就不触发
+        Integer contextTokens = latestPromptTokens(messages);
+        if (contextTokens == null || contextTokens <= limit) {
+            return;
+        }
+
+        // 第 0 条是 system：压缩只针对其后的对话历史，压缩后原样保留 system
+        ChatMessage system = messages.getFirst();
+        List<ChatMessage> history = new ArrayList<>(messages.subList(1, messages.size()));
+        List<ChatMessage> rebuilt = compressHistory(history, chatSession, session);
+        if (rebuilt == null) {
+            return;
+        }
+        List<ChatMessage> rebuiltMessages = new ArrayList<>();
+        rebuiltMessages.add(system);
+        rebuiltMessages.addAll(rebuilt);
+        request.setMessages(rebuiltMessages);
+    }
+
+    /**
+     * 手动强制压缩：无视 token 上限，从库加载该会话历史后走与自动压缩完全相同的总结/重建流程。
+     * <p>供「点击用量环立即压缩」使用。{@code session} 为 null 时（HTTP 接口触发）只压缩不推送信号，
+     * 由调用方（前端）在接口返回后自行刷新消息。
+     *
+     * @param chatSession 会话
+     * @param session     用于推送刷新信号的总线 WebSocket 会话；可为 null
+     * @return 是否真正完成了一次压缩（历史不足 / 总结为空 / 已有压缩在进行均返回 false）
+     */
+    public boolean compressNow(ChatSession chatSession, WebSocketSession session) {
+        if (!ChatSession.TYPE_CHAT.equals(chatSession.getType())) {
+            return false;
+        }
+        try {
+            List<ChatMessage> history = chatMessageService.getConversationHistory(chatSession.getId());
+            if (history == null || history.size() <= 2) {
+                return false;
+            }
+            return compressHistory(history, chatSession, session) != null;
+        } catch (Exception e) {
+            log.warn("手动上下文压缩失败: {}", e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * 压缩一段「不含 system」的对话历史：总结最后一条 user 之前的部分，保留其后的消息，
+     * 摘要并入保留组首条 user 后在同一事务内清库重建。
+     *
+     * @return 重建后的消息链；没有可总结的历史、总结为空或异常时返回 null
+     */
+    private List<ChatMessage> compressHistory(List<ChatMessage> history, ChatSession chatSession, WebSocketSession session) {
+        // 同一会话同一时刻只允许一次压缩（手动连点 / 自动与手动撞车），避免重复总结与重复重建
+        if (!compressingSessions.add(chatSession.getId())) {
+            return null;
+        }
         // 是否已向前端推送「压缩中」：推送过就必须在 finally 里收尾，避免前端卡片永久停留
         boolean compressing = false;
         // 是否已成功压缩并推送「已完成」：成功时由前端重拉，无需再推送结束信号
         boolean compressed = false;
         try {
-            if (!ChatSession.TYPE_CHAT.equals(chatSession.getType())) {
-                return;
-            }
-            Long limit = userSettings.getContextTokenLimit();
-            if (limit == null || limit <= 0) {
-                return;
-            }
-            List<ChatMessage> messages = request.getMessages();
-            if (messages == null || messages.size() <= 2) {
-                return;
-            }
-            // 只用真实 usage：最近一条带 chat_usage.prompt_tokens 的 assistant 消息，
-            // 其 prompt_tokens 就是那一次请求的真实输入上下文长度。拿不到 usage 就不触发
-            Integer contextTokens = latestPromptTokens(messages);
-            if (contextTokens == null || contextTokens <= limit) {
-                return;
-            }
-
-            int start = lastUserIndex(messages);
-            if (start <= 1) {
+            int start = lastUserIndex(history);
+            if (start <= 0) {
                 // 没有可总结的历史（当前这一轮自己就超限）：只能截断保留组里超大的工具结果
-                truncateRetainedToolResults(messages, session, chatSession.getId());
-                return;
+                truncateRetainedToolResults(history, session, chatSession.getId());
+                return null;
             }
 
             // 0. 总结要调用模型、耗时较长：先通知前端进入「压缩中」，避免 START 之后长时间空等
@@ -140,16 +194,16 @@ public class ContextCompressor {
             compressing = true;
 
             // 1. 总结最后一条 user 之前的历史
-            String summary = summarize(messages.subList(1, start));
+            String summary = summarize(history.subList(0, start));
             if (!StringUtils.hasText(summary)) {
                 log.warn("上下文压缩：总结结果为空，跳过本次压缩 [{}]", chatSession.getId());
-                return;
+                return null;
             }
 
             // 2. 从库里取保留组原样副本（内存里的对象可能已被 loadSessionFile 展开成 data URI，不能直接回写）
             List<ChatMessage> retained = new ArrayList<>();
-            for (int i = start; i < messages.size(); i++) {
-                ChatMessage inMemory = messages.get(i);
+            for (int i = start; i < history.size(); i++) {
+                ChatMessage inMemory = history.get(i);
                 ChatMessage fromDb = StringUtils.hasText(inMemory.getId())
                         ? chatMessageService.findById(inMemory.getId()) : null;
                 if (fromDb == null) {
@@ -172,30 +226,27 @@ public class ContextCompressor {
             }
             List<ChatMessage> rebuilt = chatMessageService.replaceSessionMessages(chatSession.getId(), prepared);
 
-            // 4. 用重建后的消息替换请求上下文，继续本轮
-            List<ChatMessage> rebuiltMessages = new ArrayList<>();
-            rebuiltMessages.add(messages.getFirst());
-            rebuiltMessages.addAll(rebuilt);
-            request.setMessages(rebuiltMessages);
-
-            // 5. 通知前端重拉消息（纯视觉刷新，不参与断线重放）
+            // 4. 通知前端重拉消息（纯视觉刷新，不参与断线重放）
             notifyContextCompressed(session, chatSession.getId());
             compressed = true;
             log.info("会话 [{}] 上下文压缩完成：总结 {} 字，保留 {} 条消息",
                     chatSession.getId(), summary.length(), rebuilt.size());
+            return rebuilt;
         } catch (Exception e) {
             log.warn("上下文压缩失败，跳过本次压缩: {}", e.getMessage(), e);
+            return null;
         } finally {
             // 推送过「压缩中」但未成功压缩（失败/空摘要/异常）时收尾：前端关闭压缩卡片、补回流式占位
             if (compressing && !compressed) {
                 notifyContextCompressEnd(session, chatSession.getId());
             }
+            compressingSessions.remove(chatSession.getId());
         }
     }
 
-    /** 从后往前找最后一条 user 消息下标（跳过第 0 条 system）；找不到返回 -1 */
+    /** 从后往前找最后一条 user 消息下标；找不到返回 -1 */
     private int lastUserIndex(List<ChatMessage> messages) {
-        for (int i = messages.size() - 1; i >= 1; i--) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
             if (ChatMessage.ROLE_USER.equals(messages.get(i).getRole())) {
                 return i;
             }
@@ -313,7 +364,7 @@ public class ContextCompressor {
      */
     private void truncateRetainedToolResults(List<ChatMessage> messages, WebSocketSession session, String sessionId) {
         boolean changed = false;
-        for (int i = 1; i < messages.size(); i++) {
+        for (int i = 0; i < messages.size(); i++) {
             ChatMessage message = messages.get(i);
             if (!ChatMessage.ROLE_TOOL.equals(message.getRole())) {
                 continue;
@@ -353,6 +404,9 @@ public class ContextCompressor {
     }
 
     private void notifyContextCompressing(WebSocketSession session, String sessionId) {
+        if (session == null) {
+            return;
+        }
         try {
             session.sendMessage(new TextMessage(ControlSign.SIGN_CONTEXT_COMPRESSING + sessionId));
         } catch (Exception e) {
@@ -361,6 +415,9 @@ public class ContextCompressor {
     }
 
     private void notifyContextCompressed(WebSocketSession session, String sessionId) {
+        if (session == null) {
+            return;
+        }
         try {
             session.sendMessage(new TextMessage(ControlSign.SIGN_CONTEXT_COMPRESSED + sessionId));
         } catch (Exception e) {
@@ -369,6 +426,9 @@ public class ContextCompressor {
     }
 
     private void notifyContextCompressEnd(WebSocketSession session, String sessionId) {
+        if (session == null) {
+            return;
+        }
         try {
             session.sendMessage(new TextMessage(ControlSign.SIGN_CONTEXT_COMPRESS_END + sessionId));
         } catch (Exception e) {

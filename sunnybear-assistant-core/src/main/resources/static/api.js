@@ -377,6 +377,10 @@ const API = (function () {
             getHistory: function (sessionId) {
                 return get('message/history/get?sessionId=' + encodeURIComponent(sessionId));
             },
+            /** 手动压缩上下文（点击顶栏用量环）：无视 token 上限，同步等待后端完成 */
+            compressContext: function (sessionId) {
+                return post('message/context/compress?sessionId=' + encodeURIComponent(sessionId));
+            },
             switchBranch: function (id, direction) {
                 return get('message/branch/switch?id=' + encodeURIComponent(id) + '&direction=' + direction);
             },

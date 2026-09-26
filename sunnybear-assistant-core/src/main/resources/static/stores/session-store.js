@@ -1089,6 +1089,48 @@ const SessionStore = (function () {
         },
 
         /**
+         * 手动压缩上下文（点击顶栏用量环触发）：走 HTTP 接口，不依赖 WS 信号。
+         * 空闲时才可调用；压缩期间占用 sending 锁住发送按钮（压缩中不允许再发消息），
+         * 本地置 'running' 展示压缩卡片，成功后复用 handleContextCompressed 重拉历史。
+         */
+        async manualCompressContext() {
+            const sessionId = currentSessionId();
+            if (!sessionId) {
+                ElementPlus.ElMessage.warning('请先打开一个会话');
+                return;
+            }
+            // 仅空闲可压：请求在途 / 流式中 / 已在压缩时拒绝
+            if (this.busy || state.compressMap[sessionId]) {
+                ElementPlus.ElMessage.warning('请等本轮结束再压缩');
+                return;
+            }
+            const key = sendingKey(sessionId);
+            // 复用 sending 状态：压缩期间发送按钮禁用、消息操作按钮隐藏，避免压缩中又发消息
+            state.sendingMap[key] = true;
+            state.compressMap[sessionId] = 'running';
+            ui.scrollToBottom(true);
+            try {
+                const result = await API.message.compressContext(sessionId);
+                if (currentSessionId() !== sessionId) return;
+                if (result.status === 200 && result.data === true) {
+                    // 成功：handleContextCompressed 会把 compressMap 置为 'done' 并延时收起
+                    await this.handleContextCompressed(sessionId);
+                } else {
+                    ElementPlus.ElMessage.warning((result && result.message) || '没有可压缩的历史');
+                }
+            } catch (e) {
+                console.error('手动压缩上下文失败:', e);
+                ElementPlus.ElMessage.error('压缩失败，请稍后重试');
+            } finally {
+                // 未走到成功态（失败 / 切走会话）时收尾压缩卡片；'done' 由 handleContextCompressed 自行收起
+                if (state.compressMap[sessionId] === 'running') {
+                    delete state.compressMap[sessionId];
+                }
+                delete state.sendingMap[key];
+            }
+        },
+
+        /**
          * 本轮请求正在与模型建连（服务端在 adapter.connect 之前推送）：
          * 在途气泡显示「连接中」，等 THINKING 或首个产出帧接手。
          */

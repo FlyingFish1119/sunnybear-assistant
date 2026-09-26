@@ -102,7 +102,14 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    cursor: default;
+    /* 可点击手动压缩 */
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background-color 0.2s ease;
+}
+
+.ctx-gauge:hover {
+    background-color: rgba(128, 128, 128, 0.14);
 }
 
 .ctx-gauge svg {

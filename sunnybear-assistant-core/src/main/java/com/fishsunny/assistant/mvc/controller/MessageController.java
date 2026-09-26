@@ -17,6 +17,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.mvc.service.ChatExportService;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
+import com.fishsunny.assistant.utils.ContextCompressor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,16 +45,19 @@ public class MessageController {
     private final ChatMessageService chatMessageService;
     private final ChatSessionService chatSessionService;
     private final ChatExportService chatExportService;
+    private final ContextCompressor contextCompressor;
     private final ObjectMapper objectMapper;
 
     @Autowired
     public MessageController(ChatMessageService chatMessageService,
                              ChatSessionService chatSessionService,
                              ChatExportService chatExportService,
+                             ContextCompressor contextCompressor,
                              ObjectMapper objectMapper) {
         this.chatMessageService = chatMessageService;
         this.chatSessionService = chatSessionService;
         this.chatExportService = chatExportService;
+        this.contextCompressor = contextCompressor;
         this.objectMapper = objectMapper;
     }
 
@@ -123,6 +127,35 @@ public class MessageController {
         } catch (Exception e) {
             log.error("获取历史记录失败: sessionId={}", sessionId, e);
             return new RestResponse().error("获取历史记录失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 手动压缩会话上下文（点击顶栏用量环触发）：无视 token 上限，把较早的历史总结成摘要。
+     * <p>走 HTTP 同步触发、不推送 WebSocket 信号，前端在返回后自行刷新消息。
+     *
+     * @param sessionId 会话 ID
+     * @return data=true 表示已压缩；data=false 表示没有可压缩的历史 / 已有压缩在进行
+     */
+    @RequestMapping("/context/compress")
+    public RestResponse compressContext(@RequestParam("sessionId") String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return new RestResponse().error("会话 ID 不能为空");
+        }
+        try {
+            ChatSession session = chatSessionService.findById(sessionId);
+            if (session == null) {
+                return new RestResponse().error("会话不存在");
+            }
+            boolean compressed = contextCompressor.compressNow(session, null);
+            RestResponse response = new RestResponse().success(compressed);
+            if (!compressed) {
+                response.setMessage("没有可压缩的历史");
+            }
+            return response;
+        } catch (Exception e) {
+            log.error("压缩上下文失败: sessionId={}", sessionId, e);
+            return new RestResponse().error("压缩上下文失败: " + e.getMessage());
         }
     }
 
