@@ -1,6 +1,6 @@
 engine:
   tool:
-    image:
+    view:
       screen-capture:
         enable: false
     bot:
