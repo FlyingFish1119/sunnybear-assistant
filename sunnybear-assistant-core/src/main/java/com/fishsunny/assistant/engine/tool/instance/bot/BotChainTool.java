@@ -28,7 +28,6 @@ import java.awt.Point;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
-import java.awt.datatransfer.Transferable;
 import java.awt.event.InputEvent;
 import java.util.List;
 import java.util.Map;
@@ -85,7 +84,7 @@ public class BotChainTool implements ToolHandler, MultimodalResultAble {
                         坐标使用归一化值 0-1（相对屏幕宽高），与截图定位结果一致。
                         操作分两层：【原语】mouse_move/mouse_down/mouse_up/mouse_scroll/key_down/key_up/input_text/wait，
                         【语法糖】click（当前位置点击）、type（敲击，支持组合键如 ctrl+c）——语法糖只是把高频组合打包，不引入原语不具备的能力。
-                        input_text 可输入中文等任意字符（经剪贴板粘贴，会备份并恢复用户原剪贴板）。
+                        input_text 可输入中文等任意字符（经剪贴板粘贴，会占用系统剪贴板）。
                         每步可带 delay（毫秒，<0 表示不延迟），链级可用 default_delay 设默认延迟、head_delay/tail_delay 设链头链尾延迟。
                         任何一步失败则整链中断，返回已执行到的步骤序号与失败原因。""")
                 .setRequired(List.of("operations"));
@@ -324,8 +323,13 @@ public class BotChainTool implements ToolHandler, MultimodalResultAble {
     /**
      * 输入文本内容（支持任意 Unicode，含中文）。
      * <p>
-     * 实现方式：把文本写入系统剪贴板后模拟 ctrl+v 粘贴，粘贴完成后恢复原剪贴板内容——
-     * 因为 AWT Robot 只能按物理键位，无法直接键入中文等无对应键位的字符。
+     * 实现方式：把文本写入系统剪贴板后模拟 ctrl+v 粘贴——因为 AWT Robot 只能按物理键位，
+     * 无法直接键入中文等无对应键位的字符。
+     * <p>
+     * 注意：不备份/恢复原剪贴板。粘贴动作由目标程序异步处理，若粘完就换回原内容，
+     * 目标程序很可能读到的是恢复后的内容（粘贴出用户原本复制的东西），存在不可靠的竞态。
+     * 剪贴板本就是临时中转区，这里直接以其承载待输入文本。
+     * <p>
      * 输入前请确保目标输入框已获得焦点（如需点击，请先在链中安排 mouse_move + click）。
      */
     private void inputText(BotRobot bot, BotChainOperation op) throws ToolExecutor.ToolExecuteException {
@@ -335,32 +339,25 @@ public class BotChainTool implements ToolHandler, MultimodalResultAble {
         }
 
         Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
-        // 备份原剪贴板内容（可能是任意 Transferable 类型，原样持有引用以便恢复）
-        Transferable backup = clipboard.getContents(null);
+        clipboard.setContents(new StringSelection(text), null);
+        // 等待系统剪贴板同步完成后再触发粘贴
+        interruptibleSleep(CLIPBOARD_SYNC_DELAY_MS);
 
+        Integer ctrl = KeyboardKeys.resolveKeyCode("ctrl");
+        Integer v = KeyboardKeys.resolveKeyCode("v");
+        if (ctrl == null || v == null) {
+            throw new ToolExecutor.ToolExecuteException("无法解析 ctrl+v 按键");
+        }
         try {
-            clipboard.setContents(new StringSelection(text), null);
-            interruptibleSleep(CLIPBOARD_SYNC_DELAY_MS);
-
-            Integer ctrl = KeyboardKeys.resolveKeyCode("ctrl");
-            Integer v = KeyboardKeys.resolveKeyCode("v");
-            if (ctrl == null || v == null) {
-                throw new ToolExecutor.ToolExecuteException("无法解析 ctrl+v 按键");
-            }
-            try {
-                bot.robot().keyPress(ctrl);
-                bot.robot().keyPress(v);
-                // 逆序释放：先 v 后 ctrl，与 key_up 的组合键释放顺序一致
-                bot.robot().keyRelease(v);
-                bot.robot().keyRelease(ctrl);
-            } catch (Exception e) {
-                // 确保释放修饰键，避免 ctrl 卡住
-                releaseQuietly(bot, new int[]{ctrl, v});
-                throw e;
-            }
-        } finally {
-            // 恢复原剪贴板内容；备份为空时清空剪贴板，避免残留输入的文本
-            clipboard.setContents(backup, null);
+            bot.robot().keyPress(ctrl);
+            bot.robot().keyPress(v);
+            // 逆序释放：先 v 后 ctrl，与 key_up 的组合键释放顺序一致
+            bot.robot().keyRelease(v);
+            bot.robot().keyRelease(ctrl);
+        } catch (Exception e) {
+            // 确保释放修饰键，避免 ctrl 卡住
+            releaseQuietly(bot, new int[]{ctrl, v});
+            throw e;
         }
     }
 
