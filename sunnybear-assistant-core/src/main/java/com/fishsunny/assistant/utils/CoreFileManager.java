@@ -218,6 +218,31 @@ public class CoreFileManager {
         return relativePathOf(target);
     }
 
+    /**
+     * 把核心文件复制一份进指定会话的文件目录（「加载到发送栏」发送时调用）。
+     * <p>前端只提交 {@code core-file-link:相对路径} 这一条引用，内容本体压根不过网络：
+     * 后端同机复制，落盘名沿用原文件名、同名自动加序号，返回可移植引用
+     * {@code sessionId:文件名}，与上传落盘的引用形态一致——喂模型时按会话文件正常展开。
+     * <p>源文件不存在时抛异常，由调用方决定是否跳过该附件（不阻塞整条消息发送）。
+     *
+     * @param sessionId   目标会话 ID
+     * @param corePath    相对核心目录的文件路径
+     * @return 落库用的可移植引用（形如 {@code sessionId:文件名}）
+     */
+    public String copyCoreFileToSession(String sessionId, String corePath) throws IOException {
+        Path source = resolveCoreFilePath(corePath);
+        if (!Files.isRegularFile(source)) {
+            throw new IllegalArgumentException("核心文件不存在: " + corePath);
+        }
+        String safeName = SessionFileManager.sanitizeFileName(source.getFileName().toString());
+        Path target = SessionFileManager.uniquePath(sessionFileManager.buildSessionDirPath(sessionId), safeName);
+        Files.createDirectories(target.getParent());
+        Files.copy(source, target);
+        String ref = sessionFileManager.buildRef(sessionId, target.getFileName().toString());
+        log.info("核心文件复制进会话: {} -> {}", corePath, ref);
+        return ref;
+    }
+
     /* ======================== 辅助 ======================== */
 
     /** 文件相对核心目录的路径（统一 / 分隔，供前端做树形 key） */

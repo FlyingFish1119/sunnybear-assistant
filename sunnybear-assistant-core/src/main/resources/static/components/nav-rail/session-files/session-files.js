@@ -915,7 +915,7 @@ const SessionFiles = {
 
         /* ---------- 加载到发送栏 / 提升为核心 ---------- */
 
-        /** 把文件挂进发送栏附件区：会话文件发链接（勿重复落盘），核心文件发快照 */
+        /** 把文件挂进发送栏附件区：只提交引用，不搬运文件内容 */
         async loadToSendbar(row) {
             if (row.directory) return;
             // 会话文件：发「session-file-link:相对路径」标记，发送时后端直接拼引用，
@@ -927,28 +927,12 @@ const SessionFiles = {
                 if (window.SbToast) window.SbToast.success('「' + row.name + '」已加入发送栏');
                 return;
             }
-            // 核心文件：快照（base64 data URI），发进会话时固定当时的内容
-            try {
-                const res = await fetch(this.fileApi().rawUrl(row.path));
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const blob = await res.blob();
-                if (blob.size > 50 * 1024 * 1024) {
-                    if (window.SbToast) window.SbToast.warning('文件超过 50MB，太大了塞不进发送栏，下载后再处理吧');
-                    return;
-                }
-                const dataUrl = await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result);
-                    reader.onerror = () => reject(new Error('读取文件失败'));
-                    reader.readAsDataURL(blob);
-                });
-                window.dispatchEvent(new CustomEvent('sunnybear:attach-to-sendbar', {
-                    detail: { files: [{ name: row.name, data: dataUrl }] }
-                }));
-                if (window.SbToast) window.SbToast.success('「' + row.name + '」已加入发送栏');
-            } catch (e) {
-                if (window.SbToast) window.SbToast.error('加载失败: ' + e.message);
-            }
+            // 核心文件：发「core-file-link:相对路径」标记，前端不拉内容，
+            // 发送时后端从核心库复制一份进会话目录（与后端 FileData.CORE_FILE_LINK_PREFIX 同一约定）
+            window.dispatchEvent(new CustomEvent('sunnybear:attach-to-sendbar', {
+                detail: { files: [{ name: row.name, data: 'core-file-link:' + row.path }] }
+            }));
+            if (window.SbToast) window.SbToast.success('「' + row.name + '」已加入发送栏');
         },
 
         /** 会话文件转存一份到核心库（提升为核心），原文件保留不动 */

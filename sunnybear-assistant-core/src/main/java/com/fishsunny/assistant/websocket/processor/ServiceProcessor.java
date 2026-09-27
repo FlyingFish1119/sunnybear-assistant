@@ -31,6 +31,7 @@ import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.UserSettings;
 import com.fishsunny.assistant.utils.Base64Utils;
+import com.fishsunny.assistant.utils.CoreFileManager;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import com.fishsunny.assistant.websocket.SessionMessageBus;
@@ -89,6 +90,7 @@ public class ServiceProcessor {
     private final AISettings cubAISettings;
     private final SessionMessageBus sessionMessageBus;
     private final SessionFileManager sessionFileManager;
+    private final CoreFileManager coreFileManager;
     private final BackgroundToolResponseBus backgroundToolResponseBus;
     private final JevClient jevClient;
     public ServiceProcessor(ChatMessageService chatMessageService,
@@ -101,6 +103,7 @@ public class ServiceProcessor {
                             @Qualifier(AISettings.CUB) AISettings cubAISettings,
                             SessionMessageBus sessionMessageBus,
                             SessionFileManager sessionFileManager,
+                            CoreFileManager coreFileManager,
                             BackgroundToolResponseBus backgroundToolResponseBus,
                             JevClient jevClient
                             ) {
@@ -114,6 +117,7 @@ public class ServiceProcessor {
         this.cubAISettings = cubAISettings;
         this.sessionMessageBus = sessionMessageBus;
         this.sessionFileManager = sessionFileManager;
+        this.coreFileManager = coreFileManager;
         this.backgroundToolResponseBus = backgroundToolResponseBus;
         this.jevClient = jevClient;
     }
@@ -547,6 +551,18 @@ public class ServiceProcessor {
                     }
                 } catch (Exception e) {
                     log.warn("会话文件链接解析失败，跳过: {} ({})", relPath, e.getMessage());
+                }
+                continue;
+            }
+            // 核心文件链接（core-file-link:{相对路径}）：前端只交引用、不搬内容，
+            // 后端同机从核心库复制一份进本会话文件目录，再按普通会话文件落库。
+            // 源文件缺失/复制失败只跳过该附件并记日志，不让整条消息发不出去。
+            if (dataUri.startsWith(FileData.CORE_FILE_LINK_PREFIX)) {
+                String corePath = dataUri.substring(FileData.CORE_FILE_LINK_PREFIX.length()).trim();
+                try {
+                    writtenPaths.add(coreFileManager.copyCoreFileToSession(sessionId, corePath));
+                } catch (Exception e) {
+                    log.warn("核心文件链接复制进会话失败，跳过: {} ({})", corePath, e.getMessage());
                 }
                 continue;
             }

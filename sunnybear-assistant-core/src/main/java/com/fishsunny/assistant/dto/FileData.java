@@ -25,6 +25,14 @@ public class FileData {
     public static final String SESSION_FILE_LINK_PREFIX = "session-file-link:";
 
     /**
+     * 核心文件链接标记：data 携带该前缀表示「引用的是核心库里的文件，勿从客户端取正文」，
+     * 剥开后为相对核心目录的路径（允许子目录）。
+     * 由文件资源栏「加载到发送栏」产生；ServiceProcessor 见到该标记时，
+     * 从核心库复制一份到会话目录，再按普通会话文件落库——前端全程不搬运文件内容。
+     */
+    public static final String CORE_FILE_LINK_PREFIX = "core-file-link:";
+
+    /**
      * 原始文件名（如 "screenshot.png"）
      */
     private String name;

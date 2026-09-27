@@ -28,7 +28,9 @@ const FileUpload = {
     <div v-if="files.length > 0" class="file-chips-area">
         <div v-for="(file, idx) in files" :key="idx"
              class="file-chip"
-             :class="isImage(file) ? 'file-chip-image' : 'file-chip-file'">
+             :class="[isImage(file) ? 'file-chip-image' : 'file-chip-file',
+                      isLink(file) ? 'file-chip-link' : '',
+                      linkSource(file) === 'core' ? 'file-chip-link-core' : '']">
             <!-- 图片：128px 缩略图卡片 -->
             <template v-if="isImage(file)">
                 <img class="file-chip-thumb" :src="thumbSrc(file)" :alt="file.name" :title="file.name" />
@@ -37,8 +39,11 @@ const FileUpload = {
                     <i data-lucide="x" style="width:14px;height:14px"></i>
                 </span>
             </template>
-            <!-- 普通文件：胶囊 -->
+            <!-- 普通文件：胶囊（引用型附件多一个来源图标前缀） -->
             <template v-else>
+                <i v-if="isLink(file)" class="file-chip-source-icon"
+                   :data-lucide="sourceIcon(file)" :title="sourceTitle(file)"
+                   style="width:14px;height:14px"></i>
                 <i :data-lucide="getFileIcon(file.name)" style="width:16px;height:16px"></i>
                 <span class="file-chip-name">{{ file.name }}</span>
                 <span class="file-chip-remove" @click="removeFile(idx)">
@@ -62,38 +67,18 @@ const FileUpload = {
 
     emits: ['update-files', 'drag-over-change'],
 
-    inject: {
-        sessionStore: { default: null }
-    },
-
     data: function () {
         return {
             dragCounter: 0,
         };
     },
 
-    computed: {
-        /** 会话文件链接（session-file-link:）的缩略图要用当前会话 ID 组原始内容地址 */
-        linkSessionId: function () {
-            var store = this.sessionStore;
-            if (!store) return '';
-            if (store.currentSessionId) return store.currentSessionId;
-            var cur = store.currentSession;
-            return (cur && cur.id) || '';
-        }
-    },
-
     methods: {
         MAX_SIZE: 100 * 1024 * 1024, // 100MB
 
-        /** 缩略图地址：普通上传是 data URI；会话文件链接（session-file-link:）转原始内容地址 */
+        /** 缩略图地址：发送栏里的图片都是本地读完的 data URI，直接返回 */
         thumbSrc: function (file) {
-            var data = file.data || '';
-            if (data.indexOf('session-file-link:') === 0) {
-                var path = data.substring('session-file-link:'.length);
-                return this.linkSessionId ? API.sessionFile.rawUrl(this.linkSessionId, path) : '';
-            }
-            return data;
+            return (file && file.data) || '';
         },
 
         /* ---- 文件读取 ---- */
@@ -201,13 +186,55 @@ const FileUpload = {
 
         /**
          * 是否为图片文件：优先看 data URL 的 MIME，其次看扩展名。
+         * <p>发送栏里的 link 附件（session-file-link: / core-file-link:）只是引用证明、
+         * 不含内容，一律按普通文件胶囊展示，不进缩略图分支——高清图动辄十几 MB，
+         * 现取现渲染体验很差。
          */
         isImage: function (file) {
-            if (file && typeof file.data === 'string' && file.data.indexOf('data:image/') === 0) {
+            var data = (file && file.data) || '';
+            if (data.indexOf('session-file-link:') === 0 || data.indexOf('core-file-link:') === 0) {
+                return false;
+            }
+            if (data.indexOf('data:image/') === 0) {
                 return true;
             }
             let ext = ((file && file.name) || '').split('.').pop().toLowerCase();
             return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'avif'].indexOf(ext) >= 0;
+        },
+
+        /**
+         * 引用来源：'session'（会话文件链接）/ 'core'（核心文件链接）/ ''（本地上传，非引用）。
+         * <p>发送栏里 link 附件只存引用证明、不含内容，据此在 chip 上作来源标识。
+         */
+        linkSource: function (file) {
+            var data = (file && file.data) || '';
+            if (data.indexOf('session-file-link:') === 0) return 'session';
+            if (data.indexOf('core-file-link:') === 0) return 'core';
+            return '';
+        },
+
+        /** 是否为引用型附件（session-file-link / core-file-link） */
+        isLink: function (file) {
+            return this.linkSource(file) !== '';
+        },
+
+        /**
+         * 引用来源图标（Lucide 名）：会话文件用 link、核心文件用 folder-input，
+         * 表达"从会话/核心库引用而来"。非引用附件返回空串。
+         */
+        sourceIcon: function (file) {
+            var src = this.linkSource(file);
+            if (src === 'session') return 'link';
+            if (src === 'core') return 'folder-input';
+            return '';
+        },
+
+        /** 引用来源的中文提示，作为图标 title */
+        sourceTitle: function (file) {
+            var src = this.linkSource(file);
+            if (src === 'session') return '会话文件引用';
+            if (src === 'core') return '核心文件引用';
+            return '';
         },
 
         /**

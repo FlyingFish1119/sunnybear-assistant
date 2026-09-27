@@ -1,8 +1,9 @@
 /* ============================================
    Send Area — 发送区组件（统一输入卡）
-   容器、输入卡、工具行、发送竖块、文件 chips、响应式
+   容器、输入卡、工具行、发送竖块、响应式
    （消息内附件在 components/message-area/message-area.css；
-    拖拽上传遮罩在 components/file-upload/file-upload.css —— 都不再是页面级公共样式）
+    拖拽上传遮罩在 components/send-area/file-upload/file-upload.css —— 都不再是页面级公共样式；
+     本文件不再定义任何 .file-chip* / .file-chips-area，别搬回来，两份副本会互相覆盖）
    看板熊的样式不在这里：已拆到 components/mascot/mascot.css
    ============================================ */
 
@@ -198,59 +199,6 @@
     background: #ccc;
     cursor: not-allowed;
 }
-
-/* ---- 文件 chips 区域（与输入卡同宽对齐） ---- */
-.file-chips-area {
-    width: 100%;
-    max-width: 920px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-}
-
-.file-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 12px;
-    background: #f5f5f5;
-    border: 1px solid #e0e0e0;
-    border-radius: 20px;
-    font-size: 13px;
-    color: #333;
-    transition: all 0.2s;
-}
-.file-chip:hover { background: #e8e8e8; }
-.file-chip-name {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.file-chip-remove {
-    cursor: pointer;
-    display: flex;
-    color: #999;
-    border-radius: 50%;
-    padding: 2px;
-    transition: all 0.2s;
-}
-.file-chip-remove:hover { color: #ff4d4f; background: rgba(255, 77, 79, 0.1); }
-
-.file-chip-add {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    border: 1px dashed #ccc;
-    color: #999;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-.file-chip-add:hover { border-color: var(--main-color); color: var(--main-color); background: rgba(0,0,0,0.03); }
 
 /* 输入卡内的控件垫到看板熊（.mascot-root，z-index: 30）之下。
    ⚠ .send-area-main / .send-area-toolbar 不准回到这一组里 ——
