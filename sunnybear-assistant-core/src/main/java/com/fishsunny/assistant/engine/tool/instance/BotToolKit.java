@@ -31,6 +31,6 @@ public class BotToolKit extends ToolKit {
 
     @Override
     public String description() {
-        return "模拟鼠标与键盘，直接操作本机桌面";
+        return "以操作链方式编排鼠标与键盘原语，一次性执行本机桌面操作";
     }
 }

@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.engine.tool.instance.image;
+package com.fishsunny.assistant.engine.tool.instance.view;
 
 /*
  * @Usage

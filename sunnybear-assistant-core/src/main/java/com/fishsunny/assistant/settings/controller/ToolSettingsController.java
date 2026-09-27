@@ -6,7 +6,7 @@ import com.fishsunny.assistant.engine.tool.instance.file.FileDeleteTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileDownloadTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileEditTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileWriteTool;
-import com.fishsunny.assistant.engine.tool.instance.image.ViewCaptionTool;
+import com.fishsunny.assistant.engine.tool.instance.view.ViewCaptionTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.instance.os.CommandTool;
