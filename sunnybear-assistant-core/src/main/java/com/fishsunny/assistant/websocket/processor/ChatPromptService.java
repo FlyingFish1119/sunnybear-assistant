@@ -9,7 +9,6 @@ package com.fishsunny.assistant.websocket.processor;
  */
 
 import com.fishsunny.assistant.constants.ControlSign;
-import com.fishsunny.assistant.constants.PromptReplaceVariable;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
@@ -26,7 +25,11 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.net.InetAddress;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 负责 ChatProcessor 默认系统提示词的构造，包括变量替换与知识库、记忆注入。
@@ -34,6 +37,13 @@ import java.util.List;
 @Component
 @Slf4j
 public class ChatPromptService {
+
+    public static final String CURRENT_TIME = "${current_time}";
+    public static final String CURRENT_DATETIME = "${current_datetime}";
+    public static final String MODEL_NAME = "${model_name}";
+    public static final String IP_ADDRESS = "${ip_address}";
+    public static final String OPERATING_SYSTEM = "${operation_system}";
+    public static final String SESSION_ID = "${session_id}";
 
     private final KnowledgeService knowledgeService;
     private final MemoryService memoryService;
@@ -52,10 +62,14 @@ public class ChatPromptService {
         List<ChatMessage> originMessages = context.originMessages();
 
         // 替换变量（系统提示词使用助手设定，模型名使用实际生效的模型）
+        String dayOfWeek = LocalDate.now().getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.CHINA);
         StringBuilder systemPrompt = new StringBuilder(activeAssistantSettings.getPrompt()
-                .replace(PromptReplaceVariable.CURRENT_TIME, LocalDate.now().toString())
-                .replace(PromptReplaceVariable.MODEL_NAME, effectiveModelName)
-                .replace(PromptReplaceVariable.IP_ADDRESS, InetAddress.getLocalHost().toString()));
+                .replace(CURRENT_TIME, LocalDate.now() + " " + dayOfWeek)
+                .replace(CURRENT_DATETIME, LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:00")) + " " + dayOfWeek)
+                .replace(MODEL_NAME, effectiveModelName)
+                .replace(IP_ADDRESS, InetAddress.getLocalHost().toString())
+                .replace(OPERATING_SYSTEM, System.getProperty("os.name") + " " + System.getProperty("os.version"))
+                .replace(SESSION_ID, chatSession.getId()));
 
         injectKnowledgePrompt(originMessages, chatSession, systemPrompt, session);
         injectMemoryPrompt(systemPrompt);
