@@ -120,6 +120,11 @@ class SessionFileManagerTest {
     }
 
     @Test
+    void buildSessionMarkerOnlyExposesFixedPrefix() {
+        assertEquals("sessionId:a/b.log", SessionFileManager.buildSessionMarker("a/b.log"));
+    }
+
+    @Test
     void resolveUnderRejectsEscape() {
         Path base = manager.buildSessionDirPath(SESSION_ID);
 

@@ -92,6 +92,11 @@ const MessageTopbar = {
                 <i data-lucide="menu" style="width: 18px; height: 18px;"></i>
             </button>
             <span v-if="!isHidden('model')" class="model-name-tag">{{ displayModel }} ·</span>
+            <!-- 左栏插件槽（锚点 'topbar-left'，如角色名等） -->
+            <component v-for="(slot, si) in leftSlots"
+                       :key="'topbar-left-' + si"
+                       :is="slot.component"
+                       :main-color="mainColor"></component>
             <chat-session-name v-if="!isHidden('session-name')" :main-color="mainColor"></chat-session-name>
             <!-- 上下文用量环：显示离自动压缩还剩多少（已用比例越高越满）；点击可手动压缩 -->
             <el-tooltip v-if="!isHidden('ctx-gauge') && contextRatio !== null"
@@ -129,11 +134,6 @@ const MessageTopbar = {
                 <i data-lucide="message-circle-question"></i>
                 <span class="pending-entry-badge">{{ pendingQuestionCount }}</span>
             </button>
-            <!-- 左栏插件槽（锚点 'topbar-left'，如角色名等） -->
-            <component v-for="(slot, si) in leftSlots"
-                       :key="'topbar-left-' + si"
-                       :is="slot.component"
-                       :main-color="mainColor"></component>
         </div>
         <div style="display: flex; align-items: center; gap: 16px;">
             <span v-if="!isHidden('knowledge-flash') && knowledgeFlashVisible" class="knowledge-hit-flash" title="已自动检索知识库内容">

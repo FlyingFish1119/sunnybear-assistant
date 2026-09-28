@@ -416,8 +416,8 @@ public class CommandTool implements ToolHandler {
      * 命令输出超过限制时的落盘处理：把完整输出写入会话文件，返回提示而非报错中断。
      * <p>
      * 设计意图：命令本身已经执行成功，只是输出体量大。抛异常会让 AI 误以为命令失败、
-     * 甚至重跑一次，成本更高。落盘后 AI 拿到可移植引用，需要时用 file_read_tool 或
-     * session_file_tool 读取，不需要时也不占用上下文。
+     * 甚至重跑一次，成本更高。落盘后提示里只给模型侧沙箱标记（{@code sessionId:文件名}），
+     * 不暴露真实会话 ID，需要时用 file_read_tool 传入该标记读取，不需要时也不占用上下文。
      * </p>
      *
      * @param context    工具上下文（取 chatSession 作为落盘会话）
@@ -425,7 +425,7 @@ public class CommandTool implements ToolHandler {
      * @param outputSize 输出字节数
      * @param limitName  触发的是哪层限制（仅用于提示文案，如「最大限制」「安全限制」）
      * @param limitSize  该层限制的字节数
-     * @return 携带落盘引用的提示响应
+     * @return 携带落盘标记的提示响应
      */
     private ToolExecutor.ToolExecuteResponse saveOversizeOutput(Map<String, Object> context, String result,
                                                                 long outputSize, String limitName, long limitSize) throws Exception {
@@ -435,17 +435,17 @@ public class CommandTool implements ToolHandler {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String fileName = "command_output_" + timestamp + ".log";
 
-        String ref;
+        String marker;
         try {
-            ref = sessionFileManager.writeSessionFile(sessionId, fileName, result.getBytes(StandardCharsets.UTF_8));
+            marker = sessionFileManager.writeSessionFileMarker(sessionId, fileName, result.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new ToolExecutor.ToolExecuteException("命令输出过大（" + ToolKit.formatSize(outputSize)
                     + "），尝试保存到会话文件时失败: " + e.getMessage());
         }
 
         String message = "命令输出过大（" + ToolKit.formatSize(outputSize) + "，超过" + limitName
-                + " " + ToolKit.formatSize(limitSize) + "），已保存到会话文件：" + ref
-                + "。如需查看完整输出，请读取该文件。";
+                + " " + ToolKit.formatSize(limitSize) + "），已保存到会话文件：" + marker
+                + "。如需查看完整输出，请用 file_read_tool 读取该文件。";
         return new ToolExecutor.ToolExecuteResponse(name(), message);
     }
 
@@ -493,14 +493,14 @@ public class CommandTool implements ToolHandler {
             headerWriter.newLine();
             headerWriter.write("命令: " + command);
             headerWriter.newLine();
-            headerWriter.write("日志文件: " + logFile.toAbsolutePath());
+            headerWriter.write("日志文件: " + SessionFileManager.buildSessionMarker(fileName));
             headerWriter.newLine();
             headerWriter.write("=".repeat(60));
             headerWriter.newLine();
             headerWriter.newLine();
             headerWriter.flush();
         } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + logFile + "]: " + e.getMessage());
+            throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + SessionFileManager.buildSessionMarker(fileName) + "]: " + e.getMessage());
         }
 
 
@@ -553,7 +553,7 @@ public class CommandTool implements ToolHandler {
         backgroundThread.start();
 
         String message = "命令已在后台启动执行。\n"
-                + "输出日志文件: " + logFile.toAbsolutePath() + "\n"
+                + "输出日志文件: " + SessionFileManager.buildSessionMarker(fileName) + "\n"
                 + "> 提示：使用 file_read_tool 读取日志文件内容查看命令输出。"
                 + "命令执行完成后，日志末尾会写入退出码和结束时间。\n"
                 + "> 命令执行完成后，结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。";
@@ -582,7 +582,7 @@ public class CommandTool implements ToolHandler {
             text.append("命令执行完成，退出码: ").append(exitCode);
         }
         text.append("\n命令: ").append(command);
-        text.append("\n日志文件: ").append(logFile.toAbsolutePath());
+        text.append("\n日志文件: ").append(SessionFileManager.buildSessionMarker(logFile.getFileName().toString()));
 
         backgroundToolResponseBus.post(sessionId, name(), text.toString());
     }

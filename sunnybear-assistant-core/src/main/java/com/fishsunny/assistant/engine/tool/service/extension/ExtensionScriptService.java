@@ -144,14 +144,14 @@ public class ExtensionScriptService {
             headerWriter.newLine();
             headerWriter.write("脚本文件: " + prepared.script().getFilePath());
             headerWriter.newLine();
-            headerWriter.write("日志文件: " + logFile.toAbsolutePath());
+            headerWriter.write("日志文件: " + SessionFileManager.buildSessionMarker(fileName));
             headerWriter.newLine();
             headerWriter.write("=".repeat(60));
             headerWriter.newLine();
             headerWriter.newLine();
             headerWriter.flush();
         } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + logFile + "]: " + e.getMessage());
+            throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + SessionFileManager.buildSessionMarker(fileName) + "]: " + e.getMessage());
         }
 
         // 3. 在守护线程中执行脚本，流式写入输出（sessionId 在此捕获，收尾投递要用）
@@ -160,10 +160,25 @@ public class ExtensionScriptService {
         thread.start();
 
         return "脚本已在后台启动执行。\n"
-                + "输出日志文件: " + logFile.toAbsolutePath() + "\n"
+                + "输出日志文件: " + SessionFileManager.buildSessionMarker(fileName) + "\n"
                 + "> 提示：使用 file_read_tool 读取日志文件内容查看脚本输出。"
                 + "脚本执行完成后，日志末尾会写入退出码和结束时间。\n"
                 + "> 脚本执行完成后，结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。";
+    }
+
+    /**
+     * 脚本输出超过限制时的落盘处理：把完整输出写入会话文件，返回模型侧沙箱标记。
+     * <p>与 CommandTool 的输出超限处理对齐：不抛异常中断，只给提示；
+     * 标记为固定前缀 {@code sessionId:文件名}，不暴露真实会话 ID。
+     *
+     * @param sessionId 当前会话 ID（落盘会话）
+     * @param content   脚本的完整输出
+     * @return 模型侧沙箱标记，供 file_read_tool 读取
+     */
+    public String saveOversizeOutput(String sessionId, String content) throws IOException {
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String fileName = "script_output_" + timestamp + ".log";
+        return sessionFileManager.writeSessionFileMarker(sessionId, fileName, content.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -270,7 +285,7 @@ public class ExtensionScriptService {
             text.append("脚本执行完成，退出码: ").append(exitCode);
         }
         text.append("\n脚本: ").append(script.getName()).append(" (").append(script.getType()).append(")");
-        text.append("\n日志文件: ").append(logFile.toAbsolutePath());
+        text.append("\n日志文件: ").append(SessionFileManager.buildSessionMarker(logFile.getFileName().toString()));
 
         backgroundToolResponseBus.post(sessionId, ExtensionScriptTool.NAME, text.toString());
     }

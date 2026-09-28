@@ -182,6 +182,24 @@ public class SessionFileManager {
     }
 
     /**
+     * 拼接供模型使用的会话沙箱标记：{@code sessionId:相对路径}。
+     * <p>前缀 {@code sessionId:} 是固定字面量，不暴露真实会话 ID；
+     * 文件工具解析时会把前缀展开为当前真实会话 ID（见 {@link #resolveToolPath(String, String)}）。
+     */
+    public static String buildSessionMarker(String relativePath) {
+        return SESSION_MARKER + relativePath;
+    }
+
+    /**
+     * 写入会话文件，返回供模型使用的沙箱标记（{@code sessionId:相对路径}）而非真实引用。
+     * <p>用于命令/脚本输出落盘等场景：需要把文件位置告诉模型、又不希望它拿到真实会话 ID。
+     */
+    public String writeSessionFileMarker(String sessionId, String fileName, byte[] data) throws IOException {
+        writeSessionFile(sessionId, fileName, data);
+        return buildSessionMarker(fileName);
+    }
+
+    /**
      * 把引用解析为真实文件路径。
      * <p>非引用形态的入参按文件系统路径处理（兼容历史数据）。
      */

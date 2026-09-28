@@ -77,15 +77,17 @@ public class ExtensionScriptTool implements ToolHandler {
                 result = extensionScriptService.runScript(arguments.getScriptName(), params, settings.getTimeout());
             }
 
-            // 5. 输出大小限制
+            // 5. 输出大小限制：超限不再报错中断，把完整输出落盘到会话文件，只回沙箱标记
             Long maxSize = settings.getMaxOutputSize();
             if (maxSize != null && maxSize > 0) {
                 long outputSize = result.getBytes(StandardCharsets.UTF_8).length;
                 if (outputSize > maxSize) {
-                    throw new ToolExecutor.ToolExecuteException(
-                            "脚本输出大小（" + ToolKit.formatSize(outputSize) + "）超过最大限制（"
-                            + ToolKit.formatSize(maxSize) + "），执行完毕但拒绝返回结果。"
-                            + "请修改脚本以减少输出量。");
+                    ChatSession chatSession = (ChatSession) context.get("chatSession");
+                    String marker = extensionScriptService.saveOversizeOutput(chatSession.getId(), result);
+                    String message = "脚本输出过大（" + ToolKit.formatSize(outputSize) + "，超过最大限制 "
+                            + ToolKit.formatSize(maxSize) + "），已保存到会话文件：" + marker
+                            + "。如需查看完整输出，请用 file_read_tool 读取该文件。";
+                    return new ToolExecutor.ToolExecuteResponse(name(), message);
                 }
             }
 
