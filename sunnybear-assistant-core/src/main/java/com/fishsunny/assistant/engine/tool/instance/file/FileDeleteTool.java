@@ -10,6 +10,7 @@ package com.fishsunny.assistant.engine.tool.instance.file;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
@@ -17,6 +18,7 @@ import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -27,7 +29,6 @@ import org.springframework.web.socket.WebSocketSession;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Comparator;
 import java.util.List;
@@ -54,29 +55,37 @@ public class FileDeleteTool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final Settings settings;
     private final SecurityService securityService;
+    private final SessionFileManager sessionFileManager;
 
     public FileDeleteTool(ObjectMapper objectMapper,
                           @Qualifier(SETTINGS) Settings settings,
-                          SecurityService securityService
+                          SecurityService securityService,
+                          SessionFileManager sessionFileManager
                           ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
         this.securityService = securityService;
+        this.sessionFileManager = sessionFileManager;
     }
 
     @Override
-    @ToolIncludeContext(key = "session", type = WebSocketSession.class)
+    @ToolIncludeContext(key = {"session", "chatSession"}, type = {WebSocketSession.class, ChatSession.class})
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
             WebSocketSession session = (WebSocketSession) context.get("session");
+            ChatSession chatSession = (ChatSession) context.get("chatSession");
 
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
             if (!StringUtils.hasText(arguments.getPath())) {
                 throw new ToolExecutor.ToolExecuteException("参数 path 不能为空");
             }
 
-            // 路径规范化
-            Path targetPath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
+            // 路径解析：path 用 sessionId:相对路径 指代当前会话沙箱（前缀会展开为真实会话 ID），
+            // 沙箱内跳过安全审核与用户确认
+            String currentSessionId = chatSession == null ? null : chatSession.getId();
+            SessionFileManager.ResolvedPath resolved = sessionFileManager.resolveToolPath(arguments.getPath(), currentSessionId);
+            Path targetPath = resolved.path();
+            boolean sessionFile = resolved.sessionFile();
 
             if (!Files.exists(targetPath)) {
                 throw new ToolExecutor.ToolExecuteException("路径不存在: " + targetPath);
@@ -88,32 +97,35 @@ public class FileDeleteTool implements ToolHandler {
             // 收集删除目标的信息，用于安全检测和展示
             String targetInfo = buildTargetInfo(targetPath, isDirectory, recursive);
 
-            switch (settings.getMode()) {
-                case NEVER_ASKED:
-                    break;
-                case ALWAYS_ASKED:
-                    ask(context, targetPath, isDirectory, recursive, targetInfo, null);
-                    break;
-                case AUTO: {
-                    ReviewResult review = isDanger(arguments, targetPath, isDirectory, recursive, targetInfo, context);
-                    if (review.isDanger()) {
-                        ask(context, targetPath, isDirectory, recursive, targetInfo, review.reason());
+            // 会话文件目录是当前会话的沙箱，直接删除，跳过 AI 审核与用户确认
+            if (!sessionFile) {
+                switch (settings.getMode()) {
+                    case NEVER_ASKED:
+                        break;
+                    case ALWAYS_ASKED:
+                        ask(context, targetPath, isDirectory, recursive, targetInfo, null);
+                        break;
+                    case AUTO: {
+                        ReviewResult review = isDanger(arguments, targetPath, isDirectory, recursive, targetInfo, context);
+                        if (review.isDanger()) {
+                            ask(context, targetPath, isDirectory, recursive, targetInfo, review.reason());
+                        }
+                        break;
                     }
-                    break;
-                }
-                case ALWAYS_REJECT_DANGER: {
-                    ReviewResult review = isDanger(arguments, targetPath, isDirectory, recursive, targetInfo, context);
-                    if (review.isDanger()) {
-                        throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件删除操作存在危险", review.reason()));
+                    case ALWAYS_REJECT_DANGER: {
+                        ReviewResult review = isDanger(arguments, targetPath, isDirectory, recursive, targetInfo, context);
+                        if (review.isDanger()) {
+                            throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件删除操作存在危险", review.reason()));
+                        }
+                        break;
                     }
-                    break;
+                    default:
+                        throw new ToolExecutor.ToolExecuteException("FileDelete 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
                 }
-                default:
-                    throw new ToolExecutor.ToolExecuteException("FileDelete 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
-            }
 
-            if (!session.isOpen()) {
-                throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
+                if (!session.isOpen()) {
+                    throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
+                }
             }
 
             // 执行删除
@@ -256,7 +268,9 @@ public class FileDeleteTool implements ToolHandler {
                 .setDescription("删除文件或目录时使用此工具（比执行 rm/del 命令更安全，有 AI 安全审核）。删除目录需设 recursive=true。" + modeDesc)
                 .setRequired(List.of("path"))
                 .setParameters(List.of(
-                        new ToolRegister.Parameters("path", "string", "要删除的文件或目录路径，例如 D:\\projects\\test.txt"),
+                        new ToolRegister.Parameters("path", "string",
+                                "要删除的文件或目录路径，例如 D:\\projects\\test.txt；" +
+                                "会话沙箱文件写成 sessionId:相对路径（如 sessionId:notes.txt），前缀 sessionId: 表示当前会话，此时跳过安全审核与用户确认。"),
                         new ToolRegister.Parameters("recursive", "boolean", "（目录时可选）是否递归删除目录及其所有子项，默认 false，仅删除空目录")
                 ));
     }

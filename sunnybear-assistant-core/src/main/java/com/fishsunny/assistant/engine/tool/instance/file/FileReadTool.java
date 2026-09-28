@@ -9,12 +9,15 @@ package com.fishsunny.assistant.engine.tool.instance.file;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
+import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
@@ -24,7 +27,6 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
@@ -60,9 +62,11 @@ public class FileReadTool implements ToolHandler {
 
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
+    private final SessionFileManager sessionFileManager;
 
-    public FileReadTool(ObjectMapper objectMapper) {
+    public FileReadTool(ObjectMapper objectMapper, SessionFileManager sessionFileManager) {
         this.objectMapper = objectMapper;
+        this.sessionFileManager = sessionFileManager;
 
         register = new ToolRegister()
                 .setName(NAME)
@@ -76,7 +80,8 @@ public class FileReadTool implements ToolHandler {
                                 .setItems(ToolRegister.Parameters.object(
                                         "单个文件的读取描述",
                                         List.of(
-                                                new ToolRegister.Parameters("path", "string", "文件路径"),
+                                                new ToolRegister.Parameters("path", "string",
+                                                        "文件路径；会话沙箱文件写成 sessionId:相对路径（如 sessionId:notes.txt），前缀 sessionId: 表示当前会话，无需填真实会话 ID"),
                                                 new ToolRegister.Parameters("startLine", "integer", "起始行，从 1 开始，不填则从头读"),
                                                 new ToolRegister.Parameters("endLine", "integer", "结束行，包含该行，不填则读到结尾"),
                                                 new ToolRegister.Parameters("startChar", "integer", "起始字符位置，从 1 开始，用于读取超长单行的后半段，不填则从行首"),
@@ -90,6 +95,7 @@ public class FileReadTool implements ToolHandler {
     }
 
     @Override
+    @ToolIncludeContext(key = "chatSession", type = ChatSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         Arguments arguments;
         try {
@@ -105,9 +111,13 @@ public class FileReadTool implements ToolHandler {
         // safe 默认开启：大文件只返回基础信息，避免撑爆上下文
         boolean safe = arguments.getSafe() == null || arguments.getSafe();
 
+        // 当前会话 ID：用于展开 path 里的 sessionId: 前缀（模型无需知道真实会话 ID）
+        ChatSession chatSession = (ChatSession) context.get("chatSession");
+        String sessionId = chatSession == null ? null : chatSession.getId();
+
         // 并行读取所有文件，每个文件使用自己的行范围
         List<FileResult> results = arguments.getPaths().parallelStream()
-                .map(spec -> readFileSafe(spec, safe))
+                .map(spec -> readFileSafe(spec, safe, sessionId))
                 .toList();
 
         return assembleResults(results);
@@ -116,13 +126,13 @@ public class FileReadTool implements ToolHandler {
     /**
      * 安全读取单个文件描述，捕获异常返回失败结果而不抛出
      */
-    private FileResult readFileSafe(FileSpec spec, boolean safe) {
+    private FileResult readFileSafe(FileSpec spec, boolean safe, String sessionId) {
         String pathStr = spec.getPath();
         try {
             if (!StringUtils.hasText(pathStr)) {
                 return FileResult.error("(空路径)", "path 不能为空");
             }
-            Path filePath = Paths.get(pathStr.trim()).toAbsolutePath().normalize();
+            Path filePath = sessionFileManager.resolveToolPath(pathStr, sessionId).path();
             if (!Files.exists(filePath)) {
                 return FileResult.error(pathStr, "文件不存在: " + filePath);
             }

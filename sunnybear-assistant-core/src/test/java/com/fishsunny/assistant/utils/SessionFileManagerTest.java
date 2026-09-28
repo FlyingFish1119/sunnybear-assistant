@@ -16,7 +16,9 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SessionFileManagerTest {
@@ -87,5 +89,41 @@ class SessionFileManagerTest {
         assertTrue(dir.endsWith(Path.of("session", SESSION_ID, "file")), "实际: " + dir);
         // deleteSessionDir 删的是 file 的父目录，即整个会话目录
         assertEquals(dir.getParent(), manager.buildSessionRootPath(SESSION_ID));
+    }
+
+    @Test
+    void resolveToolPathExpandsSessionMarkerIntoCurrentSession() {
+        SessionFileManager.ResolvedPath resolved = manager.resolveToolPath("sessionId:sub/a.png", SESSION_ID);
+
+        assertTrue(resolved.sessionFile(), "sessionId: 前缀应识别为会话沙箱路径");
+        assertTrue(resolved.path().endsWith(Path.of("session", SESSION_ID, "file", "sub", "a.png")),
+                "实际: " + resolved.path());
+    }
+
+    @Test
+    void resolveToolPathKeepsDrivePathsAsFilesystemPaths() {
+        SessionFileManager.ResolvedPath resolved = manager.resolveToolPath(LEGACY_ABS, SESSION_ID);
+
+        assertFalse(resolved.sessionFile(), "盘符路径不能被误判为会话引用");
+        assertEquals(Path.of(LEGACY_ABS).toAbsolutePath().normalize(), resolved.path());
+    }
+
+    @Test
+    void resolveToolPathRejectsSessionMarkerWithoutCurrentSession() {
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.resolveToolPath("sessionId:a.txt", null));
+    }
+
+    @Test
+    void resolveToolPathRejectsBlankPath() {
+        assertThrows(IllegalArgumentException.class, () -> manager.resolveToolPath(" ", SESSION_ID));
+    }
+
+    @Test
+    void resolveUnderRejectsEscape() {
+        Path base = manager.buildSessionDirPath(SESSION_ID);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> SessionFileManager.resolveUnder(base, "../escape.txt"));
     }
 }

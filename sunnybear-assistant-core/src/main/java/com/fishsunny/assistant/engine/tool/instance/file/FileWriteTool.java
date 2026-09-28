@@ -31,7 +31,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
@@ -70,10 +69,11 @@ public class FileWriteTool implements ToolHandler {
     }
 
     @Override
-    @ToolIncludeContext(key = "session", type = WebSocketSession.class)
+    @ToolIncludeContext(key = {"session", "chatSession"}, type = {WebSocketSession.class, ChatSession.class})
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
             WebSocketSession session = (WebSocketSession) context.get("session");
+            ChatSession chatSession = (ChatSession) context.get("chatSession");
 
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
             if (!StringUtils.hasText(arguments.getPath())) {
@@ -83,22 +83,12 @@ public class FileWriteTool implements ToolHandler {
                 throw new ToolExecutor.ToolExecuteException("参数 content 不能为空");
             }
 
-            // 是否为会话文件模式：写入当前会话的沙箱目录，path 只能相对于该目录
-            boolean sessionFile = Boolean.TRUE.equals(arguments.getSessionFile());
-
-            // 路径解析
-            Path filePath;
-            if (sessionFile) {
-                ChatSession chatSession = (ChatSession) context.get("chatSession");
-                if (chatSession == null || !StringUtils.hasText(chatSession.getId())) {
-                    throw new ToolExecutor.ToolExecuteException("sessionFile 模式需要当前会话信息，但上下文中缺少 chatSession 或 sessionId");
-                }
-                Path sessionDir = sessionFileManager.buildSessionDirPath(chatSession.getId());
-                // 沙箱校验统一走 SessionFileManager（与前端 /session/file/* 接口共用同一份实现）
-                filePath = SessionFileManager.resolveUnder(sessionDir, arguments.getPath());
-            } else {
-                filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
-            }
+            // 路径解析：path 用 sessionId:相对路径 指代当前会话沙箱（前缀会展开为真实会话 ID），
+            // 沙箱内跳过安全审核与用户确认
+            String currentSessionId = chatSession == null ? null : chatSession.getId();
+            SessionFileManager.ResolvedPath resolved = sessionFileManager.resolveToolPath(arguments.getPath(), currentSessionId);
+            Path filePath = resolved.path();
+            boolean sessionFile = resolved.sessionFile();
 
             // 会话文件目录是当前会话的沙箱，直接写入，跳过 AI 审核与用户确认
             if (!sessionFile) {
@@ -229,16 +219,14 @@ public class FileWriteTool implements ToolHandler {
         };
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("创建或覆写文件时使用此工具（比执行 echo/重定向命令更安全可靠）。父目录不存在会自动创建，返回写入文件的元信息。各种临时脚本/测试文件等优先使用 sessionFile 模式" + modeDesc)
+                .setDescription("创建或覆写文件时使用此工具（比执行 echo/重定向命令更安全可靠）。父目录不存在会自动创建，返回写入文件的元信息。各种临时脚本/测试文件等优先写入会话沙箱（path 用 sessionId:相对路径 形式）" + modeDesc)
                 .setRequired(List.of("path", "content"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("path", "string",
-                                "文件路径。sessionFile 为 false 时为绝对路径（如 D:\\projects\\test.txt）；" +
-                                "为 true 时必须相对于当前会话文件目录，不能是绝对路径、不能从根目录开始。"),
-                        new ToolRegister.Parameters("content", "string", "要写入的文件内容"),
-                        new ToolRegister.Parameters("sessionFile", "boolean",
-                                "是否写入当前会话的沙箱文件目录，适合临时文件、测试文件等。默认为 false。" +
-                                "为 true 时 path 只能是相对路径，且跳过安全审核与用户确认。")
+                                "文件路径。绝对路径（如 D:\\projects\\test.txt）会走安全审核；" +
+                                "会话沙箱路径写成 sessionId:相对路径（如 sessionId:test.py），前缀 sessionId: 表示当前会话，无需填真实会话 ID，" +
+                                "相对路径不能是绝对路径、不能以分隔符开头、不能含 .. 回溯，且跳过安全审核与用户确认。"),
+                        new ToolRegister.Parameters("content", "string", "要写入的文件内容")
                 ));
     }
 
@@ -246,8 +234,6 @@ public class FileWriteTool implements ToolHandler {
     private static class Arguments {
         private String path;
         private String content;
-        /** 是否写入当前会话的沙箱文件目录（临时文件/测试文件），默认 false */
-        private Boolean sessionFile;
     }
 
     @Data

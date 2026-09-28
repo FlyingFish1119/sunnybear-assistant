@@ -51,6 +51,13 @@ public class SessionFileManager {
     private static final String SESSION_DIR = "session";
     private static final String FILE_DIR = "file";
 
+    /**
+     * 文件工具 path 中指向当前会话沙箱的固定字面前缀。
+     * <p>模型只需写 {@code sessionId:相对路径}（如 {@code sessionId:notes/a.txt}），
+     * 无需知道真实会话 ID；由 {@link #resolveToolPath(String, String)} 展开为当前会话目录。
+     */
+    public static final String SESSION_MARKER = "sessionId:";
+
     /** 文本读取上限 2MB：超过这个大小的文件不往编辑器里塞，免得把页面拖死 */
     private static final long MAX_TEXT_READ_BYTES = 2 * 1024 * 1024;
 
@@ -83,7 +90,7 @@ public class SessionFileManager {
     /**
      * 把相对路径解析到指定基目录之内 —— 会话文件所有读/写/改名/删除的唯一入口。
      * <p>规则：不允许绝对路径、盘符路径、以分隔符开头，也不允许用 {@code ..} 跳出基目录。
-     * 与 {@code FileWriteTool} 的 sessionFile 模式同源（那边已改为调用本方法）。
+     * 文件工具（write/edit/read/delete）的沙箱路径同样走这里，见 {@link #resolveToolPath(String, String)}。
      *
      * @param baseDir      基目录
      * @param relativePath 相对路径，空串表示基目录自身
@@ -182,20 +189,71 @@ public class SessionFileManager {
         if (!StringUtils.hasText(ref)) {
             throw new IllegalArgumentException("File reference cannot be empty");
         }
-        int idx = ref.indexOf(':');
-        if (idx > 0) {
-            String rest = ref.substring(idx + 1);
-            // 引用形如 {sessionId}:{相对路径}，允许子目录（sub/a.png）。
-            // rest 以分隔符开头的不算引用 —— 挡掉 Windows 盘符路径（"E:\data\.." 的 rest 以 \ 开头），
-            // 否则 "E:" 会被误判成 sessionId，导致历史绝对路径全部解析失败。
-            // 含 .. 回溯的也不算引用，交给 Path.of 按文件系统路径处理（历史数据兜底）。
-            if (!rest.isEmpty()
-                    && !rest.startsWith("\\") && !rest.startsWith("/")
-                    && !rest.contains("..")) {
-                return resolveUnder(buildSessionDirPath(ref.substring(0, idx)), rest);
-            }
+        SessionRef sessionRef = parseSessionRef(ref);
+        if (sessionRef != null) {
+            return resolveUnder(buildSessionDirPath(sessionRef.sessionId()), sessionRef.relativePath());
         }
         return Path.of(ref);
+    }
+
+    /**
+     * 解析文件工具的 path 参数。
+     * <p>以 {@link #SESSION_MARKER} 开头时，把该固定前缀替换为当前真实会话 ID，
+     * 解析到当前会话的沙箱文件目录（{basePath}/session/{sessionId}/file），sessionFile=true；
+     * 其余（含消息里带真实会话 ID 的可移植引用）按原有引用/文件系统路径规则处理。
+     *
+     * @param currentSessionId 当前会话 ID，用于展开 {@link #SESSION_MARKER}
+     * @throws IllegalArgumentException 路径为空、或引用试图用 {@code ..} 跳出沙箱
+     */
+    public ResolvedPath resolveToolPath(String path, String currentSessionId) {
+        if (!StringUtils.hasText(path)) {
+            throw new IllegalArgumentException("File path cannot be empty");
+        }
+        String trimmed = path.trim();
+        if (trimmed.startsWith(SESSION_MARKER)) {
+            requireSessionId(currentSessionId);
+            String relative = trimmed.substring(SESSION_MARKER.length());
+            return new ResolvedPath(resolveUnder(buildSessionDirPath(currentSessionId), relative), true);
+        }
+        SessionRef sessionRef = parseSessionRef(trimmed);
+        if (sessionRef != null) {
+            return new ResolvedPath(resolveUnder(buildSessionDirPath(sessionRef.sessionId()), sessionRef.relativePath()), true);
+        }
+        return new ResolvedPath(Path.of(trimmed).toAbsolutePath().normalize(), false);
+    }
+
+    /**
+     * 识别可移植引用并拆出 sessionId 与相对路径；不是引用时返回 null。
+     * <p>rest 以分隔符开头的不算引用 —— 挡掉 Windows 盘符路径（"E:\data" 的 rest 以 \ 开头），
+     * 否则 "E:" 会被误判成 sessionId，导致历史绝对路径全部解析失败；
+     * 含 {@code ..} 回溯的也不算引用，交给调用方按文件系统路径处理（历史数据兜底）。
+     */
+    @Nullable
+    private static SessionRef parseSessionRef(String value) {
+        int idx = value.indexOf(':');
+        if (idx <= 0) {
+            return null;
+        }
+        String rest = value.substring(idx + 1);
+        if (rest.isEmpty()
+                || rest.startsWith("\\") || rest.startsWith("/")
+                || rest.contains("..")) {
+            return null;
+        }
+        return new SessionRef(value.substring(0, idx), rest);
+    }
+
+    /** 可移植引用拆解结果 */
+    private record SessionRef(String sessionId, String relativePath) {
+    }
+
+    /**
+     * 文件工具路径解析结果。
+     *
+     * @param path        真实文件路径（绝对、已归一化）
+     * @param sessionFile 是否为会话沙箱路径（path 用 sessionId:相对路径，或真实会话引用）
+     */
+    public record ResolvedPath(Path path, boolean sessionFile) {
     }
 
     /**

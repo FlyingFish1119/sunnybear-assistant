@@ -10,6 +10,7 @@ package com.fishsunny.assistant.engine.tool.instance.file;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,7 +25,7 @@ class FileReadToolTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    private final FileReadTool tool = new FileReadTool(OBJECT_MAPPER);
+    private final FileReadTool tool = new FileReadTool(OBJECT_MAPPER, new SessionFileManager(null, null));
 
     /**
      * 读取文件：fileExtra 追加到文件描述对象内，topExtra 追加到顶层参数

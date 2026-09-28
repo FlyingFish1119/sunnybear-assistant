@@ -10,6 +10,7 @@ package com.fishsunny.assistant.engine.tool.instance.file;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
@@ -17,6 +18,7 @@ import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent
 import com.fishsunny.assistant.engine.tool.instance.FileToolKit;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -28,7 +30,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -65,31 +66,28 @@ public class FileEditTool implements ToolHandler {
     /** 行号格式化宽度 */
     private static final int LINE_NUM_WIDTH = 6;
 
-    /** 用户确认等待超时时间（毫秒） */
-    private static final int CONFIRM_TIMEOUT_MS = 30 * 1000;
-
-    /** 轮询用户确认状态的间隔（毫秒） */
-    private static final int POLL_INTERVAL_MS = 100;
-
     private final ObjectMapper objectMapper;
     private final Settings settings;
     private final SecurityService securityService;
+    private final SessionFileManager sessionFileManager;
 
     public FileEditTool(ObjectMapper objectMapper,
                         @Qualifier(SETTINGS) Settings settings,
-                        SecurityService securityService
-
+                        SecurityService securityService,
+                        SessionFileManager sessionFileManager
                         ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
         this.securityService = securityService;
+        this.sessionFileManager = sessionFileManager;
     }
 
     @Override
-    @ToolIncludeContext(key = "session", type = WebSocketSession.class)
+    @ToolIncludeContext(key = {"session", "chatSession"}, type = {WebSocketSession.class, ChatSession.class})
     public synchronized ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
             WebSocketSession session = (WebSocketSession) context.get("session");
+            ChatSession chatSession = (ChatSession) context.get("chatSession");
 
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
             if (!StringUtils.hasText(arguments.getPath())) {
@@ -102,8 +100,12 @@ public class FileEditTool implements ToolHandler {
                 arguments.setNewContent("");
             }
 
-            // 路径规范化
-            Path filePath = Paths.get(arguments.getPath()).toAbsolutePath().normalize();
+            // 路径解析：path 用 sessionId:相对路径 指代当前会话沙箱（前缀会展开为真实会话 ID），
+            // 沙箱内跳过安全审核与用户确认
+            String currentSessionId = chatSession == null ? null : chatSession.getId();
+            SessionFileManager.ResolvedPath resolved = sessionFileManager.resolveToolPath(arguments.getPath(), currentSessionId);
+            Path filePath = resolved.path();
+            boolean sessionFile = resolved.sessionFile();
 
             // 检查文件
             validateFile(filePath);
@@ -131,32 +133,35 @@ public class FileEditTool implements ToolHandler {
             // 生成 diff 风格预览
             String diffPreview = buildDiffResult(fileContent, allLines, match, newContent, filePath);
 
-            switch (settings.getMode()) {
-                case NEVER_ASKED:
-                    break;
-                case ALWAYS_ASKED:
-                    ask(context, filePath, modeDesc, match, diffPreview, null);
-                    break;
-                case AUTO: {
-                    ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
-                    if (review.isDanger()) {
-                        ask(context, filePath, modeDesc, match, diffPreview, review.reason());
+            // 会话文件目录是当前会话的沙箱，直接编辑，跳过 AI 审核与用户确认
+            if (!sessionFile) {
+                switch (settings.getMode()) {
+                    case NEVER_ASKED:
+                        break;
+                    case ALWAYS_ASKED:
+                        ask(context, filePath, modeDesc, match, diffPreview, null);
+                        break;
+                    case AUTO: {
+                        ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
+                        if (review.isDanger()) {
+                            ask(context, filePath, modeDesc, match, diffPreview, review.reason());
+                        }
+                        break;
                     }
-                    break;
-                }
-                case ALWAYS_REJECT_DANGER: {
-                    ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
-                    if (review.isDanger()) {
-                        throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件编辑操作存在危险", review.reason()));
+                    case ALWAYS_REJECT_DANGER: {
+                        ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
+                        if (review.isDanger()) {
+                            throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件编辑操作存在危险", review.reason()));
+                        }
+                        break;
                     }
-                    break;
+                    default:
+                        throw new ToolExecutor.ToolExecuteException("FileEdit 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
                 }
-                default:
-                    throw new ToolExecutor.ToolExecuteException("FileEdit 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
-            }
 
-            if (!session.isOpen()) {
-                throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
+                if (!session.isOpen()) {
+                    throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
+                }
             }
 
             // 执行文件编辑：在归一化后的内容中替换
@@ -463,7 +468,9 @@ public class FileEditTool implements ToolHandler {
                 .setDescription("精确修改文件内容时使用此工具（比执行 sed/awk 命令更安全可靠）。在文件中查找唯一匹配的旧文本并替换为新文本，支持删除操作（newContent 为空时）。" + modeDesc)
                 .setRequired(List.of("path", "oldContent"))
                 .setParameters(List.of(
-                        new ToolRegister.Parameters("path", "string", "文件路径，例如 D:\\projects\\test.txt"),
+                        new ToolRegister.Parameters("path", "string",
+                                "文件路径，例如 D:\\projects\\test.txt；" +
+                                "会话沙箱文件写成 sessionId:相对路径（如 sessionId:notes.txt），前缀 sessionId: 表示当前会话，此时跳过安全审核与用户确认。"),
                         new ToolRegister.Parameters("oldContent", "string",
                                 "文件中需要被替换的原始内容（必须与文件中的内容完全一致，包括空白字符和换行）。" +
                                 "该内容在文件中必须唯一，若匹配到多处则会报错并列出所有匹配位置，此时需增加更多上下文使其唯一。"),
