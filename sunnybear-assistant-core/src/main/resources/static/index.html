@@ -241,7 +241,9 @@
     <script src="components/nav-rail/memory-panel/memory-panel.js"></script>
     <!-- 知识库双层抽屉（条目列表 + 上 intro / 下 content 双段 Ace 编辑器） -->
     <script src="components/nav-rail/knowledge-panel/knowledge-panel.js"></script>
-    <!-- 命令面板（单层大抽屉）：异步跑 shell 命令，边跑边吐输出；不支持交互式程序 -->
+    <!-- 命令面板（单层大抽屉）：真正的 Web 终端（xterm.js + PTY），支持 vim/top 等交互式程序 -->
+    <script src="lib/xterm/xterm.js"></script>
+    <script src="lib/xterm/addon-fit.js"></script>
     <script src="components/nav-rail/shell-panel/shell-panel.js"></script>
     <!-- MCP 面板（单层抽屉）：管理 MCP Server 连接配置，保存后热生效 -->
     <script src="components/nav-rail/mcp-panel/mcp-panel.js"></script>
@@ -281,7 +283,8 @@
     <link rel="stylesheet" href="components/nav-rail/memory-panel/memory-panel.css"/>
     <!-- 知识库双层抽屉 -->
     <link rel="stylesheet" href="components/nav-rail/knowledge-panel/knowledge-panel.css"/>
-    <!-- 终端面板（单层大抽屉） -->
+    <!-- 终端面板（单层大抽屉）：xterm.js 终端样式 -->
+    <link rel="stylesheet" href="lib/xterm/xterm.css"/>
     <link rel="stylesheet" href="components/nav-rail/shell-panel/shell-panel.css"/>
     <!-- MCP 面板（单层抽屉） -->
     <link rel="stylesheet" href="components/nav-rail/mcp-panel/mcp-panel.css"/>
@@ -721,12 +724,12 @@
     /**
      * 导航轨注册：一条同时接通「按钮 + 面板挂载 + 互斥开合」，
      * 以后加面板 = 这里加一行（组件实现 toggle()/close() 与 visible、并发 visible-change 即可）。
-     * order 决定轨上按钮顺序：会话文件 → 记忆 → 知识库 → 命令。
+     * order 决定轨上按钮顺序：会话文件 → 记忆 → 知识库 → 终端。
      */
     RailPlugins.register('files',    { icon: 'folder-open',    label: '会话文件', component: SessionFiles,    order: 10 });
     RailPlugins.register('memory',   { icon: 'brain',          label: '记忆',     component: MemoryPanel,     order: 20 });
     RailPlugins.register('knowledge',{ icon: 'database',       label: '知识库',   component: KnowledgePanel,  order: 30 });
-    RailPlugins.register('shell',    { icon: 'chevrons-right', label: '命令',     component: ShellPanel,      order: 40 });
+    RailPlugins.register('shell',    { icon: 'terminal',       label: '终端',     component: ShellPanel,      order: 40 });
     RailPlugins.register('mcp',      { icon: 'plug',           label: 'MCP',      component: McpPanel,        order: 50 });
 
     // 发送区右侧：模型切换入口（设置页简化版）

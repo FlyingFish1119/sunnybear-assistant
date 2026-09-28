@@ -33,6 +33,7 @@
         <poi.version>5.2.5</poi.version>
         <pdfbox.version>3.0.2</pdfbox.version>
         <playwright.version>1.49.0</playwright.version>
+        <pty4j.version>0.13.13</pty4j.version>
     </properties>
 
     <dependencies>
@@ -54,6 +55,13 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
+        <!-- 本地交互式终端：为 Web 终端提供真正的 PTY（Windows ConPTY / Unix pty） -->
+        <dependency>
+            <groupId>org.jetbrains.pty4j</groupId>
+            <artifactId>pty4j</artifactId>
+            <version>${pty4j.version}</version>
         </dependency>
 
         <!-- JSON -->

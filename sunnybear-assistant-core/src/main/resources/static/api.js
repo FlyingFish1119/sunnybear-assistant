@@ -95,7 +95,12 @@ const API = (function () {
         upload: upload,
 
         ws: {
-            url: WS_PROTO + window.location.host + BASE_PATH + 'ws/chat'
+            url: WS_PROTO + window.location.host + BASE_PATH + 'ws/chat',
+            /** 本地终端 WebSocket 地址；cols/rows 让 PTY 按当前终端尺寸启动 */
+            terminalUrl: function (cols, rows) {
+                return WS_PROTO + window.location.host + BASE_PATH + 'ws/terminal'
+                    + '?cols=' + (cols || 80) + '&rows=' + (rows || 24);
+            }
             // 插件（角色/世界）的 ws 地址由各插件自己的 api 文件补充：API.ws.characterUrl / API.ws.worldUrl
         },
 
@@ -338,30 +343,10 @@ const API = (function () {
             }
         },
 
-        /* ---------- Shell 终端 ---------- */
-        shell: {
-            /** 平台信息：默认工作目录、系统名、shell 名 */
-            info: function () { return get('shell/info'); },
-            /**
-             * 往「常驻 shell」里下达一条命令，立即返回 { jobId, cwd, startedAt }。
-             * 注意：不再传 cwd —— 会话是持久的，工作目录由命令里的 cd 维持，
-             * 起始目录只在 shell 首次启动时生效（后端用项目根）。
-             */
-            exec: function (command) {
-                return post('shell/exec', { command: command });
-            },
-            /** 按 offset 增量拉输出；返回体里的 offset 是下次该传的值 */
-            output: function (jobId, offset) {
-                return get('shell/output?jobId=' + encodeURIComponent(jobId) + '&offset=' + (offset || 0));
-            },
-            /** 终止当前命令（不重建 shell） */
-            kill: function (jobId) {
-                return post('shell/kill?jobId=' + encodeURIComponent(jobId));
-            },
-            /** 关闭并重建常驻 shell —— 命令卡死时的逃生口（工作目录/环境会丢） */
-            close: function () {
-                return post('shell/close');
-            }
+        /* ---------- 终端 AI 辅助 ---------- */
+        terminal: {
+            /** 自然语言 → 单条 shell 命令（仅本机）；返回 { command }，不执行 */
+            assist: function (prompt) { return post('terminal/assist', { prompt: prompt }); }
         },
 
         /* ---------- 定时任务 ---------- */

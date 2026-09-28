@@ -1,11 +1,10 @@
 /* ============================================================
-   命令面板（单层大抽屉）
+   终端面板（单层大抽屉）
    ------------------------------------------------------------
-   从导航轨右侧铺满到底的一个大抽屉。底子偏深色，但刻意**不做成终端**：
-   输入框是应用输入框而不是命令行提示符，并明确标注能力边界 ——
-   免得人看到深色等宽字体就以为 vim / top 也能跑。
-   结构：头部（标题 / 清屏 / 重开会话 / 关闭）→ 目录栏 → 输出区 → 输入行
-   无二级抽屉：所有交互都在这一个面板里完成。
+   导航轨右侧铺满到底的大抽屉，里面是一个真正的 xterm.js 终端，
+   后端接本地 PTY，因此 vim / top / 交互式 REPL 都能跑。
+   结构：头部（标题 / 状态 / 清屏 / 重开会话 / 关闭）→ 终端区。
+   无输入行：键盘输入直接由 xterm 接管。
 
    移动端（≤768px）导航轨隐藏，抽屉从 0 起算。
    ============================================================ */
@@ -69,14 +68,37 @@
     width: 16px;
     height: 16px;
     flex: none;
-    color: #7dd3a0;
+    color: var(--sh-accent, #7dd3a0);
 }
 
-.sh-os{
+/* 连接状态：不同状态用不同颜色的小圆点 + 文字 */
+.sh-status{
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     font-size: 11px;
     font-weight: 400;
     color: #6b7280;
 }
+
+.sh-status::before{
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #6b7280;
+}
+
+.sh-status.is-connecting{ color: #d8b96a; }
+.sh-status.is-connecting::before{ background: #d8b96a; }
+
+.sh-status.is-connected{ color: var(--sh-accent, #7dd3a0); }
+.sh-status.is-connected::before{ background: var(--sh-accent, #7dd3a0); }
+
+.sh-status.is-closed{ color: #6b7280; }
+
+.sh-status.is-error{ color: #f27a7d; }
+.sh-status.is-error::before{ background: #f27a7d; }
 
 .sh-btn{
     flex: none;
@@ -95,111 +117,67 @@
 .sh-btn svg{ width: 16px; height: 16px; display: block; }
 .sh-btn:hover{ background: rgba(255, 255, 255, 0.08); color: #e8e8ea; }
 
-/* ---- 工作目录栏（点击可改） ---- */
-.sh-cwd{
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    height: 34px;
-    padding: 0 16px;
-    box-sizing: border-box;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    background: rgba(255, 255, 255, 0.03);
-    font-family: var(--sh-mono);
-    font-size: 12px;
-    color: #9aa0a6;
-    cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
-}
-
-.sh-cwd:hover{ background: rgba(255, 255, 255, 0.06); color: #d1d5db; }
-.sh-cwd svg{ width: 14px; height: 14px; flex: none; color: #6b7280; }
-
-.sh-cwd-text{
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* ---- 输出区 ---- */
-.sh-screen{
+/* ---- 终端区 ---- */
+.sh-term{
     flex: 1;
     min-height: 0;
-    overflow: auto;
-    padding: 12px 16px;
-    font-family: var(--sh-mono);
-    font-size: 12.5px;
-    line-height: 1.55;
-    color: #d4d4d8;
+    position: relative;
+    overflow: hidden;
+    padding: 8px 8px 8px 12px;
+    box-sizing: border-box;
+    background: #1b1b1f;
+}
+
+/* xterm 在容器内铺满；FitAddon 依据容器尺寸算行列数 */
+.sh-term .xterm{
+    height: 100%;
+}
+
+.sh-term .xterm-viewport{
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 
-.sh-screen::-webkit-scrollbar{ width: 9px; }
-.sh-screen::-webkit-scrollbar-thumb{
+.sh-term .xterm-viewport::-webkit-scrollbar{ width: 9px; }
+.sh-term .xterm-viewport::-webkit-scrollbar-thumb{
     background: rgba(255, 255, 255, 0.18);
     border-radius: 5px;
 }
-.sh-screen::-webkit-scrollbar-thumb:hover{ background: rgba(255, 255, 255, 0.28); }
+.sh-term .xterm-viewport::-webkit-scrollbar-thumb:hover{ background: rgba(255, 255, 255, 0.28); }
 
-.sh-line{
-    white-space: pre-wrap;
-    word-break: break-all;
-}
-
-/* 回显的命令：加个 > 前缀，和输出区分开 */
-.sh-line.is-cmd{
-    color: #7dd3a0;
-    margin-top: 6px;
-}
-
-.sh-line.is-cmd::before{
-    content: '> ';
-    color: #4b5563;
-}
-
-.sh-line.is-out{ color: #d4d4d8; }
-
-.sh-line.is-note{
-    color: #6b7280;
-    font-size: 11.5px;
-}
-
-.sh-hint{
-    color: #4b5563;
-    font-size: 12px;
-    line-height: 1.8;
-}
-
-/* 能力边界提示：说清「这不是完整终端」，避免用户敲了 vim/top 之后一头雾水 */
-.sh-warn{
-    display: inline-block;
-    margin-top: 8px;
-    padding: 6px 10px;
-    border-radius: 8px;
-    background: rgba(201, 168, 106, 0.09);
-    color: #b99a5e;
-    font-size: 11.5px;
-    line-height: 1.7;
-}
-
-.sh-running{
+/* ---- 遮罩：连接中 / 断开 / 失败时盖在终端上 ---- */
+.sh-veil{
+    position: absolute;
+    inset: 52px 0 0 0;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    margin-top: 6px;
-    font-size: 11.5px;
-    color: #7dd3a0;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(27, 27, 31, 0.72);
+    backdrop-filter: blur(1px);
+    color: #9aa0a6;
+    font-size: 13px;
+}
+
+.sh-veil-icon{
+    width: 26px;
+    height: 26px;
+    color: #f27a7d;
+}
+
+.sh-veil-text{
+    max-width: 70%;
+    text-align: center;
+    line-height: 1.6;
 }
 
 .sh-spinner{
-    width: 10px;
-    height: 10px;
-    margin-right: 7px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
-    border: 2px solid rgba(125, 211, 160, 0.25);
-    border-top-color: #7dd3a0;
+    border: 2px solid color-mix(in srgb, var(--sh-accent, #7dd3a0) 25%, transparent);
+    border-top-color: var(--sh-accent, #7dd3a0);
     animation: sh-spin 0.7s linear infinite;
 }
 
@@ -207,20 +185,26 @@
     to{ transform: rotate(360deg); }
 }
 
-/* ---- 输入行 ---- */
-.sh-input-row{
+/* ---- 底部 AI / 快捷命令输入框 ---- */
+.sh-ai-row{
     flex: none;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 16px;
+    padding: 8px 10px 8px 14px;
     box-sizing: border-box;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(255, 255, 255, 0.02);
 }
 
-/* 输入框做成「应用输入框」而不是终端命令行 —— 避免让人误以为这是完整终端 */
-.sh-input{
+.sh-ai-icon{
+    width: 15px;
+    height: 15px;
+    flex: none;
+    color: var(--sh-accent, #7dd3a0);
+}
+
+.sh-ai-input{
     flex: 1;
     min-width: 0;
     height: 34px;
@@ -233,37 +217,17 @@
     color: #e8e8ea;
     font-family: var(--sh-mono);
     font-size: 13px;
-    caret-color: #7dd3a0;
+    caret-color: var(--sh-accent, #7dd3a0);
     transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.sh-input:focus{
-    border-color: rgba(125, 211, 160, 0.5);
+.sh-ai-input:focus{
+    border-color: color-mix(in srgb, var(--sh-accent, #7dd3a0) 50%, transparent);
     background: rgba(255, 255, 255, 0.06);
 }
 
-.sh-input::placeholder{ color: #4b5563; }
-.sh-input:read-only{ color: #9aa0a6; }
-
-.sh-stop{
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    height: 28px;
-    padding: 0 12px;
-    border: none;
-    border-radius: 8px;
-    background: rgba(229, 72, 77, 0.15);
-    color: #f27a7d;
-    font-family: inherit;
-    font-size: 12px;
-    cursor: pointer;
-    transition: background 0.15s ease;
-}
-
-.sh-stop:hover{ background: rgba(229, 72, 77, 0.26); }
-.sh-stop svg{ width: 13px; height: 13px; }
+.sh-ai-input::placeholder{ color: #4b5563; }
+.sh-ai-input:disabled{ opacity: 0.6; cursor: not-allowed; }
 
 /* 跟随系统的「减少动态效果」偏好 */
 @media (prefers-reduced-motion: reduce){
@@ -277,6 +241,5 @@
         --sh-rail-w: 0px;
     }
 
-    .sh-screen{ font-size: 12px; padding: 10px 12px; }
-    .sh-input-row{ padding: 8px 12px; }
+    .sh-term{ padding: 6px; }
 }

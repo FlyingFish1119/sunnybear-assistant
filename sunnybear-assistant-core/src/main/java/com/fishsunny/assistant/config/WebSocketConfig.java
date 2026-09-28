@@ -1,6 +1,8 @@
 package com.fishsunny.assistant.config;
 
 import com.fishsunny.assistant.remote.RepoRpcServerHandler;
+import com.fishsunny.assistant.terminal.TerminalHandshakeInterceptor;
+import com.fishsunny.assistant.terminal.TerminalWebSocketHandler;
 import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,10 +24,17 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private final ChatWebSocketHandler chatWebSocketHandler;
     private final RepoRpcServerHandler repoRpcServerHandler;
+    private final TerminalWebSocketHandler terminalWebSocketHandler;
+    private final TerminalHandshakeInterceptor terminalHandshakeInterceptor;
 
-    public WebSocketConfig(ChatWebSocketHandler chatWebSocketHandler, RepoRpcServerHandler repoRpcServerHandler) {
+    public WebSocketConfig(ChatWebSocketHandler chatWebSocketHandler,
+                           RepoRpcServerHandler repoRpcServerHandler,
+                           TerminalWebSocketHandler terminalWebSocketHandler,
+                           TerminalHandshakeInterceptor terminalHandshakeInterceptor) {
         this.chatWebSocketHandler = chatWebSocketHandler;
         this.repoRpcServerHandler = repoRpcServerHandler;
+        this.terminalWebSocketHandler = terminalWebSocketHandler;
+        this.terminalHandshakeInterceptor = terminalHandshakeInterceptor;
     }
 
     @Override
@@ -34,6 +43,10 @@ public class WebSocketConfig implements WebSocketConfigurer {
                 .setAllowedOrigins("*");
         // 仓储 RPC 端点：本地 remote 模式的客户端连这里，把 Repository 调用代理到云端执行
         registry.addHandler(repoRpcServerHandler, "/ws/repo")
+                .setAllowedOrigins("*");
+        // 本地交互式终端：xterm.js ↔ PTY，握手拦截器只放行本机来源
+        registry.addHandler(terminalWebSocketHandler, "/ws/terminal")
+                .addInterceptors(terminalHandshakeInterceptor)
                 .setAllowedOrigins("*");
     }
 

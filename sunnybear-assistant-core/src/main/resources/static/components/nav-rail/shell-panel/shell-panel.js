@@ -1,87 +1,90 @@
 /**
- * 命令面板 —— 单层大抽屉
+ * 终端面板 —— 真正的 Web 终端（xterm.js + WebSocket + 本地 PTY）
  *
- * 定位：一次跑一条命令的执行面板，**不是完整终端**。
- * 同一会话里 shell 常驻，cd 与环境变量能保持；但没有 PTY，
- * 不支持 vim / top / 交互式 REPL 这类程序（会卡住，用「重开会话」逃生）。
+ * 定位：一个能跑交互式程序的完整终端，不再是「一次一条命令」的执行面板。
+ * 后端用 pty4j 拉起带伪终端的本地 shell（Windows ConPTY/PowerShell，Unix 登录 shell），
+ * 前端用 xterm.js 渲染；vim / top / REPL 这类需要 tty 的程序现在都能正常用。
+ *
+ * 连接生命周期：
+ *   打开面板 → 建立 WS → 后端为这条连接拉起一个 PTY；
+ *   关闭面板 / 重开 → 断开 WS → 后端回收整个进程树。
+ *   也就是说：面板关掉后 shell 不会保留，下次打开是一个全新会话。
+ *
+ * 协议（见 TerminalWebSocketHandler）：
+ *   二进制帧 = 终端原始字节（收发都是）；文本帧 = JSON 控制消息（resize / exit / error）。
+ *
+ * 安全：后端握手只接受本机来源，非本机打开会连接失败。
  *
  * 交互：
- *   导航轨「命令」按钮 → 从导航轨右侧铺满的大抽屉
- *   输入命令回车执行；↑↓ 翻历史；运行中 Ctrl+C 可停止等待
- *   顶部路径栏点击可改工作目录（用项目自绘 confirm-dialog 的输入形态）
- *
- * 为什么是异步的：
- *   命令不设超时（跑 npm install 也得能跑完），所以不能做成同步接口。
- *   exec 立即拿 jobId，然后按 offset 增量拉输出 —— 边跑边吐，随时能中断。
+ *   导航轨「终端」按钮 → 从导航轨右侧铺满的大抽屉
+ *   全屏终端，直接敲键即可；右上角有清屏 / 重开会话 / 关闭
  *
  * Props:
- *   mainColor — String  主题色（目前只透传给内部 confirm-dialog）
+ *   mainColor — String  主题色（终端光标 / 选中底色与面板强调色取它）
  *
  * 公开方法（通过 ref 调用）：
  *   toggle() / open() / close()
  */
+/**
+ * 把任意 CSS 颜色转成 rgba(...)，供 xterm 主题里需要透明度的项（如选中底色）使用。
+ * mainColor 可能是色名 / hex / rgb()，统一交给浏览器解析后再取通道值。
+ */
+function shellRgba(color, alpha) {
+    if (!color) return 'rgba(125, 211, 160, ' + alpha + ')';
+    try {
+        const div = document.createElement('div');
+        div.style.color = color;
+        div.style.display = 'none';
+        document.body.appendChild(div);
+        const computed = getComputedStyle(div).color;
+        document.body.removeChild(div);
+        const m = computed.match(/[\d.]+/g);
+        if (!m || m.length < 3) return color;
+        return 'rgba(' + m[0] + ', ' + m[1] + ', ' + m[2] + ', ' + alpha + ')';
+    } catch (e) {
+        return color;
+    }
+}
+
 const ShellPanel = {
     name: 'ShellPanel',
 
     template: `
-    <div v-if="visible" class="shell-overlay" @click.self="close">
-        <aside class="shell-drawer" @keydown="onKeydown">
+    <div v-if="visible" class="shell-overlay" :style="{ '--sh-accent': mainColor || '#7dd3a0' }" @click.self="close">
+        <aside class="shell-drawer">
             <div class="sh-head">
                 <div class="sh-title">
-                    <i data-lucide="chevrons-right"></i>
-                    <span>命令</span>
-                    <span class="sh-os">{{ osLabel }}</span>
+                    <i data-lucide="terminal"></i>
+                    <span>终端</span>
+                    <span class="sh-status" :class="'is-' + status">{{ statusLabel }}</span>
                 </div>
-                <button class="sh-btn" title="清屏（只清显示，不影响运行中的命令）" @click="clearScreen">
+                <button class="sh-btn" title="清屏（只清显示，不影响运行中的程序）" @click="clearScreen">
                     <i data-lucide="eraser"></i>
                 </button>
-                <button class="sh-btn" title="重开会话（命令卡死时用；工作目录与环境会重置）" @click="restartSession">
+                <button class="sh-btn" title="重开会话（关闭当前 shell，重新开一个）" @click="restart">
                     <i data-lucide="refresh-cw"></i>
                 </button>
-                <button class="sh-btn" title="关闭（任务会在后台继续跑）" @click="close">
+                <button class="sh-btn" title="关闭（结束当前终端会话）" @click="close">
                     <i data-lucide="x"></i>
                 </button>
             </div>
-
-            <div class="sh-cwd" :title="cwd ? ('当前目录：' + cwd + ' —— 点击切换') : '点击切换目录'" @click="cdTo">
-                <i data-lucide="folder"></i>
-                <span class="sh-cwd-text">{{ cwd || '（尚未执行命令）' }}</span>
+            <div class="sh-term" ref="termHost"></div>
+            <div v-if="status !== 'connected'" class="sh-veil">
+                <span v-if="status === 'connecting'" class="sh-spinner"></span>
+                <i v-else-if="status === 'error'" data-lucide="triangle-alert" class="sh-veil-icon"></i>
+                <span class="sh-veil-text">{{ statusText }}</span>
             </div>
-
-            <div class="sh-screen" ref="screen">
-                <div v-if="blocks.length === 0" class="sh-hint">
-                    一次跑一条命令，回车执行。<br>
-                    ↑↓ 翻历史 · 点上方 <b>cd …</b> 切换目录（同一会话里，cd 与环境变量会保持）<br>
-                    <span class="sh-warn">⚠ 不支持 vim / top / 交互式 REPL 这类程序 —— 它们会一直等输入、把会话占住。遇到就点右上角重开会话按钮。</span>
-                </div>
-                <div v-for="(block, i) in blocks"
-                     :key="i"
-                     class="sh-line"
-                     :class="'is-' + block.kind">{{ block.text }}</div>
-                <div v-if="running" class="sh-running">
-                    <span class="sh-spinner"></span>运行中…（长时间没动静？点右上角重开会话）
-                </div>
-            </div>
-
-            <div class="sh-input-row">
-                <input ref="input"
-                       class="sh-input"
-                       v-model="inputText"
-                       :readonly="running"
-                       :placeholder="running ? '命令执行中…' : '输入一条命令，回车执行'"
-                       @keydown.enter="submit"
-                       @keydown.up.prevent="historyPrev"
-                       @keydown.down.prevent="historyNext">
-                <button v-if="running" class="sh-stop" @click="kill">
-                    <i data-lucide="square"></i>
-                    <span>停止</span>
-                </button>
+            <div class="sh-ai-row">
+                <i data-lucide="sparkles" class="sh-ai-icon"></i>
+                <input ref="aiInput"
+                       class="sh-ai-input"
+                       v-model="aiText"
+                       :disabled="aiBusy || status !== 'connected'"
+                       :placeholder="aiPlaceholder"
+                       @keydown.enter.prevent="submitAi">
             </div>
         </aside>
     </div>
-
-    <!-- cd 快捷输入用项目自绘的输入弹窗，和删除确认同一套视觉 -->
-    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
     `,
 
     props: {
@@ -93,309 +96,320 @@ const ShellPanel = {
     data() {
         return {
             visible: false,
-
-            /* 终端内容：命令回显 / 输出 / 系统提示 按顺序堆叠，改最后一个输出块实现「边跑边吐」 */
-            blocks: [],
-
-            /* 当前任务 */
-            jobId: '',
-            running: false,
-            offset: 0,
-            truncatedNoted: false,
-
-            /* 环境 */
-            cwd: '',
-            osLabel: '',
-
-            /* 输入与历史 */
-            inputText: '',
-            history: [],
-            historyIndex: -1
+            status: 'idle',          // idle | connecting | connected | closed | error
+            statusMessage: '',
+            aiText: '',              // 底部 AI / 快捷命令输入框
+            aiBusy: false            // 正在向后端请求生成命令
         };
     },
 
+    computed: {
+        statusLabel() {
+            return {
+                idle: '未连接',
+                connecting: '连接中',
+                connected: '已连接',
+                closed: '已断开',
+                error: '连接失败'
+            }[this.status] || '';
+        },
+        statusText() {
+            switch (this.status) {
+                case 'connecting': return '正在建立终端会话…';
+                case 'error': return this.statusMessage || '连接失败（终端仅允许本机访问）';
+                case 'closed': return '会话已结束，点右上角 ↻ 重开';
+                default: return '未连接';
+            }
+        },
+        aiPlaceholder() {
+            if (this.aiBusy) return '正在生成命令…';
+            if (this.status !== 'connected') return '终端未连接';
+            return '描述你想做什么，自动生成命令填入终端（如：拉取git最新提交）';
+        }
+    },
+
     watch: {
-        /* 开关状态上报父级：导航轨靠它把高亮对准真正打开的面板 */
         visible(val) {
             this.$emit('visible-change', val);
+            if (val) this.$nextTick(() => this.onShow());
+        },
+        /* 主题色变化时热更新终端主题（光标 / 选中色跟随主色），不必重开会话 */
+        mainColor() {
+            if (this.term) {
+                this.term.options.theme = this.buildTheme();
+            }
         }
     },
 
     methods: {
-        /* ==================== 开合 ==================== */
-
         toggle() {
-            if (this.visible) {
-                this.close();
-            } else {
-                this.open();
-            }
+            if (this.visible) this.close(); else this.open();
         },
 
-        async open() {
+        open() {
             this.visible = true;
-            if (!this.osLabel) {
-                try {
-                    const res = await API.shell.info();
-                    if (res.status === 200) {
-                        this.osLabel = res.data.os + ' · ' + res.data.shell;
-                        if (!this.cwd) this.cwd = res.data.defaultCwd || '';
-                    } else if (window.SbToast) {
-                        window.SbToast.error(res.message || '拿不到 shell 环境信息');
-                    }
-                } catch (e) {
-                    if (window.SbToast) window.SbToast.error('拿不到 shell 环境信息: ' + e.message);
-                }
-            }
-            this.$nextTick(() => this.focusInput());
         },
 
-        /** 关面板不等于杀任务：进程在后端继续跑，重新打开还能接着看输出 */
         close() {
+            this.teardown();
             this.visible = false;
         },
 
-        focusInput() {
-            const el = this.$refs.input;
-            if (el) el.focus();
+        /* ==================== 生命周期 ==================== */
+
+        onShow() {
+            if (!this.initTerminal()) return;
+            this.connect();
         },
 
-        clearScreen() {
-            this.blocks = [];
+        /** 创建 xterm 实例并挂到 DOM；返回是否成功 */
+        initTerminal() {
+            if (typeof Terminal === 'undefined') {
+                this.status = 'error';
+                this.statusMessage = 'xterm.js 未加载，终端不可用';
+                return false;
+            }
+            const host = this.$refs.termHost;
+            if (!host) return false;
+
+            this.term = new Terminal({
+                cursorBlink: true,
+                fontFamily: 'Consolas, "Cascadia Mono", "JetBrains Mono", "Courier New", monospace',
+                fontSize: 14,
+                lineHeight: 1.2,
+                scrollback: 8000,
+                allowProposedApi: true,
+                theme: this.buildTheme()
+            });
+            this.fitAddon = new FitAddon.FitAddon();
+            this.term.loadAddon(this.fitAddon);
+            this.term.open(host);
+
+            // 用户输入 → 二进制帧
+            this.term.onData(data => this.send(this.encode(data)));
+            // 非 UTF-8 输入（鼠标上报等）→ 逐字节发
+            this.term.onBinary(data => {
+                const bytes = new Uint8Array(data.length);
+                for (let i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i) & 0xff;
+                this.send(bytes);
+            });
+            // 终端尺寸变化 → 通知后端 PTY
+            this.term.onResize(({ cols, rows }) => this.sendResize(cols, rows));
+
+            return true;
         },
 
-        /* ==================== 执行 ==================== */
-
-        async submit() {
-            const command = (this.inputText || '').trim();
-            if (!command) return;
-            if (this.running) {
-                if (window.SbToast) window.SbToast.warning('还有命令在跑，先 Ctrl+C 中断它');
-                return;
+        disposeTerminal() {
+            if (this.term) {
+                try { this.term.dispose(); } catch (e) { /* 已销毁 */ }
+                this.term = null;
             }
-
-            this.inputText = '';
-            this.pushHistory(command);
-            this.blocks.push({ kind: 'cmd', text: command });
-            this.scrollToBottom();
-
-            this.offset = 0;
-            this.truncatedNoted = false;
-
-            let res;
-            try {
-                res = await API.shell.exec(command);
-            } catch (e) {
-                this.blocks.push({ kind: 'note', text: '启动失败：' + e.message });
-                this.scrollToBottom();
-                return;
-            }
-            if (res.status !== 200) {
-                this.blocks.push({ kind: 'note', text: '启动失败：' + (res.message || '未知错误') });
-                this.scrollToBottom();
-                return;
-            }
-
-            this.jobId = res.data.jobId;
-            this.running = true;
-            this.scrollToBottom();
-            this.poll();
+            this.fitAddon = null;
         },
 
-        /** 增量拉输出：跑到结束为止，每次只取 offset 之后的新内容 */
-        async poll() {
-            clearTimeout(this._pollTimer);
-            if (!this.jobId) return;
-            let res;
-            try {
-                res = await API.shell.output(this.jobId, this.offset);
-            } catch (e) {
-                // 网络抖一下不代表命令死了，降频重试
-                this._pollTimer = setTimeout(() => this.poll(), 800);
-                return;
-            }
-            if (res.status !== 200) {
-                this.running = false;
-                this.blocks.push({ kind: 'note', text: '读取输出失败：' + (res.message || '任务可能已过期') });
-                this.scrollToBottom();
-                return;
-            }
-
-            const data = res.data || {};
-            this.offset = data.offset || 0;
-            if (data.cwd) this.cwd = data.cwd;
-
-            if (data.chunk) {
-                this.appendOutput(data.chunk);
-                this.scrollToBottom();
-            }
-            if (data.truncated && !this.truncatedNoted) {
-                this.truncatedNoted = true;
-                this.blocks.push({ kind: 'note', text: '⚠ 输出超过上限，超出的部分已被丢弃' });
-            }
-
-            if (data.running) {
-                this._pollTimer = setTimeout(() => this.poll(), 200);
-            } else {
-                this.running = false;
-                const seconds = data.startedAt && data.finishedAt
-                    ? ((data.finishedAt - data.startedAt) / 1000).toFixed(2)
-                    : null;
-                const parts = ['退出码 ' + (data.exitCode == null ? '–' : data.exitCode)];
-                if (seconds != null) parts.push('耗时 ' + seconds + 's');
-                this.blocks.push({ kind: 'note', text: '── ' + parts.join(' · ') });
-                this.scrollToBottom();
-            }
+        teardown() {
+            this.disconnect();
+            this.disposeTerminal();
+            window.removeEventListener('resize', this.onWindowResize);
+            this.aiText = '';
+            this.aiBusy = false;
         },
 
-        appendOutput(chunk) {
-            const last = this.blocks[this.blocks.length - 1];
-            if (last && last.kind === 'out') {
-                last.text += chunk;
-            } else {
-                this.blocks.push({ kind: 'out', text: chunk });
-            }
-        },
+        /* ==================== 连接 ==================== */
 
-        async kill() {
-            if (!this.running || !this.jobId) return;
-            try {
-                const res = await API.shell.kill(this.jobId);
-                this.blocks.push({
-                    kind: 'note',
-                    text: res.status === 200 ? '已发送中断' : ('中断失败：' + (res.message || ''))
-                });
-            } catch (e) {
-                this.blocks.push({ kind: 'note', text: '中断失败：' + e.message });
-            }
-            this.scrollToBottom();
-        },
+        connect() {
+            if (!this.term) return;
+            this.status = 'connecting';
+            this.statusMessage = '';
+            this._manualClose = false;
 
-        /* ==================== 键盘 ==================== */
-
-        onKeydown(event) {
-            // 有命令在跑时，Ctrl+C 变成「中断」；没跑的时候放行，不碍着复制
-            const isCopy = (event.ctrlKey || event.metaKey)
-                && (event.key === 'c' || event.key === 'C');
-            if (isCopy && this.running) {
-                event.preventDefault();
-                event.stopPropagation();
-                this.kill();
-                return;
-            }
-            if (event.key === 'Escape') {
-                this.close();
-            }
-        },
-
-        /* ==================== 历史（localStorage） ==================== */
-
-        loadHistory() {
-            try {
-                const raw = localStorage.getItem(HISTORY_KEY);
-                this.history = raw ? JSON.parse(raw) : [];
-                if (!Array.isArray(this.history)) this.history = [];
-            } catch (e) {
-                this.history = [];
-            }
-        },
-
-        pushHistory(command) {
-            if (this.history[this.history.length - 1] !== command) {
-                this.history.push(command);
-                if (this.history.length > MAX_HISTORY) this.history.shift();
-                try {
-                    localStorage.setItem(HISTORY_KEY, JSON.stringify(this.history));
-                } catch (e) {
-                    /* 隐私模式写不进去，忽略 */
-                }
-            }
-            this.historyIndex = -1;
-        },
-
-        historyPrev() {
-            if (!this.history.length) return;
-            if (this.historyIndex === -1) {
-                this.historyIndex = this.history.length;
-            }
-            this.historyIndex = Math.max(0, this.historyIndex - 1);
-            this.inputText = this.history[this.historyIndex] || '';
-        },
-
-        historyNext() {
-            if (this.historyIndex === -1) return;
-            this.historyIndex += 1;
-            if (this.historyIndex >= this.history.length) {
-                this.historyIndex = -1;
-                this.inputText = '';
-            } else {
-                this.inputText = this.history[this.historyIndex];
-            }
-        },
-
-        /* ==================== 工作目录 / 会话 ==================== */
-
-        /**
-         * 「cd …」快捷按钮：输入目录后，往常驻 shell 里发一条 cd 命令。
-         * 会话是持续的，cd 之后的工作目录会一直保持到下次 cd。
-         */
-        async cdTo() {
-            const dialog = this.$refs.confirmDialog;
-            if (!dialog) return;
-            if (this.running) {
-                if (window.SbToast) window.SbToast.warning('还有命令在跑，先等它结束或 Ctrl+C 中断');
-                return;
-            }
-            let value;
-            try {
-                value = await dialog.show({
-                    title: '切换目录',
-                    message: '相当于在当前会话里执行 cd —— 之后所有命令都会在这个目录下运行',
-                    confirmText: '切换',
-                    cancelText: '取消',
-                    type: 'info',
-                    inputValue: this.cwd || '',
-                    inputPlaceholder: '例如 E:\\project\\sunnybear-assistant'
-                });
-            } catch (e) {
-                return;   // 取消
-            }
-            value = String(value || '').trim();
-            if (!value) return;
-            this.inputText = 'cd ' + value;
-            this.$nextTick(() => this.submit());
-        },
-
-        /**
-         * 重开会话：关闭并重建常驻 shell（命令卡死时的逃生口）。
-         * 工作目录与环境变量会随旧 shell 一起重置。
-         */
-        async restartSession() {
-            try {
-                const res = await API.shell.close();
-                if (res.status !== 200) {
-                    this.blocks.push({ kind: 'note', text: '重开会话失败：' + (res.message || '') });
-                } else {
-                    this.blocks.push({ kind: 'note', text: '会话已重开，工作目录与环境已重置' });
-                }
-            } catch (e) {
-                this.blocks.push({ kind: 'note', text: '重开会话失败：' + e.message });
-            }
-            this.running = false;
-            this.jobId = '';
-            this.scrollToBottom();
-        },
-
-        /* ==================== 展示辅助 ==================== */
-
-        scrollToBottom() {
+            // 先按当前 DOM 尺寸 fit 一次，拿到尽可能准的行列数，再据此建连
             this.$nextTick(() => {
-                const el = this.$refs.screen;
-                if (el) el.scrollTop = el.scrollHeight;
+                this.fit();
+                let ws;
+                try {
+                    ws = new WebSocket(API.ws.terminalUrl(this.term.cols, this.term.rows));
+                } catch (e) {
+                    this.fail('无法建立连接：' + e.message);
+                    return;
+                }
+                ws.binaryType = 'arraybuffer';
+                this.ws = ws;
+
+                ws.onopen = () => {
+                    this.status = 'connected';
+                    window.addEventListener('resize', this.onWindowResize);
+                    this.$nextTick(() => {
+                        this.fit();
+                        if (this.term) this.term.focus();
+                    });
+                };
+                ws.onmessage = ev => this.onMessage(ev);
+                ws.onerror = () => {
+                    if (!this._manualClose) this.fail('连接失败（终端仅允许本机访问）');
+                };
+                ws.onclose = () => {
+                    if (this.ws === ws) this.ws = null;
+                    if (!this._manualClose && this.status !== 'error') {
+                        this.status = 'closed';
+                    }
+                };
             });
         },
 
-        /** lucide 只处理还没替换过的 [data-lucide]，用 rAF 合并频繁刷新 */
+        disconnect() {
+            this._manualClose = true;
+            if (this.ws) {
+                try { this.ws.close(); } catch (e) { /* 忽略 */ }
+                this.ws = null;
+            }
+        },
+
+        onMessage(ev) {
+            if (typeof ev.data === 'string') {
+                this.onControl(ev.data);
+            } else if (ev.data && this.term) {
+                this.term.write(new Uint8Array(ev.data));
+            }
+        },
+
+        onControl(text) {
+            let msg;
+            try { msg = JSON.parse(text); } catch (e) { return; }
+            if (msg.type === 'exit') {
+                const code = (msg.code == null || msg.code < 0) ? '—' : msg.code;
+                this.writeNote('\r\n[会话已结束，退出码 ' + code + ']');
+                this.status = 'closed';
+            } else if (msg.type === 'error') {
+                this.fail(msg.message || '终端发生错误');
+            }
+        },
+
+        fail(message) {
+            this.status = 'error';
+            this.statusMessage = message;
+            this.writeNote('\r\n[错误] ' + message);
+        },
+
+        /* ==================== 数据发送 ==================== */
+
+        send(bytes) {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN && bytes && bytes.length) {
+                this.ws.send(bytes);
+            }
+        },
+
+        sendResize(cols, rows) {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: 'resize', cols: cols, rows: rows }));
+            }
+        },
+
+        encode(str) {
+            if (window.TextEncoder) return new TextEncoder().encode(str);
+            const bytes = new Uint8Array(str.length);
+            for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i) & 0xff;
+            return bytes;
+        },
+
+        writeNote(text) {
+            if (this.term) this.term.write('\x1b[90m' + text + '\x1b[0m');
+        },
+
+        /* ==================== 底部 AI 输入框 ==================== */
+
+        /**
+         * 底部输入框只做一件事：把自然语言需求交给后端，生成一条命令后「敲」进终端但不回车，
+         * 由用户在命令行确认后再执行（避免 AI 生成的命令在本机直接跑起来）。
+         * 想直接执行命令，请在终端里敲 —— 那才是终端的本职。
+         */
+        async submitAi() {
+            const prompt = (this.aiText || '').trim();
+            if (!prompt || this.aiBusy) return;
+            if (this.status !== 'connected') {
+                if (window.SbToast) window.SbToast.warning('终端未连接');
+                return;
+            }
+
+            this.aiBusy = true;
+            try {
+                const res = await API.terminal.assist(prompt);
+                if (res.status !== 200 || !res.data || !res.data.command) {
+                    const msg = (res && res.message) || '没能生成命令';
+                    if (window.SbToast) window.SbToast.error(msg);
+                    else this.writeNote('\r\n[AI] ' + msg);
+                    return;
+                }
+                this.aiText = '';
+                // 只填入命令行、不回车：留给用户确认后再执行
+                this.send(this.encode(res.data.command));
+                this.focusTerminal();
+            } catch (e) {
+                const msg = '生成命令失败：' + e.message;
+                if (window.SbToast) window.SbToast.error(msg);
+                else this.writeNote('\r\n[AI] ' + msg);
+            } finally {
+                this.aiBusy = false;
+            }
+        },
+
+        focusTerminal() {
+            this.$nextTick(() => {
+                if (this.term) this.term.focus();
+            });
+        },
+
+        /* ==================== 交互 ==================== */
+
+        clearScreen() {
+            if (this.term) {
+                this.term.clear();
+                this.term.focus();
+            }
+        },
+
+        restart() {
+            this.teardown();
+            this.$nextTick(() => {
+                if (!this.initTerminal()) return;
+                this.status = 'idle';
+                this.connect();
+            });
+        },
+
+        fit() {
+            if (!this.fitAddon || !this.term) return;
+            try { this.fitAddon.fit(); } catch (e) { /* DOM 尺寸为 0 时忽略 */ }
+        },
+
+        /**
+         * xterm 主题：底/前景固定为面板深色，光标与选中底色跟随应用主色（mainColor）。
+         * ANSI 十六色保持标准值，避免把 git diff 等语义色改乱。
+         */
+        buildTheme() {
+            const accent = this.mainColor || '#7dd3a0';
+            return {
+                background: '#1b1b1f',
+                foreground: '#d4d4d8',
+                cursor: accent,
+                cursorAccent: '#1b1b1f',
+                selectionBackground: shellRgba(accent, 0.28),
+                black: '#1b1b1f', red: '#f27a7d', green: '#7dd3a0',
+                yellow: '#d8b96a', blue: '#7aa2f7', magenta: '#bb9af7',
+                cyan: '#7dcfff', white: '#d4d4d8',
+                brightBlack: '#6b7280', brightRed: '#ff9a9c', brightGreen: '#9ee7bb',
+                brightYellow: '#ecd28a', brightBlue: '#9ab8ff', brightMagenta: '#d0b3ff',
+                brightCyan: '#9fe0ff', brightWhite: '#ffffff'
+            };
+        },
+
+        onWindowResize() {
+            clearTimeout(this._resizeTimer);
+            this._resizeTimer = setTimeout(() => this.fit(), 100);
+        },
+
+        /* ==================== 图标 ==================== */
+
         scheduleIcons() {
             if (this._iconScheduled) return;
             this._iconScheduled = true;
@@ -406,20 +420,12 @@ const ShellPanel = {
         }
     },
 
-    mounted() {
-        this.loadHistory();
-    },
-
     beforeUnmount() {
-        clearTimeout(this._pollTimer);
+        clearTimeout(this._resizeTimer);
+        this.teardown();
     },
 
     updated() {
         this.scheduleIcons();
     }
 };
-
-/* ==================== 常量 ==================== */
-
-const HISTORY_KEY = 'assistant-shell-history';
-const MAX_HISTORY = 100;
