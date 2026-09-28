@@ -154,9 +154,13 @@ public class SecurityService {
         messages.add(new ChatMessage().system(SYSTEM_PROMPT));
         messages.add(new ChatMessage().user(buildUserPrompt(description, userQuestion)));
 
-        AISettings jsonSettings = new AISettings().copy(aiSettings).json();
+        // 注意：审查子 Agent 既要调用取证工具、又要最终输出判定 JSON，
+        // 不能强制 response_format=json_object —— 与工具调用同时设置会让模型不再产生
+        // 原生 tool_calls，而是把工具参数当普通 JSON 正文吐回来，导致判定解析失败。
+        // 最终判定 JSON 由 parseVerdict 从正文中提取，无需 JSON 模式强约束。
+        AISettings reviewSettings = new AISettings().copy(aiSettings);
         ChatRequest request = new ChatRequest()
-                .loadSettings(jsonSettings)
+                .loadSettings(reviewSettings)
                 .setMessages(messages)
                 .setTools(reviewerTools);
 
@@ -168,7 +172,7 @@ public class SecurityService {
 
         String finalText;
         try {
-            finalText = easyReActProcessor.execute(jsonSettings, request, context, hook);
+            finalText = easyReActProcessor.execute(reviewSettings, request, context, hook);
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("AI 安全审查执行失败，操作未执行：" + rootMessage(e));
         }
