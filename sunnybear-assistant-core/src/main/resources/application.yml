@@ -303,6 +303,54 @@ engine:
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
         targetRespCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesStreamEvent
 
+      # command-code-goat 非流式
+      - apiName: command-code-goat
+        baseUrl: https://api.commandcode.ai/provider/v1/chat/completions
+        modelUrl: https://api.commandcode.ai/provider/v1/models
+        apiKey: ${COMMAND_CODE_API_KEY:}
+        stream: false
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.multimodal.MultimodalAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.multimodal.MultimodalAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.StandardAIResponse
+
+      # command-code-goat 流式
+      - apiName: command-code-goat
+        baseUrl: https://api.commandcode.ai/provider/v1/chat/completions
+        modelUrl: https://api.commandcode.ai/provider/v1/models
+        apiKey: ${COMMAND_CODE_API_KEY:}
+        stream: true
+        adapterCls: com.fishsunny.assistant.engine.adapter.standard.multimodal.MultimodalStreamAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.standard.request.multimodal.MultimodalAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.standard.StandardStreamAIResponse
+
+      # command-code-goat-response 非流式
+      - apiName: command-code-goat-response
+        baseUrl: https://api.commandcode.ai/provider/v1/responses
+        modelUrl: https://api.commandcode.ai/provider/v1/models
+        apiKey: ${COMMAND_CODE_API_KEY:}
+        stream: false
+        adapterCls: com.fishsunny.assistant.engine.adapter.responses.ResponsesAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIResponse
+
+      # command-code-goat-response 流式
+      - apiName: command-code-goat-response
+        baseUrl: https://api.commandcode.ai/provider/v1/responses
+        modelUrl: https://api.commandcode.ai/provider/v1/models
+        apiKey: ${COMMAND_CODE_API_KEY:}
+        stream: true
+        adapterCls: com.fishsunny.assistant.engine.adapter.responses.ResponsesStreamAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesStreamEvent
+
       # Gemini 非流式
       # 模型名拼在 URL 路径上，baseUrl 配到 /v1beta/models 为止，具体模型由模型设置里的 model 决定
       - apiName: gemini
