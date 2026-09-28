@@ -195,6 +195,16 @@ const ContextMenu = {
                 });
             }
 
+            // ---- 终端里：补一个粘贴（选区复制已由上面的通用项覆盖）----
+            if (this._terminal) {
+                list.push({
+                    id: 'paste',
+                    icon: 'clipboard-paste',
+                    label: '粘贴',
+                    run: function () { self.pasteTerminal(); }
+                });
+            }
+
             return list;
         }
     },
@@ -212,8 +222,11 @@ const ContextMenu = {
 
         /** @param {MouseEvent} e contextmenu 事件（open 时立刻把选区读下来） */
         open(e) {
-            this.selectedText = this.readSelection();
-            this._savedRange = this.readRange();
+            // 终端（xterm）的选区不在 DOM Selection 里，得单独向 term 取；
+            // 命中终端时也不需要存 DOM 选区快照（复制走剪贴板 API，不靠 execCommand）
+            this._terminal = this.findTerminal(e.target);
+            this.selectedText = this._terminal ? this._terminal.getSelection() : this.readSelection();
+            this._savedRange = this._terminal ? null : this.readRange();
             this.target = this.resolveTarget(e.target);
 
             // 一个适用项都没有就别弹了 —— 摆一列灰的比不弹更让人困惑
@@ -271,6 +284,31 @@ const ContextMenu = {
             };
         },
 
+        /**
+         * 认一下右键是否落在终端里。终端宿主挂了 data-terminal，并把 xterm 实例存在
+         * __sbTerminal 上 —— 这样菜单不必反向依赖 shell-panel 的内部实现。
+         */
+        findTerminal(node) {
+            if (!node || node.nodeType !== 1 || typeof node.closest !== 'function') return null;
+            var host = node.closest('[data-terminal]');
+            return (host && host.__sbTerminal) ? host.__sbTerminal : null;
+        },
+
+        /** 把剪贴板内容粘进终端（走 xterm 的 paste，保留 bracketed paste 等行为） */
+        pasteTerminal() {
+            var term = this._terminal;
+            this.close();
+            if (!term) return;
+            if (!navigator.clipboard || !navigator.clipboard.readText) {
+                if (window.SbToast) window.SbToast.warning('当前环境不支持读取剪贴板');
+                return;
+            }
+            navigator.clipboard.readText().then(
+                function (text) { if (text) term.paste(text); },
+                function () { if (window.SbToast) window.SbToast.error('读取剪贴板失败（浏览器未授权）'); }
+            );
+        },
+
         /** 贴边翻转：菜单不能溢出视口，否则右边/底边右键会看不见半截 */
         clampToViewport() {
             var el = this.$refs.menu;
@@ -307,6 +345,21 @@ const ContextMenu = {
         copySelection() {
             var text = this.selectedText;
             if (!text) return;
+
+            // 终端选区是画在 canvas 上的，不在 DOM Selection 里，execCommand('copy') 抓不到，
+            // 直接走剪贴板 API 写纯文本
+            if (this._terminal) {
+                this.close();
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(
+                        function () { if (window.SbToast) window.SbToast.success('已复制'); },
+                        function () { if (window.SbToast) window.SbToast.error('复制失败'); }
+                    );
+                } else if (window.SbToast) {
+                    window.SbToast.error('复制失败');
+                }
+                return;
+            }
 
             // 原生复制只认「当前选区」，先把快照塞回去，别指望它还在
             var sel = window.getSelection();

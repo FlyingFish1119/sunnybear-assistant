@@ -30,6 +30,12 @@
     /** 自带右键菜单的区域：原生菜单照样拦，但全局菜单要让路 */
     var OWN_MENU_SELECTOR = '[data-own-menu]';
 
+    /**
+     * 终端区域：xterm 内部有个隐藏 textarea，会命中下面的 PASS_SELECTOR，
+     * 但终端的选区由 xterm 自己管、复制粘贴走我们自己的菜单，所以这里先放行判定再拦掉。
+     */
+    var TERMINAL_SELECTOR = '[data-terminal]';
+
     function matches(target, selector) {
         // 理论上 contextmenu 的 target 总是元素，但文本节点等情况也兜一下，
         // 免得 closest 调用抛错把整个右键路断掉
@@ -40,6 +46,8 @@
     }
 
     function shouldPass(target) {
+        // 终端优先：不交给原生菜单，交给全局自定义菜单（它认得终端选区）
+        if (matches(target, TERMINAL_SELECTOR)) return false;
         return matches(target, PASS_SELECTOR);
     }
 

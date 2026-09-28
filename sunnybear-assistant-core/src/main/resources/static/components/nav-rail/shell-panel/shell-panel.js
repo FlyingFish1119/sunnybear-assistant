@@ -199,9 +199,24 @@ const ShellPanel = {
             this.fitAddon = new FitAddon.FitAddon();
             this.term.loadAddon(this.fitAddon);
             this.term.open(host);
+            // 暴露给全局右键菜单（components/context-menu）：终端选区不在 DOM Selection 里，
+            // 菜单需要拿到 term 实例才能读选区 / 粘贴
+            host.__sbTerminal = this.term;
+            host.setAttribute('data-terminal', '');
 
-            // Ctrl+Enter：连同回车一起截下，不发给 shell，改为把焦点切到底部 AI 输入框
+            // 快捷键拦截：
+            //   Ctrl+Shift+C / V → 复制 / 粘贴（终端有独立选区，不认 DOM 选区）
+            //   Ctrl+Enter       → 不发给 shell，焦点切到底部 AI 输入框
             this.term.attachCustomKeyEventHandler(ev => {
+                const key = (ev.key || '').toLowerCase();
+                if ((ev.ctrlKey || ev.metaKey) && ev.shiftKey && (key === 'c' || key === 'v')) {
+                    if (ev.type === 'keydown') {
+                        ev.preventDefault();
+                        if (key === 'c') this.copyTerminalSelection();
+                        else this.pasteToTerminal();
+                    }
+                    return false; // keydown/keypress/keyup 全拦下，别让 shell 收到
+                }
                 if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
                     if (ev.type === 'keydown') {
                         ev.preventDefault();
@@ -227,6 +242,11 @@ const ShellPanel = {
         },
 
         disposeTerminal() {
+            const host = this.$refs.termHost;
+            if (host) {
+                delete host.__sbTerminal;
+                host.removeAttribute('data-terminal');
+            }
             if (this.term) {
                 try { this.term.dispose(); } catch (e) { /* 已销毁 */ }
                 this.term = null;
@@ -422,6 +442,38 @@ const ShellPanel = {
                 return;
             }
             this.submitAi();
+        },
+
+        /* ==================== 复制 / 粘贴 ==================== */
+
+        copyTerminalSelection() {
+            if (!this.term) return;
+            const text = this.term.getSelection();
+            if (!text) return;
+            this.copyText(text, '已复制');
+        },
+
+        pasteToTerminal() {
+            if (!navigator.clipboard || !navigator.clipboard.readText) {
+                if (window.SbToast) window.SbToast.warning('当前环境不支持读取剪贴板，请用系统菜单粘贴');
+                return;
+            }
+            navigator.clipboard.readText().then(text => {
+                if (text && this.term) this.term.paste(text);
+            }, () => {
+                if (window.SbToast) window.SbToast.error('读取剪贴板失败（浏览器未授权）');
+            });
+        },
+
+        copyText(text, tip) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(
+                    () => { if (window.SbToast) window.SbToast.success(tip); },
+                    () => { if (window.SbToast) window.SbToast.error('复制失败'); }
+                );
+            } else if (window.SbToast) {
+                window.SbToast.error('复制失败');
+            }
         },
 
         /* ==================== 交互 ==================== */
