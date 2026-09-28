@@ -6,9 +6,10 @@
  * 前端用 xterm.js 渲染；vim / top / REPL 这类需要 tty 的程序现在都能正常用。
  *
  * 连接生命周期：
- *   打开面板 → 建立 WS → 后端为这条连接拉起一个 PTY；
- *   关闭面板 / 重开 → 断开 WS → 后端回收整个进程树。
- *   也就是说：面板关掉后 shell 不会保留，下次打开是一个全新会话。
+ *   首次打开面板 → 建立 WS → 后端为这条连接拉起一个 PTY；
+ *   关闭面板只是隐藏（v-show），WS 与 PTY 继续保留，重新打开还是同一个会话；
+ *   只有点「重开会话」或页面关闭（组件卸载）才断开 WS、后端回收整棵进程树。
+ *   另：容器对空闲 WS 有 15 分钟超时，故连接期间定期发心跳，保证面板隐藏时空闲也不会被回收。
  *
  * 协议（见 TerminalWebSocketHandler）：
  *   二进制帧 = 终端原始字节（收发都是）；文本帧 = JSON 控制消息（resize / exit / error）。
@@ -50,7 +51,7 @@ const ShellPanel = {
     name: 'ShellPanel',
 
     template: `
-    <div v-if="visible" class="shell-overlay" :style="{ '--sh-accent': mainColor || '#7dd3a0' }" @click.self="close">
+    <div v-show="visible" class="shell-overlay" :style="{ '--sh-accent': mainColor || '#7dd3a0' }" @click.self="close">
         <aside class="shell-drawer">
             <div class="sh-head">
                 <div class="sh-title">
@@ -152,15 +153,28 @@ const ShellPanel = {
         },
 
         close() {
-            this.teardown();
+            // 只隐藏，不 teardown：保持 xterm 实例与 WebSocket，会话不重置。
+            // 把焦点移开，避免面板隐藏后按键仍进终端。
             this.visible = false;
+            if (this.term) this.term.blur();
         },
 
         /* ==================== 生命周期 ==================== */
 
         onShow() {
-            if (!this.initTerminal()) return;
-            this.connect();
+            // 首次打开：建终端 + 建连；之后只是重新显示，复用原会话
+            if (!this.term) {
+                if (!this.initTerminal()) return;
+                this.connect();
+                return;
+            }
+            this.$nextTick(() => {
+                this.fit();
+                if (this.term) {
+                    this.term.refresh(0, this.term.rows - 1);
+                    this.term.focus();
+                }
+            });
         },
 
         /** 创建 xterm 实例并挂到 DOM；返回是否成功 */
@@ -252,6 +266,7 @@ const ShellPanel = {
                 ws.onopen = () => {
                     this.status = 'connected';
                     window.addEventListener('resize', this.onWindowResize);
+                    this.startHeartbeat();
                     this.$nextTick(() => {
                         this.fit();
                         if (this.term) this.term.focus();
@@ -272,10 +287,29 @@ const ShellPanel = {
 
         disconnect() {
             this._manualClose = true;
+            this.stopHeartbeat();
             if (this.ws) {
                 try { this.ws.close(); } catch (e) { /* 忽略 */ }
                 this.ws = null;
             }
+        },
+
+        /**
+         * 心跳：面板隐藏后 shell 可能长时间无输入输出，而容器对空闲 WS 有超时，
+         * 定期发一条后端会忽略的控制帧，保持连接与 PTY 存活。
+         */
+        startHeartbeat() {
+            this.stopHeartbeat();
+            this._heartbeatTimer = setInterval(() => {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 4 * 60 * 1000);
+        },
+
+        stopHeartbeat() {
+            clearInterval(this._heartbeatTimer);
+            this._heartbeatTimer = null;
         },
 
         onMessage(ev) {
