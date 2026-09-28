@@ -245,23 +245,18 @@ public class CommandTool implements ToolHandler {
             long outputSize = result.getBytes(StandardCharsets.UTF_8).length;
 
             // 1. 硬限制检查：maxOutputSize 始终生效，不受 skipSafeMode 影响
+            //    超限不再报错中断，而是把完整输出落盘到会话文件，只回提示，由 AI 自行决定是否读取
             Long maxSize = settings.getMaxOutputSize();
             if (maxSize != null && maxSize > 0 && outputSize > maxSize) {
-                throw new ToolExecutor.ToolExecuteException(
-                        "命令输出大小（" + ToolKit.formatSize(outputSize) + "）超过最大允许限制（" + ToolKit.formatSize(maxSize) + "），已拒绝执行。" +
-                        "请尝试缩小命令的输出范围，例如使用更精确的筛选条件（如 findstr 过滤）或限制输出行数。"
-                );
+                return saveOversizeOutput(context, result, outputSize, "最大限制", maxSize);
             }
 
             // 2. 安全限制检查：仅在未跳过安全模式时生效
+            //    与硬限制同样处理，超限落盘而非拦截
             if (!Boolean.TRUE.equals(arguments.getSkipSafeMode())) {
                 Long safetySize = settings.getSafetyOutputSize();
                 if (safetySize != null && safetySize > 0 && outputSize > safetySize) {
-                    throw new ToolExecutor.ToolExecuteException(
-                            "命令输出大小（" + ToolKit.formatSize(outputSize) + "）超过安全限制（" + ToolKit.formatSize(safetySize) + "），已拦截返回。" +
-                            "如需获取完整输出，请设置参数 skipSafeMode=true 跳过安全限制；" +
-                            "或缩小命令的输出范围（如使用 findstr 过滤、只读取部分内容等）。"
-                    );
+                    return saveOversizeOutput(context, result, outputSize, "安全限制", safetySize);
                 }
             }
 
@@ -415,6 +410,43 @@ public class CommandTool implements ToolHandler {
                 + "```\n\n"
                 + "> 请确认此命令安全后再允许执行。";
         securityService.ask(NAME, message, null, context);
+    }
+
+    /**
+     * 命令输出超过限制时的落盘处理：把完整输出写入会话文件，返回提示而非报错中断。
+     * <p>
+     * 设计意图：命令本身已经执行成功，只是输出体量大。抛异常会让 AI 误以为命令失败、
+     * 甚至重跑一次，成本更高。落盘后 AI 拿到可移植引用，需要时用 file_read_tool 或
+     * session_file_tool 读取，不需要时也不占用上下文。
+     * </p>
+     *
+     * @param context    工具上下文（取 chatSession 作为落盘会话）
+     * @param result     命令的完整输出
+     * @param outputSize 输出字节数
+     * @param limitName  触发的是哪层限制（仅用于提示文案，如「最大限制」「安全限制」）
+     * @param limitSize  该层限制的字节数
+     * @return 携带落盘引用的提示响应
+     */
+    private ToolExecutor.ToolExecuteResponse saveOversizeOutput(Map<String, Object> context, String result,
+                                                                long outputSize, String limitName, long limitSize) throws Exception {
+        ChatSession chatSession = (ChatSession) context.get("chatSession");
+        String sessionId = chatSession.getId();
+
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String fileName = "command_output_" + timestamp + ".log";
+
+        String ref;
+        try {
+            ref = sessionFileManager.writeSessionFile(sessionId, fileName, result.getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new ToolExecutor.ToolExecuteException("命令输出过大（" + ToolKit.formatSize(outputSize)
+                    + "），尝试保存到会话文件时失败: " + e.getMessage());
+        }
+
+        String message = "命令输出过大（" + ToolKit.formatSize(outputSize) + "，超过" + limitName
+                + " " + ToolKit.formatSize(limitSize) + "），已保存到会话文件：" + ref
+                + "。如需查看完整输出，请读取该文件。";
+        return new ToolExecutor.ToolExecuteResponse(name(), message);
     }
 
     /**
