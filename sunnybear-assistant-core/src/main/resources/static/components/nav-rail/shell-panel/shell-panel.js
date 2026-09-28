@@ -81,7 +81,8 @@ const ShellPanel = {
                        v-model="aiText"
                        :disabled="aiBusy || status !== 'connected'"
                        :placeholder="aiPlaceholder"
-                       @keydown.enter.prevent="submitAi">
+                       title="回车生成并填入命令；Ctrl+Enter 在命令输入与 AI 输入间切换"
+                       @keydown="onAiKeydown">
             </div>
         </aside>
     </div>
@@ -184,6 +185,18 @@ const ShellPanel = {
             this.fitAddon = new FitAddon.FitAddon();
             this.term.loadAddon(this.fitAddon);
             this.term.open(host);
+
+            // Ctrl+Enter：连同回车一起截下，不发给 shell，改为把焦点切到底部 AI 输入框
+            this.term.attachCustomKeyEventHandler(ev => {
+                if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) {
+                    if (ev.type === 'keydown') {
+                        ev.preventDefault();
+                        this.focusAi();
+                    }
+                    return false; // keydown/keypress/keyup 全部拦下，确保不会给 shell 发送回车
+                }
+                return true;
+            });
 
             // 用户输入 → 二进制帧
             this.term.onData(data => this.send(this.encode(data)));
@@ -357,6 +370,24 @@ const ShellPanel = {
             this.$nextTick(() => {
                 if (this.term) this.term.focus();
             });
+        },
+
+        focusAi() {
+            this.$nextTick(() => {
+                const el = this.$refs.aiInput;
+                if (el && !el.disabled) el.focus();
+            });
+        },
+
+        /** AI 输入框按键：回车提交（生成并填入命令）；Ctrl/Cmd+Enter 切回终端、不提交 */
+        onAiKeydown(ev) {
+            if (ev.key !== 'Enter') return;
+            ev.preventDefault();
+            if (ev.ctrlKey || ev.metaKey) {
+                this.focusTerminal();
+                return;
+            }
+            this.submitAi();
         },
 
         /* ==================== 交互 ==================== */
