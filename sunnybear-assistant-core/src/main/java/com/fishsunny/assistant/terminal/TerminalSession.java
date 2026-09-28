@@ -12,9 +12,16 @@ package com.fishsunny.assistant.terminal;
  *        · Windows：ConPTY + PowerShell（Windows 10 1809+ 自带 ConPTY），开启 ANSI 颜色；
  *        · Linux/macOS：用户登录 shell（$SHELL，缺省 /bin/bash）以 -l 登录模式启动。
  *
- *        数据流：一个虚拟线程持续从 PTY 读原始字节，交给回调（由 WS handler 打成二进制帧下发）；
+ *        数据流：一个常驻的平台线程持续从 PTY 读原始字节，交给回调（由 WS handler 打成二进制帧下发）；
  *        前端发来的二进制帧经 write() 原样写进 PTY。终端尺寸通过 setWinSize 透传给内核，
  *        因此 vim 等全屏程序能拿到正确的行列数。
+ *
+ *        注意：读线程必须是平台线程，不能用虚拟线程。pty4j 的 Unix 读取走 JNA 原生
+ *        poll(fd, -1)，shell 空闲时会一直阻塞；JDK 21 里虚拟线程一进原生调用就被「钉」在
+ *        carrier 上，直到调用返回都不会归还给调度器。而虚拟线程调度的 ForkJoinPool 并行度
+ *        固定为 CPU 数、且不因阻塞而扩容，一个常驻终端就能永久占满一个 carrier，
+ *        最终饿死所有依赖虚拟线程的功能（ToolExecutor / CommandTool 等），表现为工具卡死。
+ *        平台线程不参与该调度池，阻塞只影响它自己。
  *
  *        生命周期：WS 连接建立即 start，连接关闭/进程退出即 close（杀整棵进程树，
  *        避免 mvn 这类会派生子进程的命令留下孤儿）。
@@ -58,7 +65,11 @@ public final class TerminalSession {
         this.onOutput = onOutput;
         this.onExit = onExit;
         this.stdin = process.getOutputStream();
-        Thread.ofVirtual().name("terminal-pty-reader").start(this::pump);
+        // 读线程用平台线程而非虚拟线程：PTY 读取是阻塞的原生调用，虚拟线程会 pin 住
+        // 虚拟线程调度器的 carrier（详见类注释），饿死工具等依赖虚拟线程的功能
+        Thread reader = new Thread(this::pump, "terminal-pty-reader");
+        reader.setDaemon(true);
+        reader.start();
     }
 
     /**

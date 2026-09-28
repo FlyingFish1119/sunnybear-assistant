@@ -22,12 +22,14 @@ import lombok.Data;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -41,6 +43,14 @@ public class ToolExecutor {
      * 不响应中断的（native 调用、死循环等）到点即放弃等待，用占位响应收场，避免「停止」被拖成卡死。
      */
     private static final long CANCEL_DRAIN_TIMEOUT_MILLIS = 3000;
+
+    /**
+     * 工具执行线程池上限。工具普遍是长阻塞（命令、子 Agent、浏览器、MCP），且带超时的工具
+     * 会「等待线程 + 执行线程」各占一个，故上限给得宽一些；到顶后靠 CallerRunsPolicy 退化为
+     * 调用方内联执行，而不是排队 —— 队列会让等待线程和执行线程互相饿死。
+     */
+    private static final int MAX_TOOL_THREADS = 200;
+    private static final long TOOL_THREAD_KEEP_ALIVE_SECONDS = 60L;
 
     Map<String, ToolHandler> toolMap = new HashMap<>();
     Map<Class<? extends ToolKit>, ToolKit> toolKitMap = new HashMap<>();
@@ -64,7 +74,26 @@ public class ToolExecutor {
             }
         }
         this.toolResponseHandleChains.addAll(toolResponseHandleChains.stream().sorted(Comparator.comparingInt(ToolResponseHandleChain::getOrder)).toList());
-        this.executorService = Executors.newVirtualThreadPerTaskExecutor();
+        // 用平台线程而非虚拟线程：工具内部常有原生调用 / synchronized 阻塞，虚拟线程遇到这些会
+        // 被 pin 在 carrier 上，而 carrier 池按 CPU 核数固定、不因阻塞扩容，容易把整个虚拟线程
+        // 调度器拖垮（表现为工具与其它虚拟线程任务一起卡死）。平台线程阻塞只影响它自己。
+        this.executorService = new ThreadPoolExecutor(
+                0, MAX_TOOL_THREADS, TOOL_THREAD_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS,
+                new SynchronousQueue<>(),
+                new ToolThreadFactory(),
+                new ThreadPoolExecutor.CallerRunsPolicy());
+    }
+
+    /** 工具线程命名 + 守护化，避免阻塞中的工具拖住 JVM 退出 */
+    private static final class ToolThreadFactory implements ThreadFactory {
+        private final AtomicInteger seq = new AtomicInteger();
+
+        @Override
+        public Thread newThread(@NotNull Runnable runnable) {
+            Thread thread = new Thread(runnable, "tool-exec-" + seq.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        }
     }
 
     @PreDestroy
@@ -244,7 +273,10 @@ public class ToolExecutor {
                 try {
                     response = future.get(timeoutMs, TimeUnit.MILLISECONDS);
                 } catch (TimeoutException e) {
-                    workerRef.get().interrupt();
+                    Thread worker = workerRef.get();
+                    if (worker != null) {
+                        worker.interrupt();
+                    }
                     log.warn("工具[{}]执行超时（{}ms），已中断执行线程", toolName, timeoutMs);
                     response = new ToolExecuteResponse(toolName, "工具[" + toolName + "]执行超时（" + timeoutMs + "ms），已强制中断").setSucceed(false);
                 } catch (Exception e) {
