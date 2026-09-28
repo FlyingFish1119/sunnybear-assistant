@@ -34,6 +34,8 @@ import com.fishsunny.assistant.websocket.SessionMessageBus;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
+import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestHandlerFactory;
+import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.task.TaskExecutor;
@@ -59,7 +61,6 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
     private final CharacterChatSelectService chatSelectService;
     private final ToolExecutor toolExecutor;
 
-    @Autowired
     public CharacterChatSocketHandler(ServiceProcessor serviceProcessor,
                                        TempChatProcessor tempChatProcessor,
                                        ChatProcessor chatProcessor,
@@ -71,8 +72,9 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                                        ObjectMapper objectMapper,
                                        BattleDbManager battleDbManager,
                                        CharacterChatSelectService chatSelectService,
-                                       ToolExecutor toolExecutor) {
-        super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper, sessionMessageBus);
+                                       ToolExecutor toolExecutor,
+                                       ChatMessageRequestHandlerFactory chatMessageRequestHandlerFactory) {
+        super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper, sessionMessageBus, chatMessageRequestHandlerFactory);
         this.characterInfoRepository = characterInfoRepository;
         this.chatSessionService = chatSessionService;
         this.glossaryService = glossaryService;
@@ -82,14 +84,10 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
     }
 
     @Override
-    public String sessionType() {
-        return CharacterSessionBindings.SESSION_TYPE;
-    }
-
-    @Override
-    public boolean enableSwitchPro() {
-        // 角色会话固定使用角色自己的模型，不允许自动切换 pro
-        return false;
+    public ChatMessageRequestProvider chatMessageRequestProvider() {
+        return new ChatMessageRequestProvider()
+                .setEnableProModel(() -> false)
+                .setSessionType(() -> CharacterSessionBindings.SESSION_TYPE);
     }
 
     /**

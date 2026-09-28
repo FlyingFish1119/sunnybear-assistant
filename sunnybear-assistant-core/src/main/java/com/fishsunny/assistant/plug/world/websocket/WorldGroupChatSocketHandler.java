@@ -21,6 +21,10 @@ import com.fishsunny.assistant.websocket.SynchronizedWebSocketSession;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
+import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestHandler;
+import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestHandlerFactory;
+import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestProvider;
+import com.fishsunny.assistant.websocket.processor.request.ChatSessionModeParseResult;
 import lombok.extern.slf4j.Slf4j;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,14 +46,17 @@ import org.springframework.web.socket.WebSocketSession;
                                            TaskExecutor chatAsyncExecutor,
                                            ObjectMapper objectMapper,
                                            SessionMessageBus sessionMessageBus,
+                                           ChatMessageRequestHandlerFactory chatMessageRequestHandlerFactory,
                                            WorldGroupChatService groupChatService) {
-            super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper, sessionMessageBus);
+            super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper, sessionMessageBus, chatMessageRequestHandlerFactory);
             this.groupChatService = groupChatService;
         }
 
         @Override
-        public String sessionType() {
-            return WorldSessionBindings.SESSION_TYPE;
+        public ChatMessageRequestProvider chatMessageRequestProvider() {
+            return new ChatMessageRequestProvider()
+                    .setEnableProModel(() -> false)
+                    .setSessionType(() -> WorldSessionBindings.SESSION_TYPE);
         }
 
         @Override
@@ -67,9 +74,9 @@ import org.springframework.web.socket.WebSocketSession;
 
                     request = new ChatMessageRequest().parseAndValidate(payload, super.objectMapper);
 
-                    // 创建/追加会话，落盘用户消息并推送 init_user
-                    ServiceProcessor.ChatSessionModeParseResult parseResult =
-                            super.serviceProcessor.handleChatSession(request, safeSession, false, sessionType());
+                    // 创建/追加会话，落盘用户消息并推送 init_user（策略模式分发，取代旧的 serviceProcessor.handleChatSession）
+                    ChatMessageRequestHandler handler = super.chatMessageRequestHandlerFactory.getHandler(request.getMode());
+                    ChatSessionModeParseResult parseResult = handler.handle(request, safeSession, chatMessageRequestProvider());
                     ChatSession chatSession = parseResult.chatSession();
                     if (chatSession == null) {
                         throw new UserException("无效的会话 ID");

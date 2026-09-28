@@ -20,6 +20,10 @@ import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
+import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestHandler;
+import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestHandlerFactory;
+import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestProvider;
+import com.fishsunny.assistant.websocket.processor.request.ChatSessionModeParseResult;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -57,19 +61,21 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
      * 会话消息总线：消息按 chatSessionId 发布并广播给订阅连接，重连连接可订阅续传
      */
     protected final SessionMessageBus sessionMessageBus;
+    protected final ChatMessageRequestHandlerFactory chatMessageRequestHandlerFactory;
 
     public ChatWebSocketHandler(ServiceProcessor serviceProcessor,
                                 TempChatProcessor tempChatProcessor,
                                 ChatProcessor chatProcessor,
                                 TaskExecutor chatAsyncExecutor,
                                 ObjectMapper objectMapper,
-                                SessionMessageBus sessionMessageBus) {
+                                SessionMessageBus sessionMessageBus, ChatMessageRequestHandlerFactory chatMessageRequestHandlerFactory) {
         this.serviceProcessor = serviceProcessor;
         this.tempChatProcessor = tempChatProcessor;
         this.chatProcessor = chatProcessor;
         this.chatAsyncExecutor = chatAsyncExecutor;
         this.objectMapper = objectMapper;
         this.sessionMessageBus = sessionMessageBus;
+        this.chatMessageRequestHandlerFactory = chatMessageRequestHandlerFactory;
     }
 
     @Override
@@ -93,20 +99,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         return ChatProvider.DEFAULT;
     }
 
-    /**
-     * 新建会话（MODE_CREATE）时是否允许自动切换到高级模型（pro）。
-     * 普通对话默认允许；绑定固定模型的插件端点（如角色）应重写为 false。
-     */
-    public boolean enableSwitchPro() {
-        return true;
-    }
 
-    /**
-     * 本连接端点归属的会话类型：新建会话（MODE_CREATE）时用于给 ChatSession.type 打标，
-     * 使插件会话（角色/世界）只需 create 携带 extension 即可一次性完成绑定注册。
-     */
-    public String sessionType() {
-        return "chat";
+    public ChatMessageRequestProvider chatMessageRequestProvider() {
+        return ChatMessageRequestProvider.DEFAULT;
     }
 
     /**
@@ -125,7 +120,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         if (payload.startsWith(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE)) {
             String sessionId = payload.substring(ControlSign.SIGN_REQUIRE_REPLAY_MESSAGE.length());
             // 独占订阅会话总线：返回当前进行中一轮的缓存快照，之后的新消息实时广播到此连接
-            // 订阅身份统一用 delegate()（原始连接），与 handleChatSession 的订阅一致，
+            // 订阅身份统一用 delegate()（原始连接），与 ChatMessageRequestHandler 的订阅一致，
             // 避免包装器与原始连接同时出现在订阅集合导致同一条消息被推送两次
             List<SessionMessageBus.Event> replayEvents = sessionMessageBus.subscribeExclusive(sessionId, safeSession.delegate());
             if (CollectionUtils.isEmpty(replayEvents)) {
@@ -235,10 +230,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 }
 
                 // 处理会话
-                ServiceProcessor.ChatSessionModeParseResult parseResult = serviceProcessor.handleChatSession(request, safeSession, enableSwitchPro(), sessionType());
+                ChatMessageRequestHandler handler = chatMessageRequestHandlerFactory.getHandler(request.getMode());
+                ChatSessionModeParseResult handleResult = handler.handle(request, safeSession, chatMessageRequestProvider());
 
                 // 处理请求
-                chatSession = parseResult.chatSession();
+                chatSession = handleResult.chatSession();
 
                 if (chatSession == null) {
                     throw new UserException("无效的会话 ID");
@@ -251,11 +247,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
                     WebSocketSession busSession = sessionMessageBus.wrap(safeSession, chatSession.getId());
 
-                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(parseResult.messages(), chatSession, busSession, chatToAiProvider(chatSession),
+                    List<ChatMessage> chatMessages = chatProcessor.chatToAi(handleResult.messages(), chatSession, busSession, chatToAiProvider(chatSession),
                             Boolean.TRUE.equals(request.getTts()));
 
                     // 如果是新的会话并且不是定时任务，则生成标题
-                    if (parseResult.isNewChat() && request.getCronId() == null) {
+                    if (handleResult.isNewChat() && request.getCronId() == null) {
                         serviceProcessor.generateTitle(chatSession, request.getContent(), chatMessages.getFirst().resolveText());
                     }
 
