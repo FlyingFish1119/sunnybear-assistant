@@ -29,12 +29,6 @@ public class AISettings {
     /** 最轻量级任务使用的 AI（如标题生成），层级：主AI > 任务AI > cub */
     public static final String CUB = "cub";
 
-    private String prompt;
-    public AISettings setPrompt(String prompt) {
-        this.prompt = prompt == null ? "" : prompt;
-        return this;
-    }
-
     private String adapterName;
     public AISettings setAdapterName(String adapterName) {
         this.adapterName = adapterName == null ? "" : adapterName;
@@ -125,8 +119,7 @@ public class AISettings {
     }
 
     public AISettings copy(AISettings settings) {
-        return this.setPrompt(settings.getPrompt())
-                .setAdapterName(settings.getAdapterName())
+        return this.setAdapterName(settings.getAdapterName())
                 .setModel(settings.getModel())
                 .setStream(settings.getStream())
                 .setThinking(settings.getThinking())

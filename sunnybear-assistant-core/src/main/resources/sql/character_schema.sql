@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS character_info (
     avatar       TEXT NOT NULL DEFAULT '',
     background   TEXT NOT NULL DEFAULT '',
     ai_settings  TEXT NOT NULL DEFAULT '{}',
+    setting      TEXT NOT NULL DEFAULT '',
     preset       TEXT NOT NULL DEFAULT '',
     main_color   TEXT NOT NULL DEFAULT '',
     opacity      REAL NOT NULL DEFAULT 0.85,

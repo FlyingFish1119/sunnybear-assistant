@@ -133,7 +133,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                 && StringUtils.hasText(charAi.getModel());
         AISettings effectiveCharAi = useCharAi ? charAi : null;
 
-        // 1. 系统提示词：preset + 角色设定（aiSettings.prompt），需要时追加角色词条表
+        // 1. 系统提示词：preset + 角色设定（character_info.setting），需要时追加角色词条表
         Function<ChatProvider.SystemProviderContext, String> systemProvider = context -> {
             StringBuilder combined = new StringBuilder();
             String preset = character.getPreset();
@@ -141,8 +141,9 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                 combined.append(preset).append("\n\n");
             }
 
-            if (charAi != null && StringUtils.hasText(charAi.getPrompt())) {
-                combined.append(charAi.getPrompt());
+            String setting = character.getSetting();
+            if (StringUtils.hasText(setting)) {
+                combined.append(setting);
             }
 
             if (toolsEnabled(character, QueryGlossaryTool.NAME)) {

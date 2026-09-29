@@ -242,7 +242,7 @@ public class D20Tool implements ToolHandler {
     }
 
     /**
-     * 构建角色设定文本（preset + aiSettings.prompt）
+     * 构建角色设定文本（preset + 角色设定 setting）
      */
     private String buildCharacterSetting(CharacterInfo character) {
         StringBuilder sb = new StringBuilder();
@@ -251,16 +251,9 @@ public class D20Tool implements ToolHandler {
             sb.append(preset).append("\n\n");
         }
 
-        String aiSettingsJson = character.getAiSettings();
-        if (StringUtils.hasText(aiSettingsJson)) {
-            try {
-                AISettings charAi = objectMapper.readValue(aiSettingsJson, AISettings.class);
-                if (StringUtils.hasText(charAi.getPrompt())) {
-                    sb.append(charAi.getPrompt());
-                }
-            } catch (Exception e) {
-                log.warn("解析角色 [{}] 的 aiSettings 失败: {}", character.getId(), e.getMessage());
-            }
+        String setting = character.getSetting();
+        if (StringUtils.hasText(setting)) {
+            sb.append(setting);
         }
         return sb.toString();
     }

@@ -29,10 +29,13 @@ public class CharacterInfo {
     /** 背景图文件路径（通过 file proxy 访问） */
     private String background;
 
-    /** AI 模型参数（JSON 字符串，包含 prompt + adapterName + model + 扩展参数） */
+    /** AI 模型参数（JSON 字符串：adapterName + model + 扩展参数，不含设定文本；设定见 setting） */
     private String aiSettings;
 
-    /** 预设（独立于 aiSettings，每次对话时拼接到角色设定之前发送） */
+    /** 角色设定（人设正文） */
+    private String setting;
+
+    /** 预设（独立于角色设定，每次对话时拼接到角色设定之前发送） */
     private String preset;
 
     /** 角色主题色 */

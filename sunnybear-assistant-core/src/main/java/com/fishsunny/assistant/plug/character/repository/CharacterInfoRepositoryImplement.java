@@ -39,6 +39,7 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
         characterInfo.setAvatar(resultSet.getString("avatar"));
         characterInfo.setBackground(resultSet.getString("background"));
         characterInfo.setAiSettings(resultSet.getString("ai_settings"));
+        characterInfo.setSetting(resultSet.getString("setting"));
         characterInfo.setPreset(resultSet.getString("preset"));
         characterInfo.setMainColor(resultSet.getString("main_color"));
         characterInfo.setOpacity(resultSet.getDouble("opacity"));
@@ -54,8 +55,8 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
         String sql =
                 """
                 INSERT INTO character_info
-                (id, name, avatar, background, ai_settings, preset, main_color, opacity, tools, chat_select, create_time, update_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, name, avatar, background, ai_settings, setting, preset, main_color, opacity, tools, chat_select, create_time, update_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         jdbcTemplate.update(sql,
                 characterInfo.getId(),
@@ -63,6 +64,7 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
                 characterInfo.getAvatar() != null ? characterInfo.getAvatar() : "",
                 characterInfo.getBackground() != null ? characterInfo.getBackground() : "",
                 characterInfo.getAiSettings() != null ? characterInfo.getAiSettings() : "{}",
+                characterInfo.getSetting() != null ? characterInfo.getSetting() : "",
                 characterInfo.getPreset() != null ? characterInfo.getPreset() : "",
                 characterInfo.getMainColor() != null ? characterInfo.getMainColor() : "",
                 characterInfo.getOpacity() != null ? characterInfo.getOpacity() : 0.85,
@@ -80,7 +82,7 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
         String sql =
                 """
                 UPDATE character_info
-                SET name = ?, avatar = ?, background = ?, ai_settings = ?, preset = ?, main_color = ?, opacity = ?, tools = ?, chat_select = ?, update_time = ?
+                SET name = ?, avatar = ?, background = ?, ai_settings = ?, setting = ?, preset = ?, main_color = ?, opacity = ?, tools = ?, chat_select = ?, update_time = ?
                 WHERE id = ?
                 """;
         jdbcTemplate.update(sql,
@@ -88,6 +90,7 @@ public class CharacterInfoRepositoryImplement implements CharacterInfoRepository
                 characterInfo.getAvatar() != null ? characterInfo.getAvatar() : "",
                 characterInfo.getBackground() != null ? characterInfo.getBackground() : "",
                 characterInfo.getAiSettings() != null ? characterInfo.getAiSettings() : "{}",
+                characterInfo.getSetting() != null ? characterInfo.getSetting() : "",
                 characterInfo.getPreset() != null ? characterInfo.getPreset() : "",
                 characterInfo.getMainColor() != null ? characterInfo.getMainColor() : "",
                 characterInfo.getOpacity() != null ? characterInfo.getOpacity() : 0.85,

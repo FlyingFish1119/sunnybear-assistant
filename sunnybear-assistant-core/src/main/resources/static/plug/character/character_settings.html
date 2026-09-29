@@ -952,9 +952,9 @@
                         <i data-lucide="file-text" style="width:14px;height:14px"></i> 角色设定
                     </span>
                     <textarea class="char-form-textarea" :style="{'--main-color': mainColor}"
-                        v-model="form.aiSettings.prompt"
+                        v-model="form.setting"
                         placeholder="定义角色的系统提示词，描述角色的性格、说话方式、知识背景等..."></textarea>
-                    <span class="char-form-count">{{ (form.aiSettings.prompt || '').length }} / 50000</span>
+                    <span class="char-form-count">{{ (form.setting || '').length }} / 50000</span>
                 </div>
 
                 <!-- 工具开关（可折叠） -->
@@ -1232,10 +1232,10 @@ const app = Vue.createApp({
                 name: '', avatar: '', background: '',
                 mainColor: 'lightsalmon', opacity: 0.85,
                 preset: '',
+                setting: '',
                 tools: {},
                 chatSelect: { enable: false, format: '' },
                 aiSettings: {
-                    prompt: '',
                     adapterName: '', model: '',
                     stream: true, thinking: false,
                     reasoningEffort: null,
@@ -1379,10 +1379,12 @@ const app = Vue.createApp({
             if (c.mainColor) {
                 this.mainColor = c.mainColor;
             }
-            let aiSettings = { prompt: '', adapterName: '', model: '', stream: true, thinking: false, reasoningEffort: null, temperature: null, top_p: null, maxTokens: null, frequencyPenalty: null, presencePenalty: null, reasoningEffort: null };
+            let aiSettings = { adapterName: '', model: '', stream: true, thinking: false, reasoningEffort: null, temperature: null, top_p: null, maxTokens: null, frequencyPenalty: null, presencePenalty: null };
             if (c.aiSettings) {
                 try { const parsed = JSON.parse(c.aiSettings); aiSettings = Object.assign(aiSettings, parsed); } catch (e) {}
             }
+            // 存量兼容：老数据 ai_settings 里可能残留 prompt（后端启动时会搬入 setting），这里再兜一次底
+            delete aiSettings.prompt;
             // 已有高级参数值则自动展开
             const hasAdvanced = aiSettings.temperature != null || aiSettings.top_p != null || aiSettings.maxTokens != null || aiSettings.frequencyPenalty != null || aiSettings.presencePenalty != null || aiSettings.reasoningEffort != null;
             this.showAdvanced = hasAdvanced;
@@ -1403,6 +1405,7 @@ const app = Vue.createApp({
                 mainColor: c.mainColor || 'lightsalmon',
                 opacity: c.opacity != null ? c.opacity : 0.85,
                 preset: c.preset || '',
+                setting: c.setting || '',
                 tools: this.parseTools(c.tools),
                 chatSelect: chatSelect,
                 aiSettings: aiSettings
@@ -1424,9 +1427,10 @@ const app = Vue.createApp({
                 name: '', avatar: '', background: '',
                 mainColor: 'lightsalmon', opacity: 0.85,
                 preset: '',
+                setting: '',
                 tools: {},
                 chatSelect: { enable: false, format: '' },
-                aiSettings: { prompt: '', adapterName: '', model: '', stream: true, thinking: false, temperature: null, top_p: null, maxTokens: null, frequencyPenalty: null, presencePenalty: null, reasoningEffort: null }
+                aiSettings: { adapterName: '', model: '', stream: true, thinking: false, temperature: null, top_p: null, maxTokens: null, frequencyPenalty: null, presencePenalty: null, reasoningEffort: null }
             };
         },
         cancelEdit() {
@@ -1439,9 +1443,10 @@ const app = Vue.createApp({
                 name: '', avatar: '', background: '',
                 mainColor: 'lightsalmon', opacity: 0.85,
                 preset: '',
+                setting: '',
                 tools: {},
                 chatSelect: { enable: false, format: '' },
-                aiSettings: { prompt: '', adapterName: '', model: '', stream: true, thinking: false, temperature: null, top_p: null, maxTokens: null, frequencyPenalty: null, presencePenalty: null, reasoningEffort: null }
+                aiSettings: { adapterName: '', model: '', stream: true, thinking: false, temperature: null, top_p: null, maxTokens: null, frequencyPenalty: null, presencePenalty: null, reasoningEffort: null }
             };
         },
 
@@ -1584,7 +1589,7 @@ const app = Vue.createApp({
         /* ---- 保存 ---- */
         async saveCharacter() {
             if (!this.form.name.trim()) { ElementPlus.ElMessage.warning('角色名称不能为空'); return; }
-            if (this.form.aiSettings.prompt && this.form.aiSettings.prompt.length > 50000) {
+            if (this.form.setting && this.form.setting.length > 50000) {
                 ElementPlus.ElMessage.warning('角色设定不能超过 50000 个字符'); return;
             }
             this.saving = true;
@@ -1611,6 +1616,7 @@ const app = Vue.createApp({
                     mainColor: this.form.mainColor,
                     opacity: this.form.opacity,
                     preset: this.form.preset || '',
+                    setting: this.form.setting || '',
                     tools: JSON.stringify(this.buildToolsObject()),
                     chatSelect: JSON.stringify({
                         enable: !!chatSelect.enable,

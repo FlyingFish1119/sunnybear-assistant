@@ -2,8 +2,9 @@ package com.fishsunny.assistant.plug.character.tool.authoring;
 
 /*
  * @Usage 角色编写工具包 —— 让主助手直接读写角色设定（新建 / 修改 / 查看）。
- *        与角色对话工具（骰子/词条/战斗）相反：本工具集默认对主对话开放，
- *        且不要求上下文中的 character key（主对话没有绑定角色）。
+ *        本工具集默认不对主对话开放（excludeFromMainAgent 声明为 true），
+ *        与角色对话工具（骰子 / 词条 / 战斗）一样，需要用户在设置页显式开启；
+ *        与它们的区别是：本工具集的工具不要求上下文中的 character key（主对话没有绑定角色）。
  *        可用 plug.character.tool.authoring.enable 关闭。
  *
  * @Project sunnybear-assistant
@@ -15,16 +16,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
-import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
-import com.fishsunny.assistant.plug.character.service.CharacterGlossaryService;
 import com.fishsunny.assistant.plug.character.service.CharacterInfoService;
 import com.fishsunny.assistant.settings.AISettings;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -43,7 +41,7 @@ public class CharacterAuthoringToolKit extends ToolKit {
 
     @Override
     public String description() {
-        return "让主助手新建、修改、查看角色设定（名称、人设提示词、预设、主题色、工具开关）及其词条";
+        return "让主助手新建、修改、查看角色设定（名称、角色设定、预设、主题色、工具开关）";
     }
 
     @Override
@@ -86,15 +84,6 @@ public class CharacterAuthoringToolKit extends ToolKit {
         }
     }
 
-    /** 序列化对象为 JSON 字符串，失败返回 fallback */
-    static String writeJson(ObjectMapper objectMapper, Object value, String fallback) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (Exception e) {
-            return fallback;
-        }
-    }
-
     /** 把角色渲染成便于主助手阅读的 Markdown */
     static String describe(ObjectMapper objectMapper, CharacterInfo character) {
         if (character == null) {
@@ -110,8 +99,8 @@ public class CharacterAuthoringToolKit extends ToolKit {
             sb.append("- 透明度: ").append(character.getOpacity()).append("\n");
         }
         AISettings ai = parseAiSettings(objectMapper, character);
-        sb.append("\n### 人设提示词（aiSettings.prompt）\n\n");
-        sb.append(StringUtils.hasText(ai.getPrompt()) ? ai.getPrompt() : "(空)").append("\n");
+        sb.append("\n### 角色设定（setting）\n\n");
+        sb.append(StringUtils.hasText(character.getSetting()) ? character.getSetting() : "(空)").append("\n");
         sb.append("\n### 预设（preset，每轮拼在人设前）\n\n");
         sb.append(StringUtils.hasText(character.getPreset()) ? character.getPreset() : "(空)").append("\n");
         sb.append("\n### 工具开关\n\n");
@@ -122,18 +111,6 @@ public class CharacterAuthoringToolKit extends ToolKit {
               .append("- model: ").append(ai.getModel()).append("\n");
         }
         return sb.toString();
-    }
-
-    /** 按前端的两组开关精确组装 tools JSON：开启的组，其下所有工具置 true，其余不写入 */
-    static String buildToolsJson(ObjectMapper objectMapper, boolean glossaryEnabled, boolean gmEnabled) {
-        Map<String, Boolean> tools = new LinkedHashMap<>();
-        if (glossaryEnabled) {
-            GLOSSARY_TOOLS.forEach(name -> tools.put(name, true));
-        }
-        if (gmEnabled) {
-            GM_TOOLS.forEach(name -> tools.put(name, true));
-        }
-        return writeJson(objectMapper, tools, "{}");
     }
 
     /** 解析 tools JSON 为 Map；空/失败返回空 Map */
@@ -164,51 +141,6 @@ public class CharacterAuthoringToolKit extends ToolKit {
         Map<String, Boolean> tools = parseToolsMap(objectMapper, toolsJson);
         return "- 角色词条：" + (groupEnabled(tools, GLOSSARY_TOOLS) ? "开启" : "关闭") + "\n"
                 + "- GM 组件：" + (groupEnabled(tools, GM_TOOLS) ? "开启" : "关闭");
-    }
-
-    /** 把角色的词条列表渲染成 Markdown（keyword + desc），无词条时返回提示 */
-    static String describeGlossary(CharacterGlossaryService glossaryService, CharacterInfo character) {
-        List<CharacterGlossary> glossaries = glossaryService.listByCharacterId(character.getId());
-        if (glossaries == null || glossaries.isEmpty()) {
-            return "（暂无词条）";
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("共 ").append(glossaries.size()).append(" 条：\n");
-        for (CharacterGlossary g : glossaries) {
-            sb.append("- ").append(StringUtils.hasText(g.getKeyword()) ? g.getKeyword() : "(无关键词)");
-            if (StringUtils.hasText(g.getDesc())) {
-                sb.append("：").append(g.getDesc().replaceAll("\\s+", " "));
-            }
-            sb.append("\n");
-        }
-        return sb.toString();
-    }
-
-    /** 把单条词条渲染成 Markdown（含完整内容） */
-    static String describeGlossaryDetail(CharacterGlossary g) {
-        if (g == null) {
-            return "词条不存在。";
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("## 词条：").append(StringUtils.hasText(g.getKeyword()) ? g.getKeyword() : "(无关键词)").append("\n\n");
-        if (StringUtils.hasText(g.getDesc())) {
-            sb.append("- 描述: ").append(g.getDesc()).append("\n");
-        }
-        sb.append("\n").append(StringUtils.hasText(g.getContent()) ? g.getContent() : "(无内容)");
-        return sb.toString();
-    }
-
-    /** 把一批词条渲染成 Markdown（keyword + desc + 完整 content），供分页列表使用 */
-    static String describeGlossaryWithContent(List<CharacterGlossary> glossaries) {
-        StringBuilder sb = new StringBuilder();
-        for (CharacterGlossary g : glossaries) {
-            sb.append("### ").append(StringUtils.hasText(g.getKeyword()) ? g.getKeyword() : "(无关键词)").append("\n\n");
-            if (StringUtils.hasText(g.getDesc())) {
-                sb.append("> ").append(g.getDesc().replaceAll("\\s+", " ")).append("\n\n");
-            }
-            sb.append(StringUtils.hasText(g.getContent()) ? g.getContent() : "(无内容)").append("\n\n");
-        }
-        return sb.toString();
     }
 
     /** 按 id 优先、其次按 name（忽略大小写）查找角色；都为空或未找到返回 null */

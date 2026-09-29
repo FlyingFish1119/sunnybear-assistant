@@ -93,6 +93,9 @@ public class CharacterController {
         if (character.getName().length() > MAX_NAME_LENGTH) {
             return new RestResponse().error("角色名称不能超过" + MAX_NAME_LENGTH + "个字符");
         }
+        if (character.getSetting() != null && character.getSetting().length() > MAX_SETTING_LENGTH) {
+            return new RestResponse().error("角色设定不能超过" + MAX_SETTING_LENGTH + "个字符");
+        }
         try {
             CharacterInfo saved = characterInfoService.save(character);
             return new RestResponse().success(saved);
@@ -115,6 +118,9 @@ public class CharacterController {
         }
         if (character.getName().length() > MAX_NAME_LENGTH) {
             return new RestResponse().error("角色名称不能超过" + MAX_NAME_LENGTH + "个字符");
+        }
+        if (character.getSetting() != null && character.getSetting().length() > MAX_SETTING_LENGTH) {
+            return new RestResponse().error("角色设定不能超过" + MAX_SETTING_LENGTH + "个字符");
         }
         try {
             CharacterInfo existing = characterInfoService.findById(character.getId());

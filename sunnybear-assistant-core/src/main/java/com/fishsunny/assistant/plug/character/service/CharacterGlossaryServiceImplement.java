@@ -202,4 +202,17 @@ public class CharacterGlossaryServiceImplement implements CharacterGlossaryServi
                 .setUpdated(updated)
                 .setFailed(failed);
     }
+
+    @Override
+    public GlossaryImportResult rebuildByCharacterId(String characterId, List<CharacterGlossary> items) {
+        if (!StringUtils.hasText(characterId)) {
+            throw new RuntimeException("角色 ID 不能为空");
+        }
+        // 文件即权威快照：先清空该角色词条，再照文件全量导入
+        glossaryRepository.deleteByCharacterId(characterId);
+        if (items == null || items.isEmpty()) {
+            return new GlossaryImportResult().setTotal(0).setCreated(0).setUpdated(0).setFailed(0);
+        }
+        return importByCharacterId(characterId, items);
+    }
 }

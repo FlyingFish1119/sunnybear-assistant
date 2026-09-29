@@ -111,6 +111,9 @@ public class CharacterInfoServiceImplement implements CharacterInfoService {
         if (!StringUtils.hasText(characterInfo.getAiSettings())) {
             characterInfo.setAiSettings("{}");
         }
+        if (!StringUtils.hasText(characterInfo.getSetting())) {
+            characterInfo.setSetting("");
+        }
         if (!StringUtils.hasText(characterInfo.getPreset())) {
             characterInfo.setPreset("");
         }

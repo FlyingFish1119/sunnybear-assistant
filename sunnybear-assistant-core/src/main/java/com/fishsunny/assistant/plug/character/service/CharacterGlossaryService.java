@@ -32,4 +32,7 @@ public interface CharacterGlossaryService {
 
     /** 批量导入词条，关键词重复的条目覆盖更新，返回导入统计 */
     GlossaryImportResult importByCharacterId(String characterId, List<CharacterGlossary> items);
+
+    /** 按角色重建词条库：先清空该角色的全部词条，再按 items 全量导入，返回导入统计 */
+    GlossaryImportResult rebuildByCharacterId(String characterId, List<CharacterGlossary> items);
 }
