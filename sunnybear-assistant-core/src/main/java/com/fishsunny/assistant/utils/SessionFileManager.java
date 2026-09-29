@@ -574,6 +574,12 @@ public class SessionFileManager {
                         log.warn("File not found: {}", path);
                         continue;
                     }
+                    int maxBytes = userSettings == null ? 0 : userSettings.getMaxTextFileBytes();
+                    if (maxBytes > 0 && bytes.length > maxBytes) {
+                        messageContents.add(new TextContent(
+                                "用户上传了文本文件：" + path + "（大小 " + bytes.length + " 字节，超过 " + maxBytes + " 字节上限，未展开原文）"));
+                        continue;
+                    }
                     messageContents.add(new TextContent(new String(bytes, StandardCharsets.UTF_8)));
                 } catch (Exception e) {
                     log.error("Error loading file: {}", path, e);

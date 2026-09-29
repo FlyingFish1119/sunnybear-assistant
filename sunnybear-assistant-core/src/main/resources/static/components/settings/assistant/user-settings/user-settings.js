@@ -105,6 +105,11 @@ const UserSettings = {
                         placeholder="0 表示不压缩" style="width: 200px"></el-input-number>
                     <span style="margin-left: 12px; color: #909399; font-size: 13px;">发送给模型前图片最长边超过该像素时等比压缩，0 表示不压缩（默认 1024）</span>
                 </el-form-item>
+                <el-form-item label="文本文件上限">
+                    <el-input-number v-model="userForm.maxTextFileBytes" :min="0" :step="1024" :controls="false"
+                        placeholder="0 表示不限制" style="width: 200px"></el-input-number>
+                    <span style="margin-left: 12px; color: #909399; font-size: 13px;">发送给模型前文本文件超过该字节时不贴原文，改为上传占位说明，0 表示不限制（默认 32768，即 32KB）</span>
+                </el-form-item>
             </el-form>
             <template #footer>
                 <div class="dialog-footer">
@@ -121,7 +126,7 @@ const UserSettings = {
     data() {
         return {
             dialogs: { user: false },
-            userForm: { username: '', avatar: '', background: '', opacity: 0.3, mainColor: 'lightsalmon', enableAutoSwitchModel: false, proModelThreshold: 0.7, contextTokenLimit: null, maxImageEdgePixel: 1024 },
+            userForm: { username: '', avatar: '', background: '', opacity: 0.3, mainColor: 'lightsalmon', enableAutoSwitchModel: false, proModelThreshold: 0.7, contextTokenLimit: null, maxImageEdgePixel: 1024, maxTextFileBytes: 32768 },
             predefineColors: [
                 'lightsalmon', '#409eff', '#67c23a', '#e6a23c', '#f56c6c',
                 '#e83e8c', '#6f42c1', '#20c997', '#17a2b8', '#6610f2',
@@ -158,7 +163,8 @@ const UserSettings = {
                 enableAutoSwitchModel: this.settings.enableAutoSwitchModel || false,
                 proModelThreshold: this.settings.proModelThreshold != null ? this.settings.proModelThreshold : 0.7,
                 contextTokenLimit: this.settings.contextTokenLimit != null ? this.settings.contextTokenLimit : null,
-                maxImageEdgePixel: this.settings.maxImageEdgePixel != null ? this.settings.maxImageEdgePixel : 1024
+                maxImageEdgePixel: this.settings.maxImageEdgePixel != null ? this.settings.maxImageEdgePixel : 1024,
+                maxTextFileBytes: this.settings.maxTextFileBytes != null ? this.settings.maxTextFileBytes : 32768
             };
             this.dialogs.user = true;
             this.$nextTick(() => lucide.createIcons());
@@ -255,7 +261,8 @@ const UserSettings = {
                 enableAutoSwitchModel: this.userForm.enableAutoSwitchModel,
                 proModelThreshold: this.userForm.proModelThreshold != null ? this.userForm.proModelThreshold : 0.7,
                 contextTokenLimit: this.userForm.contextTokenLimit || null,
-                maxImageEdgePixel: this.userForm.maxImageEdgePixel != null ? this.userForm.maxImageEdgePixel : 1024
+                maxImageEdgePixel: this.userForm.maxImageEdgePixel != null ? this.userForm.maxImageEdgePixel : 1024,
+                maxTextFileBytes: this.userForm.maxTextFileBytes != null ? this.userForm.maxTextFileBytes : 32768
             }, 'user').then(() => {
                 // 保存成功后立即同步主题色（父组件刷新时会再同步一次服务端值）
                 this.$emit('main-color-change', mainColor);

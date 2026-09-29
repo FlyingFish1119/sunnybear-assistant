@@ -118,4 +118,18 @@ public class UserSettings {
     public Integer getMaxImageEdgePixel() {
         return maxImageEdgePixel == null ? 1024 : maxImageEdgePixel;
     }
+
+    /**
+     * 文本文件内联字节上限：发送给模型前，可读文本文件超过该字节数时不再贴出原文，
+     * 而是替换为“用户上传了文件”的占位说明，避免超大附件撑爆上下文。
+     * &lt;= 0 表示不限制；null 取默认值 32768（32KB）。
+     */
+    private Integer maxTextFileBytes;
+    public UserSettings setMaxTextFileBytes(Integer maxTextFileBytes) {
+        this.maxTextFileBytes = maxTextFileBytes;
+        return this;
+    }
+    public Integer getMaxTextFileBytes() {
+        return maxTextFileBytes == null ? 32768 : maxTextFileBytes;
+    }
 }

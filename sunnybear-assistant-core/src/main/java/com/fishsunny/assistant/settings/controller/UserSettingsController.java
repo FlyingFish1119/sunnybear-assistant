@@ -74,6 +74,7 @@ public class UserSettingsController {
         userSettings.setProModelThreshold(settings.getProModelThreshold());
         userSettings.setContextTokenLimit(settings.getContextTokenLimit());
         userSettings.setMaxImageEdgePixel(settings.getMaxImageEdgePixel());
+        userSettings.setMaxTextFileBytes(settings.getMaxTextFileBytes());
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(userSettingsPath), userSettings);
         } catch (Exception e) {
