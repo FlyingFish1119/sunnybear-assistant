@@ -21,6 +21,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
+import com.fishsunny.assistant.plug.character.dto.GlossaryCardItem;
 import com.fishsunny.assistant.plug.character.entity.CharacterGlossary;
 import com.fishsunny.assistant.plug.character.entity.CharacterInfo;
 import com.fishsunny.assistant.plug.character.service.CharacterGlossaryService;
@@ -83,7 +84,8 @@ public class GetAuthoringCharacterTool implements ToolHandler {
                         传入 id 时把该角色的角色卡摊成一组文件，写到当前会话文件目录下的 {角色ID}/ 中并返回文件清单，
                         每次调用都以数据库当前值覆盖重建：setting.md（角色设定）、preset.md（预设）、
                         character_settings.json（基础设置 / 模型参数 / 工具开关 / 快捷选项开关）、
-                        select_format.md（快捷选项风格指导）、glossary.json（角色词条，JSON 数组）。
+                        select_format.md（快捷选项风格指导）、
+                        glossary.json（角色词条，JSON 数组，每项只含 keyword / desc / content）。
                         传入 template=true 时不查角色，固定生成一份空白模板到 template/ 下，
                         其中 character_settings.json 预填默认值：mainColor / opacity 取用户设置、模型参数取主对话 AI，
                         供填写后用 character_authoring_upsert_tool 新建角色。
@@ -91,7 +93,8 @@ public class GetAuthoringCharacterTool implements ToolHandler {
                 .setRequired(List.of())
                 .setParameters(List.of(
                         new ToolRegister.Parameters("id", "string",
-                                "角色 id，可省略。省略时列出全部角色；与 template 同时传时以 template 为准。"),
+                                "角色 id，可省略。省略时列出全部角色；与 template=true 同时传时以 template 为准" +
+                                        "（会忽略 id 只生成空白模板，并在结果里提示）。"),
                         new ToolRegister.Parameters("template", "boolean",
                                 "为 true 时生成空白角色卡模板而非导出角色，可省略（默认 false）。")
                 ));
@@ -108,7 +111,12 @@ public class GetAuthoringCharacterTool implements ToolHandler {
         }
 
         if (Boolean.TRUE.equals(arguments.getTemplate())) {
-            return new ToolExecutor.ToolExecuteResponse(NAME, exportTemplate(requireSessionId(context)));
+            String warning = "";
+            if (StringUtils.hasText(arguments.getId())) {
+                warning = "已忽略 id=" + arguments.getId().trim()
+                        + "：template=true 只生成空白模板，不导出该角色；模板会覆盖会话目录下的 template/。\n\n";
+            }
+            return new ToolExecutor.ToolExecuteResponse(NAME, warning + exportTemplate(requireSessionId(context)));
         }
 
         if (!StringUtils.hasText(arguments.getId())) {
@@ -154,7 +162,7 @@ public class GetAuthoringCharacterTool implements ToolHandler {
         sb.append("- ").append(marker(dir, FILE_PRESET)).append(" — 预设\n");
         sb.append("- ").append(marker(dir, FILE_CHARACTER_SETTINGS)).append(" — 基础设置（名称 / 主题色 / 透明度 / 快捷选项开关 / 模型参数 / 工具开关）\n");
         sb.append("- ").append(marker(dir, FILE_SELECT_FORMAT)).append(" — 快捷选项风格指导\n");
-        sb.append("- ").append(marker(dir, FILE_GLOSSARY)).append(" — 词条（JSON 数组）\n");
+        sb.append("- ").append(marker(dir, FILE_GLOSSARY)).append(" — 词条（JSON 数组：keyword / desc / content）\n");
         return sb.toString();
     }
 
@@ -179,7 +187,7 @@ public class GetAuthoringCharacterTool implements ToolHandler {
         sb.append("- ").append(marker(TEMPLATE_DIR, FILE_CHARACTER_SETTINGS))
           .append(" — 基础设置（已预填：主题色 / 透明度取用户设置、模型参数取主对话 AI、工具开关默认关闭）\n");
         sb.append("- ").append(marker(TEMPLATE_DIR, FILE_SELECT_FORMAT)).append(" — 快捷选项风格指导（待填写）\n");
-        sb.append("- ").append(marker(TEMPLATE_DIR, FILE_GLOSSARY)).append(" — 词条（JSON 数组，待填写）\n");
+        sb.append("- ").append(marker(TEMPLATE_DIR, FILE_GLOSSARY)).append(" — 词条（JSON 数组，待填写：keyword / desc / content）\n");
         sb.append("\n填写完成后，把五个文件的路径交给 character_authoring_upsert_tool 即可新建角色（name 必填）。");
         return sb.toString();
     }
@@ -253,10 +261,23 @@ public class GetAuthoringCharacterTool implements ToolHandler {
         return "";
     }
 
-    /** 角色词条：走词条服务的导出口径，直接落成 JSON 数组（与词条接口导出的结构一致） */
+    /**
+     * 角色词条：按角色卡口径导出，每项只落 keyword / desc / content 三个业务字段，
+     * id、characterId 与时间戳由服务端维护，不进文件（避免导出的 id 被误当成可往返的标识）。
+     */
     private String buildGlossaryJson(String characterId) {
         List<CharacterGlossary> glossaries = glossaryService.listByCharacterId(characterId);
-        return pretty(glossaries == null ? List.of() : glossaries);
+        if (glossaries == null || glossaries.isEmpty()) {
+            return "[]";
+        }
+        List<GlossaryCardItem> items = glossaries.stream()
+                .filter(glossary -> glossary != null)
+                .map(glossary -> new GlossaryCardItem()
+                        .setKeyword(glossary.getKeyword())
+                        .setDesc(glossary.getDesc())
+                        .setContent(glossary.getContent()))
+                .toList();
+        return pretty(items);
     }
 
     /** 不传参数时列出全部角色（id、名称、设定摘要） */

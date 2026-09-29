@@ -23,6 +23,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -68,6 +69,13 @@ public class CharacterAuthoringToolKit extends ToolKit {
             "d20_check",
             "ndm_roll",
             "battle_engine_tool");
+
+    /** 两组名单的合集：用于按名单过滤 toolSettings，名单外的工具名一律不接收 */
+    static List<String> allToolNames() {
+        List<String> names = new ArrayList<>(GLOSSARY_TOOLS);
+        names.addAll(GM_TOOLS);
+        return names;
+    }
 
     // ==================== 共用辅助 ====================
 
@@ -126,21 +134,22 @@ public class CharacterAuthoringToolKit extends ToolKit {
         }
     }
 
-    /** 某组工具是否全部开启 */
-    static boolean groupEnabled(Map<String, Boolean> tools, List<String> group) {
-        for (String name : group) {
-            if (!Boolean.TRUE.equals(tools.get(name))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /** 把 tools JSON 渲染成两组开关的开关状态 */
+    /** 把 tools JSON 渲染成两组开关的开关状态：原样列出该组已开启的工具名，一项都没开就是「关闭」 */
     static String describeTools(ObjectMapper objectMapper, String toolsJson) {
         Map<String, Boolean> tools = parseToolsMap(objectMapper, toolsJson);
-        return "- 角色词条：" + (groupEnabled(tools, GLOSSARY_TOOLS) ? "开启" : "关闭") + "\n"
-                + "- GM 组件：" + (groupEnabled(tools, GM_TOOLS) ? "开启" : "关闭");
+        return "- 角色词条：" + describeGroup(tools, GLOSSARY_TOOLS) + "\n"
+                + "- GM 组件：" + describeGroup(tools, GM_TOOLS);
+    }
+
+    /** 一组工具的开关描述：列出该组已开启的工具名；一项都没开时返回「关闭」 */
+    static String describeGroup(Map<String, Boolean> tools, List<String> group) {
+        List<String> enabled = new ArrayList<>();
+        for (String name : group) {
+            if (Boolean.TRUE.equals(tools.get(name))) {
+                enabled.add(name);
+            }
+        }
+        return enabled.isEmpty() ? "关闭" : "开启（" + String.join("、", enabled) + "）";
     }
 
     /** 按 id 优先、其次按 name（忽略大小写）查找角色；都为空或未找到返回 null */
