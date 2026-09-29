@@ -84,7 +84,7 @@ public class FileEditTool implements ToolHandler {
 
     @Override
     @ToolIncludeContext(key = {"session", "chatSession"}, type = {WebSocketSession.class, ChatSession.class})
-    public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
+    public synchronized ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
             WebSocketSession session = (WebSocketSession) context.get("session");
             ChatSession chatSession = (ChatSession) context.get("chatSession");
@@ -173,9 +173,7 @@ public class FileEditTool implements ToolHandler {
             if (!"\n".equals(lineSeparator)) {
                 resultContent = resultContent.replace("\n", lineSeparator);
             }
-            synchronized (FileToolKit.class) {
-                Files.writeString(filePath, resultContent, StandardCharsets.UTF_8);
-            }
+            Files.writeString(filePath, resultContent, StandardCharsets.UTF_8);
 
             // 构建元数据描述
             String metaBuilder = "文件编辑成功\n\n" +
