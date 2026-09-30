@@ -357,6 +357,14 @@ const API = (function () {
             delete: function (id) { return get('cron-job/delete?id=' + encodeURIComponent(id)); }
         },
 
+        /* ---------- 本机文件（file:// 被浏览器拦掉后的替代路径） ---------- */
+        localFile: {
+            /** 读取本机文件用于内嵌预览，返回 {kind, text?...}（详见后端 FileProxyController） */
+            preview: function (path) { return get('file/local/preview?path=' + encodeURIComponent(path)); },
+            /** 用系统默认程序打开本机文件 */
+            open: function (path) { return get('file/local/open?path=' + encodeURIComponent(path)); }
+        },
+
         /* ---------- 网页内嵌探测 ---------- */
         web: {
             /**

@@ -128,6 +128,20 @@ const MarkdownUtils = (function () {
         return /^(?:javascript|vbscript|data|blob):/.test(probe) ? null : url;
     }
 
+    /**
+     * 剥掉「浏览器前缀」协议，取出真正的地址。
+     * 模型 / 复制粘贴偶尔会把链接写成 `microsoft-edge:https://...` 这种形态（拿它当 href
+     * 浏览器只会去启动 Edge 这个外部协议，在 PWA 里直接报 Not allowed to launch）。
+     * 这里把已知的浏览器前缀剥掉，还原成普普通通的 https 地址。
+     */
+    var BROWSER_SCHEME_RE = /^(?:microsoft-edge|msedge|microsoft-edge-webview|edge|chrome|googlechrome|chromium|firefox|brave|opera|vivaldi|safari):(https?:\/\/[\s\S]+)$/i;
+
+    function unwrapBrowserScheme(url) {
+        if (url == null) return url;
+        var m = String(url).match(BROWSER_SCHEME_RE);
+        return m ? m[1] : url;
+    }
+
     /** file/proxy URL 重写：补上 BASE_PATH（云上部署时页面可能不在根路径） */
     function rewriteProxyUrls(html) {
         return html.replace(/(src|href)="(\/?)(file\/proxy\?[^"]+)"/g,
@@ -281,7 +295,7 @@ const MarkdownUtils = (function () {
              * 但额外拦掉 data:/blob: 等。
              */
             link: function (obj) {
-                var href = safeUrl(obj.href);
+                var href = safeUrl(unwrapBrowserScheme(obj.href));
                 var text = this.parser.parseInline(obj.tokens);
                 if (href === null) return text;
                 return '<a href="' + escapeAttr(href) + '"'
@@ -290,7 +304,7 @@ const MarkdownUtils = (function () {
             },
             /** 图片：同样走协议白名单，危险协议退化为转义后的 alt 文本 */
             image: function (obj) {
-                var src = safeUrl(obj.href);
+                var src = safeUrl(unwrapBrowserScheme(obj.href));
                 var alt = obj.tokens
                     ? this.parser.parseInline(obj.tokens, this.parser.textRenderer)
                     : obj.text;
