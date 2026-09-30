@@ -213,6 +213,13 @@ const MarkdownUtils = (function () {
         return /^[+\-]\s*\d+\| /m.test(text);
     }
 
+    /** 是否为 HTML 代码块（决定是否给「在侧边栏打开」按钮） */
+    function isHtmlLang(lang) {
+        if (!lang) return false;
+        var l = String(lang).toLowerCase();
+        return l === 'html' || l === 'htm';
+    }
+
     /** 把 diff 文本渲染为逐行着色（+ 绿背景 / - 红背景，代码仍走高亮，标题保留原语言） */
     function renderDiff(text, lang) {
         var supported = lang && hljs.getLanguage(lang);
@@ -308,9 +315,14 @@ const MarkdownUtils = (function () {
                     ? hljs.highlight(text, { language: lang }).value
                     : hljs.highlightAuto(text).value;
                 var copyBtn = '<button type="button" class="code-copy-btn" title="复制代码"><i data-lucide="copy"></i></button>';
+                // HTML 代码块：额外给一个「在侧边栏打开」按钮，直接在抽屉里预览渲染结果
+                var openBtn = isHtmlLang(lang)
+                    ? '<button type="button" class="code-open-btn" title="在侧边栏打开"><i data-lucide="panel-right-open"></i></button>'
+                    : '';
                 return '<div class="code-block-wrapper">'
                     + '<div class="code-block-header">'
                     + (langLabel ? '<span class="code-block-lang">' + langLabel + '</span>' : '')
+                    + openBtn
                     + copyBtn
                     + '</div>'
                     + '<pre><code class="hljs' + (supported ? ' language-' + lang : '') + '">'
@@ -730,4 +742,30 @@ const MarkdownUtils = (function () {
         clearCache: clearCache,
         beautify: beautify
     };
+})();
+
+/* ============================================================
+   HTML 代码块「在侧边栏打开」按钮的事件委托
+   ------------------------------------------------------------
+   按钮由本文件的 code 渲染器生成（v-html 内容，没法逐个绑事件），所以在 document 上
+   兜一层 —— 与 copy 按钮同一套思路。有 SbWebViewer（主页面）就滑出抽屉预览；没有
+   （插件页等）就退化成新标签页打开，别留个点了没反应的死按钮。
+   ============================================================ */
+(function registerHtmlOpenDelegate() {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('.code-open-btn') : null;
+        if (!btn) return;
+        var wrapper = btn.closest('.code-block-wrapper');
+        var code = wrapper && wrapper.querySelector('pre code');
+        if (!code) return;
+        var html = code.textContent || '';
+        if (window.SbWebViewer && window.SbWebViewer.openHtml) {
+            window.SbWebViewer.openHtml(html, 'HTML 预览');
+            return;
+        }
+        var blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+        window.open(blobUrl, '_blank', 'noopener');
+        setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 60000);
+    });
 })();

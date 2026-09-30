@@ -120,6 +120,38 @@
     height: 14px;
 }
 
+/* HTML 代码块的「在侧边栏打开」按钮：与复制按钮同款，靠 margin-left:auto 推到右侧 */
+.markdown-body .code-open-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: #57606a;
+    cursor: pointer;
+    margin-left: auto;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.markdown-body .code-open-btn:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: #1f2328;
+}
+
+.markdown-body .code-open-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* 两个按钮同现时：右推交给前一个，复制按钮只留一点间距 */
+.markdown-body .code-open-btn + .code-copy-btn {
+    margin-left: 4px;
+}
+
 .markdown-body pre {
     background: #f6f8fa;
     color: #24292e;

@@ -357,6 +357,18 @@ const API = (function () {
             delete: function (id) { return get('cron-job/delete?id=' + encodeURIComponent(id)); }
         },
 
+        /* ---------- 网页内嵌探测 ---------- */
+        web: {
+            /**
+             * 问后端某个地址能否用 iframe 内嵌（后端读 X-Frame-Options / CSP frame-ancestors）。
+             * @returns {Promise<{status:number,data:{frameable:boolean,reason:string|null}}>}
+             */
+            frameable: function (url) {
+                return get('web/frameable?url=' + encodeURIComponent(url)
+                    + '&origin=' + encodeURIComponent(window.location.origin));
+            }
+        },
+
         /* ---------- 消息 ---------- */
         message: {
             getHistory: function (sessionId) {
