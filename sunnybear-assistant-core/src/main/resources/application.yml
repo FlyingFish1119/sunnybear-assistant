@@ -34,7 +34,7 @@ assistant:
   file:
     base-path: data/
   settings:
-    base-path: settings/
+    base-path: ${assistant.file.base-path}settings/
   cache:
     max-size: 1000
     expire-minutes: 10
@@ -47,7 +47,7 @@ assistant:
 
 # QQ Bot（OneBot）配置
 plug:
-  file-path: plugins/
+  file-path: ${assistant.file.base-path}plugins/
   qq:
     bot:
       api-url: http://127.0.0.1:3000

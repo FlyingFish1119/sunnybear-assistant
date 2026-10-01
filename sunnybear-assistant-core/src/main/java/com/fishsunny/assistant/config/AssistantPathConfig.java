@@ -18,6 +18,6 @@ public class AssistantPathConfig {
     @Value("${assistant.file.base-path:data/}")
     private String fileBasePath;
 
-    @Value("${assistant.settings.base-path:settings/}")
+    @Value("${assistant.settings.base-path:data/settings/}")
     private String settingsBasePath;
 }

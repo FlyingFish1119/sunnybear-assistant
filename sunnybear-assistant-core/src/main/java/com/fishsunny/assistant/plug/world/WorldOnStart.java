@@ -25,7 +25,7 @@ import java.nio.file.Files;
 @Component
 public class WorldOnStart implements InitializingBean {
 
-    @Value("${plug.file-path:plugin/}")
+    @Value("${plug.file-path:data/plugin/}")
     private String filePath;
 
     @Override

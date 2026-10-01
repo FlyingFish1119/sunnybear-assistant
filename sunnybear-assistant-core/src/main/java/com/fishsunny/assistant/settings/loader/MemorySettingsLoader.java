@@ -27,7 +27,7 @@ public class MemorySettingsLoader {
 
     private static final String MEMORY_SETTINGS_JSON = "memory_settings.json";
 
-    @Value("${assistant.settings.base-path:settings/}")
+    @Value("${assistant.settings.base-path:data/settings/}")
     private String basePath;
 
     private final ObjectMapper objectMapper;

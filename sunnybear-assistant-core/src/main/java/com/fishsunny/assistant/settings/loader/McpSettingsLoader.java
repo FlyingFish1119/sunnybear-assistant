@@ -27,7 +27,7 @@ public class McpSettingsLoader {
 
     private static final String MCP_SETTINGS_JSON = "mcp_settings.json";
 
-    @Value("${assistant.settings.base-path:settings/}")
+    @Value("${assistant.settings.base-path:data/settings/}")
     private String basePath;
 
     private final ObjectMapper objectMapper;

@@ -27,7 +27,7 @@ public class KnowledgeSettingsLoader {
 
     private static final String KNOWLEDGE_SETTINGS_JSON = "knowledge_settings.json";
 
-    @Value("${assistant.settings.base-path:settings/}")
+    @Value("${assistant.settings.base-path:data/settings/}")
     private String basePath;
 
     private final ObjectMapper objectMapper;

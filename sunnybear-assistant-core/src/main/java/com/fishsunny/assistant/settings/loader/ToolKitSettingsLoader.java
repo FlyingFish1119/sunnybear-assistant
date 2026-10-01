@@ -27,7 +27,7 @@ public class ToolKitSettingsLoader {
 
     private static final String TOOLKIT_SETTINGS_JSON = "toolkit_settings.json";
 
-    @Value("${assistant.settings.base-path:settings/}")
+    @Value("${assistant.settings.base-path:data/settings/}")
     private String basePath;
 
     private final ObjectMapper objectMapper;

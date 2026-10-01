@@ -29,7 +29,7 @@ public class AISettingsLoader {
 
     private static final String AI_SETTINGS_JSON = "ai_settings.json";
 
-    @Value("${assistant.settings.base-path:settings/}")
+    @Value("${assistant.settings.base-path:data/settings/}")
     private String basePath;
 
     private final ObjectMapper objectMapper;

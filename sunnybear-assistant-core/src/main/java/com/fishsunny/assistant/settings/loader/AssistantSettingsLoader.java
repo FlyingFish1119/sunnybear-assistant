@@ -27,7 +27,7 @@ public class AssistantSettingsLoader {
 
     private static final String ASSISTANT_SETTINGS_JSON = "assistant_settings.json";
 
-    @Value("${assistant.settings.base-path:settings/}")
+    @Value("${assistant.settings.base-path:data/settings/}")
     private String basePath;
 
     private final ObjectMapper objectMapper;
