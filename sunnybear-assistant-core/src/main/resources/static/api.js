@@ -333,9 +333,9 @@ const API = (function () {
             upload: function (file, dir) {
                 return upload('core/file/upload?path=' + encodeURIComponent(dir || ''), file);
             },
-            /** 会话文件转存到核心库（提升为核心），返回落盘相对路径 */
-            promote: function (sessionId, path) {
-                return post('core/file/promote', { sessionId: sessionId, path: path });
+            /** 会话文件 / 目录转存到核心库（提升为核心），返回落盘相对路径；name 可选，指定核心库里的名字 */
+            promote: function (sessionId, path, name) {
+                return post('core/file/promote', { sessionId: sessionId, path: path, name: name || '' });
             },
             /** 文件原始内容的 URL（图片预览 / 下载 / 转附件） */
             rawUrl: function (path) {

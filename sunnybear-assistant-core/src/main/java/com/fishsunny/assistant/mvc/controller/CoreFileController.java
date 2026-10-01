@@ -186,20 +186,22 @@ public class CoreFileController {
     }
 
     /**
-     * 会话文件转存到核心库（「提升为核心」）：复制一份到核心根目录，原文件保留不动。
-     * 同名自动加序号，返回落盘后的相对路径。
+     * 会话文件 / 目录转存到核心库（「提升为核心」）：复制一份到核心根目录，原文件保留不动。
+     * 目录会连同子目录、文件一起递归复制；同名自动加序号，返回落盘后的相对路径。
+     * <p>{@code name} 可选，用于指定核心库里的落盘名（如「整个会话存为核心」时取会话名）。
      */
     @PostMapping("/promote")
     public RestResponse promote(@RequestBody(required = false) FileRequest request) {
-        String invalid = validate(request);
-        if (invalid != null) {
-            return new RestResponse().error(invalid);
+        if (request == null) {
+            return new RestResponse().error("请求体不能为空");
         }
         if (!StringUtils.hasText(request.getSessionId())) {
             return new RestResponse().error("会话 ID 不能为空");
         }
+        // path 允许为空：表示整个会话文件根目录，用于「整个会话存为核心文件夹」
         try {
-            String savedPath = coreFileManager.promoteFromSession(request.getSessionId(), request.getPath());
+            String savedPath = coreFileManager.promoteFromSession(
+                    request.getSessionId(), request.getPath(), request.getName());
             return new RestResponse().success(savedPath);
         } catch (Exception e) {
             log.error("提升会话文件失败: sessionId={}, path={}", request.getSessionId(), request.getPath(), e);
@@ -233,5 +235,8 @@ public class CoreFileController {
 
         /** 会话 ID（仅 promote 用） */
         private String sessionId;
+
+        /** 落盘名（仅 promote 用，可选；指定核心库里的文件名 / 文件夹名） */
+        private String name;
     }
 }

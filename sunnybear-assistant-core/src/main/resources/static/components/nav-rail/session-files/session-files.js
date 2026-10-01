@@ -13,6 +13,16 @@
  *   图片 → 直接显示（走 /session/file/raw）
  *   其他 → 提示下载
  *
+ * 提升为核心（会话模式）：
+ *   · 单个文件行 → 复制进核心根目录
+ *   · 目录行（含子目录）→ 递归复制，核心库里保留目录结构
+ *   · 顶部「整个会话存为核心」→ 把会话文件根目录整体存成核心库里的一个文件夹
+ *
+ * 树内拖拽（会话 / 核心两模式通用）：
+ *   拖动任意文件 / 目录行到某个目录行（或面板空白处 = 根目录）即可移动；
+ *   拖到文件行按该文件所在目录处理。落点会高亮，非法落点（原地 / 进自己或子孙）拒绝。
+ *   拖拽来源为操作系统文件时，仍走原来的上传逻辑（拖到目录行进该目录）。
+ *
  * 目录：树形懒加载，点开目录才拉那一层（接口一次只回一层，不递归）。
  * 增删改的二次确认全部走项目自绘的 confirm-dialog（跟会话删除、知识删除同一套视觉）：
  * 删除用 danger 类型；新建 / 改名传 inputValue，走它带输入框的形态。
@@ -43,11 +53,11 @@ const SessionFiles = {
     <div v-if="visible" class="session-files-overlay" @click.self="closeAll">
         <!-- 第一层：资源树（支持拖拽上传：拖到目录行进该目录，拖到空白进根） -->
         <aside class="sf-drawer sf-drawer--tree"
-               :class="{ 'is-dragover': dragCounter > 0 }"
-               @dragenter.prevent="onDragEnter"
-               @dragover.prevent
-               @dragleave.prevent="onDragLeave"
-               @drop.prevent="onDrop($event, '')">
+               :class="{ 'is-dragover': dragCounter > 0, 'is-drop-target': dragRow && dropTargetPath === '' }"
+               @dragenter.prevent="onRootDragEnter"
+               @dragover.prevent="onRootDragOver"
+               @dragleave.prevent="onRootDragLeave"
+               @drop.prevent="onRootDrop">
             <div class="sf-head">
                 <div class="sf-title">
                     <i :data-lucide="mode === 'core' ? 'gem' : 'folder-open'"></i>
@@ -61,9 +71,6 @@ const SessionFiles = {
                 </button>
                 <button class="sf-btn" title="新建文件" @click="createFile">
                     <i data-lucide="file-plus"></i>
-                </button>
-                <button class="sf-btn" title="刷新" @click="refreshAll">
-                    <i data-lucide="refresh-cw"></i>
                 </button>
                 <button class="sf-btn" title="关闭" @click="closeAll">
                     <i data-lucide="x"></i>
@@ -83,14 +90,22 @@ const SessionFiles = {
                     <div v-for="row in treeRows"
                          :key="row.path"
                          class="sf-tree-row"
-                         :class="{ 'is-dir': row.directory, 'is-active': current && current.path === row.path }"
+                         :class="{
+                             'is-dir': row.directory,
+                             'is-active': current && current.path === row.path,
+                             'is-dragging': dragRow && dragRow.path === row.path,
+                             'is-drop-target': dragRow && row.directory && dropTargetPath === row.path
+                         }"
                          :style="{ paddingLeft: (8 + row.depth * 14) + 'px' }"
                          :title="row.path"
+                         draggable="true"
                          @click="onRowClick(row)"
-                         @dragenter.stop.prevent="onDragEnter"
-                         @dragover.stop.prevent
-                         @dragleave.stop.prevent="onDragLeave"
-                         @drop.stop.prevent="onDrop($event, row.directory ? row.path : parentDir(row.path))">
+                         @dragstart.stop="onRowDragStart($event, row)"
+                         @dragend.stop="onRowDragEnd"
+                         @dragenter.stop.prevent="onRowDragEnter($event, row)"
+                         @dragover.stop.prevent="onRowDragOver($event, row)"
+                         @dragleave.stop.prevent="onRowDragLeave($event, row)"
+                         @drop.stop.prevent="onRowDrop($event, row)">
                         <span class="sf-row-icon"><i :data-lucide="rowIcon(row)"></i></span>
                         <span class="sf-row-name">{{ row.name }}</span>
                         <span class="sf-row-size">{{ row.directory ? '' : formatSize(row.size) }}</span>
@@ -98,7 +113,9 @@ const SessionFiles = {
                             <button v-if="!row.directory" class="sf-row-btn" title="加载到发送栏" @click="loadToSendbar(row)">
                                 <i data-lucide="paperclip"></i>
                             </button>
-                            <button v-if="mode === 'session' && !row.directory" class="sf-row-btn" title="提升为核心文件" @click="promoteToCore(row)">
+                            <button v-if="mode === 'session' && sessionId" class="sf-row-btn"
+                                    :title="row.directory ? '整个文件夹存为核心文件' : '提升为核心文件'"
+                                    @click="promoteToCore(row)">
                                 <i data-lucide="gem"></i>
                             </button>
                             <button class="sf-row-btn" title="重命名" @click="renameFile(row)">
@@ -136,6 +153,18 @@ const SessionFiles = {
                         </template>
                     </div>
                 </div>
+            </div>
+            <!-- 底部操作栏：整个会话存为核心（仅会话模式）+ 刷新；头部只留高频的开关/上传/新建 -->
+            <div class="sf-foot">
+                <button v-if="mode === 'session' && sessionId" class="sf-foot-btn sf-foot-btn--primary"
+                        title="把整个会话文件目录存为核心库里的一个文件夹" @click="promoteSession">
+                    <i data-lucide="folder-up"></i>
+                    <span>整个会话存为核心</span>
+                </button>
+                <button class="sf-foot-btn sf-foot-btn--end" title="刷新" @click="refreshAll">
+                    <i data-lucide="refresh-cw"></i>
+                    <span>刷新</span>
+                </button>
             </div>
         </aside>
 
@@ -195,6 +224,10 @@ const SessionFiles = {
             mode: 'session',
             /* 拖拽进入计数（子元素 dragenter/leave 触发频繁，用计数维持稳定态） */
             dragCounter: 0,
+
+            /* 树内拖拽移动：正在拖动的条目 + 当前落点目录（'' 为根目录） */
+            dragRow: null,
+            dropTargetPath: null,
 
             /* 目录树：path -> 该层条目数组（'' 表示根目录） */
             childrenMap: {},
@@ -359,11 +392,17 @@ const SessionFiles = {
 
         /* ==================== 目录树 ==================== */
 
-        async loadDir(dirPath) {
+        /**
+         * 拉取并替换某一层目录的缓存。
+         * @param dirPath 目录相对路径，空串为根目录
+         * @param silent  静默刷新：根目录已有内容时不再切到「加载中…」占位（用于增删改后的局部刷新）
+         */
+        async loadDir(dirPath, silent) {
             if (this.mode === 'session' && !this.sessionId) return;
+            const isRoot = !dirPath;
             if (dirPath) {
                 this.dirLoadingSet = Object.assign({}, this.dirLoadingSet, { [dirPath]: true });
-            } else {
+            } else if (!silent) {
                 this.rootLoading = true;
             }
             try {
@@ -379,7 +418,7 @@ const SessionFiles = {
                 const next = Object.assign({}, this.dirLoadingSet);
                 delete next[dirPath];
                 this.dirLoadingSet = next;
-                this.rootLoading = false;
+                if (isRoot && !silent) this.rootLoading = false;
             }
         },
 
@@ -403,11 +442,16 @@ const SessionFiles = {
             return idx < 0 ? '' : path.substring(0, idx);
         },
 
-        /** 逐层展开并刷新 path 的祖先目录，保证改完名 / 新建完能立刻看见 */
+        /**
+         * 逐层展开并刷新 path 的祖先目录，保证改完名 / 新建完能立刻看见。
+         * <p>必须从根目录一起刷新：新建 a/b.txt 时 a 是新建目录，根目录缓存里还没有它，
+         * 只刷 a 而不刷根，树仍然是空的，得手动刷新才出现。
+         */
         async refreshPath(path) {
             const dir = this.parentDir(path);
             const parts = dir ? dir.split('/') : [];
             const next = Object.assign({}, this.expanded);
+            await this.loadDir('', true);
             let acc = '';
             for (const part of parts) {
                 acc = acc ? acc + '/' + part : part;
@@ -415,7 +459,6 @@ const SessionFiles = {
                 await this.loadDir(acc);
             }
             this.expanded = next;
-            await this.loadDir(dir);
         },
 
         /* ==================== 打开文件 ==================== */
@@ -625,7 +668,9 @@ const SessionFiles = {
             try {
                 await dialog.show({
                     title: row.directory ? '删除目录' : '删除文件',
-                    message: '确定要删除「' + row.path + '」吗？此操作不可恢复。',
+                    message: row.directory
+                        ? '确定要删除目录「' + row.path + '」及其中的所有文件吗？此操作不可恢复。'
+                        : '确定要删除「' + row.path + '」吗？此操作不可恢复。',
                     confirmText: '删除',
                     cancelText: '取消',
                     type: 'danger'
@@ -704,19 +749,162 @@ const SessionFiles = {
             await this.uploadFiles(files, '');
         },
 
-        onDragEnter() {
-            this.dragCounter++;
+        /* ---------- 拖拽：区分「系统文件上传」与「树内移动」 ---------- */
+
+        /** 判断这次拖拽是不是操作系统拖进来的文件（树内拖动由 dragRow 单独标记） */
+        isFileDragEvent(e) {
+            if (this.dragRow) return false;
+            const dt = e.dataTransfer;
+            if (!dt || !dt.types) return false;
+            return Array.from(dt.types).indexOf('Files') >= 0;
         },
 
-        onDragLeave() {
+        /* ---------- 树内拖拽移动 ---------- */
+
+        onRowDragStart(e, row) {
+            this.dragRow = { path: row.path, name: row.name, directory: row.directory };
+            this.dropTargetPath = null;
+            this.dragCounter = 0;
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                // 部分浏览器没有 text/plain 数据时不会派发 drop，这里兜一个
+                e.dataTransfer.setData('text/plain', row.path);
+            }
+        },
+
+        onRowDragEnd() {
+            this.dragRow = null;
+            this.dropTargetPath = null;
+            this.dragCounter = 0;
+        },
+
+        /** 落点合法性：不能原地不动，也不能把目录拖进自己或自己的子孙目录 */
+        canDropInto(targetDir) {
+            const row = this.dragRow;
+            if (!row) return false;
+            const target = targetDir || '';
+            if (target === this.parentDir(row.path)) return false;
+            if (row.directory && (target === row.path || target.startsWith(row.path + '/'))) return false;
+            return true;
+        },
+
+        onRowDragEnter(e, row) {
+            if (this.dragRow) {
+                if (row.directory && this.canDropInto(row.path)) this.dropTargetPath = row.path;
+                return;
+            }
+            if (this.isFileDragEvent(e)) this.onRootDragEnter(e);
+        },
+
+        onRowDragOver(e, row) {
+            if (this.dragRow) {
+                if (row.directory && this.canDropInto(row.path)) {
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                    this.dropTargetPath = row.path;
+                } else if (e.dataTransfer) {
+                    e.dataTransfer.dropEffect = 'none';
+                }
+                return;
+            }
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        },
+
+        onRowDragLeave(e, row) {
+            if (this.dragRow) {
+                if (this.dropTargetPath === row.path) this.dropTargetPath = null;
+                return;
+            }
+            this.onRootDragLeave();
+        },
+
+        /** 行上的 drop：树内拖动按目录移动；系统文件按其所在目录上传 */
+        async onRowDrop(e, row) {
+            const dir = row.directory ? row.path : this.parentDir(row.path);
+            if (this.dragRow) {
+                await this.moveRowTo(this.dragRow, dir);
+                this.onRowDragEnd();
+                return;
+            }
+            await this.onRootDrop(e, dir);
+        },
+
+        /* ---------- 面板空白（根目录）拖拽 ---------- */
+
+        onRootDragEnter(e) {
+            if (this.dragRow) {
+                if (this.canDropInto('')) this.dropTargetPath = '';
+                return;
+            }
+            if (this.isFileDragEvent(e)) this.dragCounter++;
+        },
+
+        onRootDragOver(e) {
+            if (this.dragRow) {
+                if (this.canDropInto('')) {
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                    this.dropTargetPath = '';
+                } else if (e.dataTransfer) {
+                    e.dataTransfer.dropEffect = 'none';
+                }
+                return;
+            }
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        },
+
+        onRootDragLeave() {
+            if (this.dragRow) {
+                this.dropTargetPath = null;
+                return;
+            }
             this.dragCounter = Math.max(0, this.dragCounter - 1);
         },
 
-        async onDrop(e, dirPath) {
+        /** 根目录 / 指定目录的 drop：dirPath 省略时落到根目录 */
+        async onRootDrop(e, dirPath) {
+            const targetDir = typeof dirPath === 'string' ? dirPath : '';
+            if (this.dragRow) {
+                await this.moveRowTo(this.dragRow, targetDir);
+                this.onRowDragEnd();
+                return;
+            }
             this.dragCounter = 0;
             const files = e.dataTransfer && e.dataTransfer.files;
             if (!files || !files.length) return;
-            await this.uploadFiles(files, dirPath || '');
+            await this.uploadFiles(files, targetDir || '');
+        },
+
+        /** 树内移动：把条目挪到目标目录下（同名冲突时后端会拒绝并提示） */
+        async moveRowTo(row, targetDir) {
+            if (!row) return;
+            const target = targetDir || '';
+            if (target === this.parentDir(row.path)) return;
+            if (row.directory && (target === row.path || target.startsWith(row.path + '/'))) return;
+            const newPath = target ? target + '/' + row.name : row.name;
+            try {
+                const res = await this.fileApi().rename(row.path, newPath);
+                if (res.status === 200) {
+                    if (window.SbToast) {
+                        window.SbToast.success('已移动到「' + (target || '根目录') + '」');
+                    }
+                    // 正在编辑的就是它 → 跟到新路径，否则继续保存会写回旧名字
+                    if (this.current && this.current.path === row.path) {
+                        this.current = { name: row.name, path: newPath, directory: false };
+                    }
+                    // 目标目录（含根目录 ''）先展开，保证移动后立刻能看见
+                    if (target) {
+                        this.expanded = Object.assign({}, this.expanded, { [target]: true });
+                    }
+                    // 源目录与目标目录都要刷新：源里少一条、目标里多一条；
+                    // 目标是根目录（''）时同样要重拉，否则拖出文件夹后根目录不更新
+                    const fromDir = this.parentDir(row.path);
+                    await this.loadDir(fromDir, fromDir === '');
+                    await this.loadDir(target, target === '');
+                } else if (window.SbToast) {
+                    window.SbToast.error(res.message || '移动失败');
+                }
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('移动失败: ' + e.message);
+            }
         },
 
         /** 逐个上传到当前模式的指定目录；落盘名以返回为准（同名会自动加序号） */
@@ -935,18 +1123,60 @@ const SessionFiles = {
             if (window.SbToast) window.SbToast.success('「' + row.name + '」已加入发送栏');
         },
 
-        /** 会话文件转存一份到核心库（提升为核心），原文件保留不动 */
+        /** 会话文件 / 目录转存一份到核心库（提升为核心），原文件保留不动 */
         async promoteToCore(row) {
-            if (row.directory || !this.sessionId) return;
+            if (!this.sessionId) return;
             try {
                 const res = await API.coreFile.promote(this.sessionId, row.path);
                 if (res.status === 200) {
-                    if (window.SbToast) window.SbToast.success('已提升为核心文件：' + res.data);
+                    if (window.SbToast) {
+                        window.SbToast.success(
+                            (row.directory ? '文件夹已存为核心：' : '已提升为核心文件：') + res.data);
+                    }
                 } else if (window.SbToast) {
                     window.SbToast.error(res.message || '提升失败');
                 }
             } catch (e) {
                 if (window.SbToast) window.SbToast.error('提升失败: ' + e.message);
+            }
+        },
+
+        /** 把当前会话的整个文件目录存为核心库里的一个文件夹（保留目录结构），原文件保留不动 */
+        async promoteSession() {
+            if (!this.sessionId) return;
+            const dialog = this.$refs.confirmDialog;
+            if (!dialog) return;
+            const store = this.sessionStore;
+            const defaultName = (store && store.currentSession && store.currentSession.name)
+                || ('session-' + String(this.sessionId).slice(0, 8));
+            let input;
+            try {
+                input = await dialog.show({
+                    title: '整个会话存为核心文件夹',
+                    message: '会话里的全部文件会复制一份到核心库，保留目录结构；原文件保留不动',
+                    confirmText: '保存',
+                    cancelText: '取消',
+                    type: 'info',
+                    inputValue: defaultName,
+                    inputPlaceholder: '核心库里的文件夹名'
+                });
+            } catch (e) {
+                return;   // 取消
+            }
+            input = String(input || '').trim();
+            if (!input) {
+                if (window.SbToast) window.SbToast.warning('文件夹名不能为空');
+                return;
+            }
+            try {
+                const res = await API.coreFile.promote(this.sessionId, '', input);
+                if (res.status === 200) {
+                    if (window.SbToast) window.SbToast.success('已存为核心文件夹：' + res.data);
+                } else if (window.SbToast) {
+                    window.SbToast.error(res.message || '保存失败');
+                }
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('保存失败: ' + e.message);
             }
         },
 

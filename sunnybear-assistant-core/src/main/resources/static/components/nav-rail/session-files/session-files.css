@@ -121,6 +121,25 @@
     background: #fff6ef;
 }
 
+/* ---- 树内拖拽移动 ---- */
+/* 正在被拖动的行：淡出，表明它会被挪走 */
+.sf-tree-row.is-dragging{
+    opacity: 0.45;
+}
+
+/* 目录行作为落点：主题色高亮 + 虚线框 */
+.sf-tree-row.is-drop-target{
+    background: color-mix(in srgb, var(--main-color, #FFA07A) 22%, #fff);
+    outline: 1.5px dashed var(--main-color, #FFA07A);
+    outline-offset: -1.5px;
+}
+
+/* 拖到面板空白 = 落到根目录：整片面板给个虚线提示 */
+.sf-drawer--tree.is-drop-target{
+    outline: 2px dashed var(--main-color, #FFA07A);
+    outline-offset: -6px;
+}
+
 /* ---- 第一层：资源树 ---- */
 .sf-tree{
     flex: 1;
@@ -201,6 +220,50 @@
 .sf-row-btn svg{ width: 13px; height: 13px; display: block; }
 .sf-row-btn:hover{ background: #e8eaed; color: #333; }
 .sf-row-btn.is-danger:hover{ background: #fdecec; color: #e5484d; }
+
+/* ---- 底部操作栏 ---- */
+.sf-foot{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+}
+
+.sf-foot-btn{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid rgba(0, 0, 0, 0.10);
+    border-radius: 8px;
+    background: #fff;
+    color: #444;
+    font-size: 12.5px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.sf-foot-btn svg{ width: 15px; height: 15px; flex: none; }
+.sf-foot-btn:hover{ background: #f4f5f7; color: #222; border-color: rgba(0, 0, 0, 0.16); }
+
+/* 刷新按钮推到最右；只有它时也贴右 */
+.sf-foot-btn--end{ margin-left: auto; }
+
+.sf-foot-btn--primary{
+    border-color: transparent;
+    background: color-mix(in srgb, var(--main-color, #FFA07A) 18%, #fff);
+    color: color-mix(in srgb, var(--main-color, #FFA07A) 68%, #333);
+}
+.sf-foot-btn--primary:hover{
+    background: color-mix(in srgb, var(--main-color, #FFA07A) 30%, #fff);
+    border-color: transparent;
+    color: color-mix(in srgb, var(--main-color, #FFA07A) 78%, #222);
+}
 
 .sf-empty,
 .sf-hint{

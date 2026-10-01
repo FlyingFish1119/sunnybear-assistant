@@ -418,8 +418,8 @@ public class SessionFileManager {
     }
 
     /**
-     * 删除文件或空目录。
-     * <p>只允许删空目录：手滑删掉一整个目录的代价太大，非空目录先让用户自己清空。
+     * 删除文件或目录（目录递归删除，连同其下所有内容）。
+     * <p>根目录本身受保护，不允许删除；前端在删除目录前会给出递归删除的二次确认。
      */
     public void deleteSessionFile(String sessionId, String relativePath) throws IOException {
         Path rootDir = buildSessionDirPath(sessionId).toAbsolutePath().normalize();
@@ -430,14 +430,20 @@ public class SessionFileManager {
         if (!Files.exists(path)) {
             throw new IllegalArgumentException("文件不存在: " + relativePath);
         }
-        if (Files.isDirectory(path)) {
-            try (Stream<Path> children = Files.list(path)) {
-                if (children.findAny().isPresent()) {
-                    throw new IllegalArgumentException("目录非空，请先删除其中的文件: " + relativePath);
-                }
+        deleteRecursively(path);
+    }
+
+    /** 递归删除：目录先删内容再删自身（Files.walk 逆序保证子项先于父项） */
+    private void deleteRecursively(Path path) throws IOException {
+        if (!Files.isDirectory(path)) {
+            Files.delete(path);
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(path)) {
+            for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.delete(p);
             }
         }
-        Files.delete(path);
     }
 
     /** 文件相对会话文件目录的路径（统一 / 分隔，供前端做树形 key） */

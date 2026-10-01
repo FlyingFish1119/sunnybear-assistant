@@ -159,8 +159,8 @@ public class CoreFileManager {
     }
 
     /**
-     * 删除文件或空目录。
-     * <p>只允许删空目录：手滑删掉一整个目录的代价太大，非空目录先让用户自己清空。
+     * 删除文件或目录（目录递归删除，连同其下所有内容）。
+     * <p>根目录本身受保护，不允许删除；前端在删除目录前会给出递归删除的二次确认。
      */
     public void deleteCoreFile(String relativePath) throws IOException {
         Path rootDir = buildCoreDirPath().toAbsolutePath().normalize();
@@ -171,14 +171,20 @@ public class CoreFileManager {
         if (!Files.exists(path)) {
             throw new IllegalArgumentException("文件不存在: " + relativePath);
         }
-        if (Files.isDirectory(path)) {
-            try (Stream<Path> children = Files.list(path)) {
-                if (children.findAny().isPresent()) {
-                    throw new IllegalArgumentException("目录非空，请先删除其中的文件: " + relativePath);
-                }
+        deleteRecursively(path);
+    }
+
+    /** 递归删除：目录先删内容再删自身（Files.walk 逆序保证子项先于父项） */
+    private void deleteRecursively(Path path) throws IOException {
+        if (!Files.isDirectory(path)) {
+            Files.delete(path);
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(path)) {
+            for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.delete(p);
             }
         }
-        Files.delete(path);
     }
 
     /* ======================== 上传 / 转存（同名自动加序号） ======================== */
@@ -202,20 +208,52 @@ public class CoreFileManager {
     }
 
     /**
-     * 会话文件转存到核心库（「提升为核心」）：复制一份到核心根目录，
+     * 会话文件 / 目录转存到核心库（「提升为核心」）：复制一份到核心根目录，
      * 原文件保留在会话里不动。同名自动加序号，返回落盘后的相对路径。
+     * <p>目录会连同子目录、文件一起递归复制，在核心库里保留原目录结构。
      */
     public String promoteFromSession(String sessionId, String sessionPath) throws IOException {
+        return promoteFromSession(sessionId, sessionPath, null);
+    }
+
+    /**
+     * 会话文件 / 目录转存到核心库，并允许指定落盘名。
+     * <p>targetName 为空时沿用源条目名；用于「整个会话存为核心」时取会话名做文件夹名。
+     */
+    public String promoteFromSession(String sessionId, String sessionPath, String targetName) throws IOException {
         Path source = sessionFileManager.resolveSessionFilePath(sessionId, sessionPath);
-        if (!Files.isRegularFile(source)) {
+        if (!Files.exists(source)) {
             throw new IllegalArgumentException("会话文件不存在: " + sessionPath);
         }
-        String safeName = SessionFileManager.sanitizeFileName(source.getFileName().toString());
+        String rawName = StringUtils.hasText(targetName)
+                ? targetName
+                : source.getFileName().toString();
+        String safeName = SessionFileManager.sanitizeFileName(rawName);
         Path target = SessionFileManager.uniquePath(buildCoreDirPath(), safeName);
-        Files.createDirectories(target.getParent());
-        Files.copy(source, target);
-        log.info("会话文件提升为核心: {} -> {}", sessionPath, relativePathOf(target));
+        if (Files.isDirectory(source)) {
+            copyDirectoryInto(source, target);
+            log.info("会话目录提升为核心: {} -> {}", sessionPath, relativePathOf(target));
+        } else {
+            Files.createDirectories(target.getParent());
+            Files.copy(source, target);
+            log.info("会话文件提升为核心: {} -> {}", sessionPath, relativePathOf(target));
+        }
         return relativePathOf(target);
+    }
+
+    /** 递归复制目录，在 targetDir 下重建 sourceDir 的完整结构（targetDir 本身也随之创建） */
+    private void copyDirectoryInto(Path sourceDir, Path targetDir) throws IOException {
+        try (Stream<Path> walk = Files.walk(sourceDir)) {
+            for (Path path : walk.toList()) {
+                Path dest = targetDir.resolve(sourceDir.relativize(path).toString());
+                if (Files.isDirectory(path)) {
+                    Files.createDirectories(dest);
+                } else {
+                    Files.createDirectories(dest.getParent());
+                    Files.copy(path, dest);
+                }
+            }
+        }
     }
 
     /**
