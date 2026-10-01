@@ -15,16 +15,17 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.plug.world.service.WorldGroupChatService;
 import com.fishsunny.assistant.plug.world.service.WorldSessionBindings;
-import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
-import com.fishsunny.assistant.websocket.SessionMessageBus;
-import com.fishsunny.assistant.websocket.SynchronizedWebSocketSession;
+import com.fishsunny.assistant.websocket.ws.ChatWebSocketHandler;
+import com.fishsunny.assistant.websocket.provider.DefaultChatProviderFactory;
+import com.fishsunny.assistant.websocket.ws.SessionMessageBus;
+import com.fishsunny.assistant.websocket.ws.SynchronizedWebSocketSession;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
-import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestHandler;
-import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestHandlerFactory;
-import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestProvider;
-import com.fishsunny.assistant.websocket.processor.request.ChatSessionModeParseResult;
+import com.fishsunny.assistant.websocket.request.ChatMessageRequestHandler;
+import com.fishsunny.assistant.websocket.request.ChatMessageRequestHandlerFactory;
+import com.fishsunny.assistant.websocket.request.ChatMessageRequestProvider;
+import com.fishsunny.assistant.websocket.request.ChatSessionModeParseResult;
 import lombok.extern.slf4j.Slf4j;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,12 +44,13 @@ import org.springframework.web.socket.WebSocketSession;
         public WorldGroupChatSocketHandler(ServiceProcessor serviceProcessor,
                                            TempChatProcessor tempChatProcessor,
                                            ChatProcessor chatProcessor,
+                                           DefaultChatProviderFactory defaultChatProviderFactory,
                                            TaskExecutor chatAsyncExecutor,
                                            ObjectMapper objectMapper,
                                            SessionMessageBus sessionMessageBus,
                                            ChatMessageRequestHandlerFactory chatMessageRequestHandlerFactory,
                                            WorldGroupChatService groupChatService) {
-            super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper, sessionMessageBus, chatMessageRequestHandlerFactory);
+            super(serviceProcessor, tempChatProcessor, chatProcessor, defaultChatProviderFactory, chatAsyncExecutor, objectMapper, sessionMessageBus, chatMessageRequestHandlerFactory);
             this.groupChatService = groupChatService;
         }
 

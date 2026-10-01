@@ -3,7 +3,7 @@ package com.fishsunny.assistant.config;
 import com.fishsunny.assistant.remote.RepoRpcServerHandler;
 import com.fishsunny.assistant.terminal.TerminalHandshakeInterceptor;
 import com.fishsunny.assistant.terminal.TerminalWebSocketHandler;
-import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
+import com.fishsunny.assistant.websocket.ws.ChatWebSocketHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;

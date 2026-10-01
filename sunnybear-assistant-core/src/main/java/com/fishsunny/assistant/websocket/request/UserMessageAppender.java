@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket.processor.request;
+package com.fishsunny.assistant.websocket.request;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
@@ -8,7 +8,7 @@ import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResp
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.settings.UserSettings;
-import com.fishsunny.assistant.websocket.SessionMessageBus;
+import com.fishsunny.assistant.websocket.ws.SessionMessageBus;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;

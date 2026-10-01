@@ -86,7 +86,6 @@ public class FileEditTool implements ToolHandler {
     @ToolIncludeContext(key = {"session", "chatSession"}, type = {WebSocketSession.class, ChatSession.class})
     public synchronized ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
-            WebSocketSession session = (WebSocketSession) context.get("session");
             ChatSession chatSession = (ChatSession) context.get("chatSession");
 
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
@@ -157,10 +156,6 @@ public class FileEditTool implements ToolHandler {
                     }
                     default:
                         throw new ToolExecutor.ToolExecuteException("FileEdit 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
-                }
-
-                if (!session.isOpen()) {
-                    throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
                 }
             }
 
@@ -445,7 +440,7 @@ public class FileEditTool implements ToolHandler {
                 + "**变更预览：**\n\n"
                 + previewContent + "\n\n"
                 + "> 请确认此编辑操作安全后再允许执行。";
-        securityService.ask(NAME, message, 60, context);
+        securityService.ask(NAME, message, null, context);
     }
 
     // ======================== ToolHandler 接口实现 ========================

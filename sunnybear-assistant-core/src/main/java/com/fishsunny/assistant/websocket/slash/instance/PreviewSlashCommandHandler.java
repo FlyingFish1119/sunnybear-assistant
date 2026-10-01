@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket.processor.slash.instance;
+package com.fishsunny.assistant.websocket.slash.instance;
 
 /*
  * @Usage 预览当前处理后的系统提示词（变量替换、知识库/记忆注入、自定义 provider 均已生效）
@@ -12,8 +12,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.settings.AssistantSettings;
-import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandComponent;
-import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandHandler;
+import com.fishsunny.assistant.websocket.slash.framework.SlashCommandComponent;
+import com.fishsunny.assistant.websocket.slash.framework.SlashCommandHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;

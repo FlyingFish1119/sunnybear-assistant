@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket;
+package com.fishsunny.assistant.websocket.ws;
 
 /*
  * @Usage 空操作 WebSocket 会话 —— 供 cron 等无前端连接的场景复用 ChatWebSocketHandler 流程

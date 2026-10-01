@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket.processor.request;
+package com.fishsunny.assistant.websocket.request;
 
 /*
  * @Usage

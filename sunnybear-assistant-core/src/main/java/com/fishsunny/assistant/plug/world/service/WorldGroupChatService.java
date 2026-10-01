@@ -23,7 +23,8 @@ import com.fishsunny.assistant.plug.world.entity.WorldKnowledge;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.UserSettings;
-import com.fishsunny.assistant.websocket.ChatProvider;
+import com.fishsunny.assistant.websocket.provider.ChatProvider;
+import com.fishsunny.assistant.websocket.provider.DefaultChatProviderFactory;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -81,6 +82,7 @@ public class WorldGroupChatService {
     private final ChatHttpHandler chatHttpHandler;
     private final UserSettings userSettings;
     private final ObjectMapper objectMapper;
+    private final DefaultChatProviderFactory defaultChatProviderFactory;
 
     public WorldGroupChatService(ChatSessionService chatSessionService,
                                  WorldInfoService worldInfoService,
@@ -90,7 +92,8 @@ public class WorldGroupChatService {
                                  ChatProcessor chatProcessor,
                                  ChatHttpHandler chatHttpHandler,
                                  UserSettings userSettings,
-                                 ObjectMapper objectMapper) {
+                                 ObjectMapper objectMapper,
+                                 DefaultChatProviderFactory defaultChatProviderFactory) {
         this.chatSessionService = chatSessionService;
         this.worldInfoService = worldInfoService;
         this.worldCharacterService = worldCharacterService;
@@ -100,6 +103,7 @@ public class WorldGroupChatService {
         this.chatHttpHandler = chatHttpHandler;
         this.userSettings = userSettings;
         this.objectMapper = objectMapper;
+        this.defaultChatProviderFactory = defaultChatProviderFactory;
     }
 
     /**
@@ -436,11 +440,12 @@ public class WorldGroupChatService {
         String systemPrompt = buildSystemPrompt(world, character, knownKnowledge, characters);
         AISettings charAi = parseCharacterAiSettings(character.getAiSettings());
         String listener = character.getName();
-        return new ChatProvider()
+        return defaultChatProviderFactory.newProvider()
                 .setSystemProvider(ctx -> systemPrompt)
                 .setSessionMessageProvider(messages -> collapseContext(world, messages, listener))
                 .setToolProvider(ctx -> List.of())
-                .setSettingsSupplier(() -> new ChatProvider.Settings(charAi, charAi, new AssistantSettings().setAssistantName(listener)))
+                .setSettingsSupplier(() -> defaultChatProviderFactory.withDefaults(new ChatProvider.Settings(charAi, charAi,
+                        new AssistantSettings().setAssistantName(listener))))
                 .setEnableSlashCommand(() -> false)
                 .setBeforeSaveAssistantProvider((chatMessage -> {
                     String text = chatMessage.resolveText();
@@ -489,11 +494,12 @@ public class WorldGroupChatService {
             }
         }
         String systemPrompt = sb.toString();
-        return new ChatProvider()
+        return defaultChatProviderFactory.newProvider()
                 .setSystemProvider(ctx -> systemPrompt)
                 .setSessionMessageProvider(messages -> collapseContext(world, messages, null))
                 .setToolProvider(ctx -> List.of())
-                .setSettingsSupplier(() -> new ChatProvider.Settings(null, null, new AssistantSettings().setAssistantName(narratorName)))
+                .setSettingsSupplier(() -> defaultChatProviderFactory.withDefaults(new ChatProvider.Settings(null, null,
+                        new AssistantSettings().setAssistantName(narratorName))))
                 .setEnableSlashCommand(() -> false)
                 .setBeforeSaveAssistantProvider((chatMessage -> {
                     String text = chatMessage.resolveText();

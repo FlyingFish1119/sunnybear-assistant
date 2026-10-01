@@ -16,7 +16,7 @@ import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
-import com.fishsunny.assistant.websocket.ChatProvider;
+import com.fishsunny.assistant.websocket.provider.ChatProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;

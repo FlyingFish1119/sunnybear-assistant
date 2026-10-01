@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket.processor.request.handler;
+package com.fishsunny.assistant.websocket.request.handler;
 
 /*
  * @Usage
@@ -18,11 +18,11 @@ import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.settings.UserSettings;
-import com.fishsunny.assistant.websocket.SessionMessageBus;
-import com.fishsunny.assistant.websocket.SynchronizedWebSocketSession;
-import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestHandler;
-import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestProvider;
-import com.fishsunny.assistant.websocket.processor.request.ChatSessionModeParseResult;
+import com.fishsunny.assistant.websocket.ws.SessionMessageBus;
+import com.fishsunny.assistant.websocket.ws.SynchronizedWebSocketSession;
+import com.fishsunny.assistant.websocket.request.ChatMessageRequestHandler;
+import com.fishsunny.assistant.websocket.request.ChatMessageRequestProvider;
+import com.fishsunny.assistant.websocket.request.ChatSessionModeParseResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;

@@ -14,7 +14,7 @@ import com.fishsunny.assistant.dto.ChatMessageRequest;
 import com.fishsunny.assistant.engine.cancel.ChatCancelRegistry;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
+import com.fishsunny.assistant.websocket.ws.ChatWebSocketHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;

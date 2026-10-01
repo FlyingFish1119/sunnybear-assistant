@@ -28,16 +28,16 @@ import com.fishsunny.assistant.plug.character.service.CharacterSessionBindings;
 import com.fishsunny.assistant.plug.character.tool.glossary.QueryGlossaryTool;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
-import com.fishsunny.assistant.websocket.ChatProvider;
-import com.fishsunny.assistant.websocket.ChatWebSocketHandler;
-import com.fishsunny.assistant.websocket.SessionMessageBus;
+import com.fishsunny.assistant.websocket.provider.ChatProvider;
+import com.fishsunny.assistant.websocket.ws.ChatWebSocketHandler;
+import com.fishsunny.assistant.websocket.provider.DefaultChatProviderFactory;
+import com.fishsunny.assistant.websocket.ws.SessionMessageBus;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
-import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestHandlerFactory;
-import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestProvider;
+import com.fishsunny.assistant.websocket.request.ChatMessageRequestHandlerFactory;
+import com.fishsunny.assistant.websocket.request.ChatMessageRequestProvider;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -64,6 +64,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
     public CharacterChatSocketHandler(ServiceProcessor serviceProcessor,
                                        TempChatProcessor tempChatProcessor,
                                        ChatProcessor chatProcessor,
+                                       DefaultChatProviderFactory defaultChatProviderFactory,
                                        TaskExecutor chatAsyncExecutor,
                                        SessionMessageBus sessionMessageBus,
                                        CharacterInfoRepository characterInfoRepository,
@@ -74,7 +75,7 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
                                        CharacterChatSelectService chatSelectService,
                                        ToolExecutor toolExecutor,
                                        ChatMessageRequestHandlerFactory chatMessageRequestHandlerFactory) {
-        super(serviceProcessor, tempChatProcessor, chatProcessor, chatAsyncExecutor, objectMapper, sessionMessageBus, chatMessageRequestHandlerFactory);
+        super(serviceProcessor, tempChatProcessor, chatProcessor, defaultChatProviderFactory, chatAsyncExecutor, objectMapper, sessionMessageBus, chatMessageRequestHandlerFactory);
         this.characterInfoRepository = characterInfoRepository;
         this.chatSessionService = chatSessionService;
         this.glossaryService = glossaryService;
@@ -196,17 +197,19 @@ public class CharacterChatSocketHandler extends ChatWebSocketHandler {
             return ctx;
         };
 
-        return new ChatProvider()
+        return defaultChatProviderFactory.newProvider()
                 .setSystemProvider(systemProvider)
                 .setToolProvider(toolProvider)
                 .setContextProvider(contextProvider)
                 // assistant 回复生成后、落库前：启用 chat_select 时用 mission 模型生成新选项并写入 extension
                 .setBeforeSaveAssistantProvider(this::beforeSaveAssistant)
-                // 角色会话固定用自己的模型（chat/chatPro 都指向角色自己的 aiSettings），助手名/头像取角色资料
-                .setSettingsSupplier(() -> new ChatProvider.Settings(effectiveCharAi, effectiveCharAi,
+                // 角色会话固定用自己的模型（chat/chatPro 都指向角色自己的 aiSettings），助手名/头像取角色资料。
+                // 角色未配置有效模型时 effectiveCharAi 为 null，由 DefaultChatProvider 回落全局配置。
+                .setSettingsSupplier(() -> defaultChatProviderFactory.withDefaults(new ChatProvider.Settings(
+                        effectiveCharAi, effectiveCharAi,
                         new AssistantSettings()
                                 .setAssistantName(character.getName())
-                                .setAvatar(character.getAvatar())))
+                                .setAvatar(character.getAvatar()))))
                 .setEnableSlashCommand(() -> false);
     }
 

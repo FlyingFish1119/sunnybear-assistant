@@ -15,7 +15,6 @@ import com.fishsunny.assistant.engine.protocol.project.ChatUsage;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
@@ -23,13 +22,12 @@ import com.fishsunny.assistant.engine.tts.TTSSettings;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
-import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.ToolContextUtils;
 import com.fishsunny.assistant.utils.ToolExecuteNotifier;
-import com.fishsunny.assistant.websocket.ChatProvider;
-import com.fishsunny.assistant.websocket.SessionMessageBus;
+import com.fishsunny.assistant.websocket.provider.ChatProvider;
+import com.fishsunny.assistant.websocket.ws.SessionMessageBus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -42,8 +40,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 
 /**
  * StandardChatTranslateFactory
@@ -168,9 +164,7 @@ public class StandardChatTranslateFactory {
                         .assistant(result.content(), result.reasoning(), toolCallRequests)
                         .makeInsertable(chatSession.getId(), parentId, assistantSettings.getAssistantName());
 
-                if (chatProvider.getBeforeSaveAssistantProvider() != null) {
-                    readyToSaveChatMessage = chatProvider.getBeforeSaveAssistantProvider().apply(readyToSaveChatMessage);
-                }
+                readyToSaveChatMessage = chatProvider.getBeforeSaveAssistantProvider().apply(readyToSaveChatMessage);
 
                 // TTS 整轮完整音频入库：塞进 assistant 消息 extension（前端播放/历史回放用；
                 // 逐句帧只是实时通道，不持久化）
@@ -231,9 +225,7 @@ public class StandardChatTranslateFactory {
                 // 并行执行
                 // 构建上下文：session 用总线包装器，工具发送的消息（确认/执行状态等）走总线广播，重连客户端也能收到
                 Map<String, Object> context = ToolContextUtils.minimumBuild(session, chatSession, request);
-                if (chatProvider.getContextProvider() != null) {
-                    context = chatProvider.getContextProvider().apply(context);
-                }
+                context = chatProvider.getContextProvider().apply(context);
                 // 附带本轮的完整 messages 快照，供 AI 安全审查等消费方自行提取上下文（如判断用户意图），其它工具无感
                 context.put(SecurityService.CTX_MESSAGES, new ArrayList<>(request.getMessages()));
                 // 已中止：不真正执行工具，但必须为每个 tool_call 补占位响应并落库 ——

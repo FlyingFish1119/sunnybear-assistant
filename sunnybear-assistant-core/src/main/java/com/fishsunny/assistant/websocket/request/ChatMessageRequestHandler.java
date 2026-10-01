@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket.processor.request;
+package com.fishsunny.assistant.websocket.request;
 
 /*
  * @Usage
@@ -9,11 +9,7 @@ package com.fishsunny.assistant.websocket.processor.request;
  */
 
 import com.fishsunny.assistant.dto.ChatMessageRequest;
-import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.websocket.SynchronizedWebSocketSession;
-
-import java.util.List;
+import com.fishsunny.assistant.websocket.ws.SynchronizedWebSocketSession;
 
 public interface ChatMessageRequestHandler {
 

@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket;
+package com.fishsunny.assistant.websocket.ws;
 
 /*
  * @Usage WebSocketSession 同步包装器 —— 对 sendMessage 加锁，防止多线程并发写入同一个连接时抛出 TEXT_PARTIAL_WRITING

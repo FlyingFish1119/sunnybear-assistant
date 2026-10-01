@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket;
+package com.fishsunny.assistant.websocket.ws;
 
 /*
  * @Usage 会话消息总线 —— 把"投递"从"连接"上解耦：

@@ -68,5 +68,22 @@ const MessageAreaText = {
             void this.ctx.mermaidNonce; // mermaid 异步出图后触发重渲染
             return memoMsgHtml(this.content, 'text', this.text, this.$md.render);
         }
+    },
+
+    /**
+     * 流式按块渲染时，v-html 会把末尾块的 innerHTML 整块换掉，代码块里的
+     * <i data-lucide="copy"> 占位也随之重建。父组件 message-area-assistant 的
+     * updated 依赖的是 msg.contents 数组本身，不会因本组件单独重渲染而触发，
+     * 所以这里自己补一次图标渲染（合并到一帧，避免每个 chunk 都扫 DOM）。
+     */
+    updated: function () {
+        if (this._iconRefreshPending) return;
+        this._iconRefreshPending = true;
+        requestAnimationFrame(() => {
+            this._iconRefreshPending = false;
+            if (typeof lucide !== 'undefined' && this.$el) {
+                lucide.createIcons({ root: this.$el });
+            }
+        });
     }
 };

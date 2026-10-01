@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket.processor.slash.instance;
+package com.fishsunny.assistant.websocket.slash.instance;
 
 /*
  * @Usage 快速联网搜索 —— 调用 net_explore_tool 快速模式获取双引擎原始结果，
@@ -19,8 +19,8 @@ import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
-import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandComponent;
-import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandHandler;
+import com.fishsunny.assistant.websocket.slash.framework.SlashCommandComponent;
+import com.fishsunny.assistant.websocket.slash.framework.SlashCommandHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;

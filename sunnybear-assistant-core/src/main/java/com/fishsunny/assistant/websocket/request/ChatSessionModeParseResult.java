@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket.processor.request;
+package com.fishsunny.assistant.websocket.request;
 
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;

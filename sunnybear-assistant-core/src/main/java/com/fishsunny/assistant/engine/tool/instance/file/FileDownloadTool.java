@@ -66,8 +66,6 @@ public class FileDownloadTool implements ToolHandler {
     @ToolIncludeContext(key = "session", type = WebSocketSession.class)
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
-            WebSocketSession session = (WebSocketSession) context.get("session");
-
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
             if (!StringUtils.hasText(arguments.getUrl())) {
                 throw new ToolExecutor.ToolExecuteException("参数 url 不能为空");
@@ -87,10 +85,6 @@ public class FileDownloadTool implements ToolHandler {
                     break;
                 default:
                     throw new ToolExecutor.ToolExecuteException("FileDownload 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
-            }
-
-            if (!session.isOpen()) {
-                throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
             }
 
             // 创建父目录
@@ -175,7 +169,7 @@ public class FileDownloadTool implements ToolHandler {
                 + "**保存路径：** `" + savePath + "`\n\n"
                 + "**超时时间：** " + timeoutSeconds + " 秒\n\n"
                 + "> ⚠️ 请确认下载来源可信后再允许执行。";
-        securityService.ask(NAME, message, 60, context);
+        securityService.ask(NAME, message, null, context);
     }
 
     @Override

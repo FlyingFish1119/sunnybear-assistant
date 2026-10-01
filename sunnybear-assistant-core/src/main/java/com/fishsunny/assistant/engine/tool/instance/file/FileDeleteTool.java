@@ -72,7 +72,6 @@ public class FileDeleteTool implements ToolHandler {
     @ToolIncludeContext(key = {"session", "chatSession"}, type = {WebSocketSession.class, ChatSession.class})
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
-            WebSocketSession session = (WebSocketSession) context.get("session");
             ChatSession chatSession = (ChatSession) context.get("chatSession");
 
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
@@ -121,10 +120,6 @@ public class FileDeleteTool implements ToolHandler {
                     }
                     default:
                         throw new ToolExecutor.ToolExecuteException("FileDelete 工具的模式设置错误[" + settings.getMode() + "]，导致该工具无法执行");
-                }
-
-                if (!session.isOpen()) {
-                    throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
                 }
             }
 
@@ -246,7 +241,7 @@ public class FileDeleteTool implements ToolHandler {
                 + targetInfo
                 + "```\n\n"
                 + "> ⚠️ 删除操作不可逆，请确认此操作安全后再允许执行。";
-        securityService.ask(NAME, message, 60, context);
+        securityService.ask(NAME, message, null, context);
     }
 
     @Override

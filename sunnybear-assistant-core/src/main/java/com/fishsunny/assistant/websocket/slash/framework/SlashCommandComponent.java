@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket.processor.slash.framework;
+package com.fishsunny.assistant.websocket.slash.framework;
 
 /*
  * @Usage

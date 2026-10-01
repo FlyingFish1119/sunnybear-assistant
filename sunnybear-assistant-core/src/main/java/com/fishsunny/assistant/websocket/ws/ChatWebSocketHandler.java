@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket;
+package com.fishsunny.assistant.websocket.ws;
 
 /*
  * @Usage WebSocket 对话处理器 —— 薄层编排器，负责解析、校验、分发
@@ -20,10 +20,12 @@ import com.fishsunny.assistant.mvc.controller.ChatController;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
-import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestHandler;
-import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestHandlerFactory;
-import com.fishsunny.assistant.websocket.processor.request.ChatMessageRequestProvider;
-import com.fishsunny.assistant.websocket.processor.request.ChatSessionModeParseResult;
+import com.fishsunny.assistant.websocket.request.ChatMessageRequestHandler;
+import com.fishsunny.assistant.websocket.request.ChatMessageRequestHandlerFactory;
+import com.fishsunny.assistant.websocket.request.ChatMessageRequestProvider;
+import com.fishsunny.assistant.websocket.request.ChatSessionModeParseResult;
+import com.fishsunny.assistant.websocket.provider.ChatProvider;
+import com.fishsunny.assistant.websocket.provider.DefaultChatProviderFactory;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -49,6 +51,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     protected final ServiceProcessor serviceProcessor;
     protected final TempChatProcessor tempChatProcessor;
     protected final ChatProcessor chatProcessor;
+    protected final DefaultChatProviderFactory defaultChatProviderFactory;
     protected final TaskExecutor chatAsyncExecutor;
     protected final ObjectMapper objectMapper;
 
@@ -66,12 +69,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     public ChatWebSocketHandler(ServiceProcessor serviceProcessor,
                                 TempChatProcessor tempChatProcessor,
                                 ChatProcessor chatProcessor,
+                                DefaultChatProviderFactory defaultChatProviderFactory,
                                 TaskExecutor chatAsyncExecutor,
                                 ObjectMapper objectMapper,
                                 SessionMessageBus sessionMessageBus, ChatMessageRequestHandlerFactory chatMessageRequestHandlerFactory) {
         this.serviceProcessor = serviceProcessor;
         this.tempChatProcessor = tempChatProcessor;
         this.chatProcessor = chatProcessor;
+        this.defaultChatProviderFactory = defaultChatProviderFactory;
         this.chatAsyncExecutor = chatAsyncExecutor;
         this.objectMapper = objectMapper;
         this.sessionMessageBus = sessionMessageBus;
@@ -93,10 +98,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     /**
      * 会话建立完成后构建真正用于本轮对话的 ChatProvider。
-     * 默认使用 {@link ChatProvider#DEFAULT}；需要按会话解析绑定数据（角色/世界）的插件可重写本方法以挂载 per-session 设置。
+     * 默认使用 {@link ChatProvider}；需要按会话解析绑定数据（角色/世界）的插件可重写本方法以挂载 per-session 设置。
      */
     public ChatProvider chatToAiProvider(ChatSession chatSession) {
-        return ChatProvider.DEFAULT;
+        return defaultChatProviderFactory.newProvider();
     }
 
 

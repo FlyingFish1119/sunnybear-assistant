@@ -166,8 +166,6 @@ public class CommandTool implements ToolHandler {
     @ToolIncludeContext(key = {"session", "chatSession"}, type = {WebSocketSession.class, ChatSession.class})
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
-            WebSocketSession session = (WebSocketSession) context.get("session");
-
             Arguments arguments = objectMapper.readValue(argumentsJson, Arguments.class);
             if (!StringUtils.hasText(arguments.getCommand())) {
                 throw new ToolExecutor.ToolExecuteException("参数 command 不能为空");
@@ -203,10 +201,6 @@ public class CommandTool implements ToolHandler {
                 }
                 default:
                     throw new ToolExecutor.ToolExecuteException("Command 工具的模式设置错误[" + settings.getMode() +"]，导致该工具无法执行");
-            }
-
-            if (!session.isOpen()) {
-                throw new ToolExecutor.ToolExecuteException("session 已关闭，无法获取用户回应，工具不可用");
             }
 
             // ======================== 后台执行模式 ========================

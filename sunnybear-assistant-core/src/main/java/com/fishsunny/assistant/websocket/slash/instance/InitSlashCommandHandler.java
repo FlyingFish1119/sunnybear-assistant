@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.websocket.processor.slash.instance;
+package com.fishsunny.assistant.websocket.slash.instance;
 
 /*
  * @Usage /init <path> —— 探索本机目录，生成结构化项目文档并写入核心文件（PROJECT_<目录名>.md）。
@@ -26,10 +26,10 @@ import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.utils.CoreFileManager;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.SessionFileManager;
-import com.fishsunny.assistant.websocket.ChatProvider;
+import com.fishsunny.assistant.websocket.provider.ChatProvider;
 import com.fishsunny.assistant.websocket.processor.StandardChatTranslateFactory;
-import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandComponent;
-import com.fishsunny.assistant.websocket.processor.slash.framework.SlashCommandHandler;
+import com.fishsunny.assistant.websocket.slash.framework.SlashCommandComponent;
+import com.fishsunny.assistant.websocket.slash.framework.SlashCommandHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
