@@ -102,6 +102,7 @@ public class CreateChatMessageRequestHandler implements ChatMessageRequestHandle
         String name = cronJob.getTitle() + "_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         ChatSession chatSession = new ChatSession(name);
         chatSession.setType("cron");
+        chatSession.setCronId(cronJob.getId());
         chatSession.setEnablePro(cronJob.getEnablePro() != null && cronJob.getEnablePro());
         chatSession.setUnreviewed(cronJob.getUnreviewed() != null && cronJob.getUnreviewed());
         try {

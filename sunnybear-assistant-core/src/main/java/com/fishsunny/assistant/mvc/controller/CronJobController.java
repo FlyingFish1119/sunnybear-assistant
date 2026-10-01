@@ -10,7 +10,9 @@ package com.fishsunny.assistant.mvc.controller;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fishsunny.assistant.dto.RestResponse;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
+import com.fishsunny.assistant.mvc.service.ChatSessionService;
 import com.fishsunny.assistant.mvc.service.CronJobService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +20,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/cron-job")
@@ -27,10 +31,12 @@ public class CronJobController {
     private static final Logger log = LoggerFactory.getLogger(CronJobController.class);
 
     private final CronJobService cronJobService;
+    private final ChatSessionService chatSessionService;
 
     @Autowired
-    public CronJobController(CronJobService cronJobService) {
+    public CronJobController(CronJobService cronJobService, ChatSessionService chatSessionService) {
         this.cronJobService = cronJobService;
+        this.chatSessionService = chatSessionService;
     }
 
     /** 列出所有定时任务 */
@@ -60,6 +66,41 @@ public class CronJobController {
         } catch (Exception e) {
             log.error("获取定时任务失败", e);
             return new RestResponse().error("获取定时任务失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * keyset 分页获取某个定时任务的执行会话（type='cron'，按触发时间倒序），供定时任务面板展开查看。
+     * 游标语义与 /session/get/page 一致：首屏不带 beforeTime/beforeId；翻页带上一页最旧一条的 updateTime + id。
+     * data: { list: [...], hasMore: boolean }
+     */
+    @RequestMapping("/sessions")
+    public RestResponse sessions(@RequestParam("cronId") Integer cronId,
+                                 @RequestParam(required = false, defaultValue = "50") int size,
+                                 @RequestParam(required = false) String beforeTime,
+                                 @RequestParam(required = false) String beforeId) {
+        if (cronId == null) {
+            return new RestResponse().error("cronId 不能为空");
+        }
+        try {
+            if (size <= 0) {
+                size = 50;
+            }
+            if (size > 200) {
+                size = 200;
+            }
+            boolean hasCursor = StringUtils.hasText(beforeTime) && StringUtils.hasText(beforeId);
+            List<ChatSession> rows = chatSessionService.findByCronIdPage(cronId, size + 1,
+                    hasCursor ? beforeTime : null, hasCursor ? beforeId : null);
+            boolean hasMore = rows.size() > size;
+            List<ChatSession> list = hasMore ? rows.subList(0, size) : rows;
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("list", list);
+            data.put("hasMore", hasMore);
+            return new RestResponse().success(data);
+        } catch (Exception e) {
+            log.error("获取定时任务执行会话失败: cronId={}", cronId, e);
+            return new RestResponse().error("获取定时任务执行会话失败: " + e.getMessage());
         }
     }
 

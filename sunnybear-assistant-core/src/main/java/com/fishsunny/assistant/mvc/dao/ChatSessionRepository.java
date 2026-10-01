@@ -50,6 +50,18 @@ public interface ChatSessionRepository {
      */
     public List<ChatSession> selectByTypePage(String type, int limit, String beforeTime, String beforeId);
 
+    /**
+     * 按 cronId keyset 分页查询定时任务的执行会话（type='cron'，按 update_time DESC, id DESC）。
+     * 游标语义与 {@link #selectByTypePage} 完全一致。
+     *
+     * @param cronId     定时任务 ID
+     * @param limit      最多返回条数
+     * @param beforeTime 游标：上一页最旧一条的 update_time；null 表示取最新一页
+     * @param beforeId   游标：上一页最旧一条的 id（与 beforeTime 配套）
+     * @return 严格早于游标的执行会话（最多 limit 条）
+     */
+    public List<ChatSession> selectByCronIdPage(Integer cronId, int limit, String beforeTime, String beforeId);
+
     public ChatSession selectById(String id);
 
     /**

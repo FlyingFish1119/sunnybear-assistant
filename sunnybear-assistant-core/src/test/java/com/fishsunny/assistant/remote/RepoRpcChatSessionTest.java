@@ -76,6 +76,14 @@ class RepoRpcChatSessionTest {
         }
 
         @Override
+        public List<ChatSession> selectByCronIdPage(Integer cronId, int limit, String beforeTime, String beforeId) {
+            return db.values().stream()
+                    .filter(s -> "cron".equals(s.getType()) && cronId.equals(s.getCronId()))
+                    .limit(limit)
+                    .toList();
+        }
+
+        @Override
         public ChatSession selectById(String id) {
             return db.get(id);
         }

@@ -249,6 +249,8 @@
     <script src="components/nav-rail/shell-panel/shell-panel.js"></script>
     <!-- MCP 面板（单层抽屉）：管理 MCP Server 连接配置，保存后热生效 -->
     <script src="components/nav-rail/mcp-panel/mcp-panel.js"></script>
+    <!-- 定时任务面板（单层抽屉）：任务列表 + 就地展开执行会话 -->
+    <script src="components/nav-rail/cron-panel/cron-panel.js"></script>
     <script src="components/send-area/file-upload/file-upload.js"></script>
     <script src="components/message-topbar/chat-connection/chat-connection.js"></script>
     <script src="components/auto-resize-textarea/auto-resize-textarea.js"></script>
@@ -290,6 +292,8 @@
     <link rel="stylesheet" href="components/nav-rail/shell-panel/shell-panel.css"/>
     <!-- MCP 面板（单层抽屉） -->
     <link rel="stylesheet" href="components/nav-rail/mcp-panel/mcp-panel.css"/>
+    <!-- 定时任务面板（单层抽屉） -->
+    <link rel="stylesheet" href="components/nav-rail/cron-panel/cron-panel.css"/>
     <link rel="stylesheet" href="components/chat-sidebar/chat-sidebar.css"/>
     <link rel="stylesheet" href="components/message-area/message-area.css"/>
     <link rel="stylesheet" href="components/message-area/message-area-hero/message-area-hero.css"/>
@@ -724,6 +728,7 @@
     app.component('knowledge-panel', KnowledgePanel);
     app.component('shell-panel', ShellPanel);
     app.component('mcp-panel', McpPanel);
+    app.component('cron-panel', CronPanel);
 
     /**
      * 导航轨注册：一条同时接通「按钮 + 面板挂载 + 互斥开合」，
@@ -735,6 +740,7 @@
     RailPlugins.register('knowledge',{ icon: 'database',       label: '知识库',   component: KnowledgePanel,  order: 30 });
     RailPlugins.register('shell',    { icon: 'terminal',       label: '终端',     component: ShellPanel,      order: 40 });
     RailPlugins.register('mcp',      { icon: 'plug',           label: 'MCP',      component: McpPanel,        order: 50 });
+    RailPlugins.register('cron',     { icon: 'clock',          label: '定时任务', component: CronPanel,       order: 60 });
 
     // 发送区右侧：模型切换入口（设置页简化版）
     SendAreaPlugins.registerSlot('toolbar-right', ModelSwitcher, 0);

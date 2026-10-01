@@ -58,6 +58,11 @@ public class ChatSessionServiceImplement implements ChatSessionService {
     }
 
     @Override
+    public List<ChatSession> findByCronIdPage(Integer cronId, int limit, String beforeTime, String beforeId) {
+        return chatSessionRepository.selectByCronIdPage(cronId, limit, beforeTime, beforeId);
+    }
+
+    @Override
     public ChatSession save(ChatSession chatSession) {
         chatSession.setId(UUID.randomUUID().toString())
                 .setCreateTime(LocalDateTime.now())

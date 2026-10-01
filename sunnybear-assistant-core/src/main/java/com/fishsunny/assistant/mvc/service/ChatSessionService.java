@@ -25,6 +25,9 @@ public interface ChatSessionService {
     /** keyset 分页查询会话（按 update_time DESC, id DESC），详见 repository */
     public List<ChatSession> findByTypePage(String type, int limit, String beforeTime, String beforeId);
 
+    /** 按 cronId keyset 分页查询定时任务的执行会话，游标语义同 findByTypePage */
+    public List<ChatSession> findByCronIdPage(Integer cronId, int limit, String beforeTime, String beforeId);
+
     public ChatSession save(ChatSession chatSession);
 
     public ChatSession update(ChatSession chatSession);

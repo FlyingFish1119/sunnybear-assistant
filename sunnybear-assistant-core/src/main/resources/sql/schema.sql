@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS chat_session (
     enable_pro INTEGER NOT NULL DEFAULT 0,
     -- 无审查模式：开启后该会话内所有工具的确认与 AI 危险审查失效（与工具内的 AUTO 模式语义相反）
     unreviewed INTEGER NOT NULL DEFAULT 0,
+    -- 关联的定时任务 ID：type='cron' 时非空，用于把执行会话归到对应 cron_job 下
+    cron_id INTEGER,
     -- 插件扩展字段（JSON 字符串，语义由各插件自行约定，核心层不解析）。角色/世界会话存放绑定资源 ID
     extension TEXT
 );
@@ -15,6 +17,8 @@ CREATE TABLE IF NOT EXISTS chat_session (
 CREATE INDEX IF NOT EXISTS idx_chat_session_id ON chat_session(id);
 -- 索引：按 type 加速过滤
 CREATE INDEX IF NOT EXISTS idx_chat_session_type ON chat_session(type);
+-- 索引：按 cron_id 加速定时任务执行会话的归组查询
+CREATE INDEX IF NOT EXISTS idx_chat_session_cron_id ON chat_session(cron_id);
 
 -- ChatMessage 建表语句
 CREATE TABLE IF NOT EXISTS chat_message (

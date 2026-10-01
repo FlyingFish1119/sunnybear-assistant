@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.cron;
+package com.fishsunny.assistant.task;
 
 /*
  * @Usage 定时任务调度器 —— 启动时加载 DB 中的 cron 任务，动态注册/取消，触发时走 WebSocket handler 流程

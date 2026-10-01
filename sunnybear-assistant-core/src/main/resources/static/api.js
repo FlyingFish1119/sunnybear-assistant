@@ -354,7 +354,24 @@ const API = (function () {
             list: function () { return get('cron-job/list'); },
             get: function (id) { return get('cron-job/get?id=' + encodeURIComponent(id)); },
             save: function (data) { return post('cron-job/save', data); },
-            delete: function (id) { return get('cron-job/delete?id=' + encodeURIComponent(id)); }
+            delete: function (id) { return get('cron-job/delete?id=' + encodeURIComponent(id)); },
+            /**
+             * keyset 分页获取某个定时任务的执行会话（type='cron'，触发时间倒序）。
+             * @param {number} cronId 定时任务 ID
+             * @param {number} [size] 每页条数，默认 50
+             * @param {string} [beforeTime] 游标：上一页最旧一条的 updateTime
+             * @param {string} [beforeId] 游标：上一页最旧一条的 id
+             * @returns {Promise<{status:number,data:{list:Array,hasMore:boolean}}>}
+             */
+            sessions: function (cronId, size, beforeTime, beforeId) {
+                var url = 'cron-job/sessions?cronId=' + encodeURIComponent(cronId)
+                    + '&size=' + (size || 50);
+                if (beforeTime && beforeId) {
+                    url += '&beforeTime=' + encodeURIComponent(beforeTime)
+                        + '&beforeId=' + encodeURIComponent(beforeId);
+                }
+                return get(url);
+            }
         },
 
         /* ---------- 本机文件（file:// 被浏览器拦掉后的替代路径） ---------- */

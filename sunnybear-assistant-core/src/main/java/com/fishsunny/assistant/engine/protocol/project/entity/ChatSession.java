@@ -52,6 +52,9 @@ public class ChatSession {
      */
     private Boolean unreviewed = false;
 
+    /** 关联的定时任务 ID：type='cron' 时非空，用于把执行会话归到对应 cron_job 下 */
+    private Integer cronId;
+
     /**
      * 插件扩展字段（JSON 对象，语义由各插件自行约定，核心层不解析不解释）。
      * 例如角色/世界会话在此存放绑定资源 ID；核心层 token 统计在此存放 chat_ 前缀的累计值。

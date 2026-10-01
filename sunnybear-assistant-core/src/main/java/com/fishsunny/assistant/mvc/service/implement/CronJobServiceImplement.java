@@ -8,7 +8,7 @@ package com.fishsunny.assistant.mvc.service.implement;
  * @Date 2026/7/29
  */
 
-import com.fishsunny.assistant.cron.CronScheduler;
+import com.fishsunny.assistant.task.CronScheduler;
 import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
 import com.fishsunny.assistant.mvc.dao.CronJobRepository;
 import com.fishsunny.assistant.mvc.service.CronJobService;

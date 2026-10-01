@@ -1,0 +1,325 @@
+/* ============================================================
+   Cron Panel —— 定时任务单层抽屉
+   ------------------------------------------------------------
+   结构：遮罩 + 一层贴左抽屉（贴着导航轨滑出）
+     · 任务行（.cp-job-head）点击展开/收起
+     · 展开区（.cp-runs）列出该任务的历史执行会话，点会话进消息区
+
+   宽度：340px。移动端（≤768px）导航轨隐藏，遮罩与抽屉从 0 起算。
+   ============================================================ */
+
+.cp-overlay{
+    --cp-rail-w: 56px;
+    --cp-drawer-w: 340px;
+
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: var(--cp-rail-w);
+    z-index: 1200;
+    display: flex;
+    background: rgba(17, 24, 39, 0.24);
+}
+
+.cp-drawer{
+    display: flex;
+    flex-direction: column;
+    width: var(--cp-drawer-w);
+    max-width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    background: #fff;
+    border-right: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 0 28px rgba(17, 24, 39, 0.18);
+    animation: cp-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cp-slide-in{
+    from{ opacity: 0; transform: translateX(-22px); }
+    to  { opacity: 1; transform: translateX(0); }
+}
+
+/* ---- 头部 ---- */
+.cp-head{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 52px;
+    padding: 0 10px 0 14px;
+    box-sizing: border-box;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+}
+
+.cp-title{
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary, #333);
+}
+
+.cp-title svg{
+    width: 16px;
+    height: 16px;
+    flex: none;
+    color: var(--main-color, lightsalmon);
+}
+
+.cp-title-text{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cp-count{
+    flex: none;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    background: #f0f1f3;
+    color: #6b7280;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.cp-btn{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.cp-btn svg{ width: 16px; height: 16px; display: block; }
+.cp-btn:hover{ background: #f2f2f2; color: #333; }
+.cp-btn:disabled{ opacity: 0.45; cursor: not-allowed; }
+
+/* ---- 任务列表 ---- */
+.cp-body{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 8px 14px;
+    scrollbar-width: thin;
+}
+
+.cp-empty,
+.cp-hint{
+    padding: 18px 12px;
+    font-size: 12.5px;
+    color: var(--text-muted, #999);
+    text-align: center;
+    line-height: 1.6;
+}
+
+.cp-job{
+    margin: 2px 0;
+    border-radius: 9px;
+    overflow: hidden;
+}
+
+.cp-job.is-open{
+    background: #fafafb;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+/* ---- 任务行 ---- */
+.cp-job-head{
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 8px 8px 8px 4px;
+    border-radius: 9px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease;
+}
+
+.cp-job-head:hover{ background: #f4f5f7; }
+
+.cp-job-caret{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 20px;
+    color: #9aa0a6;
+}
+
+.cp-job-caret svg{ width: 15px; height: 15px; display: block; }
+
+.cp-job-main{
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.cp-job-title-row{
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.cp-job-title{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+}
+
+.cp-badge{
+    flex: none;
+    padding: 0 5px;
+    height: 15px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.cp-badge.is-pro{ background: #fff3e0; color: #e08b00; }
+.cp-badge.is-unreviewed{ background: #fdecec; color: #e5484d; }
+
+.cp-job-sub{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.cp-cron{
+    flex: none;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #f0f0f0;
+    color: #555;
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.cp-job-desc{
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11.5px;
+    color: var(--text-muted, #999);
+}
+
+/* ---- 展开区：执行会话 ---- */
+.cp-runs{
+    padding: 2px 6px 8px 28px;
+}
+
+.cp-run{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 3px 6px;
+    border-radius: 7px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease;
+}
+
+.cp-run:hover{ background: color-mix(in srgb, var(--main-color, #FFA07A) 14%, #fff); }
+
+.cp-run-icon{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    color: #8a8f98;
+}
+
+.cp-run-icon svg{ width: 14px; height: 14px; display: block; }
+
+.cp-run-body{
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.cp-run-time{
+    font-size: 12.5px;
+    color: #333;
+    font-variant-numeric: tabular-nums;
+}
+
+.cp-run-token{
+    font-size: 11px;
+    color: var(--text-muted, #999);
+}
+
+.cp-run-go{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    color: #c2c6cc;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.cp-run-go svg{ width: 14px; height: 14px; display: block; }
+.cp-run:hover .cp-run-go{ opacity: 1; }
+
+.cp-more{
+    display: block;
+    width: 100%;
+    margin-top: 2px;
+    padding: 7px 0;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: #6b7280;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.cp-more:hover{ background: #f0f1f3; }
+.cp-more:disabled{ opacity: 0.5; cursor: not-allowed; }
+
+@media (prefers-reduced-motion: reduce){
+    .cp-drawer{ animation: none; }
+}
+
+/* ---- 窄屏：导航轨不显示，抽屉从 0 起算 ---- */
+@media (max-width: 768px){
+    .cp-overlay{
+        --cp-rail-w: 0px;
+        --cp-drawer-w: 82vw;
+    }
+}
