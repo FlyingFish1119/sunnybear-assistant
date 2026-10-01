@@ -281,6 +281,33 @@
     color: var(--text-muted, #999);
 }
 
+/* 行内操作：默认占位隐藏（visibility 而非 display，hover 时不产生布局位移） */
+.cp-run-actions{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    visibility: hidden;
+}
+
+.cp-run:hover .cp-run-actions{ visibility: visible; }
+
+.cp-run-btn{
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #777;
+    cursor: pointer;
+}
+
+.cp-run-btn svg{ width: 13px; height: 13px; display: block; }
+.cp-run-btn:hover{ background: #e8eaed; color: #333; }
+.cp-run-btn.is-danger:hover{ background: #fdecec; color: #e5484d; }
+
 .cp-run-go{
     flex: none;
     display: grid;

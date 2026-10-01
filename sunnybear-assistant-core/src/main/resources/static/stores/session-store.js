@@ -485,18 +485,29 @@ const SessionStore = (function () {
         /**
          * 新增或更新一个会话条目（###UPDATE_SESSION### 等）。
          * 更新后按 (updateTime, id) 重排（会话被新消息顶到最前时位置随之移动）。
+         *
+         * 只把「属于当前列表类型」的会话补进列表：type 与 sessionListMode 不一致的会话
+         * （如在定时会话里继续聊天时下发的 type='cron' 会话）不会出现在列表查询结果里，
+         * 若强行塞进去会造成「刷新后消失」的假象；这类会话仅用于同步 currentSession。
+         *
          * @param {object} session 服务端下发的会话对象
-         * @returns {object} 列表中的会话对象引用
+         * @returns {object} 会话对象引用
          */
         upsertSession(session) {
+            const belongsToList = !session.type || session.type === state.sessionListMode;
             let existing = state.sessions.find(s => s.id === session.id);
             if (existing) {
                 Object.assign(existing, session);
-            } else {
+            } else if (belongsToList) {
                 existing = session;
                 state.sessions.push(session);
+            } else {
+                // 类型不匹配：不进列表，仅作为 currentSession 的同步载体
+                existing = session;
             }
-            state.sessions.sort(compareSessionDesc);
+            if (belongsToList) {
+                state.sessions.sort(compareSessionDesc);
+            }
             if (session.id === currentSessionId()) {
                 state.currentSession = existing;
             }

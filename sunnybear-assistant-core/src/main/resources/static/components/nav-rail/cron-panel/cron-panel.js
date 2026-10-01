@@ -81,6 +81,13 @@ const CronPanel = {
                                             {{ formatTokens(sessionTokenTotal(s)) }} tokens
                                         </span>
                                     </span>
+                                    <span class="cp-run-actions" @click.stop>
+                                        <button class="cp-run-btn is-danger"
+                                                title="删除这次记录"
+                                                @click="deleteRun(job.id, s)">
+                                            <i data-lucide="trash-2"></i>
+                                        </button>
+                                    </span>
                                     <span class="cp-run-go"><i data-lucide="arrow-right"></i></span>
                                 </div>
                                 <button v-if="pageOf(job.id).hasMore"
@@ -96,6 +103,8 @@ const CronPanel = {
             </div>
         </aside>
     </div>
+
+    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
     `,
 
     props: {
@@ -235,6 +244,45 @@ const CronPanel = {
             if (this.sessionStore.sessionSelectLoading) return;
             this.sessionStore.selectSession(session);
             this.close();
+        },
+
+        /**
+         * 删除某条执行会话（会话及其消息）。先弹确认，再委托 sessionStore 删除，
+         * 成功后从展开列表移除；若删的正是当前正在看的会话，store 会顺带清空消息区。
+         */
+        async deleteRun(cronId, session) {
+            const dialog = this.$refs.confirmDialog;
+            if (!dialog) return;
+            try {
+                await dialog.show({
+                    title: '删除执行记录',
+                    message: '确定要删除这次执行记录吗？该会话及其消息将不可恢复。',
+                    confirmText: '删除',
+                    cancelText: '取消',
+                    type: 'danger'
+                });
+            } catch (e) {
+                return; // 用户取消
+            }
+            const page = this.sessionPages[cronId];
+            try {
+                if (this.sessionStore) {
+                    const ok = await this.sessionStore.deleteSession(session);
+                    if (!ok) return;
+                } else {
+                    const res = await API.session.delete(session.id);
+                    if (res.status !== 200) {
+                        if (window.SbToast) window.SbToast.error(res.message || '删除失败');
+                        return;
+                    }
+                    if (window.SbToast) window.SbToast.success('会话已删除');
+                }
+                if (page) {
+                    page.list = page.list.filter(x => x.id !== session.id);
+                }
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('删除失败: ' + e.message);
+            }
         },
 
         /* ==================== 辅助 ==================== */

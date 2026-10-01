@@ -12,7 +12,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.mvc.dao.ChatSessionRepository;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,60 +46,6 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
     public ChatSessionRepositoryImplement(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
-    }
-
-    /**
-     * 启动时自动迁移 chat_session 表结构（仅本地模式）：schema.sql 的 CREATE TABLE IF NOT EXISTS
-     * 只管新库建表，老库补列在这里完成 —— PRAGMA 查到没有 cron_id 才 ALTER，有则跳过，幂等可反复执行。
-     * <p>
-     * 补列后做一次性回填：老库的 cron 会话创建时没记 cron_id，但名字固定是「任务标题_yyyyMMdd_HHmmss」，
-     * 因此可按 cron_job.title 前缀匹配回填。新建的 cron 会话已在创建时直接写入 cron_id，不受影响。
-     * <p>
-     * 迁移失败不阻断启动：若确实缺列，后续首条 SQL 会把问题暴露在日志里。
-     */
-    @PostConstruct
-    public void migrateSchema() {
-        try {
-            List<Map<String, Object>> columns = jdbcTemplate.queryForList("PRAGMA table_info(chat_session)");
-            boolean hasCronId = columns.stream()
-                    .anyMatch(col -> "cron_id".equalsIgnoreCase(String.valueOf(col.get("name"))));
-            if (!hasCronId) {
-                jdbcTemplate.execute("ALTER TABLE chat_session ADD COLUMN cron_id INTEGER");
-                log.info("chat_session.cron_id 列迁移完成");
-            }
-            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_chat_session_cron_id ON chat_session(cron_id)");
-            backfillCronId();
-        } catch (Exception e) {
-            log.warn("chat_session 自动迁移失败: {}", e.getMessage());
-        }
-    }
-
-    /** 按任务标题前缀回填存量 cron 会话的 cron_id；仅处理 cron_id IS NULL 的行，重复执行安全 */
-    private void backfillCronId() {
-        List<Map<String, Object>> jobs = jdbcTemplate.queryForList("SELECT id, title FROM cron_job");
-        int total = 0;
-        for (Map<String, Object> job : jobs) {
-            Object idObj = job.get("id");
-            Object titleObj = job.get("title");
-            if (idObj == null || titleObj == null) {
-                continue;
-            }
-            // 会话名 = title + "_" + 时间戳，故匹配 title + "\_" + 任意后缀
-            String prefix = escapeLike(String.valueOf(titleObj)) + "\\_%";
-            int updated = jdbcTemplate.update(
-                    "UPDATE chat_session SET cron_id = ?"
-                            + " WHERE type = 'cron' AND cron_id IS NULL AND name LIKE ? ESCAPE '\\'",
-                    ((Number) idObj).intValue(), prefix);
-            total += updated;
-        }
-        if (total > 0) {
-            log.info("chat_session.cron_id 回填完成：{} 条历史 cron 会话已归组", total);
-        }
-    }
-
-    /** 转义 LIKE 模式中的通配符（配合 ESCAPE '\' 使用） */
-    private String escapeLike(String value) {
-        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private final RowMapper<ChatSession> rowMapper = (resultSet, i) -> {

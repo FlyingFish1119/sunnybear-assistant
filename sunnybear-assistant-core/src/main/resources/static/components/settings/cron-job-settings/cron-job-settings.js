@@ -50,8 +50,8 @@ const CronJobSettings = {
                         <div class="entry-item-title">
                             <span>{{ item.title }}</span>
                             <code style="background:#f0f0f0;padding:1px 6px;border-radius:3px;font-size:12px;margin-left:8px">{{ item.cron }}</code>
-                            <span v-if="item.enablePro" style="margin-left:6px;color:var(--main-color);font-size:12px;font-weight:700">高级</span>
-                            <span v-if="item.unreviewed" style="margin-left:6px;color:#e6a23c;font-size:12px;font-weight:700">无审查</span>
+                            <span v-if="item.enablePro" class="cron-badge is-pro" style="margin-left:6px">Pro</span>
+                            <span v-if="item.unreviewed" class="cron-badge is-unreviewed" style="margin-left:6px">无审查</span>
                         </div>
                         <div class="entry-item-content" style="max-height:40px;overflow:hidden">{{ item.message }}</div>
                         <div class="entry-item-time">{{ formatTime(item.createTime) }}</div>

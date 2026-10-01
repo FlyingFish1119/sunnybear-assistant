@@ -489,6 +489,29 @@ body {
     text-overflow: ellipsis;
 }
 
+/* 定时任务徽标（Pro / 无审查）：与 nav 定时任务面板视觉保持一致，本页单存一份 */
+.cron-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 15px;
+    padding: 0 5px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+.cron-badge.is-pro {
+    background: #fff3e0;
+    color: #e08b00;
+}
+
+.cron-badge.is-unreviewed {
+    background: #fdecec;
+    color: #e5484d;
+}
+
 .entry-item-content {
     font-size: 13px;
     color: var(--text-secondary);
