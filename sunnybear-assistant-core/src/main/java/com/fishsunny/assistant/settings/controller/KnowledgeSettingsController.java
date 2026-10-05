@@ -30,7 +30,7 @@ public class KnowledgeSettingsController {
 
     public KnowledgeSettingsController(
             ObjectMapper objectMapper,
-            @Value("${knowledge-settings.path:settings/knowledge_settings.json}") String knowledgeSettingsPath,
+            @Value("${knowledge-settings.path:data/settings/knowledge_settings.json}") String knowledgeSettingsPath,
             KnowledgeSettings knowledgeSettings) {
         this.objectMapper = objectMapper;
         this.knowledgeSettingsPath = knowledgeSettingsPath;

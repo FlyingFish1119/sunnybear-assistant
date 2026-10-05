@@ -983,7 +983,7 @@ const SessionFiles = {
             const task = this.beginUploadTask(file, dirPath);
             try {
                 const totalChunks = Math.ceil(file.size / SF_CHUNK_SIZE);
-                const initRes = await API.upload.init({
+                const initRes = await API.chunkedUpload.init({
                     uploadId: task.id,
                     scope: this.mode,
                     sessionId: this.sessionId || null,
@@ -1015,7 +1015,7 @@ const SessionFiles = {
                     return false;
                 }
 
-                const doneRes = await API.upload.complete(task.id);
+                const doneRes = await API.chunkedUpload.complete(task.id);
                 if (doneRes.status !== 200) throw new Error(doneRes.message || '合并失败');
                 task.status = 'done';
                 task.percent = 100;
@@ -1053,7 +1053,7 @@ const SessionFiles = {
                             const start = i * SF_CHUNK_SIZE;
                             const end = Math.min(file.size, start + SF_CHUNK_SIZE);
                             const blob = file.slice(start, end);
-                            const res = await API.upload.chunk(task.id, i, blob);
+                            const res = await API.chunkedUpload.chunk(task.id, i, blob);
                             if (res.status !== 200) throw new Error(res.message || '分片上传失败');
                             task.loaded += blob.size;
                             task.percent = this.uploadPercent(task);
@@ -1085,7 +1085,7 @@ const SessionFiles = {
             task.cancelled = true;
             task.status = 'canceled';
             task.message = '已取消';
-            API.upload.abort(task.id).catch(() => {});
+            API.chunkedUpload.abort(task.id).catch(() => {});
         },
 
         /** 重试：清除取消标记后重跑；后端已存分片会被 status 跳过 */

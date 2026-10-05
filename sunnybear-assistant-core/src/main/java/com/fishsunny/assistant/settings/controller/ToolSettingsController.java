@@ -42,7 +42,7 @@ public class ToolSettingsController {
 
     public ToolSettingsController(
             ObjectMapper objectMapper,
-            @Value("${tool-settings.path:settings/tool_settings.json}") String toolSettingsPath,
+            @Value("${tool-settings.path:data/settings/tool_settings.json}") String toolSettingsPath,
             @Qualifier(CommandTool.SETTINGS) CommandTool.Settings commandToolSettings,
             @Qualifier(ExtensionScriptTool.SETTINGS) ExtensionScriptTool.Settings extensionScriptToolSettings,
             @Qualifier(WebSearchTool.SETTINGS) WebSearchTool.Settings webSearchToolSettings,

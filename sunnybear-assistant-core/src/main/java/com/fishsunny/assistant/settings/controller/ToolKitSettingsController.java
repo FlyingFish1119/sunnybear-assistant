@@ -41,7 +41,7 @@ public class ToolKitSettingsController {
 
     public ToolKitSettingsController(
             ObjectMapper objectMapper,
-            @Value("${toolkit-settings.path:settings/toolkit_settings.json}") String toolKitSettingsPath,
+            @Value("${toolkit-settings.path:data/settings/toolkit_settings.json}") String toolKitSettingsPath,
             ToolKitSettings toolKitSettings,
             List<ToolKit> toolKits,
             ToolVisibilityPolicy toolVisibilityPolicy) {

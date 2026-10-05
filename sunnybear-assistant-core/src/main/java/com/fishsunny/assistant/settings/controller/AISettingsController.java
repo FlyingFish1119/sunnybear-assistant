@@ -38,7 +38,7 @@ public class AISettingsController {
     public AISettingsController(
             ObjectMapper objectMapper,
             AIAdapterFactory adapterFactory,
-            @Value("${ai-settings.path:settings/ai_settings.json}") String aiSettingsPath,
+            @Value("${ai-settings.path:data/settings/ai_settings.json}") String aiSettingsPath,
             @Qualifier(AISettings.CHAT) AISettings chatAISettings,
             @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
             @Qualifier(AISettings.OCR) AISettings ocrAISettings,

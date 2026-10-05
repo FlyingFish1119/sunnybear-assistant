@@ -111,7 +111,7 @@ const API = (function () {
         },
 
         /* ---------- 分片断点上传（大文件） ---------- */
-        upload: {
+        chunkedUpload: {
             /** 初始化 / 恢复上传；data: {uploadId, scope, sessionId, dir, name, size, totalChunks} */
             init: function (data) { return post('upload/init', data); },
             /** 查询已收到的分片序号（断点） */

@@ -30,7 +30,7 @@ public class MemorySettingsController {
 
     public MemorySettingsController(
             ObjectMapper objectMapper,
-            @Value("${memory-settings.path:settings/memory_settings.json}") String memorySettingsPath,
+            @Value("${memory-settings.path:data/settings/memory_settings.json}") String memorySettingsPath,
             MemorySettings memorySettings) {
         this.objectMapper = objectMapper;
         this.memorySettingsPath = memorySettingsPath;

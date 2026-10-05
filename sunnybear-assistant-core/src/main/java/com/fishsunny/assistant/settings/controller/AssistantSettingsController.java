@@ -39,7 +39,7 @@ public class AssistantSettingsController {
     public AssistantSettingsController(
             ObjectMapper objectMapper,
             @Value("${assistant.file.base-path:data/}") String fileBasePath,
-            @Value("${assistant-settings.path:settings/assistant_settings.json}") String assistantSettingsPath,
+            @Value("${assistant-settings.path:data/settings/assistant_settings.json}") String assistantSettingsPath,
             AssistantSettings assistantSettings) {
         this.objectMapper = objectMapper;
         this.fileBasePath = fileBasePath;

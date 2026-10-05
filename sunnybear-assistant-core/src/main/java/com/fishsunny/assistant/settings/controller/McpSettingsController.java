@@ -38,7 +38,7 @@ public class McpSettingsController {
 
     public McpSettingsController(
             ObjectMapper objectMapper,
-            @Value("${mcp-settings.path:settings/mcp_settings.json}") String mcpSettingsPath,
+            @Value("${mcp-settings.path:data/settings/mcp_settings.json}") String mcpSettingsPath,
             McpSettings mcpSettings,
             McpClientService mcpClientService) {
         this.objectMapper = objectMapper;
