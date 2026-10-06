@@ -11,6 +11,8 @@ package com.fishsunny.assistant.engine.tool.instance.flow;
  */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fishsunny.assistant.engine.cancel.ChatCancelContext;
+import com.fishsunny.assistant.engine.cancel.ChatCancelToken;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
@@ -27,6 +29,7 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -36,6 +39,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @ToolKitComponent(FlowToolKit.class)
 @ConditionalOnExpression("${engine.tool.flow.enable:true} && ${engine.tool.flow.wait-flow.enable:true}")
@@ -66,10 +76,11 @@ public class WaitFlowTool implements ToolHandler {
                 .setParameterName("toolChain")
                 .setType("array")
                 .setDescription("""
-                        可选。等待窗口内按时间节点顺序执行的工具链，用于在等待到某个节点后直接介入，\
-                        无需等下一次 ReAct。每项含 tool（工具名）、at（相对开始等待的毫秒偏移，0=立即；\
+                        可选。等待窗口内按时间节点触发的工具链（到点即触发，各节点互不等待、可能并发），\
+                        用于在等待到某个节点后直接介入，无需等下一次 ReAct。\
+                        每项含 tool（工具名）、at（相对开始等待的毫秒偏移，0=立即；\
                         省略则在等待结束时执行）与 arguments（传给该工具的参数对象）。\
-                        提供 toolChain 时会先请求用户确认。\
+                        提供 toolChain 时会先请求用户确认；会话已开启无审查时跳过确认。\
                         禁止调用 wait_flow_tool 自身。""")
                 .setItems(ToolRegister.Parameters.object(
                         "工具链节点",
@@ -84,7 +95,7 @@ public class WaitFlowTool implements ToolHandler {
                 .setName(NAME)
                 .setDescription("""
                         等待指定毫秒数后返回，让 AI 拥有真正的等待/定时概念。\
-                        可选传入 toolChain：在等待窗口内的指定时间节点自动按顺序执行其它工具，\
+                        可选传入 toolChain：在等待窗口内的指定时间节点自动触发其它工具（到点即触发、互不等待），\
                         等待到该节点后立即介入，而不是等下一次 ReAct 再执行（避免时间偏差）。\
                         提供 toolChain 时会先请求用户确认（会话已开启无审查时跳过），\
                         确认后在隔离的临时上下文中以「无审查」方式执行整条链，执行完毕即恢复。""")
@@ -122,20 +133,32 @@ public class WaitFlowTool implements ToolHandler {
         long startMillis = System.currentTimeMillis();
         LocalDateTime startTime = LocalDateTime.now();
 
-        List<NodeResult> nodeResults = new ArrayList<>();
-        try {
-            for (ChainNode node : chain) {
-                sleepUntil(startMillis, node.at());
-                nodeResults.add(executeNode(node, chainContext));
+        List<NodeResult> nodeResults;
+        try (ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(chain.size(), new WaitSchedulerThreadFactory())) {
+            if (chain.isEmpty()) {
+                sleepUntil(startMillis, milliseconds);
+                nodeResults = Collections.emptyList();
+            } else {
+                // 到点并行调度：每个节点在自己的 at 触发，互不等待（前一个执行超时也不会推迟后一个）。
+                // 主线程只负责补足总等待时长，最后统一收集结果。
+                ChatCancelToken token = ChatCancelContext.current();
+                List<CompletableFuture<NodeResult>> futures = new ArrayList<>(chain.size());
+                for (ChainNode node : chain) {
+                    CompletableFuture<NodeResult> future = new CompletableFuture<>();
+                    futures.add(future);
+                    long delay = Math.max(0L, startMillis + node.at() - System.currentTimeMillis());
+                    scheduler.schedule(() -> runNodeOnScheduler(node, chainContext, token, future), delay, TimeUnit.MILLISECONDS);
+                }
+                // 补足到总等待时长（工具执行超时则不再补）
+                sleepUntil(startMillis, milliseconds);
+                nodeResults = collectResults(chain, futures);
             }
-            // 链执行完（或本就没有链）后补足到总等待时长；链执行超时则不再补
-            sleepUntil(startMillis, milliseconds);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ToolExecutor.ToolExecuteException("等待被中止");
         }
 
-        return buildResponse(milliseconds, startTime, nodeResults);
+        return buildResponse(milliseconds, startMillis, startTime, nodeResults);
     }
 
     // ======================== 工具链校验与准备 ========================
@@ -143,7 +166,8 @@ public class WaitFlowTool implements ToolHandler {
     /**
      * 校验工具链并转成可执行节点列表。
      * <p>
-     * 节点按 at 升序排序（稳定排序，同一时刻保持模型给出的先后）；省略 at 视为在等待结束时执行。
+     * 节点按 at 升序排序（稳定排序，同一时刻保持模型给出的先后），仅用于结果聚合顺序；
+     * 实际执行是到点并行触发、互不等待。省略 at 视为在等待结束时执行。
      * 禁止调用 wait_flow_tool 自身，避免无限递归。
      */
     private List<ChainNode> validateAndPrepareChain(List<ChainNodeArg> raw, long totalMillis) throws ToolExecutor.ToolExecuteException {
@@ -260,6 +284,55 @@ public class WaitFlowTool implements ToolHandler {
         return new NodeResult(node, nodeStart, LocalDateTime.now(), response);
     }
 
+    /** 定时触发单个节点：绑定取消令牌后执行，把结果（或异常）交给对应 future */
+    private void runNodeOnScheduler(ChainNode node, Map<String, Object> chainContext,
+                                    ChatCancelToken token, CompletableFuture<NodeResult> future) {
+        if (token != null) {
+            ChatCancelContext.bind(token);
+            token.registerThread(Thread.currentThread());
+        }
+        try {
+            future.complete(executeNode(node, chainContext));
+        } catch (Throwable t) {
+            future.completeExceptionally(t);
+        } finally {
+            if (token != null) {
+                token.unregisterThread(Thread.currentThread());
+                ChatCancelContext.unbind();
+            }
+        }
+    }
+
+    /** 按链顺序收集各节点结果；节点异常降级为失败响应，避免整条链失败 */
+    private List<NodeResult> collectResults(List<ChainNode> chain, List<CompletableFuture<NodeResult>> futures) {
+        List<NodeResult> results = new ArrayList<>(futures.size());
+        for (int i = 0; i < futures.size(); i++) {
+            ChainNode node = chain.get(i);
+            try {
+                results.add(futures.get(i).join());
+            } catch (CompletionException e) {
+                Throwable cause = e.getCause() == null ? e : e.getCause();
+                LocalDateTime now = LocalDateTime.now();
+                results.add(new NodeResult(node, now, now,
+                        new ToolExecutor.ToolExecuteResponse(name(),
+                                "工具[" + node.tool() + "]执行异常，原因是：" + cause.getMessage()).setSucceed(false)));
+            }
+        }
+        return results;
+    }
+
+    private static final AtomicInteger SCHEDULER_SEQ = new AtomicInteger();
+
+    /** 调度线程守护化，避免阻塞中的节点拖住 JVM 退出 */
+    private static final class WaitSchedulerThreadFactory implements ThreadFactory {
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable, "wait-flow-sched-" + SCHEDULER_SEQ.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        }
+    }
+
     // ======================== 时间与结果 ========================
 
     private static void sleepUntil(long startMillis, long targetOffsetMillis) throws InterruptedException {
@@ -269,19 +342,31 @@ public class WaitFlowTool implements ToolHandler {
         }
     }
 
-    private ToolExecutor.ToolExecuteResponse buildResponse(long milliseconds, LocalDateTime startTime, List<NodeResult> nodeResults) {
+    private ToolExecutor.ToolExecuteResponse buildResponse(long milliseconds, long startMillis,
+                                                           LocalDateTime startTime, List<NodeResult> nodeResults) {
+        LocalDateTime endTime = LocalDateTime.now();
+        // 工具执行可能超过等待窗口，故分别给出「预计」与「实际」等待时长
+        long actualMillis = Math.max(0L, System.currentTimeMillis() - startMillis);
+        long overrunMillis = actualMillis - milliseconds;
+
         StringBuilder sb = new StringBuilder();
         sb.append("""
                 ```flow
                 工具[wait_flow_tool]等待**完成**。
-                [等待时长]：${milliseconds} 毫秒
+                [预计等待]：${expected} 毫秒
+                [实际等待]：${actual} 毫秒
                 [开始时间]：${startTime}
                 [结束时间]：${endTime}
+                ${overrun}
                 ```
                 """
-                .replace("${milliseconds}", String.valueOf(milliseconds))
+                .replace("${expected}", String.valueOf(milliseconds))
+                .replace("${actual}", String.valueOf(actualMillis))
                 .replace("${startTime}", startTime.format(DATE_TIME_FORMATTER))
-                .replace("${endTime}", LocalDateTime.now().format(DATE_TIME_FORMATTER)));
+                .replace("${endTime}", endTime.format(DATE_TIME_FORMATTER))
+                .replace("${overrun}", overrunMillis > 0
+                        ? "[超出预计]：+" + overrunMillis + " 毫秒（有工具执行时间超过等待窗口）"
+                        : "[超出预计]：无"));
 
         List<MultimodalContent> multimodalContents = new ArrayList<>();
         if (!nodeResults.isEmpty()) {
@@ -290,10 +375,12 @@ public class WaitFlowTool implements ToolHandler {
                 ChainNode node = result.node();
                 ToolExecutor.ToolExecuteResponse response = result.response();
                 boolean succeed = response != null && response.isSucceed();
+                long nodeMillis = Duration.between(result.start(), result.end()).toMillis();
                 sb.append("\n### [").append(node.at()).append("ms] 工具[").append(node.tool()).append("] ")
                         .append(succeed ? "成功" : "失败").append("\n")
                         .append("- 开始时间：").append(result.start().format(DATE_TIME_FORMATTER)).append("\n")
-                        .append("- 结束时间：").append(result.end().format(DATE_TIME_FORMATTER)).append("\n");
+                        .append("- 结束时间：").append(result.end().format(DATE_TIME_FORMATTER)).append("\n")
+                        .append("- 耗时：").append(nodeMillis).append(" 毫秒\n");
                 if (response != null && StringUtils.hasText(response.getResult())) {
                     sb.append("\n").append(response.getResult()).append("\n");
                 }

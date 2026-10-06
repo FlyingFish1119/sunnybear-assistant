@@ -43,7 +43,8 @@ import java.util.Map;
  *   <li>在文件中精确查找 oldContent</li>
  *   <li>用 newContent 替换 oldContent</li>
  *   <li>若 newContent 为空字符串，则删除 oldContent</li>
- *   <li>oldContent 必须在文件中精确匹配且唯一（仅出现一次），否则报错</li>
+ *   <li>默认 oldContent 必须在文件中精确匹配且唯一（仅出现一次），否则报错</li>
+ *   <li>replaceAll=true 时替换全部匹配（含重复项），不再要求唯一</li>
  * </ul>
  * <p>
  * 要求 dependency 参数传入一个 WebSocketSession 对象
@@ -92,12 +93,13 @@ public class FileEditTool implements ToolHandler {
             if (!StringUtils.hasText(arguments.getPath())) {
                 throw new ToolExecutor.ToolExecuteException("参数 path 不能为空");
             }
-            if (arguments.getOldContent() == null) {
-                throw new ToolExecutor.ToolExecuteException("参数 oldContent 不能为 null，请提供需要匹配的原始内容");
+            if (!StringUtils.hasLength(arguments.getOldContent())) {
+                throw new ToolExecutor.ToolExecuteException("参数 oldContent 不能为空，请提供需要匹配的原始内容");
             }
             if (arguments.getNewContent() == null) {
                 arguments.setNewContent("");
             }
+            boolean replaceAll = Boolean.TRUE.equals(arguments.getReplaceAll());
 
             // 路径解析：path 用 sessionId:相对路径 指代当前会话沙箱（前缀会展开为真实会话 ID），
             // 沙箱内跳过安全审核与用户确认
@@ -122,15 +124,41 @@ public class FileEditTool implements ToolHandler {
             List<String> allLines = splitLines(fileContent);
             int totalLines = allLines.size();
 
-            // 在文件中查找 oldContent 的唯一匹配
-            MatchResult match = findUniqueMatch(fileContent, allLines, oldContent, newContent);
+            // 查找全部匹配位置（replaceAll=true 时允许非唯一，用于批量替换）
+            List<MatchResult> matches = findMatches(fileContent, oldContent, replaceAll);
+            if (matches.isEmpty()) {
+                throw new ToolExecutor.ToolExecuteException(
+                        "在文件中未找到 oldContent 的匹配内容，请确认内容是否正确" +
+                        "（注意空白字符、缩进和换行符的差异）。\n\n" +
+                        "本次传入的内容如下（换行符已归一化为 \\n）：\n" +
+                        describeContents(oldContent, newContent) + "\n\n" +
+                        "请核对 oldContent 是否与文件中的实际内容完全一致，修正后重试本工具；" +
+                        "不要改用 file_write 直接覆盖整个文件。");
+            }
+            if (matches.size() > 1 && !replaceAll) {
+                StringBuilder sb = new StringBuilder();
+                sb.append("oldContent 在文件中匹配到 ").append(matches.size())
+                  .append(" 处，必须唯一匹配（或将 replaceAll 设为 true 以替换全部匹配）。各匹配位置如下：\n");
+                for (int i = 0; i < matches.size(); i++) {
+                    MatchResult m = matches.get(i);
+                    sb.append("  - 匹配 ").append(i + 1).append(": 第 ").append(m.startLine + 1).append(" 行\n");
+                }
+                sb.append("\n本次传入的内容如下（换行符已归一化为 \\n）：\n")
+                  .append(describeContents(oldContent, newContent)).append("\n\n")
+                  .append("请增加更多上下文使 oldContent 能够唯一匹配，或改用 replaceAll=true 替换全部匹配。");
+                throw new ToolExecutor.ToolExecuteException(sb.toString());
+            }
+
+            boolean multiple = matches.size() > 1;
 
             // 判断操作类型
             boolean isDelete = newContent.isEmpty();
-            String modeDesc = isDelete ? "删除" : "替换";
+            String modeDesc = isDelete ? (multiple ? "全部删除" : "删除") : (multiple ? "全部替换" : "替换");
 
             // 生成 diff 风格预览
-            String diffPreview = buildDiffResult(fileContent, allLines, match, newContent, filePath);
+            String diffPreview = multiple
+                    ? buildMultiDiff(fileContent, allLines, matches, newContent, filePath)
+                    : buildDiffResult(fileContent, allLines, matches.getFirst(), newContent, filePath);
 
             // 会话文件目录是当前会话的沙箱，直接编辑，跳过 AI 审核与用户确认
             if (!sessionFile) {
@@ -138,17 +166,17 @@ public class FileEditTool implements ToolHandler {
                     case NEVER_ASKED:
                         break;
                     case ALWAYS_ASKED:
-                        ask(context, filePath, modeDesc, match, diffPreview, null);
+                        ask(context, filePath, modeDesc, matches, diffPreview, null);
                         break;
                     case AUTO: {
-                        ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
+                        ReviewResult review = isDanger(filePath, modeDesc, diffPreview, matches, context);
                         if (review.isDanger()) {
-                            ask(context, filePath, modeDesc, match, diffPreview, review.reason());
+                            ask(context, filePath, modeDesc, matches, diffPreview, review.reason());
                         }
                         break;
                     }
                     case ALWAYS_REJECT_DANGER: {
-                        ReviewResult review = isDanger(filePath, modeDesc, diffPreview, match, context);
+                        ReviewResult review = isDanger(filePath, modeDesc, diffPreview, matches, context);
                         if (review.isDanger()) {
                             throw new ToolExecutor.ToolExecuteException(ReviewResult.rejectMessage("此文件编辑操作存在危险", review.reason()));
                         }
@@ -160,9 +188,22 @@ public class FileEditTool implements ToolHandler {
             }
 
             // 执行文件编辑：在归一化后的内容中替换
-            String resultContent = fileContent.substring(0, match.startOffset)
-                    + newContent
-                    + fileContent.substring(match.endOffset);
+            String resultContent;
+            if (multiple) {
+                StringBuilder builder = new StringBuilder(fileContent.length());
+                int cursor = 0;
+                for (MatchResult m : matches) {
+                    builder.append(fileContent, cursor, m.startOffset).append(newContent);
+                    cursor = m.endOffset;
+                }
+                builder.append(fileContent, cursor, fileContent.length());
+                resultContent = builder.toString();
+            } else {
+                MatchResult m = matches.getFirst();
+                resultContent = fileContent.substring(0, m.startOffset)
+                        + newContent
+                        + fileContent.substring(m.endOffset);
+            }
 
             // 还原原始换行符
             if (!"\n".equals(lineSeparator)) {
@@ -174,8 +215,8 @@ public class FileEditTool implements ToolHandler {
             String metaBuilder = "文件编辑成功\n\n" +
                     "文件路径: " + filePath + "\n" +
                     "编辑模式: " + modeDesc + "\n" +
-                    "匹配行范围: 第 " + (match.startLine + 1) +
-                    " ~ " + (match.endLine + 1) + " 行\n" +
+                    "匹配处数: " + matches.size() + "\n" +
+                    "匹配行范围: " + describeLineRanges(matches) + "\n" +
                     "文件编辑前总行数: " + totalLines + "\n" +
                     "\n变更预览:\n";
 
@@ -192,61 +233,54 @@ public class FileEditTool implements ToolHandler {
     // ======================== 内容匹配 ========================
 
     /**
-     * 在文件内容中查找 oldContent 的唯一匹配位置
+     * 在文件内容中查找 oldContent 的所有匹配位置。
+     * <p>
+     * replaceAll=false 时按步进 1 搜索，让重叠匹配也计入（便于报出“多处匹配、必须唯一”）；
+     * replaceAll=true 时按 oldContent 长度非重叠步进，得到可直接批量替换的匹配列表。
      *
      * @param fileContent 归一化后的文件全文
-     * @param allLines    按行拆分后的文件内容
-     * @param oldContent  要查找的原始内容
-     * @param newContent  替换后的新内容（仅在匹配失败时用于回显，便于定位问题）
-     * @return 匹配结果（包含偏移量和行号）
-     * @throws ToolExecutor.ToolExecuteException 未找到或找到多处匹配时抛出
+     * @param oldContent  要查找的原始内容（调用方保证非空）
+     * @param replaceAll  是否替换全部匹配
+     * @return 匹配结果列表（含偏移量与行号），无匹配时为空列表
      */
-    private MatchResult findUniqueMatch(String fileContent, List<String> allLines, String oldContent, String newContent)
-            throws ToolExecutor.ToolExecuteException {
-
-        // 收集所有匹配位置
+    private List<MatchResult> findMatches(String fileContent, String oldContent, boolean replaceAll) {
         List<Integer> matchPositions = new ArrayList<>();
         int searchFrom = 0;
         while (true) {
             int pos = fileContent.indexOf(oldContent, searchFrom);
             if (pos < 0) break;
             matchPositions.add(pos);
-            searchFrom = pos + 1; // 重叠匹配也计入，避免漏报
+            searchFrom = replaceAll ? pos + oldContent.length() : pos + 1;
         }
 
-        if (matchPositions.isEmpty()) {
-            throw new ToolExecutor.ToolExecuteException(
-                    "在文件中未找到 oldContent 的匹配内容，请确认内容是否正确" +
-                    "（注意空白字符、缩进和换行符的差异）。\n\n" +
-                    "本次传入的内容如下（换行符已归一化为 \\n）：\n" +
-                    describeContents(oldContent, newContent) + "\n\n" +
-                    "请核对 oldContent 是否与文件中的实际内容完全一致，修正后重试本工具；" +
-                    "不要改用 file_write 直接覆盖整个文件。");
+        List<MatchResult> matches = new ArrayList<>(matchPositions.size());
+        for (int startOffset : matchPositions) {
+            int endOffset = startOffset + oldContent.length();
+            int startLine = offsetToLine(fileContent, startOffset);
+            // endOffset - 1 是因为 endOffset 指向匹配内容之后的首个字符，需要回退一个字符来确定行号
+            int endLine = offsetToLine(fileContent, Math.max(0, endOffset - 1));
+            matches.add(new MatchResult(startOffset, endOffset, startLine, endLine));
         }
+        return matches;
+    }
 
-        if (matchPositions.size() > 1) {
-            StringBuilder sb = new StringBuilder();
-            sb.append("oldContent 在文件中匹配到 ").append(matchPositions.size())
-              .append(" 处，必须唯一匹配。各匹配位置如下：\n");
-            for (int i = 0; i < matchPositions.size(); i++) {
-                int pos = matchPositions.get(i);
-                int line = offsetToLine(fileContent, pos);
-                sb.append("  - 匹配 ").append(i + 1).append(": 第 ").append(line + 1).append(" 行\n");
+    /**
+     * 把多处匹配的行范围拼成人类可读文案，例如「第 3 行、第 10 ~ 12 行」。
+     */
+    private String describeLineRanges(List<MatchResult> matches) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < matches.size(); i++) {
+            MatchResult m = matches.get(i);
+            if (i > 0) {
+                sb.append("、");
             }
-            sb.append("\n本次传入的内容如下（换行符已归一化为 \\n）：\n")
-              .append(describeContents(oldContent, newContent)).append("\n\n")
-              .append("请增加更多上下文使 oldContent 能够唯一匹配。");
-            throw new ToolExecutor.ToolExecuteException(sb.toString());
+            if (m.startLine == m.endLine) {
+                sb.append("第 ").append(m.startLine + 1).append(" 行");
+            } else {
+                sb.append("第 ").append(m.startLine + 1).append(" ~ ").append(m.endLine + 1).append(" 行");
+            }
         }
-
-        int startOffset = matchPositions.getFirst();
-        int endOffset = startOffset + oldContent.length();
-
-        int startLine = offsetToLine(fileContent, startOffset);
-        // endOffset - 1 是因为 endOffset 指向匹配内容之后的首个字符，需要回退一个字符来确定行号
-        int endLine = offsetToLine(fileContent, Math.max(0, endOffset - 1));
-
-        return new MatchResult(startOffset, endOffset, startLine, endLine);
+        return sb.toString();
     }
 
     /**
@@ -293,7 +327,40 @@ public class FileEditTool implements ToolHandler {
                 + newContent
                 + fileContent.substring(match.endOffset);
         List<String> newLines = splitLines(newFileContent);
+        return "````" + ToolKit.inferLanguage(filePath) + "\n" + buildHunk(allLines, newLines) + "````";
+    }
 
+    /**
+     * 多处匹配的 diff 预览：逐处生成独立 hunk。
+     * <p>
+     * 每处都相对「原文只替换这一处」的完整文件再比对，因此部分行替换也能正确展示整行，
+     * 且行号基于原文，便于对照。
+     */
+    private String buildMultiDiff(String fileContent, List<String> allLines, List<MatchResult> matches,
+                                  String newContent, Path filePath) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < matches.size(); i++) {
+            MatchResult match = matches.get(i);
+            String singleNewFile = fileContent.substring(0, match.startOffset)
+                    + newContent
+                    + fileContent.substring(match.endOffset);
+            List<String> singleNewLines = splitLines(singleNewFile);
+            sb.append("### 匹配 ").append(i + 1).append("（")
+              .append(match.startLine == match.endLine
+                      ? "第 " + (match.startLine + 1) + " 行"
+                      : "第 " + (match.startLine + 1) + " ~ " + (match.endLine + 1) + " 行")
+              .append("）\n");
+            sb.append(buildHunk(allLines, singleNewLines)).append("\n");
+        }
+        return "````" + ToolKit.inferLanguage(filePath) + "\n" + sb + "````";
+    }
+
+    /**
+     * 计算新旧内容的公共前后缀，输出单个 hunk：上下文前 → 删除行(-) → 添加行(+) → 上下文后。
+     * <p>
+     * 删除/添加行都展示完整行内容，部分行替换也不会把整行误显示为被替换。
+     */
+    private String buildHunk(List<String> allLines, List<String> newLines) {
         int oldSize = allLines.size();
         int newSize = newLines.size();
 
@@ -338,7 +405,7 @@ public class FileEditTool implements ToolHandler {
             sb.append(formatLine(" ", i + 1, newLines.get(i)));
         }
 
-        return "````" + ToolKit.inferLanguage(filePath) + "\n" + sb + "````";
+        return sb.toString();
     }
 
     /**
@@ -404,19 +471,18 @@ public class FileEditTool implements ToolHandler {
      * 使用 AI 对文件编辑操作进行危险性评估（子 Agent 审查，可读文件/列目录/解码取证）。
      */
     private ReviewResult isDanger(Path filePath, String modeDesc, String previewContent,
-                                  MatchResult match, Map<String, Object> context) throws Exception {
+                                  List<MatchResult> matches, Map<String, Object> context) throws Exception {
         // 预览内容可能包含 % 等字符，禁止用 String.formatted，改用占位符 replace
         String description = """
                 文件编辑操作（替换/删除文件中的一段内容）
                 编辑模式：${mode}
                 文件路径：${path}
-                操作范围：第 ${start} ~ ${end} 行
+                操作范围：${range}
                 以下是变更预览（- 表示删除的行，+ 表示添加的行，空格前缀为未变更的上下文行）：
                 ${content}
                 """.replace("${mode}", modeDesc)
                 .replace("${path}", filePath.toString())
-                .replace("${start}", String.valueOf(match.startLine + 1))
-                .replace("${end}", String.valueOf(match.endLine + 1))
+                .replace("${range}", describeLineRanges(matches))
                 .replace("${content}", previewContent);
         return securityService.review(context, description);
     }
@@ -429,9 +495,9 @@ public class FileEditTool implements ToolHandler {
      * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
     private void ask(Map<String, Object> context, Path filePath,
-                     String modeDesc, MatchResult match, String previewContent, String riskReason) throws Exception {
+                     String modeDesc, List<MatchResult> matches, String previewContent, String riskReason) throws Exception {
 
-        String lineRange = "第 " + (match.startLine + 1) + " ~ " + (match.endLine + 1) + " 行";
+        String lineRange = describeLineRanges(matches);
 
         String message = "### 文件编辑请求\n\n"
                 + ReviewResult.riskReasonBlock(riskReason)
@@ -460,7 +526,7 @@ public class FileEditTool implements ToolHandler {
         };
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("精确修改文件内容时使用此工具（比执行 sed/awk 命令更安全可靠）。在文件中查找唯一匹配的旧文本并替换为新文本，支持删除操作（newContent 为空时）。" + modeDesc)
+                .setDescription("精确修改文件内容时使用此工具（比执行 sed/awk 命令更安全可靠）。在文件中查找旧文本并替换为新文本，支持删除操作（newContent 为空时）。默认要求 oldContent 唯一匹配；将 replaceAll 设为 true 可替换文件中所有匹配（含重复项）。" + modeDesc)
                 .setRequired(List.of("path", "oldContent"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("path", "string",
@@ -468,10 +534,13 @@ public class FileEditTool implements ToolHandler {
                                 "会话沙箱文件写成 sessionId:相对路径（如 sessionId:notes.txt），前缀 sessionId: 表示当前会话，此时跳过安全审核与用户确认。"),
                         new ToolRegister.Parameters("oldContent", "string",
                                 "文件中需要被替换的原始内容（必须与文件中的内容完全一致，包括空白字符和换行）。" +
-                                "该内容在文件中必须唯一，若匹配到多处则会报错并列出所有匹配位置，此时需增加更多上下文使其唯一。"),
+                                "默认该内容在文件中必须唯一，若匹配到多处则会报错并列出所有匹配位置，此时需增加更多上下文使其唯一，或将 replaceAll 设为 true 替换全部匹配。"),
                         new ToolRegister.Parameters("newContent", "string",
                                 "替换后的新内容。若为空字符串则表示删除 oldContent。" +
-                                "若要在某处插入新内容，可将该位置的现有行作为 oldContent，并在 newContent 中保留这些行并追加新内容。")
+                                "若要在某处插入新内容，可将该位置的现有行作为 oldContent，并在 newContent 中保留这些行并追加新内容。"),
+                        new ToolRegister.Parameters("replaceAll", "boolean",
+                                "是否替换全部匹配，默认 false。false：oldContent 必须唯一匹配，匹配到多处会报错；" +
+                                "true：替换文件中所有匹配位置（包括重复出现的），不要求唯一。")
                 ));
     }
 
@@ -484,10 +553,12 @@ public class FileEditTool implements ToolHandler {
     private static class Arguments {
         /** 文件路径 */
         private String path;
-        /** 需要被替换的原始内容（必须在文件中唯一匹配） */
+        /** 需要被替换的原始内容（默认必须在文件中唯一匹配；replaceAll=true 时允许非唯一） */
         private String oldContent;
         /** 替换后的新内容，为空字符串时表示删除 */
         private String newContent;
+        /** 是否替换全部匹配（默认 false；true 时替换所有匹配位置） */
+        private Boolean replaceAll;
     }
 
     /**
