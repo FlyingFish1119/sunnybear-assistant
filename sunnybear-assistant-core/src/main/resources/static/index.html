@@ -431,6 +431,10 @@
             railPanels() {
                 return RailPlugins.snapshot().filter(e => e.component);
             },
+            /** 气泡毛玻璃开关：开启后在 <html> 挂 .glass-mode，由各组件 CSS 接管样式 */
+            glassBubble() {
+                return !!(this.userSettings && this.userSettings.glassBubble);
+            },
             backgroundStyle() {
                 const bg = this.userSettings.background;
                 // loaded 为 false 时 #app 仍是 display:none，
@@ -454,6 +458,13 @@
                 handler(val) {
                     document.documentElement.style.setProperty('--main-color', val);
                     document.documentElement.style.setProperty('--el-color-primary', val);
+                },
+                immediate: true
+            },
+            // 气泡毛玻璃：把开关同步成 <html> 上的 .glass-mode，供气泡/发送栏 CSS 命中
+            glassBubble: {
+                handler(val) {
+                    document.documentElement.classList.toggle('glass-mode', !!val);
                 },
                 immediate: true
             },

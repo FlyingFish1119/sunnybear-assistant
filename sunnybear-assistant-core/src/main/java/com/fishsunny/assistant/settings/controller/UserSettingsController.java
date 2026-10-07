@@ -75,6 +75,7 @@ public class UserSettingsController {
         userSettings.setContextTokenLimit(settings.getContextTokenLimit());
         userSettings.setMaxImageEdgePixel(settings.getMaxImageEdgePixel());
         userSettings.setMaxTextFileBytes(settings.getMaxTextFileBytes());
+        userSettings.setGlassBubble(Boolean.TRUE.equals(settings.getGlassBubble()));
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(userSettingsPath), userSettings);
         } catch (Exception e) {

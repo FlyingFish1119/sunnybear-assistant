@@ -132,4 +132,17 @@ public class UserSettings {
     public Integer getMaxTextFileBytes() {
         return maxTextFileBytes == null ? 32768 : maxTextFileBytes;
     }
+
+    /**
+     * 气泡毛玻璃开关：开启后前端给对话气泡与发送栏套上毛玻璃（半透明 + 背景模糊）效果。
+     * 纯展示选项，默认关闭。
+     */
+    private Boolean glassBubble = false;
+    public UserSettings setGlassBubble(Boolean glassBubble) {
+        this.glassBubble = Boolean.TRUE.equals(glassBubble);
+        return this;
+    }
+    public Boolean getGlassBubble() {
+        return Boolean.TRUE.equals(glassBubble);
+    }
 }

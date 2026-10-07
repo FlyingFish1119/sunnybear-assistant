@@ -999,3 +999,33 @@
 }
 .message-attachment-file a:hover { background: rgba(0, 0, 0, 0.08); }
 
+/* ============================================
+   气泡毛玻璃模式
+   ------------------------------------------------------------
+   用户设置开启「气泡毛玻璃」后，index.html 在 <html> 上挂 .glass-mode。
+   气泡改成半透明 + backdrop-filter 模糊其背后的消息区背景图；
+   没有背景图时画面为白，效果退化为轻微通透感，不影响可读性。
+   ⚠ 放在本文件末尾，靠源码顺序压过上面的基础气泡背景（同特异性时后写者胜）。
+   ============================================ */
+.glass-mode .message-area-bubble {
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.10);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(14px) saturate(160%);
+}
+
+.glass-mode .message-area-row.assistant .message-area-bubble {
+    background-color: rgba(255, 255, 255, 0.42);
+}
+
+/* 用户气泡的背景由 message-area-user.js 以内联 style 写死（跟随主色变浅），
+   内联优先级高于任何选择器，必须 !important 才能压成半透明 */
+.glass-mode .message-area-row.user .message-area-bubble {
+    background-color: color-mix(in srgb, var(--main-color, lightsalmon) 55%, transparent) !important;
+}
+
+.glass-mode .message-area-row .message-area-bubble.tool-bubble {
+    background: rgba(255, 255, 255, 0.32);
+    border: 2px dashed color-mix(in srgb, var(--border-color, #ddd) 65%, transparent);
+}
+

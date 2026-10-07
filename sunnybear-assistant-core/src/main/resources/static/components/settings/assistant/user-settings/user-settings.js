@@ -86,6 +86,10 @@ const UserSettings = {
                     <el-color-picker v-model="userForm.mainColor" show-alpha :predefine="predefineColors"></el-color-picker>
                     <span style="margin-left: 12px; color: #909399; font-size: 13px;">选择应用的主题颜色</span>
                 </el-form-item>
+                <el-form-item label="气泡毛玻璃">
+                    <el-switch v-model="userForm.glassBubble" active-text="开启" inactive-text="关闭"></el-switch>
+                    <span style="margin-left: 12px; color: #909399; font-size: 13px;">开启后对话气泡与发送栏呈毛玻璃效果（配合背景图更明显）</span>
+                </el-form-item>
                 <el-form-item label="自动切换模型">
                     <el-switch v-model="userForm.enableAutoSwitchModel" active-text="开启" inactive-text="关闭"></el-switch>
                     <span style="margin-left: 12px; color: #909399; font-size: 13px;">自动判断问题复杂度并切换高级模型</span>
@@ -126,7 +130,7 @@ const UserSettings = {
     data() {
         return {
             dialogs: { user: false },
-            userForm: { username: '', avatar: '', background: '', opacity: 0.3, mainColor: 'lightsalmon', enableAutoSwitchModel: false, proModelThreshold: 0.7, contextTokenLimit: null, maxImageEdgePixel: 1024, maxTextFileBytes: 32768 },
+            userForm: { username: '', avatar: '', background: '', opacity: 0.3, mainColor: 'lightsalmon', glassBubble: false, enableAutoSwitchModel: false, proModelThreshold: 0.7, contextTokenLimit: null, maxImageEdgePixel: 1024, maxTextFileBytes: 32768 },
             predefineColors: [
                 'lightsalmon', '#409eff', '#67c23a', '#e6a23c', '#f56c6c',
                 '#e83e8c', '#6f42c1', '#20c997', '#17a2b8', '#6610f2',
@@ -160,6 +164,7 @@ const UserSettings = {
                 background: this.settings.background || '',
                 opacity: this.settings.opacity != null ? this.settings.opacity : 0.3,
                 mainColor: this.settings.mainColor || 'lightsalmon',
+                glassBubble: !!this.settings.glassBubble,
                 enableAutoSwitchModel: this.settings.enableAutoSwitchModel || false,
                 proModelThreshold: this.settings.proModelThreshold != null ? this.settings.proModelThreshold : 0.7,
                 contextTokenLimit: this.settings.contextTokenLimit != null ? this.settings.contextTokenLimit : null,
@@ -258,6 +263,7 @@ const UserSettings = {
                 username: this.userForm.username.trim(),
                 opacity: this.userForm.opacity,
                 mainColor: mainColor,
+                glassBubble: !!this.userForm.glassBubble,
                 enableAutoSwitchModel: this.userForm.enableAutoSwitchModel,
                 proModelThreshold: this.userForm.proModelThreshold != null ? this.userForm.proModelThreshold : 0.7,
                 contextTokenLimit: this.userForm.contextTokenLimit || null,

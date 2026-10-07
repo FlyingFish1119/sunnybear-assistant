@@ -257,3 +257,16 @@
 
     /* 看板熊：样式已迁到 components/mascot/mascot.css，此处不再有熊的规则 */
 }
+
+/* ============================================
+   发送栏毛玻璃模式
+   ------------------------------------------------------------
+   用户设置开启「气泡毛玻璃」后，<html> 上有 .glass-mode。
+   输入卡改成半透明 + backdrop-filter 模糊背后的背景图；
+   focus-within 的主色描边由上面的基础规则照常生效（本规则不碰 border-color）。
+   ============================================ */
+.glass-mode .send-area-composer {
+    background: rgba(255, 255, 255, 0.5);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(160%);
+}
