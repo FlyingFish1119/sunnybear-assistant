@@ -104,17 +104,13 @@ public class ToolExecutor {
     }
 
     /** 工具执行生命周期回调：beforeExec 调度前触发，afterExec 每次工具执行完成后「恰好一次」 */
-    public record ToolProvider(Consumer<ToolRequest> beforeExec, Consumer<ToolExecuteResponse> afterExec) {}
-
-    /**
-     * 后置处理链回调 —— 与 {@link ToolProvider#afterExec()} 解耦，避免复用 afterExec 导致其被重复调用。
-     * 每批工具执行完、链处理结束后回调一次，仅携带被链改写过的响应（未改写则不回调）。
-     */
-    @FunctionalInterface
-    public interface ToolResponseHandleProvider {
-        void afterHandle(List<ToolExecuteResponse> changedResponses);
+    @Data
+    @Accessors(chain = true, fluent = true)
+    public static class ToolProvider {
+        private Consumer<ToolRequest> beforeExec;
+        private Consumer<ToolExecuteResponse> afterExec;
+        private Consumer<List<ToolExecuteResponse>> afterChain;
     }
-
 
     /** 按名字取本机工具处理器，不存在返回 null。只读查询用，不走任何过滤/覆盖 */
     public ToolHandler getTool(String toolName) {
@@ -127,34 +123,22 @@ public class ToolExecutor {
     }
 
     public List<ToolExecuteResponse> executeAdapter(List<AIAdapter.ToolCall> toolCalls, Map<String, Object> context, ToolProvider provider) {
-        return executeAdapter(toolCalls, context, provider, null);
-    }
-
-    public List<ToolExecuteResponse> executeAdapter(List<AIAdapter.ToolCall> toolCalls,
-                                                    Map<String, Object> context,
-                                                    ToolProvider provider,
-                                                    ToolResponseHandleProvider responseHandleProvider) {
-        List<ToolRequest> requests = ToolRequest.convert(toolCalls);
-        return execute(requests, context, provider, responseHandleProvider);
+        return execute(ToolRequest.convert(toolCalls), context, provider);
     }
 
     public List<ToolExecuteResponse> execute(List<ToolRequest> requests, Map<String, Object> context) {
-        return execute(requests, context, new ToolProvider(null, null), null);
+        return execute(requests, context, new ToolProvider());
     }
 
     // ======================== 异步版本（已备注，使用线程池+CompletableFuture） ========================
-    public List<ToolExecuteResponse> execute(List<ToolRequest> requests, Map<String, Object> context, ToolProvider provider) {
-        return execute(requests, context, provider, null);
-    }
 
     public List<ToolExecuteResponse> execute(List<ToolRequest> requests,
                                              Map<String, Object> context,
-                                             ToolProvider provider,
-                                             ToolResponseHandleProvider responseHandleProvider) {
+                                             ToolProvider provider) {
         if (requests == null || requests.isEmpty()) {
             return new ArrayList<>();
         }
-        ToolProvider safeProvider = provider == null ? new ToolProvider(null, null) : provider;
+        ToolProvider safeProvider = provider == null ? new ToolProvider() : provider;
 
         // 捕获本轮取消令牌并绑到每个工具任务线程上：工具内部再发起的 translate 会自动继承它，
         // 「停止」因此覆盖整条链路（含子请求），而不只是收流那一段
@@ -185,19 +169,19 @@ public class ToolExecutor {
             }
         }
         if (!toolResponseHandleChains.isEmpty()) {
-            applyResponseHandleChains(responses, context, responseHandleProvider);
+            applyResponseHandleChains(responses, context, safeProvider.afterChain());
         }
         return responses;
     }
 
     /**
      * 依次执行后置处理链；任一链异常只影响自身。
-     * 链执行完通过独立的 {@link ToolResponseHandleProvider#afterHandle} 回调一次被改写的响应，
+     * 链执行完通过独立的 {@link Consumer<List<ToolExecuteResponse>>#afterHandle} 回调一次被改写的响应，
      * 与 execute 生命周期回调 afterExec 解耦，保证 afterExec 始终「恰好一次」。
      */
     private void applyResponseHandleChains(List<ToolExecuteResponse> responses,
                                            Map<String, Object> context,
-                                           ToolResponseHandleProvider responseHandleProvider) {
+                                           Consumer<List<ToolExecuteResponse>> responseHandleProvider) {
         // 用内容快照（文本结果 + 额外内容块数量）拍基线：只比 result 会漏掉「仅追加了内容块」的改写，
         // 那些响应就拿不到补推帧，前端看不到追加内容
         Map<ToolExecuteResponse, String> originSnapshots = new IdentityHashMap<>();
@@ -232,7 +216,7 @@ public class ToolExecutor {
             return;
         }
         try {
-            responseHandleProvider.afterHandle(changed);
+            responseHandleProvider.accept(changed);
         } catch (Exception e) {
             log.warn("后置处理链回调失败: {}", e.getMessage());
         }

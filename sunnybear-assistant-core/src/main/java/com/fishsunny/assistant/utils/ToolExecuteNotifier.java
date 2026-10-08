@@ -71,26 +71,16 @@ public final class ToolExecuteNotifier {
         Consumer<ToolExecutor.ToolExecuteResponse> afterExec = response ->
                 pushToolResult(session, chatSessionId, objectMapper, response);
 
-        return new ToolExecutor.ToolProvider(beforeExec, afterExec);
-    }
-
-    /**
-     * 构建后置处理链的回调 provider：链改写工具结果后，按同一 toolCallId 补推一帧，
-     * 前端据此覆盖已渲染的工具气泡，实时看到追加内容。
-     *
-     * @return 构建好的 provider；无法推送时返回 null（调用方按无回调处理）
-     */
-    public static ToolExecutor.ToolResponseHandleProvider buildResponseHandleProvider(WebSocketSession session,
-                                                                                      String chatSessionId,
-                                                                                      ObjectMapper objectMapper) {
-        if (session == null || chatSessionId == null) {
-            return null;
-        }
-        return changed -> {
-            for (ToolExecutor.ToolExecuteResponse response : changed) {
+        Consumer<List<ToolExecutor.ToolExecuteResponse>> afterChain = responses -> {
+            for (ToolExecutor.ToolExecuteResponse response : responses) {
                 pushToolResult(session, chatSessionId, objectMapper, response);
             }
         };
+
+        return new ToolExecutor.ToolProvider()
+                .beforeExec(beforeExec)
+                .afterExec(afterExec)
+                .afterChain(afterChain);
     }
 
     /**

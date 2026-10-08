@@ -85,6 +85,18 @@ public class WebSearchTool implements ToolHandler {
 
     @Override
     public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
+        String prettyJson = searchRaw(argumentsJson);
+        // 用 json 代码块包裹，便于前端按 Markdown 语法高亮展示搜索结果
+        String wrapped = "```json\n" + prettyJson + "\n```";
+        return new ToolExecutor.ToolExecuteResponse(name(), wrapped);
+    }
+
+    /**
+     * 执行搜索并返回格式化后的原始 JSON 字符串（不含 Markdown 代码块包裹）。
+     * 供需要程序化消费原始结果的调用方（如 /fast-search）复用，
+     * 避免解析到带代码块包裹的文本。
+     */
+    public String searchRaw(String argumentsJson) throws ToolExecutor.ToolExecuteException {
         // 解析参数
         Arguments arguments;
         try {
@@ -125,8 +137,7 @@ public class WebSearchTool implements ToolHandler {
             String rawJson = engine.search(arguments.getQ(), arguments.getSize(), arguments.getScope());
 
             Object jsonNode = objectMapper.readTree(rawJson);
-            String prettyJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonNode);
-            return new ToolExecutor.ToolExecuteResponse(name(), prettyJson);
+            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonNode);
         } catch (ToolExecutor.ToolExecuteException e) {
             throw e;
         } catch (IllegalArgumentException e) {

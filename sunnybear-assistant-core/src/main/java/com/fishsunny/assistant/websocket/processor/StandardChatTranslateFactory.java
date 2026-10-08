@@ -233,8 +233,7 @@ public class StandardChatTranslateFactory {
                 List<ToolExecutor.ToolExecuteResponse> toolResults = ChatCancelContext.isCancelled()
                         ? ToolExecutor.cancelledResponses(toolCalls)
                         : toolExecutor.executeAdapter(toolCalls, context,
-                        ToolExecuteNotifier.buildProvider(session, chatSession.getId(), objectMapper),
-                        ToolExecuteNotifier.buildResponseHandleProvider(session, chatSession.getId(), objectMapper));
+                        ToolExecuteNotifier.buildProvider(session, chatSession.getId(), objectMapper));
                 // 构建工具消息
                 List<ChatMessage> toolMessages = new ArrayList<>();
                 for (int i = 0; i < toolCalls.size(); i++) {

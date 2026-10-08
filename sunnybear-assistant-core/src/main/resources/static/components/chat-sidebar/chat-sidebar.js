@@ -73,7 +73,7 @@ const ChatSidebarPlugins = (function () {
         },
         /**
          * 注册一个侧边栏扩展组件。锚点：
-         *   'sidebar-footer'  footer 左侧按钮区（设置/导航按钮旁）
+         *   'sidebar-footer'  footer 左侧按钮区（设置/刷新/导航按钮旁）
          * 组件会收到 prop: { mainColor }，可 inject sessionStore / wsBus。
          *
          * 传入 key 时按 key 去重：已存在同名槽则就地「覆盖」（用于替换核心默认设置
@@ -132,6 +132,12 @@ const ChatSidebarPlugins = (function () {
 // 页面（角色/世界）用同名 key 注册自己的按钮即可「覆盖」，无需 hideBuiltin。
 if (typeof SettingsButton !== 'undefined') {
     ChatSidebarPlugins.registerSlot('sidebar-footer', SettingsButton, 0, 'settings');
+}
+
+// 核心默认刷新按钮（key 'refresh'）：与设置按钮并列，点击刷新会话列表。
+// 页面用同名 key 注册自己的按钮即可「覆盖」。
+if (typeof RefreshButton !== 'undefined') {
+    ChatSidebarPlugins.registerSlot('sidebar-footer', RefreshButton, 1, 'refresh');
 }
 
 const ChatSidebar = {

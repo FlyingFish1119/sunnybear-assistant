@@ -119,14 +119,17 @@ public class FastSearchSlashCommandHandler extends SlashCommandHandler {
             ToolExecutor.ToolExecuteResponse metasoResp;
             ToolExecutor.ToolExecuteResponse serperResp;
             try {
-                metasoResp = webSearchTool.action(objectMapper.writeValueAsString(metasoSearchArgs), Map.of());
+                // 用 searchRaw 取原始 JSON，避免拿到 action 返回的 Markdown 代码块包裹
+                metasoResp = new ToolExecutor.ToolExecuteResponse(WebSearchTool.NAME,
+                        webSearchTool.searchRaw(objectMapper.writeValueAsString(metasoSearchArgs)));
                 metasoSuccess = true;
             } catch (ToolExecutor.ToolExecuteException e) {
                 log.warn("Metaso search failed: {}", e.getMessage());
                 metasoResp = new ToolExecutor.ToolExecuteResponse(WebSearchTool.NAME, "Metaso search failed: " + e.getMessage());
             }
             try {
-                serperResp = webSearchTool.action(objectMapper.writeValueAsString(serperSearchArgs), Map.of());
+                serperResp = new ToolExecutor.ToolExecuteResponse(WebSearchTool.NAME,
+                        webSearchTool.searchRaw(objectMapper.writeValueAsString(serperSearchArgs)));
                 serperSuccess = true;
             } catch (ToolExecutor.ToolExecuteException e) {
                 log.warn("Serper search failed: {}", e.getMessage());
