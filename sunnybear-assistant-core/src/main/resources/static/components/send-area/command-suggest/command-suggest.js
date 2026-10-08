@@ -21,7 +21,6 @@
  *       :commands="filteredCommands"
  *       :active-index="commandActiveIndex"
  *       :visible="commandSuggestVisible"
- *       :main-color="mainColor"
  *       :sub-options="subOptions"
  *       :sub-title="'选择一个会话'"
  *       @select="onCommandSelect"
@@ -98,12 +97,22 @@ const CommandSuggest = {
         commands:    { type: Array,  default: () => [] },
         activeIndex: { type: Number, default: 0 },
         visible:     { type: Boolean, default: false },
-        mainColor:   { type: String, default: 'lightsalmon' },
         subOptions:  { type: Array,  default: () => [] },
         subTitle:    { type: String, default: '' }
     },
 
     emits: ['select', 'subSelect', 'back', 'update:activeIndex'],
+
+    inject: {
+        appSettings: { default: null }
+    },
+
+    computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        }
+    },
 
     watch: {
         activeIndex() {

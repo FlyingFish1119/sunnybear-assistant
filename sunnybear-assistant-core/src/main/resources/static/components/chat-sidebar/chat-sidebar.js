@@ -52,7 +52,7 @@ const ChatSidebarPlugins = (function () {
     var provider = null;
     /** 被隐藏的内置元素 key 集合 */
     var hiddenBuiltins = Object.create(null);
-    /** 锚点名 → 槽条目数组（{ component, order }） */
+    /** 锚点名 → 槽条目数组（{ component, order, key }） */
     var slotsByAnchor = Object.create(null);
 
     return {
@@ -75,13 +75,35 @@ const ChatSidebarPlugins = (function () {
          * 注册一个侧边栏扩展组件。锚点：
          *   'sidebar-footer'  footer 左侧按钮区（设置/导航按钮旁）
          * 组件会收到 prop: { mainColor }，可 inject sessionStore / wsBus。
+         *
+         * 传入 key 时按 key 去重：已存在同名槽则就地「覆盖」（用于替换核心默认设置
+         * 按钮，如角色/世界页），避免再调 hideBuiltin('settings-button')。
          */
-        registerSlot: function (anchor, component, order) {
+        registerSlot: function (anchor, component, order, key) {
             if (!anchor || !component) return;
             if (!slotsByAnchor[anchor]) slotsByAnchor[anchor] = [];
             var arr = slotsByAnchor[anchor];
-            arr.push({ component: component, order: order || 0 });
+            var entry = { component: component, order: order || 0, key: key || null };
+            if (key) {
+                for (var i = 0; i < arr.length; i++) {
+                    if (arr[i].key === key) {
+                        arr[i] = entry;
+                        arr.sort(function (a, b) { return a.order - b.order; });
+                        return;
+                    }
+                }
+            }
+            arr.push(entry);
             arr.sort(function (a, b) { return a.order - b.order; });
+        },
+        /**
+         * 移除锚点上 key 对应的槽条目（用于只想「去掉」内置项而不替换的场景）。
+         */
+        removeSlot: function (anchor, key) {
+            if (!anchor || !key || !slotsByAnchor[anchor]) return;
+            slotsByAnchor[anchor] = slotsByAnchor[anchor].filter(function (s) {
+                return s.key !== key;
+            });
         },
         /** 供组件挂载时取某锚点已登记槽的拷贝 */
         snapshot: function (anchor) {
@@ -89,7 +111,6 @@ const ChatSidebarPlugins = (function () {
         },
         /**
          * 隐藏一个内置元素。内置 key：
-         *   'settings-button'   设置按钮
          *   'router-button'     页面导航按钮
          *   'menu-delete'       右键菜单：删除会话
          *   'menu-pro'          右键菜单：Pro 模式切换
@@ -106,6 +127,12 @@ const ChatSidebarPlugins = (function () {
         }
     };
 })();
+
+// 核心默认设置按钮以槽组件形式挂进 footer（key 'settings'）。
+// 页面（角色/世界）用同名 key 注册自己的按钮即可「覆盖」，无需 hideBuiltin。
+if (typeof SettingsButton !== 'undefined') {
+    ChatSidebarPlugins.registerSlot('sidebar-footer', SettingsButton, 0, 'settings');
+}
 
 const ChatSidebar = {
     name: 'ChatSidebar',
@@ -171,14 +198,11 @@ const ChatSidebar = {
         </div>
         <div class="sidebar-footer">
             <div class="sidebar-footer-left">
-                <button v-if="!isHidden('settings-button')" class="sidebar-icon-btn" @click="goSettings" title="设置">
-                    <i data-lucide="settings"></i>
-                </button>
-                <!-- footer 插件槽（锚点 'sidebar-footer'，插件可放自己的按钮） -->
+                <!-- footer 插件槽（锚点 'sidebar-footer'；核心默认设置按钮 key 'settings'，
+                     页面可用同名 key 覆盖，插件可放自己的按钮） -->
                 <component v-for="(slot, si) in footerSlots"
                            :key="'sidebar-footer-' + si"
-                           :is="slot.component"
-                           :main-color="mainColor"></component>
+                           :is="slot.component"></component>
                 <button v-if="!isHidden('router-button')" class="sidebar-icon-btn" @click="goRouter" title="页面导航">
                     <i data-lucide="layout-grid"></i>
                 </button>
@@ -189,7 +213,7 @@ const ChatSidebar = {
     <div class="sidebar-overlay" :class="{ visible: sidebarOpen }" @click="closeSidebar"></div>
 
     <!-- 通用确认弹窗 -->
-    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+    <confirm-dialog ref="confirmDialog"></confirm-dialog>
 
     <!-- 会话知识库查看对话框（样式参考 settings 的知识条目管理） -->
     <el-dialog v-model="sessionKnowledgeDialog" title="" width="800px"
@@ -227,13 +251,13 @@ const ChatSidebar = {
     </el-dialog>`,
 
     props: {
-        mainColor: { type: String, default: 'lightsalmon' },
         collapsed: { type: Boolean, default: false }
     },
 
     emits: ['toggle-collapsed'],
 
     inject: {
+        appSettings: { default: null },
         // 可选注入：未提供时降级为 null
         sessionStore: { default: null },
         wsBus: { default: null }
@@ -336,13 +360,6 @@ const ChatSidebar = {
                     self.sessionStore.refreshSessions().finally(function () { self.ensureScrollable(); });
                 }
             });
-        },
-
-        /**
-         * 跳转到设置页面（不依赖父页面，组件内直接跳转）
-         */
-        goSettings: function () {
-            window.location.href = API.BASE_PATH + 'settings.html';
         },
 
         /**
@@ -652,6 +669,10 @@ const ChatSidebar = {
     },
 
     computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        },
         /** 当前生效的会话列表提供者：插件优先，未注册则回退 store 适配器 */
         sessionProvider: function () {
             void this.providerVersion; // 显式依赖版本号，便于运行期注册后经 forceRefresh 触发重算

@@ -10,10 +10,6 @@ const TaskPromptSettings = {
 
     mixins: [SettingsCommon],
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     template: `
     <div>
         <div class="settings-item" @click="openManage">
@@ -101,8 +97,12 @@ const TaskPromptSettings = {
             </template>
         </el-dialog>
 
-        <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+        <confirm-dialog ref="confirmDialog"></confirm-dialog>
     </div>`,
+
+    inject: {
+        appSettings: { default: null }
+    },
 
     data() {
         return {
@@ -111,6 +111,13 @@ const TaskPromptSettings = {
             taskPromptLoading: false,
             taskPromptEditForm: { _isNew: true, type: '', prompt: '', description: '' }
         };
+    },
+
+    computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        }
     },
 
     methods: {

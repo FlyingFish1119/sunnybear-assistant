@@ -19,11 +19,6 @@ const KnowledgeFlash = {
         <i data-lucide="database"></i>
     </span>`,
 
-    // 槽契约要求：TopbarPlugins 会向每个槽组件传 mainColor（此处样式走全局变量，未直接使用）
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     inject: {
         wsBus: { default: null }
     },

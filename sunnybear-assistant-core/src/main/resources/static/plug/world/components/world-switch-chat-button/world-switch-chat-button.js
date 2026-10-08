@@ -22,16 +22,17 @@ const WorldSwitchChatButton = {
         <i data-lucide="arrow-right-left"></i>
     </button>`,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     inject: {
+        appSettings: { default: null },
         worldPage: { required: true }
     },
 
     computed: {
-        visible: function () { return this.worldPage.switchChat.visible; }
+        visible: function () { return this.worldPage.switchChat.visible; },
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        }
     },
 
     methods: {

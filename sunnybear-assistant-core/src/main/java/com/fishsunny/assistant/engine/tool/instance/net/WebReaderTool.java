@@ -201,8 +201,32 @@ public class WebReaderTool implements ToolHandler {
             result.append("> ⚠️ 注意：fast 模式下 target 参数不可用，已忽略指定的目标：「")
                     .append(target).append("」\n");
         }
-        result.append("\n").append(extractedText);
+        result.append("\n").append(toCodeBlock(extractedText));
         return result.toString();
+    }
+
+    /**
+     * 把提取到的正文包进围栏代码块。
+     * <p>
+     * 正文是任意纯文本，可能自身包含反引号，故按正文里最长的连续反引号串动态选取围栏长度，
+     * 避免正文里的反引号提前闭合代码块。语言标记用 text，前端按纯文本渲染，
+     * 不会再被 Markdown 当成原始 HTML 解析，避免网页里的 HTML 撑爆消息气泡高度。
+     */
+    private String toCodeBlock(String text) {
+        String content = text == null ? "" : text;
+        int longest = 0;
+        int current = 0;
+        for (int i = 0; i < content.length(); i++) {
+            if (content.charAt(i) == '`') {
+                current++;
+                if (current > longest) longest = current;
+            } else {
+                current = 0;
+            }
+        }
+        int fenceLen = Math.max(3, longest + 1);
+        String fence = "`".repeat(fenceLen);
+        return fence + "text\n" + content + "\n" + fence;
     }
 
     /**

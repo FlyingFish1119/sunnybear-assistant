@@ -89,11 +89,11 @@ const ShellPanel = {
     </div>
     `,
 
-    props: {
-        mainColor: { type: String, default: '' }
-    },
-
     emits: ['visible-change'],
+
+    inject: {
+        appSettings: { default: null }
+    },
 
     data() {
         return {
@@ -127,6 +127,11 @@ const ShellPanel = {
             if (this.aiBusy) return '正在生成命令…';
             if (this.status !== 'connected') return '终端未连接';
             return '描述你想做什么，自动生成命令填入终端（如：拉取git最新提交）';
+        },
+
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return '';
         }
     },
 
@@ -546,3 +551,8 @@ const ShellPanel = {
         this.scheduleIcons();
     }
 };
+
+// 自注册进左侧导航轨（registry 定义于 nav-rail.js，须先于本文件加载）
+if (typeof RailPlugins !== 'undefined') {
+    RailPlugins.register('shell', { icon: 'terminal', label: '终端', component: ShellPanel, order: 40 });
+}

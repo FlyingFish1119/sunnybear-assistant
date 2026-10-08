@@ -58,7 +58,6 @@ const MessageAreaAssistant = {
         <div v-if="ctx.currentEditId === msg.id">
             <auto-resize-textarea
                 class="message-edit-textarea"
-                :main-color="ctx.mainColor"
                 v-model="ctx.editDraft"
                 :max-height="300"
                 :min-height="65"

@@ -24,17 +24,18 @@ const CharacterNameTag = {
         <span v-if="character" style="color:#999">·</span>
     </span>`,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     inject: {
+        appSettings: { default: null },
         characterPage: { default: null }
     },
 
     computed: {
         character: function () {
             return this.characterPage ? this.characterPage.characterInfo : null;
+        },
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
         }
     }
 };

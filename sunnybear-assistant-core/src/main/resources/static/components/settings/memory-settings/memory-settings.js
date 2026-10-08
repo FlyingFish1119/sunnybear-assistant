@@ -11,8 +11,11 @@ const MemorySettings = {
     mixins: [SettingsCommon],
 
     props: {
-        settings: { type: Object, default: () => ({}) },
-        mainColor: { type: String, default: 'lightsalmon' }
+        settings: { type: Object, default: () => ({}) }
+    },
+
+    inject: {
+        appSettings: { default: null }
     },
 
     template: `
@@ -131,7 +134,7 @@ const MemorySettings = {
             </template>
         </el-dialog>
 
-        <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+        <confirm-dialog ref="confirmDialog"></confirm-dialog>
     </div>`,
 
     data() {
@@ -167,6 +170,11 @@ const MemorySettings = {
                 names.add(item.groupName || '未分类');
             }
             return Array.from(names);
+        },
+
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
         }
     },
 

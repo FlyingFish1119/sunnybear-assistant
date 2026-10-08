@@ -39,17 +39,24 @@
     <script src="../../directives/auto-follow.js"></script>
     <!-- WebSocket 消息总线 + 会话/消息仓库（核心流程唯一实现） -->
     <script src="../../utils/ws-bus.js"></script>
+    <script src="../../stores/app-settings.js"></script>
     <script src="../../stores/session-store.js"></script>
     <!-- 复用的核心组件 -->
     <script src="../../components/message-topbar/tool-confirm/tool-confirm.js"></script>
     <script src="../../components/message-topbar/tool-question/tool-question.js"></script>
     <script src="../../components/confirm-dialog/confirm-dialog.js"></script>
     <script src="../../components/message-topbar/chat-session-name/chat-session-name.js"></script>
+    <!-- 核心默认设置按钮（footer 槽 key 'settings'，必须先于 chat-sidebar.js） -->
+    <script src="../../components/settings-button/settings-button.js"></script>
     <script src="../../components/chat-sidebar/chat-sidebar.js"></script>
     <script src="../../components/send-area/file-upload/file-upload.js"></script>
     <script src="../../components/message-topbar/chat-connection/chat-connection.js"></script>
     <script src="../../components/auto-resize-textarea/auto-resize-textarea.js"></script>
     <script src="../../components/send-area/command-suggest/command-suggest.js"></script>
+    <!-- 顶栏内置槽组件（必须先于 message-topbar.js，由其默认注册进左/右栏） -->
+    <script src="../../components/message-topbar/model-name/model-name.js"></script>
+    <script src="../../components/message-topbar/ctx-gauge/ctx-gauge.js"></script>
+    <script src="../../components/message-topbar/knowledge-flash/knowledge-flash.js"></script>
     <script src="../../components/message-topbar/message-topbar.js"></script>
     <script src="../../components/send-area/mark-tracker/mark-tracker.js"></script>
     <script src="../../components/send-area/send-area.js"></script>
@@ -104,7 +111,6 @@
 </div>
 <div id="app">
     <chat-sidebar
-        :main-color="mainColor"
         :collapsed="sidebarCollapsed"
         @toggle-collapsed="sidebarCollapsed = !sidebarCollapsed"
     ></chat-sidebar>
@@ -118,20 +124,12 @@
         </div>
         <div class="message-area-background" :style="backgroundStyle"></div>
         <!-- 顶栏（复用核心） -->
-        <message-topbar
-            :main-color="mainColor"
-            :ws-url="wsUrl"
-        ></message-topbar>
+        <message-topbar></message-topbar>
         <!-- 消息区（复用核心；开场 / 私聊正文经插件挂入） -->
-        <message-area
-            :main-color="mainColor"
-            :user-settings="userSettings"
-            :assistant-settings="assistantSettings"
-        ></message-area>
+        <message-area></message-area>
         <!-- 发送区（复用核心；私聊 / 移交按钮与浮条经插件挂入） -->
         <send-area
             ref="sendArea"
-            :main-color="mainColor"
             :commands="slashCommands"
             @drag-over-change="v => dragOver = v">
         </send-area>
@@ -267,8 +265,8 @@
     });
     // 开场横幅
     MessageAreaPlugins.registerSlot('message-list-top', WorldGreeting, 0);
-    // 侧边栏设置按钮（跳世界专属设置页）
-    ChatSidebarPlugins.registerSlot('sidebar-footer', WorldSettingsButton, 0);
+    // 侧边栏设置按钮：key 'settings' 覆盖核心默认设置按钮，跳世界专属设置页
+    ChatSidebarPlugins.registerSlot('sidebar-footer', WorldSettingsButton, 0, 'settings');
     // 发送区：私聊 / 移交按钮与浮条
     SendAreaPlugins.registerSlot('toolbar', WorldPrivateChatButton, 0);
     SendAreaPlugins.registerSlot('toolbar', WorldSwitchChatButton, 10);
@@ -277,15 +275,14 @@
 
     // 隐藏不需要的内置元素
     // 顶栏：世界页顶栏只有会话名 + 连接状态
-    TopbarPlugins.hideBuiltin('model');
-    TopbarPlugins.hideBuiltin('ctx-gauge');
-    TopbarPlugins.hideBuiltin('knowledge-flash');
+    TopbarPlugins.removeSlot('topbar-left', 'model');
+    TopbarPlugins.removeSlot('topbar-left', 'ctx-gauge');
+    TopbarPlugins.removeSlot('topbar-right', 'knowledge-flash');
     // 侧边栏：无定时器概念；右键菜单只留删除 / 导出；设置按钮跳世界专属页
     ChatSidebarPlugins.hideBuiltin('list-mode-toggle');
     ChatSidebarPlugins.hideBuiltin('menu-pro');
     ChatSidebarPlugins.hideBuiltin('menu-unreviewed');
     ChatSidebarPlugins.hideBuiltin('menu-knowledge');
-    ChatSidebarPlugins.hideBuiltin('settings-button');
     // 消息操作按钮：群聊不编辑 / 不重新生成 AI 消息
     MessageAreaPlugins.hideBuiltin('assistant-edit');
     MessageAreaPlugins.hideBuiltin('assistant-replace');
@@ -293,9 +290,6 @@
     const app = Vue.createApp({
         data() {
             return {
-                mainColor: (window.ThemeColorCache && window.ThemeColorCache.get()) || "lightsalmon",
-                userSettings: { background: '', opacity: 0.3 },
-                assistantSettings: { avatar: '', assistantName: '' },
                 // 世界观群聊相关
                 worldId: null,
                 loaded: false,
@@ -306,6 +300,10 @@
         },
 
         computed: {
+            // 共享设置统一从 AppSettings store 读取（子组件经 inject('appSettings') 自行获取）
+            mainColor: function () { return AppSettings.mainColor; },
+            userSettings: function () { return AppSettings.userSettings; },
+            assistantSettings: function () { return AppSettings.assistantSettings; },
             wsUrl: function () {
                 return API.ws.worldUrl;
             },
@@ -404,79 +402,22 @@
             },
 
             async fetchUserSettings() {
-                try {
-                    const result = await API.settings.user.get();
-                    if (result.status === 200) {
-                        this.userSettings = result.data || { background: '', opacity: 0.3 };
-                        if (this.userSettings.mainColor) {
-                            this.mainColor = this.userSettings.mainColor;
-                        }
-                        WorldPage.username = this.userSettings.username || '';
-                    }
-                } catch (error) {
-                    console.error('获取用户设置失败:', error);
-                }
-                if (!this.userSettings.mainColor) {
-                    try {
-                        const saved = localStorage.getItem('assistant-mainColor');
-                        if (saved) this.mainColor = saved;
-                    } catch (e) {}
-                }
+                // 通用拉取逻辑内聚在 AppSettings store
+                await AppSettings.fetchUserSettings();
+                WorldPage.username = AppSettings.userSettings.username || '';
                 if (WorldPage.worldInfo && WorldPage.worldInfo.mainColor) {
-                    this.mainColor = WorldPage.worldInfo.mainColor;
+                    AppSettings.mainColor = WorldPage.worldInfo.mainColor;
                 }
-                WorldPage.mainColor = this.mainColor;
+                WorldPage.mainColor = AppSettings.mainColor;
             },
 
-            /** 注册给 store 的 UI 副作用钩子 */
-            registerStoreUi() {
-                const self = this;
-                SessionStore.registerUi({
-                    scrollToBottom: function (force) {
-                        if (!force) {
-                            const listEl = document.querySelector('.message-area-list');
-                            if (listEl && listEl._autoFollowPaused) return;
-                        }
-                        Vue.nextTick(function () {
-                            requestAnimationFrame(function () {
-                                const el = document.querySelector('.message-area-list');
-                                if (el) el.scrollTop = el.scrollHeight;
-                            });
-                        });
-                    },
-                    renderMermaid: function () { MermaidUtils.renderAll(); },
-                    clearMdCache: function () { if (self.$md) self.$md.clearCache(); },
-                    isTtsEnabled: function () {
-                        return self.$refs.sendArea ? self.$refs.sendArea.isTtsEnabled() : false;
-                    },
-                    enqueueTts: function (audio) {
-                        if (self.$refs.sendArea) self.$refs.sendArea.enqueueTtsAudio(audio);
-                    },
-                    clearTts: function () {
-                        if (self.$refs.sendArea && self.$refs.sendArea.clearTtsQueue) self.$refs.sendArea.clearTtsQueue();
-                    },
-                    clearSendArea: function () {
-                        if (self.$refs.sendArea) self.$refs.sendArea.clear();
-                    }
-                });
-            }
         },
 
         mounted() {
             lucide.createIcons();
             // 插件组件请求刷新角色列表
             WorldPage.refreshCharacters = () => this.fetchWorldCharacters();
-            this.registerStoreUi();
             this.init();
-            document.addEventListener('click', (e) => {
-                const btn = e.target.closest('.code-copy-btn');
-                if (!btn) return;
-                const wrapper = btn.closest('.code-block-wrapper');
-                const code = wrapper && wrapper.querySelector('pre code');
-                if (code && code.textContent && navigator.clipboard) {
-                    navigator.clipboard.writeText(code.textContent);
-                }
-            });
         },
 
         watch: {
@@ -502,6 +443,7 @@
     app.use(AutoFollow);
     app.provide('sessionStore', SessionStore);
     app.provide('wsBus', WsBus);
+    app.provide('appSettings', AppSettings);
     app.provide('worldPage', WorldPage);
     // 复用核心组件
     app.component('tool-confirm', ToolConfirm);

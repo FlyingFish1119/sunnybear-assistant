@@ -12,14 +12,10 @@
  *   message-area-assistant/message-area-assistant.js   — 助手消息气泡
  *   message-area-tool/message-area-tool.js             — 工具消息气泡
  *
- * Props:
- *   mainColor         — String  主题色
- *   userSettings      — Object  用户设置（头像 / 用户名）
- *   assistantSettings — Object  助手设置（头像 / 名称）
- *
  * Injects:
  *   sessionStore      — 会话/消息仓库；currentMessages / currentSessionId /
  *                       isStreaming / sessionSelectLoading 均取自仓库
+ *   appSettings       — 应用级设置（主题色 / 用户设置 / 助手设置）
  *
  * 依赖全局：$md（MarkdownUtils）、ElementPlus、lucide、auto-follow 指令。
  */
@@ -33,7 +29,6 @@ const MessageArea = {
              若插件注册了列表顶部槽（如角色登场 char-hero），则核心开场让位，避免两块开场同时出现 -->
         <message-area-hero
             v-if="isNewChat && !listTopSlots.length"
-            :main-color="mainColor"
             :avatar="assistantAvatar"
             :assistant-name="assistantSettings.assistantName"
         ></message-area-hero>
@@ -59,17 +54,12 @@ const MessageArea = {
             </message-area-group>
             <!-- 上下文压缩卡片（message-area-compress 子组件）：长对话总结旧历史期间
                  顶替空占位，避免在「等待回复」处呆等 -->
-            <message-area-compress :main-color="mainColor"></message-area-compress>
+            <message-area-compress></message-area-compress>
         </div>
     </div>`,
 
-    props: {
-        mainColor:         { type: String, default: 'lightsalmon' },
-        userSettings:      { type: Object, default: function () { return { background: '', opacity: 0.3 }; } },
-        assistantSettings: { type: Object, default: function () { return { avatar: '', assistantName: '' }; } }
-    },
-
     inject: {
+        appSettings: { default: null },
         // 主应用必注：会话/消息仓库
         sessionStore: { required: true }
     },
@@ -88,9 +78,9 @@ const MessageArea = {
     data: function () {
         // 在 data 里创建共享上下文（provide 在 data 之后求值，这里创建才能被 provide 捕获）
         const context = createMessageAreaContext(this.sessionStore);
-        context.mainColor = this.mainColor;
-        context.userSettings = this.userSettings;
-        context.assistantSettings = this.assistantSettings;
+        context.mainColor = (this.appSettings ? this.appSettings.mainColor : 'lightsalmon');
+        context.userSettings = (this.appSettings && this.appSettings.userSettings) || { background: '', opacity: 0.3 };
+        context.assistantSettings = (this.appSettings && this.appSettings.assistantSettings) || { avatar: '', assistantName: '' };
         return {
             context: context
         };
@@ -103,6 +93,18 @@ const MessageArea = {
     },
 
     computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        },
+        /** 用户设置：从应用级设置注入（供落地页/头像使用） */
+        userSettings: function () {
+            return (this.appSettings && this.appSettings.userSettings) || { background: '', opacity: 0.3 };
+        },
+        /** 助手设置：从应用级设置注入 */
+        assistantSettings: function () {
+            return (this.appSettings && this.appSettings.assistantSettings) || { avatar: '', assistantName: '' };
+        },
         currentMessages: function () {
             return this.sessionStore.state.currentMessages;
         },
@@ -162,6 +164,32 @@ const MessageArea = {
             }
         };
         document.addEventListener('click', this._onDocClick);
+        // 向 store 注册本组件负责的 UI 副作用钩子（滚动到底 / Mermaid 渲染 / Markdown 缓存），
+        // 使页面根组件无需再转发这一组钩子。
+        this.sessionStore.registerUi({
+            scrollToBottom: (force) => this.scrollToBottom(force),
+            renderMermaid: () => { if (typeof MermaidUtils !== 'undefined') MermaidUtils.renderAll(); },
+            clearMdCache: () => { if (this.$md && typeof this.$md.clearCache === 'function') this.$md.clearCache(); }
+        });
+    },
+
+    methods: {
+        /**
+         * 滚动消息列表到底部
+         * @param {boolean} force - 为 true 时无视 _autoFollowPaused 强制滚动
+         */
+        scrollToBottom: function (force) {
+            if (!force) {
+                var listEl = document.querySelector('.message-area-list');
+                if (listEl && listEl._autoFollowPaused) return;
+            }
+            this.$nextTick(() => {
+                requestAnimationFrame(() => {
+                    var el = document.querySelector('.message-area-list');
+                    if (el) el.scrollTop = el.scrollHeight;
+                });
+            });
+        }
     },
 
     beforeUnmount: function () {

@@ -88,8 +88,8 @@ const ImageViewer = {
         </div>
     </transition>`,
 
-    props: {
-        mainColor: { type: String, default: '' }
+    inject: {
+        appSettings: { default: null }
     },
 
     data() {
@@ -131,6 +131,11 @@ const ImageViewer = {
                 pct = this.scale * (img.clientWidth / img.naturalWidth) * 100;
             }
             return Math.round(pct) + '%';
+        },
+
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return '';
         }
     },
 

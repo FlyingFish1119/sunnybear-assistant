@@ -4,13 +4,13 @@
  * 放在 #app 最左侧、会话侧边栏之外：侧边栏管「会话列表」，这条轨管「全局入口」，
  * 两者各占一条，互不挤占。侧边栏折叠时它保持常驻——导航轨本来就是稳态结构。
  *
- * Props:
- *   mainColor — String  主题色（铺底 + 选中态图标取色）
+ * Injects:
+ *   appSettings — 应用级设置（主题色，铺底 + 选中态图标取色）
  *
  * Emits:
  *   select(key) — 点击某个按钮，携带按钮的 key（父级接功能用）
  *
- * 按钮清单不写死在组件里，由 RailPlugins 注册表提供（注册方在 index.html 末尾）。
+ * 按钮清单不写死在组件里，由 RailPlugins 注册表提供；各面板组件在自身文件末尾自注册。
  *
  * 图标：沿用项目的 lucide 约定（data-lucide 由 lucide 替换成 svg），
  * 所以 mounted/updated 里自己补 createIcons，不依赖父级的 updated 时机。
@@ -73,8 +73,6 @@ const NavRail = {
     `,
 
     props: {
-        mainColor: { type: String, default: '' },
-
         /**
          * 当前高亮的按钮 key —— 由父级受控传入。
          * 语义必须是「当前打开的面板」，而不是「最后点过的按钮」：
@@ -85,10 +83,19 @@ const NavRail = {
 
     emits: ['select'],
 
+    inject: {
+        appSettings: { default: null }
+    },
+
     computed: {
-        /** 按钮清单来自 RailPlugins 注册表（注册方在 index.html 末尾），组件内不写死 */
+        /** 按钮清单来自 RailPlugins 注册表（各面板组件自注册），组件内不写死 */
         items() {
             return RailPlugins.snapshot();
+        },
+
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return '';
         }
     },
 

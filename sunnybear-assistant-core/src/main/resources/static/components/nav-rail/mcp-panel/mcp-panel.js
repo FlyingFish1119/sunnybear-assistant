@@ -158,14 +158,14 @@ const McpPanel = {
         </aside>
     </div>
 
-    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+    <confirm-dialog ref="confirmDialog"></confirm-dialog>
     `,
 
-    props: {
-        mainColor: { type: String, default: '' }
-    },
-
     emits: ['visible-change'],
+
+    inject: {
+        appSettings: { default: null }
+    },
 
     data() {
         return {
@@ -207,6 +207,11 @@ const McpPanel = {
             if (this.saving) return '保存中…';
             if (this.dirty) return '未保存（Ctrl+S 或点右上角保存）';
             return this.savedTip ? '已保存 ' + this.savedTip : '已保存并生效';
+        },
+
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return '';
         }
     },
 
@@ -524,3 +529,8 @@ const McpPanel = {
         this.scheduleIcons();
     }
 };
+
+// 自注册进左侧导航轨（registry 定义于 nav-rail.js，须先于本文件加载）
+if (typeof RailPlugins !== 'undefined') {
+    RailPlugins.register('mcp', { icon: 'plug', label: 'MCP', component: McpPanel, order: 50 });
+}

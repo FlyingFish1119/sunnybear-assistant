@@ -1,18 +1,21 @@
 /**
- * 世界观设置按钮（侧边栏 footer 插件，锚点 'sidebar-footer'）。
+ * 核心默认设置按钮（侧边栏 footer 默认槽组件，锚点 'sidebar-footer'，key 'settings'）。
  *
- * 跳转世界专属的 world_settings.html；页面以槽 key 'settings' 覆盖核心默认设置按钮。
+ * 由 chat-sidebar.js 在加载时以 key 'settings' 注册进 footer 槽。各页面如需要
+ * 跳转到专属设置页（角色页 character_settings.html / 世界页 world_settings.html），
+ * 用同名 key 注册自己的按钮即可「覆盖」本组件，无需再调用
+ * ChatSidebarPlugins.hideBuiltin('settings-button')。
  *
  * Props:
  *   mainColor — String  主题色
  *
  * 依赖全局：API、lucide。
  */
-const WorldSettingsButton = {
-    name: 'WorldSettingsButton',
+const SettingsButton = {
+    name: 'SettingsButton',
 
     template: `
-    <button class="sidebar-icon-btn" @click="go" title="世界观设置">
+    <button class="sidebar-icon-btn" @click="go" title="设置">
         <i data-lucide="settings"></i>
     </button>`,
 
@@ -29,7 +32,7 @@ const WorldSettingsButton = {
 
     methods: {
         go: function () {
-            window.location.href = API.BASE_PATH + 'plug/world/world_settings.html';
+            window.location.href = API.BASE_PATH + 'settings.html';
         }
     },
 

@@ -8,11 +8,9 @@
  *
  * 插件页（character / world）仍使用通用的 connection-indicator，本组件仅主应用使用。
  *
- * Props:
- *   wsUrl — String  WebSocket 地址
- *
  * Injects:
- *   wsBus — WebSocket 消息总线（负责接管 onmessage 与连接生命周期广播）
+ *   wsBus        — WebSocket 消息总线（负责接管 onmessage 与连接生命周期广播）
+ *   sessionStore — 会话仓库；经 adapter.getWsUrl() 取本页 WS 地址（角色/世界页各自覆盖）
  */
 const ChatConnection = {
     name: 'ChatConnection',
@@ -23,16 +21,11 @@ const ChatConnection = {
         <span class="connection-text">{{ statusText }}</span>
     </span>`,
 
-    props: {
-        wsUrl: {
-            type: String,
-            default: function () { return API.ws.url; }
-        }
-    },
-
     inject: {
         // 可选注入：未提供时退化为纯指示器（不接管 socket）
-        wsBus: { default: null }
+        wsBus: { default: null },
+        // 会话仓库：取本页 WS 地址
+        sessionStore: { default: null }
     },
 
     data() {
@@ -45,6 +38,13 @@ const ChatConnection = {
     },
 
     computed: {
+        /** WS 地址：优先取 store 适配器（角色/世界页各自覆盖），否则核心默认地址 */
+        wsUrl: function () {
+            var adapter = this.sessionStore && this.sessionStore.adapter;
+            if (adapter && typeof adapter.getWsUrl === 'function') return adapter.getWsUrl();
+            return API.ws.url;
+        },
+
         statusText: function () {
             const map = {
                 connected: '已连接',

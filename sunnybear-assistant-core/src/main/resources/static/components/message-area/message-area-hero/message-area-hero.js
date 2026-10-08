@@ -46,12 +46,12 @@ const MessageAreaHero = {
     `,
 
     props: {
-        mainColor:     { type: String, default: 'lightsalmon' },
         avatar:        { type: String, default: '' },
         assistantName: { type: String, default: '' }
     },
 
     inject: {
+        appSettings: { default: null },
         // 可选：本地事件总线（用于把建议提问填进发送框）
         wsBus: { default: null }
     },
@@ -73,6 +73,10 @@ const MessageAreaHero = {
     },
 
     computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        },
         showAvatar: function () {
             return !!this.avatar && !this.avatarError;
         },

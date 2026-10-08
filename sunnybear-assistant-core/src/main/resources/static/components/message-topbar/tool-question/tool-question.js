@@ -29,15 +29,24 @@
  *
  * 公开方法（通过 ref 调用）：
  *   show(toolQuestion) — 入队并弹出结构化提问弹窗
- *   expand()           — 重新展开收起的弹窗（供顶部入口按钮调用）
+ *   expand()           — 重新展开收起的弹窗（由组件内入口按钮调用）
  *
- * Emits:
- *   pending-change — 待作答数量变化时触发，参数为当前未处理数量（供父组件渲染入口角标）
+ * 自包含：入口按钮（待作答角标）与弹窗一并内聚在组件内，父组件（message-topbar）
+ * 无需再维护角标数量或用 ref 调 expand()。
  */
 const ToolQuestion = {
     name: 'ToolQuestion',
 
     template: `
+    <button v-if="pendingCount > 0"
+            class="pending-entry-btn"
+            :style="{'--main-color': mainColor}"
+            @click="expand"
+            :title="pendingCount + ' 个提问待回答'">
+      <i data-lucide="message-circle-question"></i>
+      <span class="pending-entry-badge">{{ pendingCount }}</span>
+    </button>
+    <teleport to="body">
     <div v-if="visible" class="tq-overlay" :style="{'--main-color': mainColor}" @click.self="collapse">
       <div class="tq-dialog"
            tabindex="-1"
@@ -121,17 +130,13 @@ const ToolQuestion = {
           </button>
         </div>
       </div>
-    </div>`,
-
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
-    emits: ['pending-change'],
+    </div>
+    </teleport>`,
 
     inject: {
         // 可选注入：插件页未提供 wsBus 时降级为 null（仍可由父组件通过 ref 调用 show()）
-        wsBus: { default: null }
+        wsBus: { default: null },
+        appSettings: { default: null }
     },
 
     data() {
@@ -156,6 +161,10 @@ const ToolQuestion = {
     },
 
     computed: {
+        /** 主题色：从应用级设置注入 */
+        mainColor: function () {
+            return (this.appSettings && this.appSettings.mainColor) || 'lightsalmon';
+        },
         visible() {
             return this.active != null && !this.collapsed;
         },
@@ -176,13 +185,6 @@ const ToolQuestion = {
                 if (!s) return false;
                 return (s.selections && s.selections.length > 0) || (s.input && s.input.trim());
             });
-        }
-    },
-
-    watch: {
-        // 待作答数量变化 → 通知父组件刷新顶部入口角标
-        pendingCount(val) {
-            this.$emit('pending-change', val);
         }
     },
 

@@ -74,11 +74,11 @@ const ConfirmDialog = {
       </div>
     </div>`,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     emits: [],
+
+    inject: {
+        appSettings: { default: null }
+    },
 
     data() {
         return {
@@ -102,6 +102,13 @@ const ConfirmDialog = {
                 'info': 'info'
             }
         };
+    },
+
+    computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        }
     },
 
     methods: {

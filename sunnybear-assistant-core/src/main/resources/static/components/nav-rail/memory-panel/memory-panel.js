@@ -157,14 +157,14 @@ const MemoryPanel = {
     </div>
 
     <!-- 删除 / 改名确认：与会话删除、知识删除同一套视觉 -->
-    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+    <confirm-dialog ref="confirmDialog"></confirm-dialog>
     `,
 
-    props: {
-        mainColor: { type: String, default: '' }
-    },
-
     emits: ['visible-change'],
+
+    inject: {
+        appSettings: { default: null }
+    },
 
     data() {
         return {
@@ -219,6 +219,11 @@ const MemoryPanel = {
             if (this.saving) return '保存中…';
             if (this.dirty) return '未保存（Ctrl+S 保存）';
             return this.savedTip ? '已保存 ' + this.savedTip : '已保存';
+        },
+
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return '';
         }
     },
 
@@ -605,3 +610,8 @@ const MemoryPanel = {
         this.scheduleIcons();
     }
 };
+
+// 自注册进左侧导航轨（registry 定义于 nav-rail.js，须先于本文件加载）
+if (typeof RailPlugins !== 'undefined') {
+    RailPlugins.register('memory', { icon: 'brain', label: '记忆', component: MemoryPanel, order: 20 });
+}

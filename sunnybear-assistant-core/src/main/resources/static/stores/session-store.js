@@ -16,13 +16,16 @@
  *     并订阅 '*' 兜底处理 JSON 状态帧（原 index.handleStreamChunk 全部逻辑）。
  *
  * 不负责（UI 副作用）：滚动、Mermaid 渲染、TTS 播放、右键菜单/弹窗等。
- * 这些通过 ui 钩子对象交由页面主组件实现（registerUi(hooks)）或留在组件内；
+ * 这些通过 ui 钩子对象由「拥有该资源的子组件」在各自 mounted 时 registerUi 注册：
+ *   message-area → scrollToBottom / renderMermaid / clearMdCache
+ *   send-area    → enqueueTts / playMessageAudio / clearTts / isTtsEnabled / clearSendArea
  * 关闭侧边栏则经 WsBus 本地事件 'sidebar:close' 通知 chat-sidebar，
  * 从而把「数据」与「DOM/TTS」解耦，同时保持所有既有行为。
  *
  * 典型用法：
- *   // 页面主组件
- *   SessionStore.registerUi({ scrollToBottom, renderMermaid, ... });
+ *   // 子组件 mounted（页面根组件无需再转发钩子）
+ *   this.sessionStore.registerUi({ ... });
+ *   // 任意组件
  *   SessionStore.selectSession(session);
  *
  *   // 任意后代组件
@@ -49,7 +52,7 @@ const SessionStore = (function () {
         return ai < bi ? 1 : -1;
     }
 
-    /** UI 副作用钩子（由页面主组件通过 registerUi 注入，默认空实现） */
+    /** UI 副作用钩子（由拥有对应资源的子组件通过 registerUi 注入，默认空实现） */
     const ui = {
         scrollToBottom: function () {},
         renderMermaid: function () {},
@@ -318,7 +321,8 @@ const SessionStore = (function () {
         },
 
         /**
-         * 注册 UI 副作用钩子（页面主组件在 mounted 时调用一次）。
+         * 注册 UI 副作用钩子（由拥有对应资源的子组件在 mounted 时调用，
+         * 各组件只注册自己负责的键，未注册的保持默认空实现）。
          * @param {object} hooks 覆盖 ui 中的对应方法
          */
         registerUi(hooks) {

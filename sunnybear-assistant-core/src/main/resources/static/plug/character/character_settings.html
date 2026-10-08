@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="../../lib/element-plus.css">
     <script src="../../lib/vue.global.prod.js"></script>
     <script src="../../lib/element-plus.full.min.js"></script>
+    <script src="../../stores/app-settings.js"></script>
     <!-- 轻提示：接管 ElMessage（右上角信息卡式） -->
     <script src="../../components/toast/toast.js"></script>
     <script src="../../lib/lucide.min.js"></script>
@@ -1178,10 +1179,10 @@
     </el-dialog>
 
     <!-- ========== 确认弹框 ========== -->
-    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+    <confirm-dialog ref="confirmDialog"></confirm-dialog>
 
     <!-- ========== 词条管理弹框 ========== -->
-    <glossary-manager ref="glossaryManager" :main-color="mainColor"></glossary-manager>
+    <glossary-manager ref="glossaryManager"></glossary-manager>
 </div>
 
 <script>
@@ -1272,6 +1273,8 @@ const app = Vue.createApp({
             handler(val) {
                 document.documentElement.style.setProperty('--main-color', val);
                 document.documentElement.style.setProperty('--el-color-primary', val);
+                // 同步进 AppSettings，供注入该 store 的子组件读取主题色
+                AppSettings.mainColor = val;
             },
             immediate: true
         }
@@ -1880,6 +1883,7 @@ app.component('ConfirmDialog', ConfirmDialog);
 app.component('GlossaryManager', GlossaryManager);
 app.component('SearchBox', SearchBox);
 app.use(ElementPlus);
+app.provide('appSettings', AppSettings);
 app.mount('#app');
 </script>
 </body>

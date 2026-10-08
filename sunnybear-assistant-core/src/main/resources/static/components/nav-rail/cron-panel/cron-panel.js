@@ -104,16 +104,13 @@ const CronPanel = {
         </aside>
     </div>
 
-    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+    <confirm-dialog ref="confirmDialog"></confirm-dialog>
     `,
-
-    props: {
-        mainColor: { type: String, default: '' }
-    },
 
     emits: ['visible-change'],
 
     inject: {
+        appSettings: { default: null },
         // 可选注入：插件页无 store 时降级为只读列表
         sessionStore: { default: null }
     },
@@ -128,6 +125,13 @@ const CronPanel = {
             /** cronId → { list, hasMore, loading, loadingMore } */
             sessionPages: {}
         };
+    },
+
+    computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return '';
+        }
     },
 
     watch: {
@@ -336,3 +340,8 @@ const CronPanel = {
         this.scheduleIcons();
     }
 };
+
+// 自注册进左侧导航轨（registry 定义于 nav-rail.js，须先于本文件加载）
+if (typeof RailPlugins !== 'undefined') {
+    RailPlugins.register('cron', { icon: 'clock', label: '定时任务', component: CronPanel, order: 60 });
+}

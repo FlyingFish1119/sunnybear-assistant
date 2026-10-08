@@ -160,13 +160,13 @@ const Mascot = {
     </teleport>`,
 
     props: {
-        mainColor: { type: String, default: 'lightsalmon' },
         // 挂载锚点：熊要趴在哪个元素里（默认输入卡，由页面上的 send-area 提供）。
         // 锚点不存在时整只熊不渲染 —— 与其挂到 body 上飘在屏幕外，不如干脆不出现。
         anchor: { type: String, default: '.send-area-composer' }
     },
 
     inject: {
+        appSettings: { default: null },
         wsBus: { default: null },
         sessionStore: { default: null }
     },
@@ -181,6 +181,10 @@ const Mascot = {
     },
 
     computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        },
         sessionId: function () {
             return this.sessionStore ? this.sessionStore.currentSessionId : '';
         }

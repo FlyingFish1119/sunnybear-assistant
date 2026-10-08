@@ -16,7 +16,6 @@
  *       v-model:files="uploadedFiles"
  *       drop-zone=".message-area-wrapper"
  *       :enable-paste="true"
- *       :main-color="mainColor"
  *       @drag-over-change="dragOver = $event"
  *   ></file-upload>
  */
@@ -60,17 +59,27 @@ const FileUpload = {
 
     props: {
         files: { type: Array, default: function () { return []; } },
-        mainColor: { type: String, default: 'lightsalmon' },
         dropZone: { type: String, default: '' },
         enablePaste: { type: Boolean, default: false },
     },
 
     emits: ['update-files', 'drag-over-change'],
 
+    inject: {
+        appSettings: { default: null }
+    },
+
     data: function () {
         return {
             dragCounter: 0,
         };
+    },
+
+    computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        }
     },
 
     methods: {

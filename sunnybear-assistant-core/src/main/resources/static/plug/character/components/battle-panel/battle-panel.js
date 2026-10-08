@@ -188,11 +188,14 @@ const BattlePanel = {
     </div>
 
     <!-- 确认弹窗 -->
-    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>`,
+    <confirm-dialog ref="confirmDialog"></confirm-dialog>`,
 
     props: {
-        mainColor: { type: String, default: 'lightsalmon' },
         sessionId: { type: String, default: '' }
+    },
+
+    inject: {
+        appSettings: { default: null }
     },
 
     emits: [],
@@ -214,6 +217,13 @@ const BattlePanel = {
                 enemyBuffs: []
             }
         };
+    },
+
+    computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        }
     },
 
     methods: {

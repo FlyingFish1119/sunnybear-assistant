@@ -2,7 +2,7 @@
  * 角色设置按钮（侧边栏 footer 插件，锚点 'sidebar-footer'）。
  *
  * 角色页的设置不在总设置页，而是角色专属的 character_settings.html；
- * 故页面隐藏核心的设置按钮（ChatSidebarPlugins.hideBuiltin('settings-button')），
+ * 故页面以同名槽 key 'settings' 覆盖核心默认设置按钮（无需 hideBuiltin），
  * 由本组件提供跳转目标，样式沿用核心 .sidebar-icon-btn。
  *
  * Props:
@@ -18,13 +18,17 @@ const CharacterSettingsButton = {
         <i data-lucide="settings"></i>
     </button>`,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     inject: {
+        appSettings: { default: null },
         // 页面级共享状态（character_index.html 注入）：取当前角色 id 带入设置页
         characterPage: { default: null }
+    },
+
+    computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        }
     },
 
     methods: {

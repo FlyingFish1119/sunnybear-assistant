@@ -1,9 +1,10 @@
 /**
  * 工具确认弹窗组件（自包含版 · 多标签）
  *
- * 将 WebSocket 通信、图标/标题映射、markdown 渲染、倒计时全部内聚在组件内部。
- * 组件自行通过 inject('wsBus') 订阅 ###TOOL_ASK### 信号并调用 show()，
- * 父组件无需再转发该信号；入口按钮仍可通过 ref 调用 expand()。
+ * 自包含：WebSocket 通信、图标/标题映射、markdown 渲染、倒计时、以及入口按钮
+ * （待确认角标）全部内聚在组件内部。组件自行通过 inject('wsBus') 订阅
+ * ###TOOL_ASK### 信号并调用 show()，父组件（message-topbar）无需再转发信号、
+ * 维护角标数量或用 ref 调 expand()。
  *
  * Props:
  *   mainColor      — String     主题色
@@ -17,15 +18,21 @@
  *
  * 公开方法（通过 ref 调用）：
  *   show(toolAsk)  — 弹出/追加确认对话框，toolAsk 为服务端下发的 { id, toolName, message, timeout } 对象
- *   expand()       — 重新展开收起的弹窗（供顶部入口按钮调用）
- *
- * Emits:
- *   pending-change — 待确认数量变化时触发，参数为当前未处理数量（供父组件渲染入口角标）
+ *   expand()       — 重新展开收起的弹窗（由组件内入口按钮调用）
  */
 const ToolConfirm = {
     name: 'ToolConfirm',
 
     template: `
+    <button v-if="pendingCount > 0"
+            class="pending-entry-btn"
+            :style="{'--main-color': mainColor}"
+            @click="expand"
+            :title="pendingCount + ' 个工具请求待确认'">
+      <i data-lucide="shield-alert"></i>
+      <span class="pending-entry-badge">{{ pendingCount }}</span>
+    </button>
+    <teleport to="body">
     <div v-if="visible" class="tool-confirm-overlay" @click.self="collapse">
       <div class="tool-confirm-dialog"
            tabindex="-1"
@@ -92,17 +99,13 @@ const ToolConfirm = {
           </button>
         </div>
       </div>
-    </div>`,
-
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
-    emits: ['pending-change'],
+    </div>
+    </teleport>`,
 
     inject: {
         // 可选注入：插件页未提供 wsBus 时降级为 null（仍可由父组件通过 ref 调用 show()）
-        wsBus: { default: null }
+        wsBus: { default: null },
+        appSettings: { default: null }
     },
 
     data() {
@@ -136,6 +139,10 @@ const ToolConfirm = {
     },
 
     computed: {
+        /** 主题色：从应用级设置注入 */
+        mainColor: function () {
+            return (this.appSettings && this.appSettings.mainColor) || 'lightsalmon';
+        },
         visible() {
             return this.asks.length > 0 && !this.collapsed;
         },
@@ -145,13 +152,6 @@ const ToolConfirm = {
         // 待确认数量（供父组件入口角标使用）
         pendingCount() {
             return this.asks.length;
-        }
-    },
-
-    watch: {
-        // 待确认数量变化 → 通知父组件刷新顶部入口角标
-        pendingCount(val) {
-            this.$emit('pending-change', val);
         }
     },
 

@@ -85,7 +85,6 @@ const SendArea = {
             :commands="filteredCommands"
             :active-index="commandActiveIndex"
             :visible="commandSuggestVisible"
-            :main-color="mainColor"
             :sub-options="subOptions"
             :sub-title="'选择一个会话'"
             @select="onCommandSelect"
@@ -97,21 +96,18 @@ const SendArea = {
             drop-zone=".message-area-wrapper"
             :files="uploadedFiles"
             :enable-paste="true"
-            :main-color="mainColor"
             @update-files="files => uploadedFiles = files"
             @drag-over-change="isChange => $emit('drag-over-change', isChange)">
         </file-upload>
         <!-- 输入区上方的插件浮层（锚点 'overlay'，如私聊 / 移交面板） -->
         <component v-for="(slot, si) in overlaySlots"
                    :key="'send-overlay-' + si"
-                   :is="slot.component"
-                   :main-color="mainColor"></component>
+                   :is="slot.component"></component>
         <div class="send-area-composer">
             <div class="send-area-main">
                 <auto-resize-textarea
                     ref="textarea"
                     class="send-area-textarea"
-                    :main-color="mainColor"
                     v-model="inputText"
                     placeholder="输入消息，Ctrl+Enter 发送，Enter 换行"
                     :max-height="180"
@@ -132,20 +128,18 @@ const SendArea = {
                             <i data-lucide="paperclip"></i>
                         </button>
                         <!-- 步骤清单跟踪：紧挨文件上传按钮右侧，无步骤时不渲染 -->
-                        <mark-tracker :main-color="mainColor"></mark-tracker>
+                        <mark-tracker></mark-tracker>
                         <!-- 工具栏插件槽（锚点 'toolbar'，如私聊 / 移交按钮） -->
                         <component v-for="(slot, si) in toolbarSlots"
                                    :key="'send-toolbar-' + si"
-                                   :is="slot.component"
-                                   :main-color="mainColor"></component>
+                                   :is="slot.component"></component>
                     </div>
                     <div class="send-area-toolbar-right">
                         <span class="send-area-hint">Ctrl+Enter 发送</span>
                         <!-- 工具行右侧插件槽（锚点 'toolbar-right'，如模型切换入口） -->
                         <component v-for="(slot, si) in toolbarRightSlots"
                                    :key="'send-toolbar-right-' + si"
-                                   :is="slot.component"
-                                   :main-color="mainColor"></component>
+                                   :is="slot.component"></component>
                     </div>
                 </div>
             </div>
@@ -177,7 +171,6 @@ const SendArea = {
     </div>`,
 
     props: {
-        mainColor:   { type: String,   default: 'lightsalmon' },
         // 斜杠指令表：插件页可传入自己的指令（如角色页的角色专属指令）；
         // 不传则用模块内置的通用指令表 SLASH_COMMANDS
         commands:    { type: Array,    default: () => SLASH_COMMANDS }
@@ -186,6 +179,7 @@ const SendArea = {
     emits: ['send', 'stop', 'drag-over-change'],
 
     inject: {
+        appSettings: { default: null },
         // 可选注入：插件页未提供 sessionStore 时降级为 null
         sessionStore: { default: null },
         // 可选：本地事件总线（新对话页「建议提问」→ 填入输入框 / 长按彩蛋 → 召唤熊）
@@ -220,6 +214,10 @@ const SendArea = {
     },
 
     computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        },
         // 会话/消息仓库派生的状态（未注入时降级为默认值）
         isStreaming: function () {
             return this.sessionStore ? this.sessionStore.isStreaming : false;
@@ -295,6 +293,17 @@ const SendArea = {
             self.uploadedFiles = self.uploadedFiles.concat(files);
         };
         window.addEventListener('sunnybear:attach-to-sendbar', this._onAttachToSendbar);
+        // 向 store 注册本组件负责的 UI 副作用钩子（TTS 播放 / 清空发送区），
+        // 使页面根组件无需再转发这一组钩子。
+        if (this.sessionStore && typeof this.sessionStore.registerUi === 'function') {
+            this.sessionStore.registerUi({
+                enqueueTts: function (audio) { self.enqueueTtsAudio(audio); },
+                playMessageAudio: function (msg) { self.playMessageAudio(msg); },
+                clearTts: function () { self.clearTtsQueue(); },
+                isTtsEnabled: function () { return self.isTtsEnabled(); },
+                clearSendArea: function () { self.clear(); }
+            });
+        }
     },
 
     beforeUnmount: function () {

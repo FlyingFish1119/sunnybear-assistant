@@ -4,9 +4,8 @@
  * 定位：设置页的简化版，只覆盖对话（chat）/ 高级（chat_pro）两种模型配置，
  *       只提供适配器、模型名称、思考强度（reasoningEffort）三个可调项。
  *
- * 通过 SendAreaPlugins 注册到发送区锚点，按页面可裁剪：
- *   SendAreaPlugins.registerSlot('toolbar-right', ModelSwitcher, 0);
- * 未注册的页面（如角色页，角色自带模型）不会渲染本组件。
+ * 加载时自注册到发送区右栏槽（见文件末尾）。未加载本文件的页面（如角色页，
+ * 角色自带模型）不会渲染本组件。
  *
  * 触发按钮显示当前会话实际生效的模型名（依据 sessionStore.currentSession.enablePro
  * 选 chat / chat_pro），打开面板后自动定位到对应 tab。
@@ -79,11 +78,8 @@ const ModelSwitcher = {
         </transition>
     </div>`,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     inject: {
+        appSettings: { default: null },
         // 可选：读取当前会话的 enablePro 决定触发文案与默认 tab
         sessionStore: { default: null },
         // 可选：保存成功后广播本地事件，供顶栏等同步模型名
@@ -104,6 +100,10 @@ const ModelSwitcher = {
     },
 
     computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        },
         /** 触发按钮文案：优先当前会话实际生效的模型（无会话时回退对话模型） */
         triggerLabel() {
             const session = this.sessionStore ? this.sessionStore.currentSession : null;
@@ -257,3 +257,8 @@ const ModelSwitcher = {
         }
     }
 };
+
+// 自注册进发送区右栏槽（registry 定义于 send-area.js，须先于本文件加载）
+if (typeof SendAreaPlugins !== 'undefined') {
+    SendAreaPlugins.registerSlot('toolbar-right', ModelSwitcher, 0);
+}

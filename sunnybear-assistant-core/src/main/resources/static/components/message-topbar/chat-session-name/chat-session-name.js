@@ -5,11 +5,9 @@
  * 不再接受 currentSession prop，也不再 emit update-session-name。
  * 插件页仍使用通用的 session-name（prop / emit 模式）。
  *
- * Props:
- *   mainColor — String 主题色
- *
  * Injects:
  *   sessionStore — 会话/消息仓库（主应用必定提供）
+ *   appSettings  — 应用级设置（主题色）
  *
  * 交互：
  *   - 双击名称文本 → 进入编辑模式
@@ -38,13 +36,17 @@ const ChatSessionName = {
            @keydown.esc.prevent="cancel"
     />`,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
+    inject: {
+        sessionStore: {},
+        appSettings: { default: null }
     },
 
-    inject: ['sessionStore'],
-
     computed: {
+        /** 主题色：从应用级设置注入 */
+        mainColor: function () {
+            return (this.appSettings && this.appSettings.mainColor) || 'lightsalmon';
+        },
+
         session: function () {
             return this.sessionStore.state.currentSession;
         }

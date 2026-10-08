@@ -97,8 +97,8 @@ const WebViewer = {
         </div>
     </transition>`,
 
-    props: {
-        mainColor: { type: String, default: '' }
+    inject: {
+        appSettings: { default: null }
     },
 
     data() {
@@ -134,6 +134,11 @@ const WebViewer = {
             } catch (e) {
                 return '';
             }
+        },
+
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return '';
         }
     },
 

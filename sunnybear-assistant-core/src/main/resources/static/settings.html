@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="lib/element-plus.css">
     <script src="lib/vue.global.prod.js"></script>
     <script src="lib/element-plus.full.min.js"></script>
+    <script src="stores/app-settings.js"></script>
     <!-- 轻提示：接管 ElMessage（右上角信息卡式） -->
     <script src="components/toast/toast.js"></script>
     <script src="lib/lucide.min.js"></script>
@@ -299,7 +300,7 @@
             </div>
             <div class="settings-card-body">
                 <knowledge-params-settings :settings="knowledgeSettings" @saved="fetchAllSettings"></knowledge-params-settings>
-                <knowledge-manage-settings :main-color="mainColor"></knowledge-manage-settings>
+                <knowledge-manage-settings></knowledge-manage-settings>
             </div>
         </div>
 
@@ -312,7 +313,7 @@
                 <span>Step 提示词</span>
             </div>
             <div class="settings-card-body">
-                <task-prompt-settings :main-color="mainColor"></task-prompt-settings>
+                <task-prompt-settings></task-prompt-settings>
             </div>
         </div>
 
@@ -325,7 +326,7 @@
                 <span>定时任务</span>
             </div>
             <div class="settings-card-body">
-                <cron-job-settings :main-color="mainColor"></cron-job-settings>
+                <cron-job-settings></cron-job-settings>
             </div>
         </div>
 
@@ -338,7 +339,7 @@
                 <span>记忆</span>
             </div>
             <div class="settings-card-body">
-                <memory-settings :settings="memorySettings" :main-color="mainColor" @saved="fetchAllSettings"></memory-settings>
+                <memory-settings :settings="memorySettings" @saved="fetchAllSettings"></memory-settings>
             </div>
         </div>
 
@@ -378,6 +379,8 @@ const app = Vue.createApp({
             handler(val) {
                 document.documentElement.style.setProperty('--main-color', val);
                 document.documentElement.style.setProperty('--el-color-primary', val);
+                // 同步进 AppSettings，供注入该 store 的子组件读取主题色
+                AppSettings.mainColor = val;
             },
             immediate: true
         }
@@ -498,6 +501,7 @@ app.component('knowledge-manage-settings', KnowledgeManageSettings);
 app.component('task-prompt-settings', TaskPromptSettings);
 app.component('cron-job-settings', CronJobSettings);
 app.component('memory-settings', MemorySettings);
+app.provide('appSettings', AppSettings);
 app.mount('#app');
 </script>
 </body>

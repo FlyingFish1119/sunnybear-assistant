@@ -1,9 +1,8 @@
 /**
  * Agent Log 组件 — 顶栏开关 + 右侧子 Agent 执行日志浮窗
  *
- * 以「插件」形态存在：核心页 index.html 通过
- *   TopbarPlugins.registerSlot('topbar-right', AgentLogSidebar, 0)
- * 把它挂进顶栏右栏；插件页不注册即完全无此入口，无需 hideBuiltin 反向下线。
+ * 以「插件」形态存在：加载时自注册进顶栏右栏（见文件末尾，须在 message-topbar.js 之后）。
+ * 未加载本文件的页面（如角色/世界页）即完全无此入口，无需 hideBuiltin 反向下线。
  *
  * 组件自包含：开关按钮渲染在顶栏槽内；日志面板经 Teleport 投放到
  * .message-area-wrapper 下（绝对定位于消息区右侧，不参与 flex 布局）。
@@ -13,12 +12,10 @@
  *   - 'AGENT_LOG' 信号，追加当前会话的子 Agent 日志；
  *   - 本地事件 'agent-log:clear'（切会话/新建会话）清空日志。
  *
- * Props:
- *   mainColor — String  主题色
- *
  * 依赖注入（均可选，缺失时降级）：
  *   wsBus        — WebSocket 消息总线
  *   sessionStore — 会话仓库（用于按当前会话过滤日志）
+ *   appSettings  — 应用级设置（主题色）
  *
  * 公开方法（通过 ref 调用）：
  *   toggle() / open() / close() / clearLogs()
@@ -72,14 +69,18 @@ const AgentLogSidebar = {
     </teleport>
     `,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     inject: {
         // 可选注入：插件页未提供 wsBus / sessionStore 时降级
         wsBus: { default: null },
-        sessionStore: { default: null }
+        sessionStore: { default: null },
+        appSettings: { default: null }
+    },
+
+    computed: {
+        /** 主题色：从应用级设置注入 */
+        mainColor: function () {
+            return (this.appSettings && this.appSettings.mainColor) || 'lightsalmon';
+        }
     },
 
     data: function () {
@@ -196,3 +197,8 @@ const AgentLogSidebar = {
         }
     }
 };
+
+// 自注册进顶栏右栏槽（registry 定义于 message-topbar.js，须先于本文件加载）
+if (typeof TopbarPlugins !== 'undefined') {
+    TopbarPlugins.registerSlot('topbar-right', AgentLogSidebar, 0);
+}

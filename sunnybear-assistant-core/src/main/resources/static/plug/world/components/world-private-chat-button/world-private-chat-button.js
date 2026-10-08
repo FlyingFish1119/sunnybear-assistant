@@ -23,16 +23,17 @@ const WorldPrivateChatButton = {
         <i data-lucide="message-square"></i>
     </button>`,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     inject: {
+        appSettings: { default: null },
         worldPage: { required: true }
     },
 
     computed: {
-        visible: function () { return this.worldPage.privateChat.visible; }
+        visible: function () { return this.worldPage.privateChat.visible; },
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        }
     },
 
     methods: {

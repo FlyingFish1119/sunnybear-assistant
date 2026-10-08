@@ -201,18 +201,15 @@ const SessionFiles = {
     </div>
 
     <!-- 删除确认：走项目自绘的 confirm-dialog，跟会话删除、知识删除那批保持同一套视觉 -->
-    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+    <confirm-dialog ref="confirmDialog"></confirm-dialog>
     <!-- 上传文件的隐藏选择器 -->
     <input ref="uploadInput" type="file" multiple style="display: none" @change="onUploadPicked">
     `,
 
-    props: {
-        mainColor: { type: String, default: '' }
-    },
-
     emits: ['visible-change'],
 
     inject: {
+        appSettings: { default: null },
         sessionStore: { default: null }
     },
 
@@ -312,6 +309,11 @@ const SessionFiles = {
             if (this.saving) return '保存中…';
             if (this.dirty) return '未保存（停手 1.5 秒自动保存）';
             return this.savedTip ? '已保存 ' + this.savedTip : '已保存';
+        },
+
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return '';
         }
     },
 
@@ -1271,3 +1273,8 @@ const ACE_MODES = {
     sh: 'sh', bash: 'sh', zsh: 'sh', bat: 'sh', cmd: 'sh',
     sql: 'sql', yml: 'yaml', yaml: 'yaml'
 };
+
+// 自注册进左侧导航轨（registry 定义于 nav-rail.js，须先于本文件加载）
+if (typeof RailPlugins !== 'undefined') {
+    RailPlugins.register('files', { icon: 'folder-open', label: '会话文件', component: SessionFiles, order: 10 });
+}

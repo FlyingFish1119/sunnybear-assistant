@@ -227,6 +227,7 @@
     <script src="utils/ws-bus.js"></script>
     <!-- 工具确认提醒音（Web Audio 合成，无音频文件） -->
     <script src="utils/alert-sound.js"></script>
+    <script src="stores/app-settings.js"></script>
     <script src="stores/session-store.js"></script>
     <script src="directives/auto-follow.js"></script>
     <script src="directives/infinite-scroll.js"></script>
@@ -234,6 +235,8 @@
     <script src="components/message-topbar/tool-question/tool-question.js"></script>
     <script src="components/confirm-dialog/confirm-dialog.js"></script>
     <script src="components/message-topbar/chat-session-name/chat-session-name.js"></script>
+    <!-- 核心默认设置按钮（footer 槽 key 'settings'，必须先于 chat-sidebar.js） -->
+    <script src="components/settings-button/settings-button.js"></script>
     <script src="components/chat-sidebar/chat-sidebar.js"></script>
     <!-- 左侧导航轨（竖栏按钮条） -->
     <script src="components/nav-rail/nav-rail.js"></script>
@@ -255,8 +258,13 @@
     <script src="components/message-topbar/chat-connection/chat-connection.js"></script>
     <script src="components/auto-resize-textarea/auto-resize-textarea.js"></script>
     <script src="components/send-area/command-suggest/command-suggest.js"></script>
-    <script src="components/agent-log-sidebar/agent-log-sidebar.js"></script>
+    <!-- 顶栏内置槽组件（必须先于 message-topbar.js，由其默认注册进左/右栏） -->
+    <script src="components/message-topbar/model-name/model-name.js"></script>
+    <script src="components/message-topbar/ctx-gauge/ctx-gauge.js"></script>
+    <script src="components/message-topbar/knowledge-flash/knowledge-flash.js"></script>
     <script src="components/message-topbar/message-topbar.js"></script>
+    <!-- Agent Log 须在 message-topbar.js 之后（其自注册依赖 TopbarPlugins） -->
+    <script src="components/agent-log-sidebar/agent-log-sidebar.js"></script>
     <!-- 看板熊 live：几何数据（脚本从 PSD 导出）+ 分层动效引擎，必须在 send-area.js 之前 -->
     <script src="icon/signboard_bear/live/bear-geometry.js"></script>
     <script src="components/mascot/mascot-live.js"></script>
@@ -351,9 +359,8 @@
     </div>
 </div>
 <div id="app">
-    <nav-rail :main-color="mainColor" :active-key="railActiveKey" @select="onRailSelect"></nav-rail>
+    <nav-rail :active-key="railActiveKey" @select="onRailSelect"></nav-rail>
     <chat-sidebar
-        :main-color="mainColor"
         :collapsed="sidebarCollapsed"
         @toggle-collapsed="sidebarCollapsed = !sidebarCollapsed"
     ></chat-sidebar>
@@ -366,24 +373,15 @@
             </div>
         </div>
         <div class="message-area-background" :style="backgroundStyle"></div>
-        <message-topbar
-            :main-color="mainColor"
-            :ws-url="wsUrl"
-            :context-token-limit="userSettings.contextTokenLimit"
-        ></message-topbar>
-        <message-area
-            :main-color="mainColor"
-            :user-settings="userSettings"
-            :assistant-settings="assistantSettings"
-        ></message-area>
+        <message-topbar></message-topbar>
+        <message-area></message-area>
         <send-area
             ref="sendArea"
-            :main-color="mainColor"
             @drag-over-change="isChange => dragOver = isChange"
         ></send-area>
         <!-- 看板熊（阳阳）：独立组件，Teleport 到发送区输入卡上。
              必须放在 send-area 之后 —— Teleport 的目标得先存在 -->
-        <mascot :main-color="mainColor"></mascot>
+        <mascot></mascot>
     </div>
     <!-- 导航轨面板：由 RailPlugins 注册表驱动（定义在 nav-rail.js、注册在本文件末尾），
          v-for 动态挂载 + 函数 ref 收集实例；面板互斥见 onRailSelect/closeRailPanels -->
@@ -391,7 +389,6 @@
                :key="panel.key"
                :is="panel.component"
                :ref="el => setRailPanelRef(panel.key, el)"
-               :main-color="mainColor"
                @visible-change="onPanelVisible(panel.key, $event)"
     ></component>
 </div>
@@ -403,9 +400,6 @@
     const app = Vue.createApp({
         data() {
             return {
-                mainColor: (window.ThemeColorCache && window.ThemeColorCache.get()) || "lightsalmon",
-                userSettings: { background: '', opacity: 0.3 },
-                assistantSettings: { avatar: '', assistantName: '' },
                 // 标记 app 是否已完成加载并可见，避免在 #app display:none 期间
                 // 设置 background-image 导致浏览器跳过图片请求
                 loaded: false,
@@ -420,6 +414,10 @@
         },
 
         computed : {
+            // 共享设置统一从 AppSettings store 读取（子组件经 inject('appSettings') 自行获取）
+            mainColor: function () { return AppSettings.mainColor; },
+            userSettings: function () { return AppSettings.userSettings; },
+            assistantSettings: function () { return AppSettings.assistantSettings; },
             wsUrl: function () {
                 return API.ws.url
             },
@@ -599,73 +597,13 @@
                 }
             },
 
-            async fetchUserSettings() {
-                try {
-                    const result = await API.settings.user.get();
-                    if (result.status === 200) {
-                        this.userSettings = result.data || { background: '', opacity: 0.3 };
-                        // 从服务端获取主题色，并刷新本地缓存（下次加载先用缓存，避免闪默认色）
-                        if (this.userSettings.mainColor) {
-                            this.mainColor = this.userSettings.mainColor;
-                            if (window.ThemeColorCache) window.ThemeColorCache.set(this.userSettings.mainColor);
-                        }
-                    }
-                } catch (error) {
-                    console.error('获取用户设置失败:', error);
-                }
-                // 服务端没有则回退到 localStorage
-                if (!this.userSettings.mainColor) {
-                    try {
-                        const saved = localStorage.getItem('assistant-mainColor');
-                        if (saved) {
-                            this.mainColor = saved;
-                        }
-                    } catch (e) {}
-                }
+            // 通用拉取逻辑内聚在 AppSettings store，页面只做委托（无页面级覆盖）
+            fetchUserSettings() {
+                return AppSettings.fetchUserSettings();
             },
 
-            async fetchAssistantSettings() {
-                try {
-                    const result = await API.settings.assistant.get();
-                    if (result.status === 200) {
-                        this.assistantSettings = result.data || { avatar: '', assistantName: '' };
-                    }
-                } catch (error) {
-                    console.error('获取助手设置失败:', error);
-                }
-            },
-
-            /* ========== TTS 语音朗读（实际播放逻辑在发送区组件内） ========== */
-
-            /** 当前语音朗读开关状态（发送区组件持有，供 replace/edit 请求复读开关） */
-            currentTtsEnabled() {
-                return this.$refs.sendArea ? this.$refs.sendArea.isTtsEnabled() : false;
-            },
-
-            /** 清空播放队列并停掉当前音频（停止/切会话/新轮/发新消息时调用） */
-            clearTtsQueue() {
-                if (this.$refs.sendArea) {
-                    this.$refs.sendArea.clearTtsQueue();
-                }
-            },
-
-            /**
-             * 滚动消息列表到底部
-             * @param {boolean} force - 为 true 时无视 _autoFollowPaused 强制滚动
-             */
-            scrollToBottom(force = false) {
-                if (!force) {
-                    var listEl = document.querySelector('.message-area-list');
-                    if (listEl && listEl._autoFollowPaused) return;
-                }
-                this.$nextTick(() => {
-                    requestAnimationFrame(() => {
-                        var el = document.querySelector('.message-area-list');
-                        if (el) {
-                            el.scrollTop = el.scrollHeight;
-                        }
-                    });
-                });
+            fetchAssistantSettings() {
+                return AppSettings.fetchAssistantSettings();
             },
 
             /**
@@ -684,17 +622,6 @@
 
         mounted() {
             lucide.createIcons();
-            // 注册 SessionStore 的 UI 副作用钩子（DOM / TTS），数据与 UI 解耦
-            this.sessionStore.registerUi({
-                scrollToBottom: (force) => this.scrollToBottom(force),
-                renderMermaid: () => MermaidUtils.renderAll(),
-                clearTts: () => this.clearTtsQueue(),
-                enqueueTts: (audio) => { if (this.$refs.sendArea) this.$refs.sendArea.enqueueTtsAudio(audio); },
-                playMessageAudio: (msg) => { if (this.$refs.sendArea) this.$refs.sendArea.playMessageAudio(msg); },
-                isTtsEnabled: () => this.currentTtsEnabled(),
-                clearMdCache: () => this.$md.clearCache(),
-                clearSendArea: () => { if (this.$refs.sendArea) this.$refs.sendArea.clear(); }
-            });
             this.init();
         },
 
@@ -709,6 +636,7 @@
     // 全局服务注入：WebSocket 消息总线 + 会话/消息仓库
     app.provide('wsBus', WsBus);
     app.provide('sessionStore', SessionStore);
+    app.provide('appSettings', AppSettings);
     app.use(AutoFollow);
     // 注册组件库
     app.component('tool-confirm', ToolConfirm);
@@ -741,23 +669,8 @@
     app.component('mcp-panel', McpPanel);
     app.component('cron-panel', CronPanel);
 
-    /**
-     * 导航轨注册：一条同时接通「按钮 + 面板挂载 + 互斥开合」，
-     * 以后加面板 = 这里加一行（组件实现 toggle()/close() 与 visible、并发 visible-change 即可）。
-     * order 决定轨上按钮顺序：会话文件 → 记忆 → 知识库 → 终端。
-     */
-    RailPlugins.register('files',    { icon: 'folder-open',    label: '会话文件', component: SessionFiles,    order: 10 });
-    RailPlugins.register('memory',   { icon: 'brain',          label: '记忆',     component: MemoryPanel,     order: 20 });
-    RailPlugins.register('knowledge',{ icon: 'database',       label: '知识库',   component: KnowledgePanel,  order: 30 });
-    RailPlugins.register('shell',    { icon: 'terminal',       label: '终端',     component: ShellPanel,      order: 40 });
-    RailPlugins.register('mcp',      { icon: 'plug',           label: 'MCP',      component: McpPanel,        order: 50 });
-    RailPlugins.register('cron',     { icon: 'clock',          label: '定时任务', component: CronPanel,       order: 60 });
-
-    // 发送区右侧：模型切换入口（设置页简化版）
-    SendAreaPlugins.registerSlot('toolbar-right', ModelSwitcher, 0);
-
-    // 顶栏右侧：Agent Log 开关（按钮 + 面板由组件自身组装；插件页不注册即无此入口）
-    TopbarPlugins.registerSlot('topbar-right', AgentLogSidebar, 0);
+    // 导航轨面板 / 发送区右栏（模型切换）/ 顶栏 Agent Log 均由各组件文件在
+    // 加载时自注册到对应注册表（见各组件文件末尾），页面无需再手写注册。
 
     app.use(ElementPlus);
     // 自定义指令（放在 ElementPlus 之后注册，确保同名指令以自定义实现为准）

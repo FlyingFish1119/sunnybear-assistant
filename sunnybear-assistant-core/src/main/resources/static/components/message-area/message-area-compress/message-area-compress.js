@@ -31,15 +31,16 @@ const MessageAreaCompress = {
     </div>
     `,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     inject: {
+        appSettings: { default: null },
         sessionStore: { required: true }
     },
 
     computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        },
         // 当前会话的上下文压缩状态：'running' | 'done' | null
         compressState: function () {
             return this.sessionStore.compressState;

@@ -119,11 +119,11 @@ const GlossaryManager = {
         </template>
     </el-dialog>
 
-    <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+    <confirm-dialog ref="confirmDialog"></confirm-dialog>
     `,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
+    inject: {
+        appSettings: { default: null }
     },
 
     data() {
@@ -152,6 +152,10 @@ const GlossaryManager = {
         dialogWidth() {
             // PC 端加宽以展示更多词条文本，移动端保持全屏
             return window.innerWidth <= 768 ? '100%' : 'min(1000px, 92vw)';
+        },
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
         }
     },
 

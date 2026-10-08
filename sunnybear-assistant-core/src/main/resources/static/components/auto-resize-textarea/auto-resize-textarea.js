@@ -17,7 +17,6 @@
  * 用法示例：
  *   <auto-resize-textarea
  *       class="send-area-textarea"
- *       :main-color="mainColor"
  *       v-model="inputText"
  *       placeholder="输入消息"
  *       :max-height="180"
@@ -42,12 +41,22 @@ const AutoResizeTextarea = {
     props: {
         modelValue: { type: String, default: '' },
         placeholder: { type: String, default: '' },
-        mainColor: { type: String, default: 'lightsalmon' },
         maxHeight: { type: Number, default: 180 },
         minHeight: { type: Number, default: 85 },
     },
 
     emits: ['update:modelValue', 'submit', 'cancel', 'keydown'],
+
+    inject: {
+        appSettings: { default: null }
+    },
+
+    computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        }
+    },
 
     methods: {
         onInput: function (event) {

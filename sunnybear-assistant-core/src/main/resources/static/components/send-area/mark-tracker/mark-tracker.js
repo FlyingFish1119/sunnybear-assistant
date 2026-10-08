@@ -81,11 +81,8 @@ const MarkTracker = {
       </div>
     </div>`,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     inject: {
+        appSettings: { default: null },
         wsBus: { default: null },
         sessionStore: { default: null }
     },
@@ -101,6 +98,10 @@ const MarkTracker = {
     },
 
     computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        },
         sessionId() {
             return this.sessionStore ? this.sessionStore.currentSessionId : undefined;
         },

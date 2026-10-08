@@ -26,16 +26,17 @@ const WorldSwitchChatPanel = {
         </div>
     </div>`,
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     inject: {
+        appSettings: { default: null },
         sendArea: { required: true },
         worldPage: { required: true }
     },
 
     computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        },
         state: function () { return this.worldPage.switchChat; },
         visible: function () { return this.state.visible; },
         form: function () { return this.state.form; },

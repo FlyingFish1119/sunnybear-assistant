@@ -12,10 +12,6 @@ const KnowledgeManageSettings = {
 
     mixins: [SettingsCommon],
 
-    props: {
-        mainColor: { type: String, default: 'lightsalmon' }
-    },
-
     template: `
     <div>
         <div class="settings-item" @click="openManage">
@@ -108,8 +104,12 @@ const KnowledgeManageSettings = {
             </template>
         </el-dialog>
 
-        <confirm-dialog ref="confirmDialog" :main-color="mainColor"></confirm-dialog>
+        <confirm-dialog ref="confirmDialog"></confirm-dialog>
     </div>`,
+
+    inject: {
+        appSettings: { default: null }
+    },
 
     data() {
         return {
@@ -121,6 +121,13 @@ const KnowledgeManageSettings = {
             contentEditor: null,
             regenLoading: false
         };
+    },
+
+    computed: {
+        mainColor: function () {
+            if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
+            return 'lightsalmon';
+        }
     },
 
     methods: {
