@@ -16,18 +16,31 @@ import org.springframework.util.StringUtils;
 import java.util.HashMap;
 import java.util.Map;
 
+
+/**
+ * 通常的模型能力排序：chat_pro = task > chat > mission > cub,
+ * operator 应选用在 Computer Use 和 Browser Use 中表现良好的模型
+ */
 @Data
 @Accessors(chain = true)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AISettings {
 
+    // 用户直接对话的模型
     public static final String CHAT = "chat";
     public static final String CHAT_PRO = "chat_pro";
-    public static final String OCR = "ocr";
+
+    // 大多数子 Agent 模型
     public static final String MISSION = "mission";
-    public static final String TASK = "task";
-    /** 最轻量级任务使用的 AI（如标题生成），层级：主AI > 任务AI > cub */
+
+    // 用于最轻量级任务的模型
     public static final String CUB = "cub";
+
+    // 编排式任务模型
+    public static final String TASK = "task";
+
+    // 拥有强大的视觉和交互能力的模型
+    public static final String OPERATOR = "operator";
 
     private String adapterName;
     public AISettings setAdapterName(String adapterName) {

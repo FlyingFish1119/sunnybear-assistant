@@ -18,7 +18,7 @@ import java.util.Map;
 /**
  * AI 模型设置控制器
  * <p>
- * 提供各用途模型（chat / chat_pro / ocr / mission / task / cub）的查询与保存接口，
+ * 提供各用途模型（chat / chat_pro / operator / mission / task / cub）的查询与保存接口，
  * 以及适配器与可选模型列表接口。
  *
  * @author FlyingFish-SunnyBear
@@ -41,7 +41,7 @@ public class AISettingsController {
             @Value("${ai-settings.path:data/settings/ai_settings.json}") String aiSettingsPath,
             @Qualifier(AISettings.CHAT) AISettings chatAISettings,
             @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
-            @Qualifier(AISettings.OCR) AISettings ocrAISettings,
+            @Qualifier(AISettings.OPERATOR) AISettings operatorAISettings,
             @Qualifier(AISettings.MISSION) AISettings missionAISettings,
             @Qualifier(AISettings.TASK) AISettings taskAISettings,
             @Qualifier(AISettings.CUB) AISettings cubAISettings) {
@@ -51,7 +51,7 @@ public class AISettingsController {
         this.aiSettingsMap = new LinkedHashMap<>();
         this.aiSettingsMap.put(AISettings.CHAT, chatAISettings);
         this.aiSettingsMap.put(AISettings.CHAT_PRO, chatProAISettings);
-        this.aiSettingsMap.put(AISettings.OCR, ocrAISettings);
+        this.aiSettingsMap.put(AISettings.OPERATOR, operatorAISettings);
         this.aiSettingsMap.put(AISettings.MISSION, missionAISettings);
         this.aiSettingsMap.put(AISettings.TASK, taskAISettings);
         this.aiSettingsMap.put(AISettings.CUB, cubAISettings);
@@ -67,9 +67,9 @@ public class AISettingsController {
         return new RestResponse().success(aiSettingsMap.get(AISettings.CHAT_PRO));
     }
 
-    @RequestMapping("/ocr/get")
-    public RestResponse getOcrAISettings() {
-        return new RestResponse().success(aiSettingsMap.get(AISettings.OCR));
+    @RequestMapping("/operator/get")
+    public RestResponse getOperatorAISettings() {
+        return new RestResponse().success(aiSettingsMap.get(AISettings.OPERATOR));
     }
 
     @RequestMapping("/mission/get")
@@ -162,18 +162,18 @@ public class AISettingsController {
         return new RestResponse().success("保存成功");
     }
 
-    @PostMapping("/ocr/save")
-    public RestResponse saveOcrAISettings(@RequestBody(required = false) AISettings settings) {
+    @PostMapping("/operator/save")
+    public RestResponse saveOperatorAISettings(@RequestBody(required = false) AISettings settings) {
         if (!validateAISettings(settings)) {
             return new RestResponse().error("Invalid settings");
         }
-        AISettings ocrAISettings = aiSettingsMap.get(AISettings.OCR);
-        ocrAISettings.copy(settings);
-        aiSettingsMap.put(AISettings.OCR, ocrAISettings);
+        AISettings operatorAISettings = aiSettingsMap.get(AISettings.OPERATOR);
+        operatorAISettings.copy(settings);
+        aiSettingsMap.put(AISettings.OPERATOR, operatorAISettings);
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(aiSettingsPath), aiSettingsMap);
         } catch (Exception e) {
-            log.error("保存 AI ocr 设置失败: {}", e.getMessage());
+            log.error("保存 AI operator 设置失败: {}", e.getMessage());
             return new RestResponse().error("保存失败");
         }
         return new RestResponse().success("保存成功");

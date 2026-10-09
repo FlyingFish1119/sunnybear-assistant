@@ -356,7 +356,7 @@ const app = Vue.createApp({
             // 所有设置原始数据（按分类传给对应组件）
             userSettings: {},
             assistantSettings: {},
-            aiSettings: { chat: {}, chat_pro: {}, ocr: {}, mission: {}, task: {}, cub: {} },
+            aiSettings: { chat: {}, chat_pro: {}, operator: {}, mission: {}, task: {}, cub: {} },
             commandSettings: {},
             webSearchSettings: {},
             fileWriteSettings: {},
@@ -428,7 +428,7 @@ const app = Vue.createApp({
                 { key: 'toolKits', url: 'settings/tools/kits' },
             ];
 
-            const aiTypes = ['chat', 'chat_pro', 'ocr', 'mission', 'task', 'cub'];
+            const aiTypes = ['chat', 'chat_pro', 'operator', 'mission', 'task', 'cub'];
             const aiFetchers = aiTypes.map(type => ({
                 key: type,
                 url: 'settings/' + type + '/get',

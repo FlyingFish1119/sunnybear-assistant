@@ -162,9 +162,9 @@ const API = (function () {
                 get: function () { return get('settings/chat_pro/get'); },
                 save: function (data) { return post('settings/chat_pro/save', data); }
             },
-            ocr: {
-                get: function () { return get('settings/ocr/get'); },
-                save: function (data) { return post('settings/ocr/save', data); }
+            operator: {
+                get: function () { return get('settings/operator/get'); },
+                save: function (data) { return post('settings/operator/save', data); }
             },
             mission: {
                 get: function () { return get('settings/mission/get'); },

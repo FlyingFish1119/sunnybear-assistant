@@ -125,7 +125,9 @@ public class BrowserReadContentTool implements ToolHandler {
     }
 
     /**
-     * element 模式：将清洗后的 HTML 交给轻量 AI 提取可交互元素，返回精简列表
+     * element 模式：将清洗后的 HTML 交给轻量 AI 提取可交互元素，返回精简列表。
+     * 提取规则、选择器要求与输出格式由 {@link SystemPrompts#BROWSER_ELEMENTS} 统一约束，
+     * 这里只负责把页面上下文与被提取目标交代清楚。
      */
     private ToolExecutor.ToolExecuteResponse buildElementResult(String title, String url, String html, String target)
             throws Exception {
@@ -137,16 +139,6 @@ public class BrowserReadContentTool implements ToolHandler {
                 页面标题: ${title}
                 页面URL: ${url}
                 任务: ${focus}
-
-                要求:
-                1. 列出可交互元素（按钮、输入框、下拉框、链接、复选框等），以CSS选择器形式给出。
-                2. 每个元素标注：选择器、元素类型、可见文本/占位符、推荐操作（click/type/select等）。
-                3. 只输出有实际交互价值的元素，忽略装饰性元素和页脚信息。
-                4. 输出格式如下：
-                   - #kw (type) | input#kw | 搜索框 | placeholder="请输入"
-                   - #su (click) | input#su | 搜索按钮 | value="百度一下"
-                   - 新闻 (click) | a.mnav[name="tj_trnews"] | 导航链接
-                5. 输出尽量精简，不要输出分析过程或补充说明。
                 """
                 .replace("${title}", StringUtils.hasText(title) ? title : "无")
                 .replace("${url}", url)
@@ -154,16 +146,16 @@ public class BrowserReadContentTool implements ToolHandler {
 
         ChatRequest request = new ChatRequest()
                 .setMessages(List.of(
-                        new ChatMessage().system(SystemPrompts.SUMMARY),
+                        new ChatMessage().system(SystemPrompts.BROWSER_ELEMENTS),
                         new ChatMessage().user(prompt + "\n\n页面HTML:\n```html\n" + html + "\n```")
                 ))
                 .loadSettings(cubAISettings);
 
         AtomicReference<String> result = new AtomicReference<>("");
-        chatHttpHandler.translate(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request,
-                cubAISettings.getStream(),
-                null,
-                (r, lastRes) -> result.set(r.content())
+        chatHttpHandler.translate(
+                new ChatHttpHandler.TranslateData(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request),
+                new ChatHttpHandler.TranslateHandler(null, (r, lastRes) -> result.set(r.content())),
+                new ChatHttpHandler.TranslateOption().setStream(cubAISettings.getStream())
         );
 
         return new ToolExecutor.ToolExecuteResponse(NAME, result.get());

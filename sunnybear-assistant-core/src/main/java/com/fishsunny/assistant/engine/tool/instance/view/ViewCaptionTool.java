@@ -77,7 +77,7 @@ public class ViewCaptionTool implements ToolHandler, MultimodalResultAble {
     private final Settings settings;
 
     @Autowired
-    public ViewCaptionTool(@Qualifier(AISettings.OCR) AISettings aiSettings,
+    public ViewCaptionTool(@Qualifier(AISettings.OPERATOR) AISettings aiSettings,
                             ChatHttpHandler chatHttpHandler,
                             ObjectMapper objectMapper,
                             @Qualifier(SETTINGS) Settings settings,

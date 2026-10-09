@@ -31,6 +31,6 @@ public class BrowserToolKit extends ToolKit {
 
     @Override
     public String description() {
-        return "无头浏览器自动化：导航、点击、输入、拖拽、滚动、截图与读取正文";
+        return "无头浏览器自动化：导航、操作链（点击/输入/悬停/下拉/拖拽/滚动/等待/截图）与读取正文";
     }
 }

@@ -59,7 +59,7 @@ public class ScreenCaptureTool implements ToolHandler, MultimodalResultAble {
     private final ChatHttpHandler chatHttpHandler;
     private final ObjectMapper objectMapper;
 
-    public ScreenCaptureTool(@Qualifier(AISettings.OCR) AISettings aiSettings,
+    public ScreenCaptureTool(@Qualifier(AISettings.OPERATOR) AISettings aiSettings,
                              ChatHttpHandler chatHttpHandler,
                              ObjectMapper objectMapper
     ) {

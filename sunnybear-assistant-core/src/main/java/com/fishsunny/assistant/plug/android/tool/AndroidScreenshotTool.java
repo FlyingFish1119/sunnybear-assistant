@@ -34,7 +34,7 @@ public class AndroidScreenshotTool implements ToolHandler {
     private final ToolRegister register;
     private final AndroidBridgeService bridgeService;
 
-    public AndroidScreenshotTool(@Qualifier(AISettings.OCR) AISettings aiSettings,
+    public AndroidScreenshotTool(@Qualifier(AISettings.OPERATOR) AISettings aiSettings,
                                  ChatHttpHandler chatHttpHandler,
                                  ObjectMapper objectMapper,
                                  AndroidBridgeService bridgeService) {

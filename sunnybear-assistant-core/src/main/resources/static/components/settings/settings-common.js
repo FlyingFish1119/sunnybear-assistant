@@ -21,7 +21,7 @@ const MODE_LABELS = {
 const AI_TYPE_NAMES = {
     chat: '对话模型',
     chat_pro: '高级对话模型',
-    ocr: 'OCR 模型',
+    operator: 'Operator 模型',
     mission: '任务模型',
     task: 'TaskAI 模型',
     cub: '小熊崽模型'

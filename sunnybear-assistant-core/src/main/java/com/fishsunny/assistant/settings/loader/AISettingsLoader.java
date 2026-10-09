@@ -4,8 +4,6 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,7 +16,7 @@ import java.util.Map;
  * AI 模型设置加载器
  * <p>
  * 在程序启动时自动读取项目下的 ai_settings.json 文件，
- * 并按模型用途（chat / chat_pro / ocr / mission / task / cub）分别装配为 Spring Bean。
+ * 并按模型用途（chat / chat_pro / operator / mission / task / cub）分别装配为 Spring Bean。
  *
  * @author FlyingFish-SunnyBear
  * @date 2026/6/27
@@ -52,10 +50,10 @@ public class AISettingsLoader {
         return aiSettingsCache.getOrDefault(AISettings.CHAT_PRO, new AISettings());
     }
 
-    @Bean(AISettings.OCR)
-    public AISettings ocrAISettings() {
+    @Bean(AISettings.OPERATOR)
+    public AISettings operatorAISettings() {
         initAISettingsFile();
-        return aiSettingsCache.getOrDefault(AISettings.OCR, new AISettings());
+        return aiSettingsCache.getOrDefault(AISettings.OPERATOR, new AISettings());
     }
 
     @Bean(AISettings.MISSION)
@@ -111,7 +109,7 @@ public class AISettingsLoader {
                 AISettings.CHAT_PRO, new AISettings().setModel("deepseek-v4-pro")
                         .setStream(true)
                         .setThinking(true),
-                AISettings.OCR, new AISettings().setModel("kimi-k2.6")
+                AISettings.OPERATOR, new AISettings().setModel("kimi-k2.6")
                         .setStream(false)
                         .setThinking(false),
                 AISettings.MISSION, new AISettings().setModel("deepseek-v4-flash")

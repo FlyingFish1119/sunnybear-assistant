@@ -46,7 +46,7 @@ const AiParamRow = {
 /**
  * AI 模型设置组件
  *
- * 展示：对话模型 / 高级对话模型 / 小熊崽模型 / OCR / 任务模型 / TaskAI 六个条目
+ * 展示：对话模型 / 高级对话模型 / 小熊崽模型 / Operator / 任务模型 / TaskAI 六个条目
  * 修改：共享对话框编辑各类型的适配器、模型、流式/思考、高级参数（可折叠）
  * 助手设定（System Prompt）已移至「助手设置」，此处不再配置
  * 适配器列表在组件挂载时自行加载
@@ -104,16 +104,16 @@ const AiSettings = {
                 <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
             </div>
         </div>
-        <div class="settings-item" @click="openDialog('ocr')">
+        <div class="settings-item" @click="openDialog('operator')">
             <div class="settings-item-left">
-                <div class="settings-item-icon"><i data-lucide="scan-eye" style="width:16px;height:16px"></i></div>
+                <div class="settings-item-icon"><i data-lucide="monitor" style="width:16px;height:16px"></i></div>
                 <div class="settings-item-info">
-                    <span class="settings-item-label">OCR 模型</span>
-                    <span class="settings-item-desc">{{ getAiSummary('ocr') }}</span>
+                    <span class="settings-item-label">Operator 模型</span>
+                    <span class="settings-item-desc">{{ getAiSummary('operator') }} · Computer Use（视觉 + 桌面操控）</span>
                 </div>
             </div>
             <div class="settings-item-right">
-                <span class="settings-item-value">{{ getAiShort('ocr') }}</span>
+                <span class="settings-item-value">{{ getAiShort('operator') }}</span>
                 <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
             </div>
         </div>
@@ -246,7 +246,7 @@ const AiSettings = {
     data() {
         return {
             dialogs: { ai: false },
-            // 当前 AI 对话框的类型 (chat/chat_pro/cub/ocr/mission/task)
+            // 当前 AI 对话框的类型 (chat/chat_pro/cub/operator/mission/task)
             aiDialogType: 'chat',
             showAiAdvanced: false,
             aiForm: { adapterName: '', model: '', stream: false, thinking: false, reasoningEffort: null, temperature: 1, top_p: 1, maxTokens: 4096, frequencyPenalty: 0, presencePenalty: 0, customFieldsText: '' },

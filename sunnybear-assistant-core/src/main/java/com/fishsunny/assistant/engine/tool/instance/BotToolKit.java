@@ -33,4 +33,13 @@ public class BotToolKit extends ToolKit {
     public String description() {
         return "以操作链方式编排鼠标与键盘原语，一次性执行本机桌面操作";
     }
+
+    /**
+     * 桌面操控默认不对主对话开放：接管鼠标键盘有副作用，统一经 computer_use_tool 子 Agent
+     * 在「先截屏观察、逐步操作、逐步确认」的流程里使用。用户在设置页可显式覆盖此默认值。
+     */
+    @Override
+    public boolean excludeFromMainAgent() {
+        return true;
+    }
 }

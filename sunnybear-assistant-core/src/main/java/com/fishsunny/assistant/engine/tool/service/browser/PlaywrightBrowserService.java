@@ -8,6 +8,7 @@ package com.fishsunny.assistant.engine.tool.service.browser;
  * @Date 2026/7/9 17:33
  */
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.utils.image.ScaleImageHelper;
 import com.github.benmanes.caffeine.cache.Cache;
@@ -15,6 +16,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.LoadState;
+import com.microsoft.playwright.options.SelectOption;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,6 +80,12 @@ public class PlaywrightBrowserService {
      * 不同 sessionId 之间完全隔离，一个会话崩溃不会影响其他会话。
      */
     private record SessionState(Playwright playwright, Browser browser, BrowserContext context, Page page) {}
+
+    private final ObjectMapper objectMapper;
+
+    public PlaywrightBrowserService(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     /** 按 sessionId 隔离的交互模式会话，Caffeine 缓存自动处理过期和淘汰 */
     private final Cache<String, SessionState> sessions = Caffeine.newBuilder()
@@ -167,6 +175,32 @@ public class PlaywrightBrowserService {
             page.locator(selector).first().fill(text);
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("输入文本失败 [" + selector + "]: " + e.getMessage());
+        }
+    }
+
+    public void hover(String sessionId, String selector) throws ToolExecutor.ToolExecuteException {
+        Page page = getExistingSession(sessionId).page();
+        try {
+            page.locator(selector).first().hover();
+        } catch (Exception e) {
+            throw new ToolExecutor.ToolExecuteException("悬停元素失败 [" + selector + "]: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 选择下拉框选项。优先按可见文本 label 选择；label 为空时按 value 选择。
+     */
+    public void select(String sessionId, String selector, String value, String label) throws ToolExecutor.ToolExecuteException {
+        Page page = getExistingSession(sessionId).page();
+        Locator locator = page.locator(selector).first();
+        try {
+            if (label != null && !label.isBlank()) {
+                locator.selectOption(new SelectOption().setLabel(label));
+            } else {
+                locator.selectOption(value);
+            }
+        } catch (Exception e) {
+            throw new ToolExecutor.ToolExecuteException("选择下拉选项失败 [" + selector + "]: " + e.getMessage());
         }
     }
 
@@ -273,9 +307,27 @@ public class PlaywrightBrowserService {
         Page page = getExistingSession(sessionId).page();
         try {
             Object result = page.evaluate(js);
-            return result != null ? result.toString() : "null";
+            return stringify(result);
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException("执行 JavaScript 失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 把 evaluate 的返回值转成可读文本：字符串原样返回，数字/布尔照字面量，
+     * 对象/数组序列化为 JSON，null 返回 "null"。避免直接 toString 得到 "[object Object]"。
+     */
+    private String stringify(Object result) {
+        if (result == null) {
+            return "null";
+        }
+        if (result instanceof String || result instanceof Number || result instanceof Boolean) {
+            return result.toString();
+        }
+        try {
+            return objectMapper.writeValueAsString(result);
+        } catch (Exception e) {
+            return result.toString();
         }
     }
 
