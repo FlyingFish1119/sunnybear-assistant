@@ -204,11 +204,13 @@ public class ChatHttpHandler {
                 // 处理可能的工具调用
                 adapter.collectChunk(response);
 
-                // 收集 token 用量（各协议响应实现 UsageSource；无 usage 的帧返回 null，不覆盖已有值）
+                // 收集 token 用量（各协议响应实现 UsageSource；无 usage 的帧返回 null，不动已有值）
                 if (response instanceof UsageSource usageSource) {
                     TokenUsage frameUsage = usageSource.toTokenUsage();
                     if (frameUsage != null) {
-                        usage = frameUsage;
+                        // 按字段合并而非整体覆盖：用量常分帧给出——Anthropic 的 message_start 给输入，
+                        // message_delta 只给输出，直接覆盖会把输入丢成 null
+                        usage = usage == null ? frameUsage : usage.merge(frameUsage);
                     }
                 }
 

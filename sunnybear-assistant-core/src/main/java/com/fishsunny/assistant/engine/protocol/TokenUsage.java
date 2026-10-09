@@ -38,6 +38,24 @@ public class TokenUsage {
     public TokenUsage() {
     }
 
+    /**
+     * 合并后到的用量帧：非空字段以后到者为准，返回新的用量对象（本对象不动）。
+     *
+     * <p>流式协议里用量常常分帧给出——比如 Anthropic 的 message_start 给输入与缓存、
+     * message_delta 只给最终输出，主链路按帧累积，靠它拼出完整用量。
+     */
+    public TokenUsage merge(TokenUsage newer) {
+        if (newer == null) {
+            return this;
+        }
+        return new TokenUsage()
+                .setPromptTokens(newer.promptTokens != null ? newer.promptTokens : promptTokens)
+                .setCompletionTokens(newer.completionTokens != null ? newer.completionTokens : completionTokens)
+                .setTotalTokens(newer.totalTokens != null ? newer.totalTokens : totalTokens)
+                .setCachedTokens(newer.cachedTokens != null ? newer.cachedTokens : cachedTokens)
+                .setReasoningTokens(newer.reasoningTokens != null ? newer.reasoningTokens : reasoningTokens);
+    }
+
     /** 是否没有任何有效数字 */
     public boolean isEmpty() {
         return promptTokens == null && completionTokens == null && totalTokens == null

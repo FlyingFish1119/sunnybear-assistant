@@ -11,27 +11,21 @@ public class AnthropicThinking {
 
     private String type;
 
-    private Integer budget_tokens;
-
     public AnthropicThinking() {
     }
 
-    public AnthropicThinking(String type, Integer budgetTokens) {
+    public AnthropicThinking(String type) {
         this.type = type;
-        this.budget_tokens = budgetTokens;
     }
 
     /**
-     * Create an enabled thinking config with the given budget.
+     * 自适应思考：想不想思考、思考多深都由模型自己判断，深度改由顶层
+     * {@link AnthropicOutputConfig#getEffort()} 控制。
+     *
+     * <p>新版 Claude 只认这一种取值，旧写法 {@code type=enabled} + {@code budget_tokens}
+     * 已被弃用（照旧发会直接 400 invalid_request_error），故不再保留。
      */
-    public static AnthropicThinking enabled(int budgetTokens) {
-        return new AnthropicThinking("enabled", budgetTokens);
-    }
-
-    /**
-     * Create a disabled thinking config.
-     */
-    public static AnthropicThinking disabled() {
-        return new AnthropicThinking("disabled", null);
+    public static AnthropicThinking adaptive() {
+        return new AnthropicThinking("adaptive");
     }
 }

@@ -5,7 +5,6 @@ import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
 import com.fishsunny.assistant.engine.protocol.anthropic.AnthropicAIRequest;
-import com.fishsunny.assistant.engine.protocol.anthropic.AnthropicThinking;
 import com.fishsunny.assistant.engine.protocol.anthropic.stream.*;
 import com.fishsunny.assistant.engine.protocol.anthropic.tools.AnthropicToolRegister;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
@@ -46,12 +45,7 @@ public class AnthropicStreamAIAdapter extends AnthropicBaseAIAdapter {
                 .setSystem(extractSystemPrompt(chatRequest.getMessages()))
                 .setMessages(convertToAnthropicMessages(chatRequest.getMessages()));
 
-        if (Boolean.TRUE.equals(settings.getThinking())) {
-            int budgetTokens = settings.getMax_tokens() != null
-                    ? Math.max(1024, settings.getMax_tokens() / 2)
-                    : 16000;
-            anthropicRequest.setThinking(AnthropicThinking.enabled(budgetTokens));
-        }
+        applyThinkingConfig(anthropicRequest, settings);
 
         if (!CollectionUtils.isEmpty(chatRequest.getTools())) {
             List<AnthropicToolRegister> anthropicTools = new ArrayList<>();

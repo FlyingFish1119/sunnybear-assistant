@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.protocol.TokenUsage;
+import com.fishsunny.assistant.engine.protocol.UsageSource;
 import com.fishsunny.assistant.engine.protocol.anthropic.AnthropicUsage;
 import lombok.Data;
 
@@ -15,7 +17,7 @@ import lombok.Data;
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class AnthropicStreamResponse implements AIResponse {
+public class AnthropicStreamResponse implements AIResponse, UsageSource {
 
     /** Event type: message_start, content_block_start, content_block_delta, content_block_stop, message_delta, message_stop, ping */
     private String type;
@@ -45,6 +47,15 @@ public class AnthropicStreamResponse implements AIResponse {
     private JsonNode error;
 
     public AnthropicStreamResponse() {
+    }
+
+    @Override
+    public TokenUsage toTokenUsage() {
+        // 用量分两处给：message_start 在 message.usage（输入与缓存），message_delta 在顶层 usage（最终输出）。
+        // 这里每帧取自己那一份，主链路按帧合并，拼出完整用量。
+        AnthropicUsage source = usage != null ? usage
+                : (message == null ? null : message.getUsage());
+        return AnthropicUsage.toTokenUsage(source);
     }
 
     // ---- Event type constants ----

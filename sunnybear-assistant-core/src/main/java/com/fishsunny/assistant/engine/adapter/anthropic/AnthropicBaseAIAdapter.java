@@ -5,6 +5,9 @@ import com.fishsunny.assistant.engine.adapter.AIAdapter;
 import com.fishsunny.assistant.engine.adapter.AIAdapterOption;
 import com.fishsunny.assistant.engine.protocol.AIRequest;
 import com.fishsunny.assistant.engine.protocol.AIResponse;
+import com.fishsunny.assistant.engine.protocol.anthropic.AnthropicAIRequest;
+import com.fishsunny.assistant.engine.protocol.anthropic.AnthropicOutputConfig;
+import com.fishsunny.assistant.engine.protocol.anthropic.AnthropicThinking;
 import com.fishsunny.assistant.engine.protocol.anthropic.message.AnthropicMessage;
 import com.fishsunny.assistant.engine.protocol.anthropic.message.content.*;
 import com.fishsunny.assistant.engine.protocol.anthropic.message.role.AnthropicAssistantMessage;
@@ -14,6 +17,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
+import com.fishsunny.assistant.engine.protocol.project.settings.ChatSettings;
 import com.fishsunny.assistant.utils.Base64Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,6 +87,41 @@ public abstract class AnthropicBaseAIAdapter extends AIAdapter {
                          Class<? extends AIRequest> targetCls,
                          Class<? extends AIResponse> masterRespCls,
                          Class<? extends AIResponse> targetRespCls) throws Exception {
+    }
+
+    // ==================== Thinking Config ====================
+
+    /** 未配置 reasoning_effort 时的默认思考档位 */
+    protected static final String DEFAULT_THINKING_EFFORT = "high";
+
+    /**
+     * 写入思考相关配置。
+     *
+     * <p>新版 Claude 只认 {@code thinking.type = adaptive}：旧写法 {@code enabled + budget_tokens}
+     * 会被上游判为参数不支持、整轮请求 400；思考深度改由顶层 {@code output_config.effort} 控制，
+     * 且不能塞进 thinking 对象里面。关闭思考时两个字段都不发。
+     */
+    protected void applyThinkingConfig(AnthropicAIRequest request, ChatSettings settings) {
+        if (!Boolean.TRUE.equals(settings.getThinking())) {
+            return;
+        }
+        request.setThinking(AnthropicThinking.adaptive());
+        request.setOutput_config(new AnthropicOutputConfig(resolveEffort(settings.getReasoning_effort())));
+    }
+
+    /**
+     * 项目里的 reasoning_effort（low / high / max）与 Anthropic 的 effort 同名同义，直接沿用；
+     * 没配置或值不认识时取默认档。
+     */
+    private static String resolveEffort(String reasoningEffort) {
+        if (!StringUtils.hasText(reasoningEffort)) {
+            return DEFAULT_THINKING_EFFORT;
+        }
+        String effort = reasoningEffort.trim().toLowerCase();
+        return switch (effort) {
+            case "low", "medium", "high", "max" -> effort;
+            default -> DEFAULT_THINKING_EFFORT;
+        };
     }
 
     // ==================== Message Conversion ====================

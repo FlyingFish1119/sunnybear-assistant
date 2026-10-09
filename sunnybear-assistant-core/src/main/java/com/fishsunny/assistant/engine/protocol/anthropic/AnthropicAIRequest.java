@@ -46,10 +46,13 @@ public class AnthropicAIRequest implements AIRequest {
 
     private AnthropicThinking thinking;
 
+    /** 顶层输出配置：adaptive thinking 下思考深度（effort）挂这里，与 thinking 平级 */
+    private AnthropicOutputConfig output_config;
+
     /** 本请求体已序列化的顶层 key，同名自定义字段一律丢弃（内置优先） */
     private static final Set<String> RESERVED_BODY_KEYS = Set.of(
             "model", "messages", "system", "stream", "max_tokens", "temperature",
-            "top_p", "top_k", "stop_sequences", "tools", "thinking");
+            "top_p", "top_k", "stop_sequences", "tools", "thinking", "output_config");
 
     /** 厂商自定义字段（模型设置里的 customFields），经 setExtraBody 过滤后展开为请求体顶层字段 */
     @JsonIgnore

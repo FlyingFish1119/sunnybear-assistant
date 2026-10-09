@@ -78,7 +78,7 @@ engine:
   jev:
     url: https://opencode.ai/zen/v1/systemone
     api-key: ${OPEN_CODE_API_KEY:}
-    model: jev-1.13-free
+    model: jev-1.13
     timeout-s: 30
   tts:
     enable: true
@@ -217,6 +217,34 @@ engine:
         targetReqCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesAIRequest
         masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
         targetRespCls: com.fishsunny.assistant.engine.protocol.responses.ResponsesStreamEvent
+
+      # opencode-go Anthropic API 非流式
+      - apiName: opencode-go-anthropic
+        baseUrl: https://opencode.ai/zen/go/v1/messages
+        modelUrl: https://opencode.ai/zen/go/v1/models
+        apiKey: ${OPEN_CODE_API_KEY:}
+        stream: false
+        headers:
+          x-opencode-session: ses-sunnybear-go
+        adapterCls: com.fishsunny.assistant.engine.adapter.anthropic.AnthropicAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.anthropic.AnthropicAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.anthropic.AnthropicAIResponse
+
+      # opencode-go Anthropic API 流式
+      - apiName: opencode-go-anthropic
+        baseUrl: https://opencode.ai/zen/go/v1/messages
+        modelUrl: https://opencode.ai/zen/go/v1/models
+        apiKey: ${OPEN_CODE_API_KEY:}
+        stream: true
+        headers:
+          x-opencode-session: ses-sunnybear-go
+        adapterCls: com.fishsunny.assistant.engine.adapter.anthropic.AnthropicStreamAIAdapter
+        masterReqCls: com.fishsunny.assistant.engine.protocol.project.ChatRequest
+        targetReqCls: com.fishsunny.assistant.engine.protocol.anthropic.AnthropicAIRequest
+        masterRespCls: com.fishsunny.assistant.engine.protocol.project.ChatResponse
+        targetRespCls: com.fishsunny.assistant.engine.protocol.anthropic.stream.AnthropicStreamResponse
 
       # opencode-zen 非流式
       - apiName: opencode-zen
