@@ -95,7 +95,7 @@ public class ResponsesAIRequest implements AIRequest {
     public ResponsesAIRequest() {
     }
 
-    /** 思考档位。仅 {@code effort} 一个字段，模型不支持推理时整个对象不出现 */
+    /** 思考档位与摘要。模型不支持推理时整个对象不出现 */
     @Data
     @Accessors(chain = true)
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -103,6 +103,9 @@ public class ResponsesAIRequest implements AIRequest {
 
         /** minimal / low / medium / high */
         private String effort;
+
+        /** 思考摘要粒度 auto / concise / detailed；不发这一项上游不回摘要，思考面板就空了 */
+        private String summary;
 
         public Reasoning() {
         }

@@ -328,7 +328,10 @@ public abstract class ResponsesBaseAIAdapter extends AIAdapter {
         if (!Boolean.TRUE.equals(settings.getThinking())) {
             return null;
         }
-        return new ResponsesAIRequest.Reasoning().setEffort(resolveEffort(settings.getReasoning_effort()));
+        // summary=auto：不要摘要的话上游不回 reasoning.summary，适配器解析出来是空的，思考面板就白着
+        return new ResponsesAIRequest.Reasoning()
+                .setEffort(resolveEffort(settings.getReasoning_effort()))
+                .setSummary("auto");
     }
 
     /** max 在 Responses 里没有对应档位，落到最高档 high——不臆造 xhigh */
