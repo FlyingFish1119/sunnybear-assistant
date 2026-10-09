@@ -4,8 +4,8 @@ package com.fishsunny.assistant.utils;
  * @Usage 进程收尾工具。
  *
  *        为什么要有这个方法：Process.destroyForcibly() 只杀它自己那一个进程。
- *        在 Windows 上 `cmd.exe /c mvn ...` 真正干活的是派生出来的 java.exe，
- *        杀掉 cmd.exe 对它没有任何影响 —— 表现就是「工具已经报超时了，
+ *        在 Windows 上 `powershell.exe -Command mvn ...` 真正干活的是派生出来的 java.exe，
+ *        杀掉 powershell.exe 对它没有任何影响 —— 表现就是「工具已经报超时了，
  *        命令却在后台继续跑，过一会儿文件真的被改完了」。
  *        Linux 上 `bash -c xxx` 同理。
  *

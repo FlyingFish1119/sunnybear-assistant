@@ -37,6 +37,8 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -59,18 +61,71 @@ public class CommandTool implements ToolHandler {
     public static final String NAME = "command_tool";
     public static final String SETTINGS = "command_tool_settings";
 
-    /** auto 模式下的安全命令白名单（Windows），命中则跳过 AI 判断直接执行 */
+    /** auto 模式下的安全命令白名单（Windows PowerShell），命中则跳过 AI 判断直接执行 */
     private static final List<String> DEFAULT_WHITE_LIST_WINDOWS = List.of(
-            "dir", "echo", "cd", "type", "set", "help", "ver", "date", "time",
-            "whoami", "hostname", "ipconfig", "nslookup", "netstat", "tasklist",
-            "where", "findstr", "tree", "cls", "path", "assoc", "ftype"
+            // 目录/文件查看（含常见别名）
+            "get-childitem", "gci", "dir", "ls",
+            "get-item", "gi",
+            "get-content", "gc", "cat", "type",
+            "get-location", "pwd", "gl",
+            "set-location", "cd", "sl",
+            "test-path", "resolve-path", "split-path", "join-path",
+            // 输出/帮助
+            "write-output", "write", "write-host", "echo",
+            "get-help", "help", "man",
+            "get-command", "gcm", "get-alias", "gal",
+            // 进程/服务/系统信息
+            "get-process", "gps", "ps", "tasklist",
+            "get-service", "gsv",
+            "get-date", "date",
+            "get-host", "hostname",
+            "get-computerinfo", "get-volume", "get-psdrive",
+            "whoami", "ipconfig", "nslookup", "netstat", "tree",
+            // 文本/管道处理
+            "select-string", "sls", "findstr",
+            "select-object", "select",
+            "sort-object", "sort",
+            "measure-object", "measure",
+            "format-table", "ft", "format-list", "fl", "out-string",
+            "where-object", "where", "foreach-object", "foreach",
+            "convertto-json", "convertfrom-json", "convertto-csv", "convertfrom-csv",
+            "compare-object", "diff",
+            "get-member", "gm",
+            // 清屏
+            "clear-host", "clear", "cls"
     );
 
-    /** auto 模式下的危险命令黑名单（Windows），命中则强制询问用户 */
+    /** auto 模式下的危险命令黑名单（Windows PowerShell），命中则强制询问用户 */
     private static final List<String> DEFAULT_BLACK_LIST_WINDOWS = List.of(
-            "rmdir /s", "del /f", "del /s", "format", "diskpart",
-            "reg delete", "reg add", "bcdedit", "shutdown", "netsh",
-            "icacls", "takeown", "cacls", "sc delete", "wmic delete"
+            // 删除文件/目录（递归或强制，含别名）
+            "remove-item -recurse", "remove-item -force", "remove-item -r",
+            "rm -r", "rm -rf", "rm -recurse", "rm -force",
+            "ri -r", "ri -recurse", "ri -force",
+            "rmdir -recurse", "rd -recurse",
+            "del -recurse", "del -force",
+            "erase -recurse", "erase -force",
+            "clear-content", "clc",
+            // 磁盘/分区
+            "format-volume", "format", "clear-disk", "diskpart",
+            "initialize-disk", "remove-partition", "new-partition",
+            // 注册表/系统配置
+            "set-itemproperty", "new-itemproperty", "remove-itemproperty",
+            "reg add", "reg delete",
+            "bcdedit", "set-executionpolicy",
+            // 关机/重启
+            "shutdown", "stop-computer", "restart-computer",
+            // 权限/账户
+            "icacls", "takeown", "cacls",
+            "remove-localuser", "disable-localuser", "remove-aduser",
+            // 服务
+            "sc delete", "sc.exe delete", "set-service", "stop-service",
+            // 强制结束进程
+            "stop-process -force", "taskkill /f", "taskkill /pid", "kill -9",
+            "remove-ciminstance", "remove-wmiobject",
+            // 任意代码执行
+            "invoke-expression", "iex",
+            // 其他破坏性操作
+            "netsh", "wmic delete", "vssadmin delete", "cipher /w"
     );
 
     /** auto 模式下的安全命令白名单（Linux），命中则跳过 AI 判断直接执行 */
@@ -111,19 +166,49 @@ public class CommandTool implements ToolHandler {
 
     /** 获取当前平台 Shell 名称（用于提示信息） */
     private static String getShellName() {
-        return IS_WINDOWS ? "cmd.exe" : "bash";
+        return IS_WINDOWS ? "powershell.exe" : "bash";
+    }
+
+    /**
+     * PowerShell 退出码修正后缀。
+     * <p>
+     * Windows PowerShell 的退出码规则与 cmd/bash 不同：原生程序失败时它只回 1（真实退出码丢失），
+     * 且一旦后续命令成功，退出码又会被重置为 0（前面的失败被掩盖）。追加这段守卫，把最后一个
+     * 原生命令的真实退出码透传出来；若最后一步是报错的内置命令（$LASTEXITCODE 未设置但 $? 为假），
+     * 则以 1 收场。命令自身若以 exit 结尾，守卫不可达，也不影响。
+     * <p>
+     * 前缀必须是换行而不是 "; "：PowerShell 的 # 注释一直吃到行尾，命令末尾只要带个注释，
+     * 用分号拼在同一行的守卫就会被整段注释掉（实测 cmd /c exit 7 # comment 只回笼统的 1）。
+     * 独占一行则无论前面有多少注释都吞不到它。
+     */
+    private static final String POWERSHELL_EXIT_GUARD =
+            "\nif ($LASTEXITCODE) { exit $LASTEXITCODE } elseif (-not $?) { exit 1 }";
+
+    /**
+     * 构造执行命令的 ProcessBuilder，自动拼接当前平台的 Shell 前缀。
+     * PowerShell 前缀比 bash 长，不能再按固定两段拼接；Windows 下先追加退出码守卫，
+     * 再把整个脚本编码成 Base64 交给 -EncodedCommand（见 {@link #WINDOWS_SHELL}）。
+     */
+    private static ProcessBuilder newProcessBuilder(String command) {
+        String[] shell = getShell();
+        List<String> commandLine = new ArrayList<>(shell.length + 1);
+        commandLine.addAll(Arrays.asList(shell));
+        if (IS_WINDOWS) {
+            String script = command + POWERSHELL_EXIT_GUARD;
+            // -EncodedCommand 要求 UTF-16LE；输出侧仍按 UTF-8 读，中文一并安全
+            commandLine.add(Base64.getEncoder().encodeToString(script.getBytes(StandardCharsets.UTF_16LE)));
+        } else {
+            commandLine.add(command);
+        }
+        ProcessBuilder processBuilder = new ProcessBuilder(commandLine);
+        processBuilder.redirectErrorStream(true);
+        return processBuilder;
     }
 
     /** 获取当前平台操作系统名称 */
     private static String getOsName() {
         return IS_WINDOWS ? "Windows" : "Linux";
     }
-
-    /** 用户确认等待超时时间（毫秒） */
-    private static final int CONFIRM_TIMEOUT_MS = 30 * 1000;
-
-    /** 轮询用户确认状态的间隔（毫秒） */
-    private static final int POLL_INTERVAL_MS = 100;
 
     /** 默认命令执行超时时间（秒） */
     private static final int DEFAULT_TIMEOUT_SECONDS = 10;
@@ -137,8 +222,17 @@ public class CommandTool implements ToolHandler {
     /** 当前操作系统是否为 Windows */
     private static final boolean IS_WINDOWS = System.getProperty("os.name").toLowerCase().contains("win");
 
-    /** Windows 命令行前缀 */
-    private static final String[] WINDOWS_SHELL = {"cmd.exe", "/c"};
+    /**
+     * Windows 命令行前缀（PowerShell）。
+     * <p>
+     * 脚本不直接挂在命令行上，而是编码成 Base64 交给 -EncodedCommand。原因：
+     * ProcessBuilder 往 Windows 命令行填参数时走的是 CRT 那一套转义规则（参数内双引号变 \"），
+     * 而 powershell.exe 解析 -Command 用的是自己那套规则，两边对不上，命令里的双引号会被吃掉——
+     * 表现就是 Write-Output "a b" 被当成两个参数、Get-Content "C:\Program Files\x" 报找不到路径。
+     * -EncodedCommand 让命令行里只剩一串 Base64，引号、转义、编码三个问题一次绕开。
+     * -NoProfile 则是避免用户配置文件污染输出。
+     */
+    private static final String[] WINDOWS_SHELL = {"powershell.exe", "-NoProfile", "-EncodedCommand"};
 
     /** Linux/Mac 命令行前缀 */
     private static final String[] LINUX_SHELL = {"bash", "-c"};
@@ -209,9 +303,7 @@ public class CommandTool implements ToolHandler {
             }
 
             // ======================== 前台执行模式 ========================
-            String[] shell = getShell();
-            ProcessBuilder processBuilder = new ProcessBuilder(shell[0], shell[1], arguments.getCommand());
-            processBuilder.redirectErrorStream(true);
+            ProcessBuilder processBuilder = newProcessBuilder(arguments.getCommand());
             Process process = processBuilder.start();
 
             Future<String> future = EXECUTOR_SERVICE.submit(() -> {
@@ -225,7 +317,7 @@ public class CommandTool implements ToolHandler {
             } catch (TimeoutException e) {
                 // 读输出的任务还挂在管道上，先取消
                 future.cancel(true);
-                // 连子孙一起杀：只 destroy 父进程的话，cmd.exe 派生的子进程会继续跑完，
+                // 连子孙一起杀：只 destroy 父进程的话，powershell.exe 派生的子进程会继续跑完，
                 // 于是出现「工具已经报超时，命令却还在后台改文件」的怪象
                 ProcessUtils.killTree(process);
                 throw new ToolExecutor.ToolExecuteException("命令执行超时（" + settings.getTimeout() + "秒），已终止该命令及其子进程。如果该命令打开了一个进程用于运行GUI等，那么这个报错是正常。");
@@ -264,7 +356,7 @@ public class CommandTool implements ToolHandler {
     /**
      * 按 shell 的元字符（&amp;&amp;, ||, &amp;, |, ;）拆分子命令。
      * 仅当元字符位于双引号之外时才作为分隔符，避免误拆引号内的内容。
-     * Linux 下额外支持 ; 作为命令分隔符。
+     * PowerShell 与 bash 都以 ; 作为命令分隔符，故统一处理。
      */
     private List<String> splitCommands(String command) {
         List<String> result = new ArrayList<>();
@@ -304,8 +396,14 @@ public class CommandTool implements ToolHandler {
                         if (!sub.isEmpty()) result.add(sub);
                         current = new StringBuilder();
                     }
-                } else if (!IS_WINDOWS && c == ';') {
-                    // ; 仅在 Linux/Mac 下作为命令分隔符
+                } else if (c == ';') {
+                    // PowerShell 与 bash 都支持 ; 作为命令分隔符
+                    String sub = current.toString().trim();
+                    if (!sub.isEmpty()) result.add(sub);
+                    current = new StringBuilder();
+                } else if (c == '\n' || c == '\r') {
+                    // 换行同样是命令分隔符：多行脚本 = 多条命令。不拆的话整段会被当成一个子命令，
+                    // 而 matchesPattern 是从子命令开头比对的，黑名单必然漏判。
                     String sub = current.toString().trim();
                     if (!sub.isEmpty()) result.add(sub);
                     current = new StringBuilder();
@@ -395,7 +493,7 @@ public class CommandTool implements ToolHandler {
      * @param riskReason AI 审查判定的风险原因（可空；为空时不展示）
      */
     private void ask(Map<String, Object> context, Arguments arguments, String riskReason) throws Exception {
-        String shellName = IS_WINDOWS ? "cmd" : "bash";
+        String shellName = IS_WINDOWS ? "powershell" : "bash";
         String message = "### 命令执行请求\n\n"
                 + ReviewResult.riskReasonBlock(riskReason)
                 + "AI 请求在系统中执行以下命令：\n\n"
@@ -503,9 +601,7 @@ public class CommandTool implements ToolHandler {
             Integer exitCode = null;
             String failure = null;
             try {
-                String[] shell = getShell();
-                ProcessBuilder processBuilder = new ProcessBuilder(shell[0], shell[1], command);
-                processBuilder.redirectErrorStream(true);
+                ProcessBuilder processBuilder = newProcessBuilder(command);
                 Process process = processBuilder.start();
 
                 OSToolKit.writeLog(logFile, process);
