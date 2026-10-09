@@ -583,8 +583,7 @@ public abstract class GeminiBaseAIAdapter extends AIAdapter {
         }
         ParsedParts parsed = parseParts(candidate.getContent() == null ? null : candidate.getContent().getParts());
 
-        ChatMessage message = new ChatMessage()
-                .setReasoningSignature(parsed.thoughtSignature());
+        ChatMessage message = new ChatMessage();
         message.assistant(
                 parsed.text(),
                 parsed.reasoning().isEmpty() ? null : parsed.reasoning(),

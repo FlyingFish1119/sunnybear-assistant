@@ -12,7 +12,7 @@
 | key | 类型 | 含义 | 定义 | 写 | 读 |
 |---|---|---|---|---|---|
 | `chat_usage` | object | 本轮各项 token 用量 | `ChatUsage.MESSAGE_KEY` | `StandardChatTranslateFactory` | `ContextCompressor`、前端 |
-| `reasoningSignature` | string | 推理签名（Anthropic extended thinking / Gemini thought signature） | `ChatMessage.EXTENSION_REASONING_SIGNATURE` | `StandardChatTranslateFactory` | `ChatMessage.resolveReasoningSignature()` |
+| `reasoningSignature` | string | 推理签名（Anthropic extended thinking / Gemini thought signature），**签名的唯一存放处** | `ChatMessage.EXTENSION_REASONING_SIGNATURE` | `StandardChatTranslateFactory` | `ChatMessage.resolveReasoningSignature()` |
 | `ttsAudio` | object | 整轮完整 TTS 音频，供 🔊 重播 | — | `StandardChatTranslateFactory` | 前端 |
 | `chatSelect` | object | 角色快捷选项 | — | `CharacterChatSelectService` | 前端 |
 | `status` | string | 工具执行中占位状态（值 `executing`） | — | `ToolExecuteNotifier` | 前端 |
@@ -31,10 +31,14 @@
 
 ### 2. `reasoningSignature` —— 推理签名
 
-- 定义：`ChatMessage.java:51`（`EXTENSION_REASONING_SIGNATURE`）。
+- 定义：`ChatMessage.java`（`EXTENSION_REASONING_SIGNATURE`）。
   因 `chat_message` 表无对应列，签名随 extension 落库，会话重载后仍能回传模型。
+- **签名的唯一存放处**：`ChatMessage` 实体上没有同名字段，读写都只走 extension 这一条路
+  （2026-10-09 统一，此前的同名字段已移除）。
 - 写入：`StandardChatTranslateFactory.java`，赶在 `appendAssistantMessage` 落库前写入。
-- 读取：`ChatMessage.resolveReasoningSignature()` 字段优先，回退到 extension。
+  `ChatMessageRepositoryImplement.insert()` 落库后 `selectById` 读回，工具调用循环的下一轮
+  从 `request.getMessages()` 取到的消息对象上，签名已随 extension 一并回来。
+- 读取：`ChatMessage.resolveReasoningSignature()`，只从 extension 取。
 
 ### 3. `ttsAudio` —— 整轮完整音频
 

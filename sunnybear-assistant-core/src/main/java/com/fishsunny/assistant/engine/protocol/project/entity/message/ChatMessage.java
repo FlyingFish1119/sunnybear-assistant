@@ -45,8 +45,9 @@ public class ChatMessage {
 
     /**
      * extension 键：推理签名（Anthropic extended thinking / Gemini thought signature）。
-     * chat_message 表没有 reasoning_signature 列，签名随 extension 这个 JSON 列一起落库，
-     * 会话重载后适配器仍能取到并原样回传给模型。
+     *
+     * <p>签名只存这一处：实体上没有同名字段，chat_message 表也没有对应列，全部随 extension
+     * 这个 JSON 列一起落库，会话重载后适配器仍能取到并原样回传给模型。
      */
     public static final String EXTENSION_REASONING_SIGNATURE = "reasoningSignature";
 
@@ -96,9 +97,6 @@ public class ChatMessage {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
-
-    /** Anthropic extended thinking 推理签名，回传思考内容时必需 */
-    private String reasoningSignature;
 
     /** 同父节点下的兄弟节点总数（包括自己），查询时动态计算，不持久化 */
     private transient Integer siblingCount;
@@ -246,16 +244,14 @@ public class ChatMessage {
     }
 
     /**
-     * 取推理签名（Anthropic extended thinking / Gemini thought signature）供适配器回传：
-     * 字段优先，回退到 extension 里落库的那份——chat_message 表没有 reasoning_signature 列，
-     * 会话重载后字段是空的，只有 extension 里的副本能把签名带回来（写入见 ChatProcessor）。
+     * 取推理签名（Anthropic extended thinking / Gemini thought signature）供适配器回传。
      *
-     * @return 签名；两处都没有时返回 null
+     * <p>签名只以 extension 里那一份为准（见 {@link #EXTENSION_REASONING_SIGNATURE}）：
+     * 实体上没有同名字段、chat_message 表也没有对应列，能跨落库带回来的只有它。
+     *
+     * @return 签名；未写入时返回 null
      */
     public String resolveReasoningSignature() {
-        if (StringUtils.hasText(reasoningSignature)) {
-            return reasoningSignature;
-        }
         Object stored = getExtension().get(EXTENSION_REASONING_SIGNATURE);
         return stored instanceof String text && StringUtils.hasText(text) ? text : null;
     }

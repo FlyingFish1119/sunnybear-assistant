@@ -175,7 +175,7 @@ public class StandardChatTranslateFactory {
                 }
 
                 // 推理签名（Anthropic extended thinking / Gemini thought signature）入库：
-                // chat_message 没有该列，塞进 extension 这个 JSON 列，会话重载后仍能原样回传给模型。
+                // 签名只存 extension 这一处（实体无同名字段、表无对应列），会话重载后仍能原样回传给模型。
                 // 必须赶在 appendAssistantMessage 落库之前写，且放在 beforeSave 钩子之后（钩子可能换掉对象）
                 String reasoningSignature = result.reasoningSignature();
                 if (StringUtils.hasText(reasoningSignature)) {
@@ -200,10 +200,6 @@ public class StandardChatTranslateFactory {
                     } catch (Exception e) {
                         log.warn("推送会话 token 累计失败: {}", e.getMessage());
                     }
-                }
-                // 内存链路同时留在字段上，本轮后续（工具调用循环）直接用
-                if (StringUtils.hasText(reasoningSignature)) {
-                    assistantMessage.setReasoningSignature(reasoningSignature);
                 }
                 // 添加助手消息
                 ChatResponse response = new ChatResponse().afterAIResponse(assistantMessage);
