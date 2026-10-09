@@ -165,8 +165,7 @@ public abstract class GeminiBaseAIAdapter extends AIAdapter {
                     flushToolResponses(contents, pendingToolResponses);
                     appendContent(contents, GeminiContent.model(convertAssistantParts(message, toolNames)));
                 }
-                case ChatMessage.ROLE_TOOL -> pendingToolResponses.add(
-                        GeminiPart.functionResponse(buildFunctionResponse(message, toolNames)));
+                case ChatMessage.ROLE_TOOL -> appendToolResponse(pendingToolResponses, message, toolNames);
                 default -> throw new RuntimeException("Invalid role for Gemini: " + message.getRole());
             }
         }
@@ -181,6 +180,38 @@ public abstract class GeminiBaseAIAdapter extends AIAdapter {
         }
         appendContent(contents, GeminiContent.user(new ArrayList<>(pending)));
         pending.clear();
+    }
+
+    /**
+     * 工具结果入队：functionResponse 之后紧接着该结果的图片等附件与一行来源说明。
+     *
+     * <p>Gemini 的 {@code functionResponse.response} 只能是 JSON 对象，图片塞不进去；可行做法是把图
+     * 作为同一轮 user content 里并列的 {@code inlineData} part 下发。附件挂在 functionResponse 之后
+     * 并配一句来源说明，免得模型把它误认成用户自己贴的图。这些 part 最终合并进同一条 user content
+     * （{@link #appendContent} 会合并同角色的相邻内容），user / model 的交替关系不受影响。
+     */
+    private void appendToolResponse(List<GeminiPart> pending, ChatMessage message, Map<String, String> toolNames) {
+        pending.add(GeminiPart.functionResponse(buildFunctionResponse(message, toolNames)));
+
+        List<MessageContent> contents = message.getContents();
+        if (CollectionUtils.isEmpty(contents)) {
+            return;
+        }
+        List<GeminiPart> attachments = new ArrayList<>();
+        for (MessageContent content : contents) {
+            if (content instanceof ImageContent imageContent) {
+                addMediaPart(attachments, imageContent.getUrl(), "图片");
+            } else if (content instanceof VideoContent videoContent) {
+                addMediaPart(attachments, videoContent.getUrl(), "视频");
+            } else if (content instanceof AudioContent audioContent) {
+                addMediaPart(attachments, audioContent.getUrl(), "音频");
+            }
+        }
+        if (attachments.isEmpty()) {
+            return;
+        }
+        pending.add(GeminiPart.text("（以下是工具 " + resolveToolName(message, toolNames) + " 返回的附件，请直接查看）"));
+        pending.addAll(attachments);
     }
 
     /** 追加一轮内容；与上一轮角色相同时合并 parts（Gemini 要求 user / model 交替） */
@@ -543,17 +574,23 @@ public abstract class GeminiBaseAIAdapter extends AIAdapter {
             response.setId(callId);
         }
 
-        String name = message.getName();
-        if (!StringUtils.hasText(name)) {
-            name = toolNames.get(callId);
-        }
-        if (!StringUtils.hasText(name)) {
-            log.warn("Gemini: 工具结果 {} 找不到对应函数名，回传 {} 占位", callId, FALLBACK_FUNCTION_NAME);
-            name = FALLBACK_FUNCTION_NAME;
-        }
-        response.setName(name);
+        response.setName(resolveToolName(message, toolNames));
         response.setResponse(wrapToolResult(message.resolveText()));
         return response;
+    }
+
+    /** 解析工具名：消息自带 name 优先，其次按 callId 从上一轮 assistant 的 toolCalls 反查，最后用占位名 */
+    private String resolveToolName(ChatMessage message, Map<String, String> toolNames) {
+        String name = message.getName();
+        if (!StringUtils.hasText(name)) {
+            name = toolNames.get(message.getToolCallId());
+        }
+        if (!StringUtils.hasText(name)) {
+            log.warn("Gemini: 工具结果 {} 找不到对应函数名，回传 {} 占位",
+                    message.getToolCallId(), FALLBACK_FUNCTION_NAME);
+            return FALLBACK_FUNCTION_NAME;
+        }
+        return name;
     }
 
     private Map<String, Object> wrapToolResult(String result) {

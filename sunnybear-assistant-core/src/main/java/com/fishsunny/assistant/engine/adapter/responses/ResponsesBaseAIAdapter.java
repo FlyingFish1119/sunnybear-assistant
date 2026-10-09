@@ -164,8 +164,8 @@ public abstract class ResponsesBaseAIAdapter extends AIAdapter {
                     break;
                 }
                 case "tool": {
-                    warnDroppedNonText(message, "工具结果");
                     items.add(ResponsesItem.functionCallOutput(message.getToolCallId(), plainText(message)));
+                    appendToolAttachments(items, message);
                     break;
                 }
                 default:
@@ -219,20 +219,36 @@ public abstract class ResponsesBaseAIAdapter extends AIAdapter {
     }
 
     /**
-     * {@code function_call_output.output} 只能是字符串，非文本分片（图片/音频/视频/文件）无处安放，
-     * warn 出来让这次能力损失可见。
+     * 工具结果里的图片搬到紧随其后的 user item 里。
+     *
+     * <p>{@code function_call_output.output} 只能是字符串，图片无处安放；Responses 也不像 Anthropic
+     * 那样允许在工具回话内部挂图，可行位置只有平级的下一条 message item。正文里注明来源，
+     * 免得模型把这张图误当成用户自己发来的图。音视频等其它附件 Responses 的 message content 装不下，
+     * 仍然丢弃并告警，保持能力损失可见。
      */
-    private void warnDroppedNonText(ChatMessage message, String where) {
+    private void appendToolAttachments(List<ResponsesItem> items, ChatMessage message) {
         List<MessageContent> contents = message.getContents();
-        if (contents == null) {
+        if (CollectionUtils.isEmpty(contents)) {
             return;
         }
+        List<ResponsesContentPart> parts = new ArrayList<>();
         for (MessageContent content : contents) {
-            if (!(content instanceof TextContent)) {
-                log.warn("Responses: {} 的 {} 类型内容无处安放（output 只能是字符串），已丢弃",
-                        where, content.getClass().getSimpleName());
+            if (content instanceof ImageContent imageContent) {
+                if (StringUtils.hasText(imageContent.getUrl())) {
+                    parts.add(ResponsesContentPart.inputImage(imageContent.getUrl()));
+                }
+            } else if (!(content instanceof TextContent)) {
+                log.warn("Responses: 工具结果中的 {} 类型内容无处安放，已丢弃",
+                        content.getClass().getSimpleName());
             }
         }
+        if (parts.isEmpty()) {
+            return;
+        }
+        String toolName = StringUtils.hasText(message.getName()) ? message.getName() : "工具";
+        parts.addFirst(ResponsesContentPart.inputText(
+                "（以下是工具 " + toolName + " 返回的图片，请直接查看）"));
+        items.add(ResponsesItem.inputMessage("user", parts));
     }
 
     /**

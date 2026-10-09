@@ -201,8 +201,7 @@ public abstract class AnthropicBaseAIAdapter extends AIAdapter {
                     // non-tool message arrives (or at end). Anthropic requires all
                     // tool_result blocks for an assistant's tool_use blocks to be in
                     // a single user message immediately following the assistant.
-                    pendingToolResults.add(
-                            new AnthropicToolResultContent(message.getToolCallId(), message.resolveText()));
+                    pendingToolResults.add(buildToolResultContent(message));
                     break;
                 default:
                     throw new RuntimeException("Invalid role for Anthropic: " + message.getRole());
@@ -211,6 +210,35 @@ public abstract class AnthropicBaseAIAdapter extends AIAdapter {
         // Flush any remaining tool results at end
         flushToolResults(anthropicMessages, pendingToolResults);
         return anthropicMessages;
+    }
+
+    /**
+     * 构造工具结果内容块。
+     *
+     * <p>工具结果里的图片等附件必须随 tool_result 一起回传：Anthropic 的
+     * {@code tool_result.content} 允许是 content block 数组，这是 Claude 唯一能直接「看到」
+     * 工具产出图片的通道。此前只回传 {@link ChatMessage#resolveText()}，图片被整块丢弃，
+     * 视觉子 Agent（如 computer use 的 raw 截屏）便只能读到「图片已保存至……」这句文字。
+     *
+     * <p>没有非文本附件时仍退回 String 形式，兼容性最好。
+     *
+     * @param message role=tool 的消息，contents 首块为结果正文，其后为图片等附件
+     * @return 携带文本与附件块的 tool_result
+     */
+    private AnthropicToolResultContent buildToolResultContent(ChatMessage message) {
+        String text = message.resolveText();
+        // convertToAnthropicContentBlocks 会把文本块一并转出，这里只留附件，避免正文重复
+        List<AnthropicContentBlock> attachments = convertToAnthropicContentBlocks(message.getContents());
+        attachments.removeIf(AnthropicTextContent.class::isInstance);
+        if (attachments.isEmpty()) {
+            return new AnthropicToolResultContent(message.getToolCallId(), text);
+        }
+        List<AnthropicContentBlock> blocks = new ArrayList<>();
+        if (StringUtils.hasText(text)) {
+            blocks.add(new AnthropicTextContent(text));
+        }
+        blocks.addAll(attachments);
+        return new AnthropicToolResultContent(message.getToolCallId(), blocks);
     }
 
     private void flushToolResults(List<AnthropicMessage> messages, List<AnthropicToolResultContent> pending) {

@@ -82,7 +82,8 @@ public class BotChainTool implements ToolHandler, MultimodalResultAble {
                 .setDescription("""
                         桌面操作链。AI 不一次调用一个动作，而是提交一串操作按序执行，整链在本地一次性完成。
                         坐标使用归一化值 0-1（相对屏幕宽高），与截图定位结果一致。
-                        操作分两层：【原语】mouse_move/mouse_down/mouse_up/mouse_scroll/key_down/key_up/input_text/wait，
+                        操作分两层：
+                        【原语】mouse_move/mouse_down/mouse_up/mouse_scroll/key_down/key_up/input_text/wait，
                         【语法糖】click（当前位置点击）、type（敲击，支持组合键如 ctrl+c）——语法糖只是把高频组合打包，不引入原语不具备的能力。
                         input_text 可输入中文等任意字符（经剪贴板粘贴，会占用系统剪贴板）。
                         每步可带 delay（毫秒，<0 表示不延迟），链级可用 default_delay 设默认延迟、head_delay/tail_delay 设链头链尾延迟。

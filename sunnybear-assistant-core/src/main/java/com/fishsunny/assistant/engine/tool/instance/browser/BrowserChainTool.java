@@ -83,7 +83,10 @@ public class BrowserChainTool implements ToolHandler, MultimodalResultAble {
                 .setName(NAME)
                 .setDescription("""
                         浏览器操作链。AI 不一次调用一个动作，而是提交一串操作按序执行，整链在同一个浏览器会话里一次性完成。
-                        操作分三类：【页面操作】click/type/hover/select/drag/scroll/wait_for，【节奏与观测】wait（靠 delay 计时）、screenshot（截当前页面并把图片随结果返回），【脚本】eval（在页面中执行 JavaScript，返回值写入链日志）。
+                        操作分三类：
+                        【页面操作】click/type/hover/select/drag/scroll/wait_for，
+                        【节奏与观测】wait（靠 delay 计时）、screenshot（截当前页面并把图片随结果返回），
+                        【脚本】eval（在页面中执行 JavaScript，返回值写入链日志）。
                         每个节点可带 delay（毫秒，<0 不延迟）控制节奏；链级可用 default_delay 设默认延迟、head_delay/tail_delay 设链头链尾延迟。
                         任何一步失败则整链中断，返回已执行到的步骤序号与失败原因。
                         注意：链中含 eval 时会在执行前请用户确认一次；导航（打开 URL）请使用 browser_navigate_tool；读取页面结构请使用 browser_read_content_tool。""")
@@ -107,7 +110,7 @@ public class BrowserChainTool implements ToolHandler, MultimodalResultAble {
         ToolRegister.Parameters screenshotParam = new ToolRegister.Parameters()
                 .setParameterName("screenshot")
                 .setType("boolean")
-                .setDescription("（可选）链执行完成后是否截取当前页面并随结果返回，默认 true。截图用于操作后确认效果");
+                .setDescription("（可选）链执行完成后是否自动截取当前页面并随结果返回，默认 true。截图用于操作后确认效果");
 
         ToolRegister.Parameters operationsParam = new ToolRegister.Parameters()
                 .setParameterName("operations")
