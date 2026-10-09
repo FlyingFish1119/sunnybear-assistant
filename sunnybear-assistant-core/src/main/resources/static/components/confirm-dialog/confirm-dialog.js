@@ -37,6 +37,7 @@ const ConfirmDialog = {
     name: 'ConfirmDialog',
 
     template: `
+    <Teleport to="body">
     <div v-if="visible" class="confirm-overlay" @click.self="cancel">
       <div class="confirm-dialog"
            tabindex="-1"
@@ -72,7 +73,8 @@ const ConfirmDialog = {
           </button>
         </div>
       </div>
-    </div>`,
+    </div>
+    </Teleport>`,
 
     emits: [],
 
