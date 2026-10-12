@@ -177,8 +177,12 @@ public class ChatMessageRepositoryImplement implements ChatMessageRepository {
                 WHERE id = ?
                 """;
         String contentsJson;
+        String toolCallsJson;
+        String extensionJson;
         try {
             contentsJson = objectMapper.writeValueAsString(chatMessage.getContents());
+            toolCallsJson = objectMapper.writeValueAsString(chatMessage.getToolCalls());
+            extensionJson = objectMapper.writeValueAsString(chatMessage.getExtension());
         } catch (Exception e) {
             log.error("转换消息内容失败: {}", e.getMessage(), e);
             throw new RuntimeException("转换消息内容失败: " + e.getMessage());
@@ -191,8 +195,8 @@ public class ChatMessageRepositoryImplement implements ChatMessageRepository {
                 chatMessage.getReasoningContent(),
                 contentsJson,
                 chatMessage.getActive(),
-                chatMessage.getToolCalls(),
-                chatMessage.getExtension(),
+                toolCallsJson,
+                extensionJson,
                 chatMessage.getId()
         );
         return selectById(chatMessage.getId());
