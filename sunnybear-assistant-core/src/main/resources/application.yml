@@ -2,8 +2,8 @@
   port: 11451
 
 spring:
-#  profiles:
-#    active: remote
+  profiles:
+    active: remote
   application:
     name: assistant
   datasource:
@@ -76,9 +76,9 @@ engine:
     idle-timeout-s: 45
     connection-timeout-s: 30
   jev:
-    url: https://opencode.ai/zen/v1/systemone
-    api-key: ${OPEN_CODE_API_KEY:}
-    model: jev-1.13
+    url: https://api.commandcode.ai/provider/v1/systemone
+    api-key: ${COMMAND_CODE_API_KEY:}
+    model: jev
     timeout-s: 30
   tts:
     enable: true

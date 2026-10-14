@@ -2,6 +2,8 @@
 data/
 # 仅忽略模块根目录的运行时配置（/settings/），不影响 src/main/resources/static/components/settings/ 等源码目录
 /settings/
+# 启动时自动释放到启动目录的配置，真正的源文件在 src/main/resources/application.yml
+/application.yml
 
 # ===== 部署配置（需人工审核）=====
 deploy/
