@@ -52,11 +52,16 @@ public class CreateChatMessageRequestHandler implements ChatMessageRequestHandle
         if (request.getCronId() != null) {
             chatSession = createCronChatSession(request.getCronId());
         } else {
-            boolean enablePro = false;
-            if (Boolean.TRUE.equals(provider.getEnableProModel().get())) {
+            // 前端可显式指定新会话的模型档位（发送区按钮）；未指定时按「自动切换模型」判断复杂度
+            boolean enablePro;
+            if (request.getForcePro() != null) {
+                enablePro = request.getForcePro();
+            } else if (Boolean.TRUE.equals(provider.getEnableProModel().get())) {
                 enablePro = judgeProModel(request.getContent());
+            } else {
+                enablePro = false;
             }
-                chatSession = createChatSession(request, enablePro, provider.getSessionType().get());
+            chatSession = createChatSession(request, enablePro, provider.getSessionType().get());
         }
         sessionMessageBus.subscribeExclusive(chatSession.getId(), safeSession.delegate());
         request.setSessionId(chatSession.getId());

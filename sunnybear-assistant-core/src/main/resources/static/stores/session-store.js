@@ -151,7 +151,12 @@ const SessionStore = (function () {
          * send / edit / replace 发起时立即置 true，直到该会话 END 帧（本轮结束）或出错/断线才复位。
          * 按会话隔离，避免在 A 会话发送时把 B 会话的发送按钮也锁死。
          */
-        sendingMap: {}
+        sendingMap: {},
+        /**
+         * 下一次新建会话的模型档位指定：null = 不干预（自动判断）/ false = 强制普通 / true = 强制高级。
+         * 由发送区的三态按钮循环切换，只作用于 create 请求，请求发出后立即复位（见 sendMessage）。
+         */
+        nextProForce: null
     });
 
     /** 判断某条消息是否为「在途流式占位」（以 streaming_ 前缀标识 id） */
@@ -306,6 +311,11 @@ const SessionStore = (function () {
         get currentMessages() { return state.currentMessages; },
         get currentSessionId() { return currentSessionId(); },
         get isNewSession() { return currentSessionId() === undefined; },
+        /**
+         * 下一次新建会话的模型档位指定：null = 不干预（自动判断）/ false = 强制普通 / true = 强制高级。
+         * 由发送区的三态按钮循环切换，仅作用于 create 请求。
+         */
+        get nextProForce() { return state.nextProForce; },
         get isStreaming() { return !!state.streamingMap[currentSessionId()]; },
         /** 当前会话的上下文压缩状态：'running' | 'done' | null */
         get compressState() { return state.compressMap[currentSessionId()] || null; },
@@ -411,6 +421,15 @@ const SessionStore = (function () {
             state.requestStateMap = {};
             // 广播"用户开了个新对话"（放在 return 之后：没真开成就不吭声）
             WsBus.emit('session:created');
+        },
+
+        /**
+         * 循环切换「下一次新建会话」的模型档位：不干预 → 强制普通 → 强制高级 → 不干预。
+         * 值只在新建会话时随请求发出（见 sendMessage），发出后自动复位。
+         */
+        cycleNextProForce() {
+            state.nextProForce = state.nextProForce === null ? false
+                : (state.nextProForce === false ? true : null);
         },
 
         /* ================= 会话列表 ================= */
@@ -616,6 +635,10 @@ const SessionStore = (function () {
                 content: payload.content,
                 tts: payload.tts
             };
+            // 新建会话：带上发送区选定的模型档位（不干预时不传，交由服务端按自动切换判断）
+            if (!sessionId && state.nextProForce !== null) {
+                request.forcePro = state.nextProForce;
+            }
             if (payload.files && payload.files.length > 0) {
                 request.files = payload.files;
             }
@@ -631,6 +654,8 @@ const SessionStore = (function () {
             const ws = WsBus.getSocket();
             if (ws) {
                 ws.send(JSON.stringify(request));
+                // 档位只对「下一次新建」生效：创建请求一经发出即复位，避免之后的新会话继续被锁定
+                if (!sessionId) state.nextProForce = null;
             } else {
                 console.error('WebSocket 未连接，消息发送失败');
             }

@@ -100,6 +100,13 @@ public class ChatMessageRequest {
      */
     private Boolean tts = false;
 
+    /**
+     * 新会话模型档位强制指定（仅 create 模式有意义）：
+     * true = 强制高级、false = 强制普通、null / 不传 = 不干预，
+     * 不干预时交由服务端按「自动切换模型」判断复杂度决定（见 CreateChatMessageRequestHandler）
+     */
+    private Boolean forcePro;
+
     public ChatMessageRequest() {
     }
 

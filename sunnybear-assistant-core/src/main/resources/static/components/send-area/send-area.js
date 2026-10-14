@@ -15,7 +15,7 @@ const SLASH_COMMANDS = [
  * 发送区插件注册表（全局单例）。
  *
  * 插件按锚点插入扩展组件：
- *   'toolbar'        工具栏图标区（TTS / 上传 / 步骤清单之后），如角色页的私聊/移交按钮
+ *   'toolbar'        工具栏图标区（步骤清单之前），如语音开关 / 上传 / 模型档位 / 角色页的私聊按钮
  *   'toolbar-right'  工具行右侧（快捷键提示之后），如模型切换入口
  *   'overlay'        输入区上方的浮层区（发送区容器内、composer 之前），如私聊面板
  * 组件会收到 prop: { mainColor, inputText } 并 inject sendArea（本组件实例），
@@ -71,6 +71,7 @@ const SendAreaPlugins = (function () {
  * 公开方法（通过 ref 调用）：
  *   submit()             — 触发发送/停止（供键盘 Enter 或父级入口）
  *   clear()              — 清空输入框与已上传文件（供父级在 init_user 确认后调用）
+ *   openFilePicker()     — 唤起文件选择器（上传按钮槽组件调用）
  *   isTtsEnabled()       — 读取语音朗读开关状态
  *   playMessageAudio(msg)— 重播某条消息的整轮完整音频
  *   getUploadedFiles()   — 读取当前已上传文件（供父级读取，避免父级持有状态）
@@ -118,21 +119,14 @@ const SendArea = {
                 ></auto-resize-textarea>
                 <div class="send-area-toolbar">
                     <div class="send-area-tools">
-                        <button class="send-area-icon-btn tts-toggle-button" :class="{ 'tts-on': ttsEnabled }"
-                                @click="toggleTts()"
-                                :title="ttsEnabled ? '本条消息语音朗读已开启（点击关闭）' : '开启本条消息的语音朗读'">
-                            <i v-show="ttsEnabled" data-lucide="volume-2"></i>
-                            <i v-show="!ttsEnabled" data-lucide="volume-x"></i>
-                        </button>
-                        <button class="send-area-icon-btn" @click="$refs.fileUpload.openFilePicker()" title="上传文件">
-                            <i data-lucide="paperclip"></i>
-                        </button>
-                        <!-- 步骤清单跟踪：紧挨文件上传按钮右侧，无步骤时不渲染 -->
-                        <mark-tracker></mark-tracker>
-                        <!-- 工具栏插件槽（锚点 'toolbar'，如私聊 / 移交按钮） -->
+                        <!-- 工具栏槽（锚点 'toolbar'）：语音开关 / 上传 / 模型档位 / 私聊移交
+                             一律以槽组件形式在此站队，先后由各组件注册时的 order 决定；
+                             页面没加载对应脚本就没有那个按钮，这里不做任何开关判断。 -->
                         <component v-for="(slot, si) in toolbarSlots"
                                    :key="'send-toolbar-' + si"
                                    :is="slot.component"></component>
+                        <!-- 步骤清单跟踪：排在槽位之后，无步骤时不渲染 -->
+                        <mark-tracker></mark-tracker>
                     </div>
                     <div class="send-area-toolbar-right">
                         <span class="send-area-hint">Ctrl+Enter 发送</span>
@@ -373,6 +367,17 @@ const SendArea = {
          */
         isTtsEnabled: function () {
             return this.ttsEnabled;
+        },
+
+        /* ========== 文件上传 ========== */
+
+        /**
+         * 唤起文件选择器（上传按钮槽组件经 provide 的本实例调用）。
+         * 文件状态与解析都在 file-upload 子组件里，这里只做一次转发。
+         */
+        openFilePicker: function () {
+            var fu = this.$refs.fileUpload;
+            if (fu) fu.openFilePicker();
         },
 
         /* ========== 键盘 / 指令面板 ========== */

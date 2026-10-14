@@ -1,0 +1,29 @@
+/* ============================================
+   下一次新对话的模型档位 — 发送区工具栏插件
+   三态：不干预（中性灰）/ 强制普通（冷灰蓝）/ 强制高级（主色，与会话列表 Pro 标识同色系）
+   尺寸、圆角与 hover 基底继承 send-area.css 的 .send-area-icon-btn，这里只加状态差异。
+   ============================================ */
+
+/* 已有会话里档位无意义（只对新建生效）：弱化成「看得见但不吵」 */
+.next-pro-button:disabled {
+    opacity: 0.35;
+    background: transparent;
+    color: #666;
+    cursor: not-allowed;
+}
+
+.next-pro-button.is-locked:not(:disabled) {
+    color: #5b7fa6;
+    background: rgba(91, 127, 166, 0.14);
+}
+
+.next-pro-button.is-pro:not(:disabled) {
+    color: var(--main-color, lightsalmon);
+    background: color-mix(in srgb, var(--main-color, lightsalmon) 16%, #fff);
+}
+
+/* 锁定态的点击反馈：只压暗自身，避免 hover 的灰底盖掉档位配色 */
+.next-pro-button.is-locked:hover:not(:disabled),
+.next-pro-button.is-pro:hover:not(:disabled) {
+    filter: brightness(0.96);
+}

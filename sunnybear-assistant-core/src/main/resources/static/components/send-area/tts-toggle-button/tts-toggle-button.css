@@ -1,0 +1,10 @@
+/* ============================================
+   语音朗读开关 — 发送区工具栏插件
+   基础尺寸 / hover 继承 send-area.css 的 .send-area-icon-btn，这里只加开启态。
+   ============================================ */
+
+/* 开启 = 主色浅底 + 主色图标 */
+.tts-toggle-button.tts-on {
+    color: var(--main-color, lightsalmon);
+    background: color-mix(in srgb, var(--main-color, lightsalmon) 16%, #fff);
+}
