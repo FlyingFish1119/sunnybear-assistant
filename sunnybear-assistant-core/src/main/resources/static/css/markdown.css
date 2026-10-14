@@ -296,6 +296,17 @@
     margin: 0.4em 0;
 }
 
+/* ---- KaTeX 公式 ---- */
+/* KaTeX 会在公式旁额外渲染一层仅供屏幕阅读器使用的 MathML 层（position:absolute、
+   1×1 尺寸、clip:rect(1px,1px,1px,1px)）。要注意 clip 与 overflow 只约束「绘制」，
+   不约束「可滚动溢出」：一旦它的定位参照块落在裁剪层之外（例如气泡带 backdrop-filter
+   的毛玻璃模式会成为参照块，或公式落在被折叠 / 内部滚动的长内容深处），这个肉眼不可见
+   的 1px 盒子就会把自己那段偏移量贡献给外层，表现为「内容早已到底，滑块还能继续往下
+   拖一大截空白」。给 .katex 一个定位上下文，把 MathML 层关回公式所在的位置。 */
+.katex {
+    position: relative;
+}
+
 /* ---- 流式回复：按块渲染，新出现的块淡入 + 轻微上移 ----
    块按 :key 复用 DOM：已闭合的块不会重建，动画自然只在新块插入时播一次 */
 .markdown-body.md-streaming > .md-block {
