@@ -16,6 +16,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 @Configuration
 public class ChatThreadPoolConfig {
+
     @Value("${assistant.chat.async.core-pool-size:4}")
     private int corePoolSize;
 

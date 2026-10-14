@@ -14,6 +14,7 @@ import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.websocket.slash.framework.SlashCommandComponent;
 import com.fishsunny.assistant.websocket.slash.framework.SlashCommandHandler;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -22,6 +23,7 @@ import java.util.Collections;
 import java.util.List;
 
 @Slf4j
+@RequiredArgsConstructor
 @SlashCommandComponent("/preview")
 public class PreviewSlashCommandHandler extends SlashCommandHandler {
 
@@ -30,14 +32,6 @@ public class PreviewSlashCommandHandler extends SlashCommandHandler {
     private final AssistantSettings assistantSettings;
 
     private final ObjectMapper objectMapper;
-
-    public PreviewSlashCommandHandler(ChatMessageService chatMessageService,
-                                      AssistantSettings assistantSettings,
-                                      ObjectMapper objectMapper) {
-        this.chatMessageService = chatMessageService;
-        this.assistantSettings = assistantSettings;
-        this.objectMapper = objectMapper;
-    }
 
     @Override
     protected List<String> resolveArgs(String originArgs) {

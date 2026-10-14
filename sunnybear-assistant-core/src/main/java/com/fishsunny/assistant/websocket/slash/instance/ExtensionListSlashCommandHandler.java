@@ -16,6 +16,7 @@ import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.websocket.slash.framework.SlashCommandComponent;
 import com.fishsunny.assistant.websocket.slash.framework.SlashCommandHandler;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -24,6 +25,7 @@ import java.util.Collections;
 import java.util.List;
 
 @Slf4j
+@RequiredArgsConstructor
 @SlashCommandComponent("/extensions")
 public class ExtensionListSlashCommandHandler extends SlashCommandHandler {
 
@@ -34,16 +36,6 @@ public class ExtensionListSlashCommandHandler extends SlashCommandHandler {
     private final ExtensionScriptService extensionScriptService;
 
     private final ObjectMapper objectMapper;
-
-    public ExtensionListSlashCommandHandler(ChatMessageService chatMessageService,
-                                            AssistantSettings assistantSettings,
-                                            ExtensionScriptService extensionScriptService,
-                                            ObjectMapper objectMapper) {
-        this.chatMessageService = chatMessageService;
-        this.assistantSettings = assistantSettings;
-        this.extensionScriptService = extensionScriptService;
-        this.objectMapper = objectMapper;
-    }
 
     @Override
     protected List<String> resolveArgs(String originArgs) {

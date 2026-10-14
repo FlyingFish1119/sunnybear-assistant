@@ -1,6 +1,8 @@
 package com.fishsunny.assistant.config;
 
 import com.fishsunny.assistant.App;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -23,9 +25,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @since 2026/10/14
  */
 @Component
+@Slf4j
 public class ApplicationRestartService {
-
-    private static final Logger log = LoggerFactory.getLogger(ApplicationRestartService.class);
 
     /** 留给触发重启的那个 HTTP 响应写出的时间 */
     private static final long RESPONSE_FLUSH_DELAY_MS = 800L;

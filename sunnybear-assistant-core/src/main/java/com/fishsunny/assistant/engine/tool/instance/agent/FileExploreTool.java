@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.engine.tool.instance.view.ViewCaptionTool;
 import com.fishsunny.assistant.utils.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
@@ -28,6 +29,7 @@ import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -38,19 +40,19 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.util.*;
 
+@Slf4j
 @ToolKitComponent(AgentToolKit.class)
 @ConditionalOnExpression("${engine.tool.agent.enable:true} && ${engine.tool.agent.file-explore.enable:true}")
 public class FileExploreTool implements SubAgentToolHandler {
 
     public static final String NAME = "file_explore_tool";
 
-    private static final Logger log = LoggerFactory.getLogger(FileExploreTool.class);
-
     /** 子 Agent 可用的本地文件工具（按 handler 名称过滤，避免递归到自己） */
     private static final Set<String> SUB_AGENT_TOOLS = Set.of(
-            FileListTool.NAME,    // file_list_tool
-            FileSearchTool.NAME,  // file_search_tool
-            FileReadTool.NAME     // file_read_tool
+            FileListTool.NAME,
+            FileSearchTool.NAME,
+            FileReadTool.NAME,
+            ViewCaptionTool.NAME
     );
 
     private final ToolRegister register;

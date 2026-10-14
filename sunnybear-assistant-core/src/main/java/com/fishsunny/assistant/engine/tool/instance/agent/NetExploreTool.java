@@ -29,6 +29,7 @@ import com.fishsunny.assistant.mvc.service.KnowledgeService;
 import com.fishsunny.assistant.settings.AISettings;
 import lombok.Data;
 import lombok.experimental.Accessors;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -39,13 +40,12 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.util.*;
 
+@Slf4j
 @ToolKitComponent(AgentToolKit.class)
 @ConditionalOnExpression("${engine.tool.agent.enable:true} && ${engine.tool.agent.net-explore.enable:true}")
 public class NetExploreTool implements SubAgentToolHandler {
 
     public static final String NAME = "net_explore_tool";
-
-    private static final Logger log = LoggerFactory.getLogger(NetExploreTool.class);
 
     /** 子 Agent 可用的网络工具（按 handler 名称过滤，避免递归到自己） */
     private static final Set<String> SUB_AGENT_TOOLS = Set.of(

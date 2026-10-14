@@ -4,6 +4,7 @@ import com.fishsunny.assistant.remote.RepoRpcServerHandler;
 import com.fishsunny.assistant.terminal.TerminalHandshakeInterceptor;
 import com.fishsunny.assistant.terminal.TerminalWebSocketHandler;
 import com.fishsunny.assistant.websocket.ws.ChatWebSocketHandler;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -20,22 +21,13 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
  */
 @Configuration
 @EnableWebSocket
+@RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final ChatWebSocketHandler chatWebSocketHandler;
     private final RepoRpcServerHandler repoRpcServerHandler;
     private final TerminalWebSocketHandler terminalWebSocketHandler;
     private final TerminalHandshakeInterceptor terminalHandshakeInterceptor;
-
-    public WebSocketConfig(ChatWebSocketHandler chatWebSocketHandler,
-                           RepoRpcServerHandler repoRpcServerHandler,
-                           TerminalWebSocketHandler terminalWebSocketHandler,
-                           TerminalHandshakeInterceptor terminalHandshakeInterceptor) {
-        this.chatWebSocketHandler = chatWebSocketHandler;
-        this.repoRpcServerHandler = repoRpcServerHandler;
-        this.terminalWebSocketHandler = terminalWebSocketHandler;
-        this.terminalHandshakeInterceptor = terminalHandshakeInterceptor;
-    }
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {

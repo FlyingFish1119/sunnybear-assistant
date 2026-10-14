@@ -25,6 +25,7 @@ import com.fishsunny.assistant.utils.SessionFileManager;
 import com.fishsunny.assistant.websocket.provider.ChatProvider;
 import com.fishsunny.assistant.websocket.slash.framework.SlashCommandExecutor;
 import com.fishsunny.assistant.websocket.slash.framework.SlashCommandHandler;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
@@ -36,6 +37,7 @@ import java.util.*;
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class ChatProcessor {
 
     private final ChatHttpHandler chatHttpHandler;
@@ -46,23 +48,6 @@ public class ChatProcessor {
     private final ContextCompressor contextCompressor;
     private final StandardChatTranslateFactory standardChatTranslateFactory;
 
-    public ChatProcessor(ToolExecutor toolExecutor,
-                            SlashCommandExecutor slashCommandExecutor,
-                            ChatHttpHandler chatHttpHandler,
-                            SessionFileManager sessionFileManager,
-                            ToolVisibilityPolicy toolVisibilityPolicy,
-                            ContextCompressor contextCompressor,
-                            StandardChatTranslateFactory standardChatTranslateFactory
-                         ) {
-        this.toolExecutor = toolExecutor;
-        this.slashCommandExecutor = slashCommandExecutor;
-        this.chatHttpHandler = chatHttpHandler;
-        this.sessionFileManager = sessionFileManager;
-        this.toolVisibilityPolicy = toolVisibilityPolicy;
-        this.contextCompressor = contextCompressor;
-        this.standardChatTranslateFactory = standardChatTranslateFactory;
-
-    }
     /**
      * 核心对话处理逻辑
      *

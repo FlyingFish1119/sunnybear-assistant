@@ -20,6 +20,7 @@ import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.instance.file.FileListTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileReadTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileSearchTool;
+import com.fishsunny.assistant.engine.tool.instance.view.ViewCaptionTool;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
@@ -50,7 +51,8 @@ public class InitSlashCommandHandler extends SlashCommandHandler {
     private static final Set<String> SUB_AGENT_TOOLS = Set.of(
             FileListTool.NAME,
             FileSearchTool.NAME,
-            FileReadTool.NAME
+            FileReadTool.NAME,
+            ViewCaptionTool.NAME
     );
 
     private final ChatMessageService chatMessageService;

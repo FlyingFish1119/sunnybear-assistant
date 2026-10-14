@@ -17,6 +17,7 @@ import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.websocket.provider.ChatProvider;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -36,6 +37,7 @@ import java.util.Locale;
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class ChatPromptService {
 
     public static final String CURRENT_TIME = "${current_time}";
@@ -48,14 +50,6 @@ public class ChatPromptService {
     private final KnowledgeService knowledgeService;
     private final MemoryService memoryService;
     private final MemorySettings memorySettings;
-
-    public ChatPromptService(KnowledgeService knowledgeService,
-                             MemoryService memoryService,
-                             MemorySettings memorySettings) {
-        this.knowledgeService = knowledgeService;
-        this.memoryService = memoryService;
-        this.memorySettings = memorySettings;
-    }
 
     public String defaultSystemPrompt(ChatProvider.SystemProviderContext context, AssistantSettings activeAssistantSettings, String effectiveModelName, WebSocketSession session) throws Exception {
         ChatSession chatSession = context.chatSession();

@@ -220,7 +220,8 @@ public class FileWriteTool implements ToolHandler {
                         new ToolRegister.Parameters("path", "string",
                                 "文件路径。绝对路径（如 D:\\projects\\test.txt）会走安全审核；" +
                                 "会话沙箱路径写成 sessionId:相对路径（如 sessionId:test.py），前缀 sessionId: 表示当前会话，无需填真实会话 ID，" +
-                                "相对路径不能是绝对路径、不能以分隔符开头、不能含 .. 回溯，且跳过安全审核与用户确认。"),
+                                "相对路径不能是绝对路径、不能以分隔符开头、不能含 .. 回溯，且跳过安全审核与用户确认。" +
+                                "无论那种模式均会返回写入的绝对路径"),
                         new ToolRegister.Parameters("content", "string", "要写入的文件内容")
                 ));
     }
