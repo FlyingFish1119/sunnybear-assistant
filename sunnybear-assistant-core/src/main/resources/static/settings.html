@@ -39,6 +39,7 @@
     <script src="components/settings/task-prompt-settings/task-prompt-settings.js"></script>
     <script src="components/settings/cron-job-settings/cron-job-settings.js"></script>
     <script src="components/settings/memory-settings/memory-settings.js"></script>
+    <script src="components/settings/application-config-editor/application-config-editor.js"></script>
     <link rel="stylesheet" href="css/scrollbar.css"/>
     <link rel="stylesheet" href="components/settings/settings.css"/>
     <link rel="stylesheet" href="components/settings/ai-settings/ai-settings.css"/>
@@ -46,6 +47,7 @@
     <link rel="stylesheet" href="components/confirm-dialog/confirm-dialog.css"/>
     <link rel="stylesheet" href="components/settings/model-detail-tip/model-detail-tip.css"/>
     <link rel="stylesheet" href="components/settings/knowledge-manage-settings/knowledge-manage-settings.css"/>
+    <link rel="stylesheet" href="components/settings/application-config-editor/application-config-editor.css"/>
 
     <!-- ============================================================
          设置页骨架样式（顶部导航栏 + 主体内容区）
@@ -217,11 +219,20 @@
         </button>
         <span class="topbar-title">设置</span>
         <span class="topbar-subtitle">调整你的 Assistant</span>
+        <button type="button" class="config-btn" :class="{ 'is-active': showConfigEditor }"
+                @click="showConfigEditor = !showConfigEditor"
+                :title="showConfigEditor ? '退出配置编辑' : '编辑 application.yml'">
+            <i data-lucide="file-code" style="width:18px;height:18px"></i>
+            <span>配置文件</span>
+        </button>
     </div>
 
     <!-- 主体 -->
     <div class="settings-body-wrapper">
-        <div class="settings-body">
+        <!-- 配置文件编辑：整块顶掉设置区，保存后由后端校验并软重启 -->
+        <application-config-editor v-if="showConfigEditor" @close="showConfigEditor = false"></application-config-editor>
+
+        <div class="settings-body" v-else>
 
         <!-- ==================== 用户与助手 ==================== -->
         <div class="settings-section-title">用户与助手</div>
@@ -369,6 +380,9 @@ const app = Vue.createApp({
             knowledgeSettings: {},
             memorySettings: {},
             toolKits: [],
+
+            // 是否用配置文件编辑器整块顶掉设置区（topbar 的「配置文件」按钮切换）
+            showConfigEditor: false,
         }
     },
 
@@ -501,6 +515,7 @@ app.component('knowledge-manage-settings', KnowledgeManageSettings);
 app.component('task-prompt-settings', TaskPromptSettings);
 app.component('cron-job-settings', CronJobSettings);
 app.component('memory-settings', MemorySettings);
+app.component('application-config-editor', ApplicationConfigEditor);
 app.provide('appSettings', AppSettings);
 app.mount('#app');
 </script>

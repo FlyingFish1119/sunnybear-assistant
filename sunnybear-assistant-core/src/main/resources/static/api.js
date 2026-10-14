@@ -234,6 +234,11 @@ const API = (function () {
                 list: function () { return get('settings/adapters/list'); },
                 /** 拉取指定适配器可选的模型名称列表；未配置 modelUrl 或失败时 data 为空数组 */
                 models: function (apiName) { return get('settings/adapters/models?apiName=' + encodeURIComponent(apiName || '')); }
+            },
+            /* 启动目录下的 application.yml（外置配置）：读全文 / 校验通过后落盘并软重启 */
+            applicationConfig: {
+                get: function () { return get('settings/application-config/get'); },
+                save: function (content) { return post('settings/application-config/save', { content: content }); }
             }
         },
 

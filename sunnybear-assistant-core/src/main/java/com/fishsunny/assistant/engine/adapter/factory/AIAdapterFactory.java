@@ -34,7 +34,7 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class AIAdapterFactory {
 
-    /** 非流式适配器配方表；volatile 支持热替换（reload 后新请求即按新配方制造适配器） */
+    /** 非流式适配器配方表；构造时装配，之后只读 */
     private volatile Map<String, AIAdapterRegister> adapterMap = new HashMap<>();
 
     /** 流式适配器配方表 */
@@ -70,20 +70,7 @@ public class AIAdapterFactory {
         rebuild(registers);
     }
 
-    /**
-     * 热替换适配器配方（工厂本体不变，重新制造产品）：
-     * 之后每次 getAdapter() 产出的适配器实例都将基于新配置。
-     * 解析或加载全部失败时抛异常，由调用方决定保留旧配方。
-     */
-    public synchronized void reload(List<AIAdapterRegister> registers) {
-        if (CollectionUtils.isEmpty(registers)) {
-            throw new IllegalArgumentException("Register list is empty, keep current adapters");
-        }
-        rebuild(registers);
-        log.info("Adapter config reloaded, available adapters: {}", getAvailableAdapterNames());
-    }
-
-    /** 按新的 register 列表重建配方表；全部失败时抛异常，旧配方不受影响 */
+    /** 按 register 列表重建配方表；全部失败时抛异常 */
     private void rebuild(List<AIAdapterRegister> registers) {
         Map<String, AIAdapterRegister> newAdapterMap = new HashMap<>();
         Map<String, AIAdapterRegister> newStreamAdapterMap = new HashMap<>();

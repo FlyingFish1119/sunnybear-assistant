@@ -1,0 +1,177 @@
+/* ============================================================
+   应用配置文件编辑器（settings 页 topbar 的「配置文件」按钮打开）
+   ------------------------------------------------------------
+   整块替换设置区：顶部信息条 + 校验问题区 + Ace 编辑区 + 底部操作条。
+   编辑区高度按视口算，让 Ace 自己撑满剩余空间。
+   ============================================================ */
+
+/* ---- topbar 上的「配置文件」按钮 ---- */
+.config-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    margin-left: auto;
+    padding: 0 14px;
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.config-btn:hover,
+.config-btn.is-active {
+    border-color: var(--main-color);
+    color: var(--main-color);
+    background: color-mix(in srgb, var(--main-color) 8%, #fff);
+}
+
+/* ---- 编辑器整体 ---- */
+.ace-config-editor {
+    display: flex;
+    flex-direction: column;
+    height: calc(100dvh - 56px);   /* 56px = 顶部导航栏高度 */
+    padding: 16px 20px 18px;
+    box-sizing: border-box;
+}
+
+/* ---- 顶部信息条 ---- */
+.ace-config-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 4px 10px;
+    font-size: 13px;
+    min-width: 0;
+}
+
+.ace-config-path {
+    font-family: Consolas, Monaco, "Courier New", monospace;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
+    max-width: 55%;
+}
+
+.ace-config-tip {
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---- 校验问题区 ---- */
+.ace-config-problems {
+    margin-bottom: 10px;
+    padding: 10px 14px;
+    border: 1px solid #fde2e2;
+    border-radius: 8px;
+    background: #fef0f0;
+    color: #f56c6c;
+    font-size: 13px;
+    max-height: 168px;
+    overflow-y: auto;
+}
+
+.ace-config-problems-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.ace-config-problems ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.ace-config-problems li {
+    line-height: 1.7;
+    word-break: break-all;
+}
+
+/* ---- Ace 宿主 ---- */
+.ace-config-host {
+    flex: 1;
+    min-height: 0;
+    border: 1px solid #ebeef5;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* ---- 底部操作条 ---- */
+.ace-config-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 14px;
+}
+
+/* ---- 重启等待遮罩：整页转圈，服务回来后页面自动刷新 ---- */
+.ace-config-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: rgba(255, 255, 255, 0.86);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+}
+
+.ace-config-mask-spinner {
+    width: 42px;
+    height: 42px;
+    border: 3px solid color-mix(in srgb, var(--main-color) 25%, #fff);
+    border-top-color: var(--main-color);
+    border-radius: 50%;
+    animation: ace-config-spin 0.8s linear infinite;
+}
+
+@keyframes ace-config-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.ace-config-mask-text {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.ace-config-mask-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+/* ---- 响应式：小屏收紧内边距，按钮只留图标 ---- */
+@media (max-width: 640px) {
+    .ace-config-editor {
+        height: calc(100dvh - 50px);   /* 50px = 小屏导航栏高度 */
+        padding: 12px 10px 14px;
+    }
+
+    .config-btn {
+        padding: 0 10px;
+    }
+
+    .config-btn span {
+        display: none;
+    }
+
+    .ace-config-path {
+        max-width: 40%;
+    }
+
+    .ace-config-tip {
+        display: none;
+    }
+}
