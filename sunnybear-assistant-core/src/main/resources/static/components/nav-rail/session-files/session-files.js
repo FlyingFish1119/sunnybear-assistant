@@ -11,6 +11,7 @@
  *   点文件 → 第二层抽屉（内容区，在第一层右边接着展开），两层可共存
  *   文本 → Ace 编辑器：停输 1.5s 自动落盘，Ctrl/Cmd+S 立即保存
  *   图片 → 直接显示（走 /session/file/raw）
+ *   视频 → 内嵌播放器（同一个 raw 接口，靠 Range 支持拖动进度；浏览器不认的封装格式只能下载看）
  *   其他 → 提示下载
  *
  * 提升为核心（会话模式）：
@@ -187,6 +188,9 @@ const SessionFiles = {
                 <div v-else-if="viewKind === 'image'" class="sf-image-wrap">
                     <img :src="imageUrl" :alt="current.name">
                 </div>
+                <div v-else-if="viewKind === 'video'" class="sf-video-wrap">
+                    <video :src="videoUrl" controls preload="metadata" playsinline></video>
+                </div>
                 <div v-else class="sf-empty">{{ viewerHint }}</div>
             </div>
             <div class="sf-status">
@@ -234,8 +238,9 @@ const SessionFiles = {
 
             /* 当前打开的文件 */
             current: null,
-            viewKind: '',          // text | image | other
+            viewKind: '',          // text | image | video | other
             imageUrl: '',
+            videoUrl: '',
             viewerHint: '',
 
             /* 编辑器状态 */
@@ -380,6 +385,7 @@ const SessionFiles = {
             this.current = null;
             this.viewKind = '';
             this.imageUrl = '';
+            this.videoUrl = '';
             this.viewerHint = '';
             this.dirty = false;
             this.saveFailed = false;
@@ -480,6 +486,10 @@ const SessionFiles = {
 
             if (kind === 'image') {
                 this.imageUrl = this.fileApi().rawUrl(row.path);
+                return;
+            }
+            if (kind === 'video') {
+                this.videoUrl = this.fileApi().rawUrl(row.path);
                 return;
             }
             if (kind === 'text') {
@@ -1188,6 +1198,7 @@ const SessionFiles = {
             const dot = String(name).lastIndexOf('.');
             const ext = dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
             if (IMAGE_EXTS.indexOf(ext) >= 0) return 'image';
+            if (VIDEO_EXTS.indexOf(ext) >= 0) return 'video';
             if (dot < 0 || TEXT_EXTS.indexOf(ext) >= 0) return 'text';
             return 'other';
         },
@@ -1200,7 +1211,10 @@ const SessionFiles = {
 
         rowIcon(row) {
             if (row.directory) return this.expanded[row.path] ? 'folder-open' : 'folder';
-            return this.kindOf(row.name) === 'image' ? 'image' : 'file-text';
+            const kind = this.kindOf(row.name);
+            if (kind === 'image') return 'image';
+            if (kind === 'video') return 'file-video';
+            return 'file-text';
         },
 
         formatSize(size) {
@@ -1249,6 +1263,13 @@ const SessionFiles = {
 
 /** 能直接预览的图片类型 */
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'avif'];
+
+/**
+ * 能内嵌播放的视频类型。
+ * 只列浏览器真认的封装（mp4 / webm 是主路，mov / ogv 看浏览器脸色）；
+ * mkv / avi / wmv / flv 一律不进 —— 后端不给它们兜底 MIME，播放器也多半放不出来，走下载更省事。
+ */
+const VIDEO_EXTS = ['mp4', 'm4v', 'webm', 'ogv', 'mov'];
 
 /** 按文本打开的扩展名；没有扩展名的文件也当文本试（日志、脚本产物多是这样） */
 const TEXT_EXTS = [

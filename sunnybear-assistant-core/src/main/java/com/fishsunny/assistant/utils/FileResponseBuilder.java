@@ -9,6 +9,10 @@ package com.fishsunny.assistant.utils;
  *        支持单段 Range（浏览器下载续传、音视频拖动进度、断点续传都靠它）：
  *        带 Range 头 → 206 + Content-Range；不带 → 200 全量；非法 Range → 416。
  *
+ *        内容类型优先用调用方探测出来的值；探测为空、或退化成 application/octet-stream 时，
+ *        按扩展名兜底 —— Windows 上 Files.probeContentType 查的是注册表，音视频类型常常
+ *        给不出结果，而 <video> / <audio> 拿到 octet-stream 会直接拒绝播放。
+ *
  * @Project sunnybear-assistant-core
  * @Author FlyingFish-SunnyBear
  * @Date 2026/9/25
@@ -29,8 +33,22 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 public final class FileResponseBuilder {
+
+    /**
+     * 扩展名 → MIME 兜底表：只收浏览器愿意内嵌播放的视频封装。
+     * mkv / avi / wmv / flv 这类探测不到也无所谓，反正浏览器放不了，下载看就行。
+     */
+    private static final Map<String, String> FALLBACK_CONTENT_TYPES = Map.ofEntries(
+            Map.entry("mp4", "video/mp4"),
+            Map.entry("m4v", "video/mp4"),
+            Map.entry("webm", "video/webm"),
+            Map.entry("ogv", "video/ogg"),
+            Map.entry("mov", "video/quicktime")
+    );
 
     private FileResponseBuilder() {
     }
@@ -39,7 +57,7 @@ public final class FileResponseBuilder {
      * 构造文件响应。
      *
      * @param file        已解析、已通过沙箱校验的真实文件路径
-     * @param contentType 内容类型，为空时回退 application/octet-stream
+     * @param contentType 内容类型，为空时按扩展名兜底，仍拿不到就回退 application/octet-stream
      * @param rangeHeader 原始 Range 请求头，可为空
      * @return 200 全量 / 206 分片 / 404 不存在 / 416 范围非法
      */
@@ -49,7 +67,7 @@ public final class FileResponseBuilder {
         }
         Resource resource = new FileSystemResource(file);
         long length = resource.contentLength();
-        MediaType mediaType = parseMediaType(contentType);
+        MediaType mediaType = parseMediaType(resolveContentType(file, contentType));
 
         if (!StringUtils.hasText(rangeHeader)) {
             return ResponseEntity.ok()
@@ -84,6 +102,19 @@ public final class FileResponseBuilder {
                 .header(HttpHeaders.ACCEPT_RANGES, "bytes")
                 .cacheControl(CacheControl.noCache())
                 .body(region);
+    }
+
+    /** 探测到的类型可用就用它；不可用（空 / octet-stream）时按扩展名兜底，兜不到就原样返回 */
+    private static String resolveContentType(Path file, String probed) {
+        if (StringUtils.hasText(probed) && !MediaType.APPLICATION_OCTET_STREAM_VALUE.equals(probed)) {
+            return probed;
+        }
+        String name = file.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        if (dot < 0) {
+            return probed;
+        }
+        return FALLBACK_CONTENT_TYPES.getOrDefault(name.substring(dot + 1).toLowerCase(Locale.ROOT), probed);
     }
 
     private static MediaType parseMediaType(String contentType) {
