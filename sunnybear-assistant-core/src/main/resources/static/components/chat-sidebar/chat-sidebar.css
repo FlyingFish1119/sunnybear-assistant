@@ -154,6 +154,16 @@
     white-space: nowrap;
 }
 
+/* 项目会话标识：名字左边一条竖色条（颜色取项目色，悬停显示项目名） */
+.sidebar-session-project {
+    flex: none;
+    width: 3px;
+    height: 16px;
+    margin-right: 8px;
+    border-radius: 2px;
+    background: #ddd;
+}
+
 /* 会话名：单行省略 */
 .sidebar-session-name {
     flex: 1;
@@ -302,6 +312,83 @@
 
 .session-context-menu-item span {
     white-space: nowrap;
+}
+
+/* ---- 子菜单：归入项目（父项悬停时向右展开） ---- */
+.session-context-menu-item.has-submenu {
+    position: relative;
+}
+
+.session-context-menu-arrow {
+    width: 14px !important;
+    height: 14px !important;
+    margin-left: auto;
+    color: rgba(0, 0, 0, 0.35);
+}
+
+.session-context-submenu {
+    position: absolute;
+    left: 100%;
+    top: -6px;
+    min-width: 140px;
+    max-width: 220px;
+    max-height: 280px;
+    overflow: auto;
+    padding: 4px 0;
+    background: #fff;
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    scrollbar-width: thin;
+}
+
+.session-context-submenu-empty {
+    padding: 8px 14px;
+    font-size: 12px;
+    color: #999;
+    line-height: 1.6;
+}
+
+.session-context-submenu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    font-size: 13px;
+    color: var(--text-primary, #333);
+    cursor: pointer;
+    transition: background-color var(--transition-fast, 0.2s ease);
+}
+
+.session-context-submenu-item:hover {
+    background-color: #f5f7fa;
+}
+
+.session-context-submenu-item.is-current {
+    font-weight: 600;
+}
+
+.session-context-submenu-bar {
+    flex: none;
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background: #ddd;
+}
+
+.session-context-submenu-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-context-submenu-check {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: #4b5563;
 }
 
 /* ---- 侧边栏切换按钮 / 移动端遮罩：已收敛到 css/layout.css（一处定义） ---- */

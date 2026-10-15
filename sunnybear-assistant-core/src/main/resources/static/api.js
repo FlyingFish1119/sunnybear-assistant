@@ -348,6 +348,33 @@ const API = (function () {
             }
         },
 
+        /* ---------- 项目（把围绕同一件事的会话归在一起） ---------- */
+        chatProject: {
+            /** 全部项目（按最近改动倒序；带 sessionCount 会话数） */
+            list: function () { return get('chat/project/list'); },
+            /** 单个项目 */
+            get: function (id) { return get('chat/project/get?id=' + encodeURIComponent(id)); },
+            /** 某个项目下的全部会话（按最近更新倒序） */
+            sessions: function (projectId) {
+                return get('chat/project/sessions?projectId=' + encodeURIComponent(projectId));
+            },
+            /** 新建项目；color 留空由后端从预设色板自动分配，重名会返回错误信息 */
+            create: function (data) { return post('chat/project/create', data); },
+            /** 修改项目（name / description / color） */
+            update: function (data) { return post('chat/project/update', data); },
+            /** 删除项目；手下会话只会被解绑，不会被删 */
+            remove: function (id) { return post('chat/project/delete?id=' + encodeURIComponent(id)); },
+            /** 把会话归入项目 */
+            attach: function (sessionId, projectId) {
+                return post('chat/project/attach?sessionId=' + encodeURIComponent(sessionId)
+                    + '&projectId=' + encodeURIComponent(projectId));
+            },
+            /** 把会话移出项目 */
+            detach: function (sessionId) {
+                return post('chat/project/detach?sessionId=' + encodeURIComponent(sessionId));
+            }
+        },
+
         /* ---------- 终端 AI 辅助 ---------- */
         terminal: {
             /** 自然语言 → 单条 shell 命令（仅本机）；返回 { command }，不执行 */

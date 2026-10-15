@@ -116,6 +116,7 @@ const ChatSidebarPlugins = (function () {
          *   'menu-pro'          右键菜单：Pro 模式切换
          *   'menu-unreviewed'   右键菜单：无审查模式切换
          *   'menu-knowledge'    右键菜单：查看知识库
+         *   'menu-project'      右键菜单：归入项目 / 移出项目
          *   'menu-export'       右键菜单：导出对话
          */
         hideBuiltin: function (key) {
@@ -168,6 +169,10 @@ const ChatSidebar = {
                  @contextmenu.prevent="row.kind === 'item' && showContextMenu($event, row.session)">
                 <span v-if="row.kind === 'divider'" class="sidebar-session-divider-label">{{ row.label }}</span>
                 <template v-else>
+                    <span v-if="sessionProject(row.session)"
+                          class="sidebar-session-project"
+                          :style="{ backgroundColor: sessionProjectColor(row.session) }"
+                          :title="'项目：' + sessionProject(row.session).name"></span>
                     <span class="sidebar-session-name">{{ row.session.name }}</span>
                     <span v-if="sessionTokenTotal(row.session) != null"
                           class="sidebar-session-tokens"
@@ -196,6 +201,38 @@ const ChatSidebar = {
             <div v-if="!isHidden('menu-knowledge')" class="session-context-menu-item" @click="openSessionKnowledge(contextMenu.session)">
                 <i data-lucide="database" style="width: 16px; height: 16px;"></i>
                 <span>查看知识库</span>
+            </div>
+            <!-- 归入项目：悬停向右展开项目子菜单 -->
+            <div v-if="!isHidden('menu-project')"
+                 class="session-context-menu-item has-submenu"
+                 @mouseenter="openProjectSub"
+                 @mouseleave="scheduleCloseProjectSub">
+                <i data-lucide="layers" style="width: 16px; height: 16px;"></i>
+                <span>归入项目</span>
+                <i data-lucide="chevron-right" class="session-context-menu-arrow"></i>
+                <div v-if="projectSub.visible" class="session-context-submenu">
+                    <div v-if="projectList.length === 0" class="session-context-submenu-empty">
+                        还没有项目<br>去导航轨「项目」里新建
+                    </div>
+                    <div v-for="p in projectList"
+                         :key="p.id"
+                         class="session-context-submenu-item"
+                         :class="{ 'is-current': sessionProjectId(contextMenu.session) === p.id }"
+                         @click="attachToProject(contextMenu.session, p)">
+                        <span class="session-context-submenu-bar" :style="{ backgroundColor: ProjectColor.of(p) }"></span>
+                        <span class="session-context-submenu-name">{{ p.name }}</span>
+                        <i v-if="sessionProjectId(contextMenu.session) === p.id"
+                           data-lucide="check"
+                           class="session-context-submenu-check"></i>
+                    </div>
+                </div>
+            </div>
+            <!-- 移出项目：只在会话已有归属时出现 -->
+            <div v-if="!isHidden('menu-project') && sessionProject(contextMenu.session)"
+                 class="session-context-menu-item"
+                 @click="detachFromProject(contextMenu.session)">
+                <i data-lucide="layers" style="width: 16px; height: 16px;"></i>
+                <span>移出项目</span>
             </div>
             <div v-if="!isHidden('menu-export')" class="session-context-menu-item" @click="exportSession(contextMenu.session)">
                 <i data-lucide="download" style="width: 16px; height: 16px;"></i>
@@ -284,6 +321,8 @@ const ChatSidebar = {
                 y: 0,
                 session: null
             },
+            /** 「归入项目」子菜单开合（悬停展开，离开后延迟收起） */
+            projectSub: { visible: false },
             /** 会话知识库查看对话框 */
             sessionKnowledgeDialog: false,
             sessionKnowledgeList: [],
@@ -439,6 +478,8 @@ const ChatSidebar = {
             this.contextMenu.x = event.clientX;
             this.contextMenu.y = event.clientY;
             this.contextMenu.session = session;
+            // 每次重开菜单都收起子菜单，避免上一次的展开状态残留
+            this.projectSub.visible = false;
             var self = this;
             this.$nextTick(function () {
                 document.addEventListener('click', self.closeContextMenu);
@@ -664,12 +705,69 @@ const ChatSidebar = {
             }).catch(function () { /* 用户取消 */ });
         },
 
+        /* ---- 项目：会话归入 / 移出（归属写在会话 extension 的 chat_project_id 上） ---- */
+
+        /** 会话所属项目对象（无 store / 未归属时返回 null） */
+        sessionProject: function (session) {
+            if (!this.sessionStore || typeof this.sessionStore.projectOf !== 'function') return null;
+            return this.sessionStore.projectOf(session);
+        },
+
+        /** 会话所属项目 id（子菜单里打勾用） */
+        sessionProjectId: function (session) {
+            if (!this.sessionStore || typeof this.sessionStore.projectIdOf !== 'function') return null;
+            return this.sessionStore.projectIdOf(session);
+        },
+
+        /** 会话行竖色条的颜色 */
+        sessionProjectColor: function (session) {
+            return ProjectColor.of(this.sessionProject(session));
+        },
+
+        openProjectSub: function () {
+            clearTimeout(this._projectSubTimer);
+            this.projectSub.visible = true;
+        },
+
+        /** 鼠标离开时延迟收起：留出从菜单项移进子菜单的那段路径 */
+        scheduleCloseProjectSub: function () {
+            var self = this;
+            clearTimeout(this._projectSubTimer);
+            this._projectSubTimer = setTimeout(function () {
+                self.projectSub.visible = false;
+            }, 200);
+        },
+
+        /** 把会话归入项目 */
+        attachToProject: async function (session, project) {
+            this.closeContextMenu();
+            if (!session || !session.id || !project) return;
+            if (!this.sessionStore || typeof this.sessionStore.attachToProject !== 'function') {
+                if (window.SbToast) window.SbToast.warning('当前页面不支持归入项目');
+                return;
+            }
+            await this.sessionStore.attachToProject(session, project.id);
+        },
+
+        /** 把会话移出项目 */
+        detachFromProject: async function (session) {
+            this.closeContextMenu();
+            if (!session || !session.id) return;
+            if (!this.sessionStore || typeof this.sessionStore.detachFromProject !== 'function') {
+                if (window.SbToast) window.SbToast.warning('当前页面不支持移出项目');
+                return;
+            }
+            await this.sessionStore.detachFromProject(session);
+        },
+
         /**
          * 关闭右键上下文菜单
          */
         closeContextMenu: function () {
             this.contextMenu.visible = false;
             this.contextMenu.session = null;
+            this.projectSub.visible = false;
+            clearTimeout(this._projectSubTimer);
             document.removeEventListener('click', this.closeContextMenu);
         }
     },
@@ -689,6 +787,13 @@ const ChatSidebar = {
         sessions: function () {
             if (this.sessionProvider) return this.sessionProvider.sessions() || [];
             return this.sessionStore ? this.sessionStore.sessions : [];
+        },
+        /** 项目列表（右键菜单「归入项目」子菜单用），按名字排序 */
+        projectList: function () {
+            var map = (this.sessionStore && this.sessionStore.state && this.sessionStore.state.projectMap) || {};
+            return Object.keys(map)
+                .map(function (k) { return map[k]; })
+                .sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
         },
         // 按天分组（updateTime 为 "yyyy-MM-dd HH:mm:ss"，列表已按时间倒序）
         sessionGroups: function () {

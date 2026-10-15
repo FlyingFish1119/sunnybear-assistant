@@ -39,6 +39,13 @@ const SessionStore = (function () {
     const SESSION_PAGE_SIZE = 50;
 
     /**
+     * 会话所属项目的 extension 键。
+     * 必须与后端 ChatProjectBindings.EXTENSION_KEY 保持一致（值是项目 id 字符串，
+     * 空串表示已解绑）。
+     */
+    const PROJECT_EXTENSION_KEY = 'chat_project_id';
+
+    /**
      * 会话按 (updateTime, id) 降序比较 —— 与后端 /session/get/page 的排序一致。
      * updateTime 为 "yyyy-MM-dd HH:mm:ss" 文本，字典序即时间序；id 仅作同秒内稳定平局裁决。
      */
@@ -123,6 +130,12 @@ const SessionStore = (function () {
         sessionsLoadingMore: false,
         /** 会话列表模式：chat / cron */
         sessionListMode: 'chat',
+        /**
+         * 项目字典：id → 项目对象（name / color / description）。
+         * 会话行的竖色条、右键菜单的项目列表都查它；由 loadProjects() 填充，
+         * 项目增删改（WsBus 'project:changed'）时自动重载。
+         */
+        projectMap: {},
         /** 当前正在处理的 session（对象引用，指向 state.sessions 里的同一对象） */
         currentSession: {},
         /** 当前正在展示的 messages */
@@ -503,6 +516,110 @@ const SessionStore = (function () {
         /** 按 id 查找会话对象（返回 state.sessions 中的引用） */
         getSessionById(id) {
             return state.sessions.find(s => s.id === id);
+        },
+
+        /* ==================== 项目（会话按项目归集） ==================== */
+
+        /**
+         * 拉取项目字典（id → 项目对象）。
+         * 项目是个人量级（几个到几十个），一把拉全量，不做分页，也没有缓存失效策略。
+         *
+         * @param {boolean} silent 静默刷新：失败只 warn，不弹提示（启动时调用走静默）
+         */
+        async loadProjects(silent) {
+            try {
+                const res = await API.chatProject.list();
+                if (res.status === 200) {
+                    const map = {};
+                    (res.data || []).forEach(p => {
+                        if (p && p.id) map[p.id] = p;
+                    });
+                    state.projectMap = map;
+                } else if (!silent) {
+                    console.warn('获取项目列表失败:', res.message);
+                }
+            } catch (e) {
+                if (!silent) console.warn('获取项目列表失败:', e.message);
+            }
+        },
+
+        /** 会话绑定的项目 id（读 extension.chat_project_id，未绑定返回 null） */
+        projectIdOf(session) {
+            const extension = session && session.extension;
+            if (!extension || typeof extension !== 'object') return null;
+            const value = extension[PROJECT_EXTENSION_KEY];
+            if (value == null) return null;
+            const text = String(value).trim();
+            return text ? text : null;
+        },
+
+        /** 会话所属项目对象；查不到（未绑定 / 字典里没有）返回 null */
+        projectOf(session) {
+            const id = this.projectIdOf(session);
+            return id ? (state.projectMap[id] || null) : null;
+        },
+
+        /**
+         * 把会话归入项目。
+         * 服务端写 extension → 本地会话对象同步（色条立刻出现，不用等刷新）→ 广播事件。
+         *
+         * @returns {Promise<boolean>} 是否成功
+         */
+        async attachToProject(session, projectId) {
+            if (!session || !session.id || !projectId) return false;
+            try {
+                const res = await API.chatProject.attach(session.id, projectId);
+                if (res.status !== 200) {
+                    if (window.SbToast) window.SbToast.error(res.message || '归入项目失败');
+                    return false;
+                }
+                // 服务端回的是合并后的会话（extension 已更新），直接取用；拿不到就本地补
+                const updated = res.data;
+                if (updated && updated.extension) {
+                    session.extension = updated.extension;
+                } else {
+                    session.extension = Object.assign({}, session.extension || {});
+                    session.extension[PROJECT_EXTENSION_KEY] = projectId;
+                }
+                if (window.SbToast) {
+                    const project = state.projectMap[projectId];
+                    window.SbToast.success('已归入项目：' + (project ? project.name : ''));
+                }
+                WsBus.emit('session:project-changed');
+                return true;
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('归入项目失败: ' + e.message);
+                return false;
+            }
+        },
+
+        /**
+         * 把会话移出项目（幂等：本来就没归属时也当成功）。
+         *
+         * @returns {Promise<boolean>} 是否成功
+         */
+        async detachFromProject(session) {
+            if (!session || !session.id) return false;
+            try {
+                const res = await API.chatProject.detach(session.id);
+                if (res.status !== 200) {
+                    if (window.SbToast) window.SbToast.error(res.message || '移出项目失败');
+                    return false;
+                }
+                const updated = res.data;
+                if (updated && updated.extension) {
+                    session.extension = updated.extension;
+                } else {
+                    session.extension = Object.assign({}, session.extension || {});
+                    session.extension[PROJECT_EXTENSION_KEY] = '';
+                }
+                if (window.SbToast) window.SbToast.success('已移出项目');
+                WsBus.emit('session:project-changed');
+                return true;
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('移出项目失败: ' + e.message);
+                return false;
+            }
         },
 
         /**
@@ -1370,6 +1487,11 @@ const SessionStore = (function () {
                 console.error('解析 TTS_AUDIO 失败:', e);
             }
         });
+        // 项目字典：启动载入一次；项目增删改后（project:changed）自动重载。
+        // 静默失败 —— 后端没起来、或一个项目都还没有，都不该惊动用户。
+        store.loadProjects(true);
+        WsBus.on('project:changed', () => store.loadProjects(true));
+
         WsBus.on('*', raw => store.handleWsMessage(raw));
         // 连接生命周期：由 chat-connection 经 WsBus.setSocket / clearSocket 广播
         WsBus.on('ws:connected', () => store.onSocketConnected());

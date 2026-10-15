@@ -15,6 +15,7 @@ package com.fishsunny.assistant.remote.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.mvc.dao.AiGreetingRepository;
 import com.fishsunny.assistant.mvc.dao.ChatMessageRepository;
+import com.fishsunny.assistant.mvc.dao.ChatProjectRepository;
 import com.fishsunny.assistant.mvc.dao.ChatSessionRepository;
 import com.fishsunny.assistant.mvc.dao.CronJobRepository;
 import com.fishsunny.assistant.mvc.dao.KnowledgeRepository;
@@ -48,6 +49,12 @@ public class RemoteRepositoryConfig {
     @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
     public AiGreetingRepository aiGreetingRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(AiGreetingRepository.class, repoRpcClient, objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "remote")
+    public ChatProjectRepository chatProjectRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
+        return RemoteRepositoryFactory.create(ChatProjectRepository.class, repoRpcClient, objectMapper);
     }
 
     @Bean

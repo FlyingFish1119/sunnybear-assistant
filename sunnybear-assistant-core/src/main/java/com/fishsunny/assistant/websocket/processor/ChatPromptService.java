@@ -46,6 +46,11 @@ public class ChatPromptService {
     public static final String IP_ADDRESS = "${ip_address}";
     public static final String OPERATING_SYSTEM = "${operation_system}";
     public static final String SESSION_ID = "${session_id}";
+    public static final String TOOL_NOTE = "${tool_note}";
+
+    private static final String TOOL_NOTE_CONTENT = """
+    所有的工具都能并发调用且不会互相冲突，但不保证工具调用的顺序
+    """;
 
     private final KnowledgeService knowledgeService;
     private final MemoryService memoryService;
@@ -63,7 +68,9 @@ public class ChatPromptService {
                 .replace(MODEL_NAME, effectiveModelName)
                 .replace(IP_ADDRESS, InetAddress.getLocalHost().toString())
                 .replace(OPERATING_SYSTEM, System.getProperty("os.name") + " " + System.getProperty("os.version"))
-                .replace(SESSION_ID, chatSession.getId()));
+                .replace(SESSION_ID, chatSession.getId())
+                .replace(TOOL_NOTE, TOOL_NOTE_CONTENT)
+        );
 
         injectKnowledgePrompt(originMessages, chatSession, systemPrompt, session);
         injectMemoryPrompt(systemPrompt);
