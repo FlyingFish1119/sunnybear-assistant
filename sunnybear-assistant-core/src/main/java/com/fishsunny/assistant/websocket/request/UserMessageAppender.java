@@ -58,6 +58,21 @@ public class UserMessageAppender {
                                           String parentId,
                                           String prompt,
                                           List<String> fileUrls) throws Exception {
+        return appendUserMessage(sessionId, parentId, prompt, fileUrls, null);
+    }
+
+    /**
+     * 添加用户消息（含文件附件与额外内容块）。
+     * <p>额外内容块给「项目会话」这类需要随消息挂上引用的场景用（如项目文档 PROJECT.md），
+     * 排在附件之后、落库前挂好；后台任务总线的在途结果仍追加在整条消息最后。
+     *
+     * @param extraContents 附加内容块，可为 null
+     */
+    public ChatMessage appendUserMessage(String sessionId,
+                                          String parentId,
+                                          String prompt,
+                                          List<String> fileUrls,
+                                          List<MessageContent> extraContents) throws Exception {
         if (StringUtils.hasText(parentId)) {
             // 父消息是工具消息，则插入一个空的助手消息作为占位符
             ChatMessage lastMessage = chatMessageService.findById(parentId);
@@ -77,6 +92,9 @@ public class UserMessageAppender {
             }
         }
         List<MessageContent> fileContents = MessageContent.files(fileUrls);
+        if (!CollectionUtils.isEmpty(extraContents)) {
+            fileContents.addAll(extraContents);
+        }
         ChatMessage chatMessage = new ChatMessage()
                 .user(prompt, fileContents)
                 .makeInsertable(sessionId, parentId, userSettings.getUsername());

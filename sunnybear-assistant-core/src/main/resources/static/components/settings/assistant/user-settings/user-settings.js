@@ -99,6 +99,15 @@ const UserSettings = {
                         show-input :format-tooltip="v => v.toFixed(2)" style="width: calc(100% - 80px)"></el-slider>
                     <span style="color: #909399; font-size: 13px;">复杂度评分高于该值才切高级模型，越小越容易切换（0 几乎总是切，1 等于从不自动切）</span>
                 </el-form-item>
+                <el-form-item label="自动归入项目">
+                    <el-switch v-model="userForm.enableAutoMatchProject" active-text="开启" inactive-text="关闭"></el-switch>
+                    <span style="margin-left: 12px; color: #909399; font-size: 13px;">新会话按首条消息判断像不像某个项目的事，判中自动归入该项目并带上项目文档</span>
+                </el-form-item>
+                <el-form-item label="项目阈值">
+                    <el-slider v-model="userForm.projectMatchThreshold" :min="0" :max="1" :step="0.05" :disabled="!userForm.enableAutoMatchProject"
+                        show-input :format-tooltip="v => v.toFixed(2)" style="width: calc(100% - 80px)"></el-slider>
+                    <span style="color: #909399; font-size: 13px;">项目命中概率高于该值才自动归入，多个命中取最高（0 几乎总归，1 等于从不自动归）</span>
+                </el-form-item>
                 <el-form-item label="上下文上限">
                     <el-input-number v-model="userForm.contextTokenLimit" :min="0" :step="1000" :controls="false"
                         placeholder="0 表示关闭" style="width: 200px"></el-input-number>
@@ -130,7 +139,7 @@ const UserSettings = {
     data() {
         return {
             dialogs: { user: false },
-            userForm: { username: '', avatar: '', background: '', opacity: 0.3, mainColor: 'lightsalmon', glassBubble: false, enableAutoSwitchModel: false, proModelThreshold: 0.7, contextTokenLimit: null, maxImageEdgePixel: 1024, maxTextFileBytes: 32768 },
+            userForm: { username: '', avatar: '', background: '', opacity: 0.3, mainColor: 'lightsalmon', glassBubble: false, enableAutoSwitchModel: false, proModelThreshold: 0.7, enableAutoMatchProject: false, projectMatchThreshold: 0.7, contextTokenLimit: null, maxImageEdgePixel: 1024, maxTextFileBytes: 32768 },
             predefineColors: [
                 'lightsalmon', '#409eff', '#67c23a', '#e6a23c', '#f56c6c',
                 '#e83e8c', '#6f42c1', '#20c997', '#17a2b8', '#6610f2',
@@ -167,6 +176,8 @@ const UserSettings = {
                 glassBubble: !!this.settings.glassBubble,
                 enableAutoSwitchModel: this.settings.enableAutoSwitchModel || false,
                 proModelThreshold: this.settings.proModelThreshold != null ? this.settings.proModelThreshold : 0.7,
+                enableAutoMatchProject: this.settings.enableAutoMatchProject || false,
+                projectMatchThreshold: this.settings.projectMatchThreshold != null ? this.settings.projectMatchThreshold : 0.7,
                 contextTokenLimit: this.settings.contextTokenLimit != null ? this.settings.contextTokenLimit : null,
                 maxImageEdgePixel: this.settings.maxImageEdgePixel != null ? this.settings.maxImageEdgePixel : 1024,
                 maxTextFileBytes: this.settings.maxTextFileBytes != null ? this.settings.maxTextFileBytes : 32768
@@ -266,6 +277,8 @@ const UserSettings = {
                 glassBubble: !!this.userForm.glassBubble,
                 enableAutoSwitchModel: this.userForm.enableAutoSwitchModel,
                 proModelThreshold: this.userForm.proModelThreshold != null ? this.userForm.proModelThreshold : 0.7,
+                enableAutoMatchProject: !!this.userForm.enableAutoMatchProject,
+                projectMatchThreshold: this.userForm.projectMatchThreshold != null ? this.userForm.projectMatchThreshold : 0.7,
                 contextTokenLimit: this.userForm.contextTokenLimit || null,
                 maxImageEdgePixel: this.userForm.maxImageEdgePixel != null ? this.userForm.maxImageEdgePixel : 1024,
                 maxTextFileBytes: this.userForm.maxTextFileBytes != null ? this.userForm.maxTextFileBytes : 32768

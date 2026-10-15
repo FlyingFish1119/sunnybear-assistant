@@ -42,6 +42,57 @@
     to  { opacity: 1; transform: translateX(0); }
 }
 
+/* ---- 第二层：项目文件编辑抽屉（接在第一层右边，最多占容器 60%） ---- */
+.pp-drawer--editor{
+    flex: 1;
+    width: auto;
+    max-width: 60%;
+    border-right: none;
+}
+
+/* 编辑抽屉头部的文件名输入框（新建时用；编辑时头部显示只读文件名） */
+.pp-editor-name{
+    flex: 1;
+    min-width: 0;
+    height: 30px;
+    padding: 0 9px;
+    box-sizing: border-box;
+    border: 1px solid #e3e5e8;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--text-primary, #333);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pp-editor-name:focus{
+    border-color: color-mix(in srgb, var(--main-color, lightsalmon) 70%, #fff);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--main-color, lightsalmon) 18%, transparent);
+}
+
+.pp-editor-state{
+    flex: none;
+    font-size: 12px;
+    color: #8a8f98;
+}
+
+.pp-editor-error{
+    flex: none;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: #e5484d;
+    background: #fdecec;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.pp-editor-body{
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
 /* ---- 头部 ---- */
 .pp-head{
     flex: none;
@@ -245,9 +296,104 @@
 
 .pp-item-caret svg{ width: 15px; height: 15px; display: block; }
 
-/* ---- 展开区：项目下的会话 ---- */
+/* ---- 展开区：上半项目文件，下半项目会话 ---- */
+.pp-expand{
+    display: flex;
+    flex-direction: column;
+}
+
+.pp-files{
+    padding: 2px 6px 2px 17px;
+}
+
+.pp-files-head{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 24px;
+    padding: 0 4px 0 2px;
+}
+
+.pp-files-title{
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    color: var(--text-muted, #8a8f98);
+}
+
+.pp-file{
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.pp-file:hover{ background: rgba(0, 0, 0, 0.05); }
+
+.pp-file-icon{
+    flex: none;
+    display: grid;
+    place-items: center;
+    color: #8a8f98;
+}
+
+.pp-file-icon svg{ width: 14px; height: 14px; display: block; }
+
+.pp-file-name{
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--text-primary, #333);
+}
+
+/* 行内操作：默认隐藏（visibility 而非 display，hover 不产生布局位移） */
+.pp-file-actions{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    visibility: hidden;
+}
+
+.pp-file:hover .pp-file-actions{ visibility: visible; }
+
+/* 自动追加图钉：常显在文件名右侧；亮 = 已加入（这个项目的新会话会带上它） */
+.pp-pin{
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    color: #ccd0d6;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+.pp-pin svg{ width: 13px; height: 13px; display: block; }
+.pp-pin:hover{ background: #e8eaed; color: #8a8f98; }
+.pp-pin.is-on{ color: #E1785C; }
+.pp-pin.is-on:hover{ background: #fdeee9; }
+
+/* ---- 展开区下半：项目下的会话（与文件区之间一条浅分隔） ---- */
 .pp-sessions{
-    padding: 2px 6px 8px 17px;
+    margin-top: 2px;
+    padding: 6px 6px 8px 17px;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* ---- 第二层抽屉里的 Ace 宿主：撑满剩余高度 ---- */
+.pp-editor-host{
+    width: 100%;
+    height: 100%;
+    background: #fff;
 }
 
 .pp-session{

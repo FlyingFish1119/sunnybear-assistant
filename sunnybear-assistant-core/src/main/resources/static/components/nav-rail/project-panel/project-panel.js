@@ -1,13 +1,20 @@
 /**
- * 项目面板 —— 单层抽屉（项目列表 + 就地展开项目会话）
+ * 项目面板 —— 双层抽屉（第一层：项目列表 + 就地展开的项目文件 / 项目会话；第二层：文件编辑）
  *
  * 与定时任务 / 记忆 / 知识库同一套门户：导航轨「项目」按钮 → 贴左滑出的抽屉。
  *
  * 数据流：
  *   1) 打开时 GET /chat/project/list 列出所有项目（带 sessionCount 会话数）；
- *   2) 点项目行就地展开，重新拉一次 GET /chat/project/sessions?projectId= 取它的会话
- *      （每次展开都拉，不缓存 —— 会话的归属随时可能被右键菜单改掉）；
- *   3) 点会话 → sessionStore.selectSession(session) 在消息区打开，并收起面板。
+ *   2) 点项目行就地展开，同时拉两样：
+ *      · GET /chat/project/file/list?projectId= —— 该项目的文本文件（data/project/{id}/ 下）
+ *      · GET /chat/project/sessions?projectId=  —— 该项目下的会话
+ *      （每次展开都重新拉，不缓存 —— 文件与会话归属随时可能被别处改掉）；
+ *   3) 点会话 → sessionStore.selectSession(session) 在消息区打开，并收起面板；
+ *      点文件 → 在第一层右边接着展开第二层抽屉（Ace 全高编辑，与「会话文件」同一套两层门户），
+ *      保存走 /chat/project/file/write；点「+」新建也是这一层，头部换成文件名输入框。
+ *
+ * 项目文件区只做文本文件的增 / 改 / 删：没有拖动、没有文件夹、没有上传。
+ * 列表里只认普通文件，目录一律跳过不显示（删除接口那边也只认文件）。
  *
  * 与定时任务面板的差别：定时任务的增删改在设置页，而项目拢共就名字 / 描述 / 颜色三样，
  * 为它单开一页设置太重，所以新建与编辑都在这里直接做（抽屉内浮出的小表单）。
@@ -24,6 +31,19 @@
  *   open()   — 打开并刷新项目列表
  *   close()  — 关闭面板
  */
+
+/** 扩展名 → ace mode（与 session-files.js 同一套口径；ace 没装对应 mode 的走 text，只影响高亮） */
+const PP_ACE_MODES = {
+    md: 'markdown', markdown: 'markdown',
+    js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
+    ts: 'typescript', tsx: 'typescript', vue: 'html',
+    json: 'json', jsonl: 'json',
+    html: 'html', htm: 'html', css: 'css', scss: 'scss', less: 'less',
+    xml: 'xml', svg: 'xml', yaml: 'yaml', yml: 'yaml',
+    java: 'java', py: 'python', sql: 'sql', sh: 'sh', bat: 'batchfile',
+    properties: 'properties', ini: 'ini', csv: 'text', log: 'text', txt: 'text'
+};
+
 const ProjectPanel = {
     name: 'ProjectPanel',
 
@@ -80,25 +100,65 @@ const ProjectPanel = {
                             </span>
                         </div>
 
-                        <!-- 展开区：该项目下的会话 -->
-                        <div v-if="expandedProjectId === project.id" class="pp-sessions">
-                            <div v-if="pageOf(project.id).loading" class="pp-hint">加载会话…</div>
-                            <div v-else-if="pageOf(project.id).list.length === 0" class="pp-hint">
-                                这个项目还没有会话<br>在左侧会话上右键「归入项目」就能放进来
-                            </div>
-                            <template v-else>
-                                <div v-for="s in pageOf(project.id).list"
-                                     :key="s.id"
-                                     class="pp-session"
-                                     @click="openSession(s)">
-                                    <span class="pp-session-icon"><i data-lucide="message-square"></i></span>
-                                    <span class="pp-session-body">
-                                        <span class="pp-session-name">{{ s.name }}</span>
-                                        <span class="pp-session-time">{{ formatTime(s.updateTime) }}</span>
-                                    </span>
-                                    <span class="pp-session-go"><i data-lucide="arrow-right"></i></span>
+                        <!-- 展开区：项目文件（上）+ 项目会话（下） -->
+                        <div v-if="expandedProjectId === project.id" class="pp-expand">
+                            <!-- 项目文件：一条一组「编辑 / 删除」，栏头加号新建 -->
+                            <div class="pp-files">
+                                <div class="pp-files-head">
+                                    <span class="pp-files-title">项目文件</span>
+                                    <button class="pp-item-btn" title="新建文件" @click.stop="openNewFile(project)">
+                                        <i data-lucide="plus"></i>
+                                    </button>
                                 </div>
-                            </template>
+                                <div v-if="filePageOf(project.id).loading" class="pp-hint">加载文件…</div>
+                                <div v-else-if="filePageOf(project.id).list.length === 0" class="pp-hint">
+                                    还没有文件，点右上角加号新建一个
+                                </div>
+                                <template v-else>
+                                    <div v-for="f in filePageOf(project.id).list"
+                                         :key="f.path"
+                                         class="pp-file"
+                                         @click="openFile(project, f)">
+                                        <span class="pp-file-icon"><i data-lucide="file-text"></i></span>
+                                        <span class="pp-file-name">{{ f.name }}</span>
+                                        <span class="pp-pin"
+                                              :class="{ 'is-on': isAutoAppend(project, f) }"
+                                              :title="isAutoAppend(project, f) ? '已加入自动追加：这个项目的新会话会带上它' : '点一下加进自动追加'"
+                                              @click.stop="toggleAutoAppend(project, f)">
+                                            <i data-lucide="pin"></i>
+                                        </span>
+                                        <span class="pp-file-actions" @click.stop>
+                                            <button class="pp-item-btn" title="编辑" @click="openFile(project, f)">
+                                                <i data-lucide="pencil-line"></i>
+                                            </button>
+                                            <button class="pp-item-btn is-danger" title="删除" @click="deleteFile(project, f)">
+                                                <i data-lucide="trash-2"></i>
+                                            </button>
+                                        </span>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- 项目会话 -->
+                            <div class="pp-sessions">
+                                <div v-if="pageOf(project.id).loading" class="pp-hint">加载会话…</div>
+                                <div v-else-if="pageOf(project.id).list.length === 0" class="pp-hint">
+                                    这个项目还没有会话<br>在左侧会话上右键「归入项目」就能放进来
+                                </div>
+                                <template v-else>
+                                    <div v-for="s in pageOf(project.id).list"
+                                         :key="s.id"
+                                         class="pp-session"
+                                         @click="openSession(s)">
+                                        <span class="pp-session-icon"><i data-lucide="message-square"></i></span>
+                                        <span class="pp-session-body">
+                                            <span class="pp-session-name">{{ s.name }}</span>
+                                            <span class="pp-session-time">{{ formatTime(s.updateTime) }}</span>
+                                        </span>
+                                        <span class="pp-session-go"><i data-lucide="arrow-right"></i></span>
+                                    </div>
+                                </template>
+                            </div>
                         </div>
                     </div>
                 </template>
@@ -142,6 +202,37 @@ const ProjectPanel = {
                     </div>
                 </div>
             </div>
+
+        </aside>
+
+        <!-- 第二层：项目文件编辑（在第一层右边接着展开，点文件不收起项目列表） -->
+        <aside v-if="fileForm.visible" class="pp-drawer pp-drawer--editor">
+            <div class="pp-head">
+                <div class="pp-title">
+                    <i data-lucide="file-text"></i>
+                    <input v-if="fileForm.mode === 'create'"
+                           ref="fileNameInput"
+                           class="pp-editor-name"
+                           v-model="fileForm.path"
+                           placeholder="文件名，比如 需求.md"
+                           @keydown.enter.prevent="submitFileForm">
+                    <span v-else class="pp-title-text">{{ fileForm.path }}</span>
+                </div>
+                <span v-if="fileSubmitting" class="pp-editor-state">保存中…</span>
+                <button class="pp-btn"
+                        :title="fileForm.mode === 'create' ? '新建' : '保存'"
+                        :disabled="fileSubmitting"
+                        @click="submitFileForm">
+                    <i data-lucide="save"></i>
+                </button>
+                <button class="pp-btn" title="关闭" @click="closeFileForm">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div v-if="fileForm.error" class="pp-editor-error">{{ fileForm.error }}</div>
+            <div class="pp-editor-body">
+                <div ref="fileEditorHost" class="pp-editor-host"></div>
+            </div>
         </aside>
     </div>
 
@@ -165,6 +256,11 @@ const ProjectPanel = {
             expandedProjectId: null,
             /** projectId → { list, loading }（每次展开重新拉，不做长期缓存） */
             sessionPages: {},
+            /** projectId → { list, loading } 项目文件（同上，每次展开重新拉） */
+            filePages: {},
+
+            /** 图钉正在切换：挡一下连点，免得同一份文件发两次请求 */
+            pinBusy: false,
 
             /** 新建 / 编辑表单 */
             form: {
@@ -177,6 +273,16 @@ const ProjectPanel = {
                 error: ''
             },
             submitting: false,
+
+            /** 项目文件编辑浮层（文件名 + 内容） */
+            fileForm: {
+                visible: false,
+                mode: 'create',   // create | edit
+                projectId: '',
+                path: '',
+                error: ''
+            },
+            fileSubmitting: false,
 
             /** 换色板：与后端 ChatProjectServiceImplement.PALETTE 是同一套 */
             palette: ProjectColor.PALETTE
@@ -213,8 +319,9 @@ const ProjectPanel = {
         },
 
         close() {
-            // 表单开着时先收表单，避免下次打开还挂着半截编辑态
+            // 浮层开着时先收浮层，避免下次打开还挂着半截编辑态（编辑器实例也一并销毁）
             this.form.visible = false;
+            this.closeFileForm();
             this.visible = false;
         },
 
@@ -231,8 +338,9 @@ const ProjectPanel = {
                         && !this.projects.some(p => p.id === this.expandedProjectId)) {
                         this.expandedProjectId = null;
                     }
-                    // 展开中的项目重新拉一遍会话（归属可能刚被改过）
+                    // 展开中的项目重新拉一遍文件与会话（内容可能刚被改过）
                     if (this.expandedProjectId) {
+                        this.loadFiles(this.expandedProjectId);
                         this.loadSessions(this.expandedProjectId);
                     }
                 } else if (!silent && window.SbToast) {
@@ -245,18 +353,249 @@ const ProjectPanel = {
             }
         },
 
-        /* ==================== 展开 / 项目会话 ==================== */
+        /* ==================== 展开 / 项目文件 ==================== */
 
         toggleExpand(project) {
             if (this.expandedProjectId === project.id) {
                 this.expandedProjectId = null;
                 return;
             }
+            // 先收掉可能开着的编辑浮层：换项目了，旧文件不该再挂在那儿
+            this.closeFileForm();
             this.expandedProjectId = project.id;
-            // 每次都重新拉：会话归属随时可能被右键菜单改掉，缓存反而容易对不上
+            // 每次都重新拉：文件与会话的归属随时可能被别处改掉，缓存反而容易对不上
+            this.filePages[project.id] = { list: [], loading: false };
             this.sessionPages[project.id] = { list: [], loading: false };
+            this.loadFiles(project.id);
             this.loadSessions(project.id);
         },
+
+        async loadFiles(projectId) {
+            let page = this.filePages[projectId];
+            if (!page) {
+                page = { list: [], loading: false };
+                this.filePages[projectId] = page;
+            }
+            if (page._inflight) return;   // 同一项目的重复请求直接忽略（展开 + 刷新可能撞上）
+            page._inflight = true;
+            page.loading = true;
+            try {
+                const res = await API.projectFile.list(projectId);
+                if (res.status === 200) {
+                    // 只列普通文件：目录不在这个面板的管辖范围内（没有文件夹概念）
+                    page.list = (res.data || []).filter(f => f && !f.directory);
+                } else if (window.SbToast) {
+                    window.SbToast.error(res.message || '获取项目文件失败');
+                }
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('获取项目文件失败: ' + e.message);
+            } finally {
+                page._inflight = false;
+                page.loading = false;
+            }
+        },
+
+        /** 取某项目的文件分页状态（未加载时给一个空壳，避免模板里判空） */
+        filePageOf(projectId) {
+            return this.filePages[projectId] || { list: [], loading: false };
+        },
+
+        /* ==================== 项目文件的编辑浮层 ==================== */
+
+        openNewFile(project) {
+            this.destroyFileEditor();
+            this.fileForm = {
+                visible: true,
+                mode: 'create',
+                projectId: project.id,
+                path: '',
+                error: ''
+            };
+            this.$nextTick(() => {
+                this.mountFileEditor('');
+                const input = this.$refs.fileNameInput;
+                if (input) input.focus();
+            });
+        },
+
+        async openFile(project, file) {
+            if (!file || file.directory) return;
+            try {
+                const res = await API.projectFile.read(project.id, file.path);
+                if (res.status !== 200) {
+                    if (window.SbToast) window.SbToast.error(res.message || '读取文件失败');
+                    return;
+                }
+                this.destroyFileEditor();
+                this.fileForm = {
+                    visible: true,
+                    mode: 'edit',
+                    projectId: project.id,
+                    path: file.path,
+                    error: ''
+                };
+                this.$nextTick(() => this.mountFileEditor(res.data == null ? '' : res.data));
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('读取文件失败: ' + e.message);
+            }
+        },
+
+        /** 把 Ace 挂到浮层里的编辑宿主上；已有实例先销毁，避免同一个宿主挂两次 */
+        mountFileEditor(content) {
+            this.destroyFileEditor();
+            const host = this.$refs.fileEditorHost;
+            if (!host || !window.ace) return;
+            // mode / theme 都在本地 lib/ace 下，basePath 必须指过去，
+            // 否则 ace 会跑去默认 CDN 找 mode 文件（断网就白屏）
+            window.ace.config.set('basePath', API.BASE_PATH + 'lib/ace/');
+            const editor = window.ace.edit(host);
+            editor.setTheme('ace/theme/textmate');
+            editor.session.setMode('ace/mode/' + this.aceMode(this.fileForm.path || ''));
+            editor.session.setUseWorker(false);      // 没放 worker 文件，关掉语法检查线程
+            editor.session.setUseWrapMode(true);     // 长行折行，别逼人横向拖
+            editor.setOptions({
+                fontSize: '13px',
+                showPrintMargin: false,
+                tabSize: 4
+            });
+            editor.setValue(content == null ? '' : content, -1);
+            editor.clearSelection();
+            // Ctrl/Cmd+S 立即保存：与会话文件面板用同一套绑定（那边是 mountEditor 里的 addCommand）
+            editor.commands.addCommand({
+                name: 'saveProjectFile',
+                bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
+                exec: () => this.saveFileContent()
+            });
+            this.editor = editor;
+        },
+
+        destroyFileEditor() {
+            if (this.editor) {
+                try {
+                    this.editor.destroy();
+                } catch (e) {
+                    /* 宿主已被移除时 destroy 可能抛错，忽略即可 */
+                }
+                this.editor = null;
+            }
+        },
+
+        closeFileForm() {
+            this.destroyFileEditor();
+            this.fileForm.visible = false;
+        },
+
+        /**
+         * 存下浮层里的内容，不收浮层：Ctrl+S 与保存按钮共用这一份。
+         * <p>新建成功后就地转成编辑态 —— 文件名已经落定，再按 Ctrl+S 走的是写，不会重复创建。
+         *
+         * @return {Promise<boolean>} 是否存成功，调用方据此决定要不要接着收浮层
+         */
+        async saveFileContent() {
+            if (this.fileSubmitting) return false;   // Ctrl+S 连着敲：上一发还在路上就等它
+            const path = (this.fileForm.path || '').trim();
+            if (!path) {
+                this.fileForm.error = '文件名不能为空';
+                return false;
+            }
+            this.fileSubmitting = true;
+            this.fileForm.error = '';
+            const content = this.editor ? this.editor.getValue() : '';
+            try {
+                const res = this.fileForm.mode === 'create'
+                    ? await API.projectFile.create({
+                        projectId: this.fileForm.projectId, path: path, content: content
+                    })
+                    : await API.projectFile.write({
+                        projectId: this.fileForm.projectId, path: this.fileForm.path, content: content
+                    });
+                if (res.status === 200) {
+                    if (window.SbToast) {
+                        window.SbToast.success(this.fileForm.mode === 'create' ? '文件已创建' : '文件已保存');
+                    }
+                    if (this.fileForm.mode === 'create') this.fileForm.mode = 'edit';
+                    await this.loadFiles(this.fileForm.projectId);
+                    return true;
+                }
+                // 同名、超限之类的业务错误直接显示在浮层里，不弹 toast
+                this.fileForm.error = res.message || '保存失败';
+                return false;
+            } catch (e) {
+                this.fileForm.error = '保存失败: ' + e.message;
+                return false;
+            } finally {
+                this.fileSubmitting = false;
+            }
+        },
+
+        /** 保存按钮：存成功就收掉浮层；Ctrl+S 走 saveFileContent，存完接着改 */
+        async submitFileForm() {
+            if (await this.saveFileContent()) this.closeFileForm();
+        },
+
+        /** 这个文件在不在项目的自动追加清单里（清单里的，项目新会话第一条消息会带上） */
+        isAutoAppend(project, file) {
+            const list = project.autoAppendFiles || [];
+            return list.includes(file.name);
+        },
+
+        /** 点图钉切换：成功后只改本地这一份清单，不重拉项目列表（让列表安静点） */
+        async toggleAutoAppend(project, file) {
+            if (this.pinBusy) return;
+            this.pinBusy = true;
+            const auto = !this.isAutoAppend(project, file);
+            try {
+                const res = await API.projectFile.autoAppend({
+                    projectId: project.id, path: file.name, auto: auto
+                });
+                if (res.status === 200) {
+                    project.autoAppendFiles = (res.data && res.data.autoAppendFiles) || [];
+                } else if (window.SbToast) {
+                    window.SbToast.error(res.message || '切换失败');
+                }
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('切换失败: ' + e.message);
+            } finally {
+                this.pinBusy = false;
+            }
+        },
+
+        async deleteFile(project, file) {
+            const dialog = this.$refs.confirmDialog;
+            if (!dialog) return;
+            try {
+                await dialog.show({
+                    title: '删除文件',
+                    message: '确定删除「' + file.name + '」吗？删掉就找不回来了。',
+                    confirmText: '删除',
+                    cancelText: '取消',
+                    type: 'danger'
+                });
+            } catch (e) {
+                return; // 用户取消
+            }
+            try {
+                const res = await API.projectFile.remove({ projectId: project.id, path: file.path });
+                if (res.status === 200) {
+                    if (window.SbToast) window.SbToast.success('文件已删除');
+                    // 后端删文件时顺手摘了自动追加，本地跟着同步，免得图钉还亮着
+                    if (project.autoAppendFiles) {
+                        project.autoAppendFiles = project.autoAppendFiles.filter(name => name !== file.name);
+                    }
+                    // 删的正好是浮层里开着的那份，就顺手关掉，别让它停在不存在的内容上
+                    if (this.fileForm.visible && this.fileForm.path === file.path) {
+                        this.closeFileForm();
+                    }
+                    await this.loadFiles(project.id);
+                } else if (window.SbToast) {
+                    window.SbToast.error(res.message || '删除失败');
+                }
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('删除失败: ' + e.message);
+            }
+        },
+
+        /* ==================== 项目会话 ==================== */
 
         async loadSessions(projectId) {
             let page = this.sessionPages[projectId];
@@ -295,7 +634,7 @@ const ProjectPanel = {
             this.close();
         },
 
-        /* ==================== 新建 / 编辑 ==================== */
+        /* ==================== 新建 / 编辑项目 ==================== */
 
         openCreateForm() {
             this.form = {
@@ -350,9 +689,14 @@ const ProjectPanel = {
                     if (window.SbToast) {
                         window.SbToast.success(this.form.mode === 'create' ? '项目已创建' : '项目已更新');
                     }
+                    const wasCreate = this.form.mode === 'create';
                     this.closeForm();
                     await this.refreshProjects(true);
                     this.notifyChanged();
+                    // 新建的项目直接展开：里面已经有一份自动生成的 PROJECT.md 等着写
+                    if (wasCreate && res.data && res.data.id) {
+                        this.toggleExpand(res.data);
+                    }
                 } else {
                     // 重名之类的业务错误直接显示在表单里，不弹 toast
                     this.form.error = res.message || '保存失败';
@@ -372,8 +716,8 @@ const ProjectPanel = {
                 await dialog.show({
                     title: '删除项目',
                     message: count > 0
-                        ? '「' + project.name + '」手下的 ' + count + ' 个会话会退回普通列表（只解绑，不会被删）。确定删除这个项目吗？'
-                        : '确定删除项目「' + project.name + '」吗？',
+                        ? '「' + project.name + '」手下的 ' + count + ' 个会话会退回普通列表（只解绑，不会被删），项目文件夹里的资料会一并清掉。确定删除吗？'
+                        : '确定删除项目「' + project.name + '」吗？项目文件夹里的资料会一并清掉。',
                     confirmText: '删除',
                     cancelText: '取消',
                     type: 'danger'
@@ -385,7 +729,10 @@ const ProjectPanel = {
                 const res = await API.chatProject.remove(project.id);
                 if (res.status === 200) {
                     if (window.SbToast) window.SbToast.success('项目已删除');
-                    if (this.expandedProjectId === project.id) this.expandedProjectId = null;
+                    if (this.expandedProjectId === project.id) {
+                        this.closeFileForm();
+                        this.expandedProjectId = null;
+                    }
                     await this.refreshProjects(true);
                     this.notifyChanged();
                 } else if (window.SbToast) {
@@ -414,9 +761,17 @@ const ProjectPanel = {
             return String(time).replace('T', ' ').substring(0, 16);
         },
 
+        aceMode(name) {
+            const dot = String(name).lastIndexOf('.');
+            const ext = dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
+            return PP_ACE_MODES[ext] || 'text';
+        },
+
         onKeydown(e) {
             if (!this.visible || e.key !== 'Escape') return;
-            if (this.form.visible) {
+            if (this.fileForm.visible) {
+                this.closeFileForm();
+            } else if (this.form.visible) {
                 this.closeForm();
             } else {
                 this.close();
@@ -439,6 +794,7 @@ const ProjectPanel = {
 
     beforeUnmount() {
         document.removeEventListener('keydown', this.onKeydown);
+        this.destroyFileEditor();
     },
 
     updated() {

@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS chat_project (
     description TEXT NOT NULL DEFAULT '',
     -- 会话列表里那条竖色条的颜色（形如 #RRGGBB）；空串表示由前端按 id 兜底取色
     color       TEXT NOT NULL DEFAULT '',
+    -- 自动追加到新会话首条消息的文件名清单（JSON 数组文本，如 ["PROJECT.md"]）；
+    -- 只放项目根下的纯文件名；老库没有这列，由 ChatProjectRepositoryImplement 启动时补列
+    auto_append_files TEXT NOT NULL DEFAULT '[]',
     create_time TEXT NOT NULL,
     update_time TEXT NOT NULL
 );

@@ -72,6 +72,8 @@ public class UserSettingsController {
         userSettings.setEnableAutoSwitchModel(
                 Boolean.TRUE.equals(settings.getEnableAutoSwitchModel()));
         userSettings.setProModelThreshold(settings.getProModelThreshold());
+        userSettings.setEnableAutoMatchProject(Boolean.TRUE.equals(settings.getEnableAutoMatchProject()));
+        userSettings.setProjectMatchThreshold(settings.getProjectMatchThreshold());
         userSettings.setContextTokenLimit(settings.getContextTokenLimit());
         userSettings.setMaxImageEdgePixel(settings.getMaxImageEdgePixel());
         userSettings.setMaxTextFileBytes(settings.getMaxTextFileBytes());

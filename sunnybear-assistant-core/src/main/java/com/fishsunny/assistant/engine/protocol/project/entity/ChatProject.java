@@ -14,6 +14,8 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @Accessors(chain = true)
@@ -28,6 +30,12 @@ public class ChatProject {
 
     /** 会话列表竖色条的颜色（#RRGGBB）；空串表示由前端按 id 兜底取色 */
     private String color;
+
+    /**
+     * 自动追加的文件名清单：新建会话的第一条消息，会把这里的每个文件挂进上下文。
+     * <p>只存项目根下的纯文件名（项目资料不做子目录）；表里是 JSON 数组文本，空清单存 {@code []}。
+     */
+    private List<String> autoAppendFiles = new ArrayList<>();
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;

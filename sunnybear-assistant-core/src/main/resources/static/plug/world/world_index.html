@@ -39,6 +39,8 @@
     <script src="../../directives/auto-follow.js"></script>
     <!-- WebSocket 消息总线 + 会话/消息仓库（核心流程唯一实现） -->
     <script src="../../utils/ws-bus.js"></script>
+    <!-- 项目配色：会话行竖色条取色用（chat-sidebar 依赖全局 ProjectColor，缺了它渲染会抛错把侧边栏整棵卸载） -->
+    <script src="../../utils/project-color.js"></script>
     <script src="../../stores/app-settings.js"></script>
     <script src="../../stores/session-store.js"></script>
     <!-- 复用的核心组件 -->

@@ -375,6 +375,28 @@ const API = (function () {
             }
         },
 
+        /* ---------- 项目文件（data/project/{projectId} 下的文本文件） ---------- */
+        projectFile: {
+            /** 项目目录下某一层的条目（不递归；dir 不传即根目录） */
+            list: function (projectId, dir) {
+                return get('chat/project/file/list?projectId=' + encodeURIComponent(projectId)
+                    + (dir ? '&dir=' + encodeURIComponent(dir) : ''));
+            },
+            /** 读取文本文件内容 */
+            read: function (projectId, path) {
+                return get('chat/project/file/read?projectId=' + encodeURIComponent(projectId)
+                    + '&path=' + encodeURIComponent(path));
+            },
+            /** 新建文本文件（同名报错，不覆盖） */
+            create: function (data) { return post('chat/project/file/create', data); },
+            /** 保存文本文件（整文件覆盖） */
+            write: function (data) { return post('chat/project/file/write', data); },
+            /** 删除文件（后端会顺手把它从自动追加清单里摘掉） */
+            remove: function (data) { return post('chat/project/file/delete', data); },
+            /** 切换某个文件是否进「自动追加」清单（清单里的文件，项目会话第一条消息会带上） */
+            autoAppend: function (data) { return post('chat/project/file/auto-append', data); }
+        },
+
         /* ---------- 终端 AI 辅助 ---------- */
         terminal: {
             /** 自然语言 → 单条 shell 命令（仅本机）；返回 { command }，不执行 */

@@ -29,8 +29,11 @@ import com.fishsunny.assistant.engine.protocol.project.ChatUsage;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
+import com.fishsunny.assistant.engine.protocol.project.entity.message.content.file.FileContent;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
+import com.fishsunny.assistant.mvc.service.ChatProjectBindings;
+import com.fishsunny.assistant.mvc.service.ChatProjectService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.UserSettings;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +44,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.nio.file.Files;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -90,15 +94,18 @@ public class ContextCompressor {
     private final AISettings missionAISettings;
     private final ChatHttpHandler chatHttpHandler;
     private final ChatMessageService chatMessageService;
+    private final ChatProjectService chatProjectService;
 
     public ContextCompressor(UserSettings userSettings,
                              @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                              ChatHttpHandler chatHttpHandler,
-                             ChatMessageService chatMessageService) {
+                             ChatMessageService chatMessageService,
+                             ChatProjectService chatProjectService) {
         this.userSettings = userSettings;
         this.missionAISettings = missionAISettings;
         this.chatHttpHandler = chatHttpHandler;
         this.chatMessageService = chatMessageService;
+        this.chatProjectService = chatProjectService;
     }
 
     /**
@@ -219,6 +226,9 @@ public class ContextCompressor {
                 ChatMessage message = retained.get(i);
                 if (i == 0) {
                     prependSummary(message, summary);
+                    // 项目文件不进摘要（它靠引用现读），而保留组首条又通常不是会话最初那条消息，
+                    // 不重挂就等于压缩一次丢一次
+                    attachProjectFiles(message, chatSession);
                 }
                 String name = StringUtils.hasText(message.getName()) ? message.getName() : userSettings.getUsername();
                 message.makeInsertable(chatSession.getId(), i == 0 ? null : retained.get(i - 1).getId(), name);
@@ -271,6 +281,29 @@ public class ContextCompressor {
             }
         }
         contents.addFirst(new TextContent(block));
+    }
+
+    /**
+     * 把项目「自动追加」清单里的文件重新挂到重建后的首条消息上（只有项目会话有得挂）。
+     * <p>挂的是这些文件的绝对路径，与新建会话时挂的是同一批引用 ——
+     * 活文件，模型每轮读到的是最新内容。已挂过的不重复添加，清单为空、文件已被删就静默跳过。
+     */
+    private void attachProjectFiles(ChatMessage message, ChatSession chatSession) {
+        try {
+            String projectId = ChatProjectBindings.resolveProjectId(chatSession);
+            if (!StringUtils.hasText(projectId)) {
+                return;
+            }
+            for (String path : chatProjectService.listAutoAppendPaths(projectId)) {
+                boolean attached = message.getContents().stream()
+                        .anyMatch(content -> content instanceof FileContent fileContent && path.equals(fileContent.getUrl()));
+                if (!attached) {
+                    message.getContents().add(new FileContent(path));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("压缩后重新挂载项目文件失败 [{}]: {}", chatSession.getId(), e.getMessage());
+        }
     }
 
     /** 调用 mission 模型，把一段历史压缩成可无缝衔接的摘要；失败或空结果返回 null */

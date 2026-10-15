@@ -94,6 +94,41 @@ public class UserSettings {
     }
 
     /**
+     * 自动归入项目开关：开启后，新建会话的第一条消息会先让 Jev 判一次「这句话像不像某个项目的事」，
+     * 判中就把会话归入该项目，首条消息也随之带上项目文档（PROJECT.md）。
+     * <p>默认关闭：项目归属默认由主人手动支配，不想让它自己动。
+     */
+    private Boolean enableAutoMatchProject = false;
+    public UserSettings setEnableAutoMatchProject(Boolean enableAutoMatchProject) {
+        this.enableAutoMatchProject = Boolean.TRUE.equals(enableAutoMatchProject);
+        return this;
+    }
+    public Boolean getEnableAutoMatchProject() {
+        return Boolean.TRUE.equals(enableAutoMatchProject);
+    }
+
+    /**
+     * 项目归属判定的置信度阈值：某个项目的命中概率大于该值（不含等于）才算命中，多个命中取最高的一个。
+     * 取值 0-1，默认 0.7；越小越容易自动归入项目（0 = 几乎全归，1 = 等价于关闭自动归入）。
+     */
+    private Double projectMatchThreshold;
+    public UserSettings setProjectMatchThreshold(Double projectMatchThreshold) {
+        if (projectMatchThreshold == null) {
+            this.projectMatchThreshold = 0.7;
+        } else if (projectMatchThreshold < 0) {
+            this.projectMatchThreshold = 0.0;
+        } else if (projectMatchThreshold > 1) {
+            this.projectMatchThreshold = 1.0;
+        } else {
+            this.projectMatchThreshold = projectMatchThreshold;
+        }
+        return this;
+    }
+    public Double getProjectMatchThreshold() {
+        return projectMatchThreshold == null ? 0.7 : projectMatchThreshold;
+    }
+
+    /**
      * 上下文 token 上限：单轮请求里消息（不含 system）的估算总 token 超过该值时触发一次压缩。
      * null 或 &lt;= 0 表示关闭该功能。
      */

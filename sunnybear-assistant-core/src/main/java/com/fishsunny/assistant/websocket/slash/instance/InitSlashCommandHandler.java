@@ -1,7 +1,10 @@
 package com.fishsunny.assistant.websocket.slash.instance;
 
 /*
- * @Usage /init <path> —— 探索本机目录，生成结构化项目文档并写入核心文件（PROJECT_<目录名>.md）。
+ * @Usage /init <path> —— 探索本机目录，生成结构化项目文档，落进「项目」：
+ *        项目名取目录名，已有同名项目直接复用（没有才新建），报告写进该项目的 PROJECT.md，
+ *        再让 CUB 按这份文档刷一条简短描述写进项目的 description，
+ *        并把本次探索的会话一并归入该项目。不往核心文件里塞副本。
  *        直接复用标准对话流程（StandardChatTranslateFactory + ChatHttpHandler.translate），
  *        探索过程以与主对话一致的流式/状态机/工具气泡实时呈现在消息区。
  *
@@ -15,6 +18,7 @@ import com.fishsunny.assistant.engine.ChatHttpHandler;
 import com.fishsunny.assistant.engine.cancel.ChatCancelContext;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatProject;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.instance.file.FileListTool;
@@ -22,11 +26,12 @@ import com.fishsunny.assistant.engine.tool.instance.file.FileReadTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileSearchTool;
 import com.fishsunny.assistant.engine.tool.instance.view.ViewCaptionTool;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
+import com.fishsunny.assistant.mvc.service.ChatProjectBindings;
+import com.fishsunny.assistant.mvc.service.ChatProjectService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
-import com.fishsunny.assistant.utils.CoreFileManager;
 import com.fishsunny.assistant.utils.ObjectUtils;
-import com.fishsunny.assistant.utils.SessionFileManager;
+import com.fishsunny.assistant.utils.ProjectFileManager;
 import com.fishsunny.assistant.websocket.provider.ChatProvider;
 import com.fishsunny.assistant.websocket.processor.StandardChatTranslateFactory;
 import com.fishsunny.assistant.websocket.slash.framework.SlashCommandComponent;
@@ -42,6 +47,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 @SlashCommandComponent("/init")
@@ -61,7 +68,9 @@ public class InitSlashCommandHandler extends SlashCommandHandler {
 
     private final AssistantSettings assistantSettings;
 
-    private final CoreFileManager coreFileManager;
+    private final ChatProjectService chatProjectService;
+
+    private final ProjectFileManager projectFileManager;
 
     private final ChatHttpHandler chatHttpHandler;
 
@@ -73,27 +82,33 @@ public class InitSlashCommandHandler extends SlashCommandHandler {
 
     private final AISettings chatProAISettings;
 
-    /** 本次探索的项目根目录（供落盘钩子生成文件名） */
+    private final AISettings cubAISettings;
+
+    /** 本次探索的项目根目录（供落盘钩子取项目名与文档头） */
     private Path projectDir;
 
     public InitSlashCommandHandler(ChatMessageService chatMessageService,
                                    ObjectMapper objectMapper,
                                    AssistantSettings assistantSettings,
-                                   CoreFileManager coreFileManager,
+                                   ChatProjectService chatProjectService,
+                                   ProjectFileManager projectFileManager,
                                    ChatHttpHandler chatHttpHandler,
                                    StandardChatTranslateFactory standardChatTranslateFactory,
                                    @Lazy ToolExecutor toolExecutor,
                                    @Qualifier(AISettings.CHAT) AISettings chatAISettings,
-                                   @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings) {
+                                   @Qualifier(AISettings.CHAT_PRO) AISettings chatProAISettings,
+                                   @Qualifier(AISettings.CUB) AISettings cubAISettings) {
         this.chatMessageService = chatMessageService;
         this.objectMapper = objectMapper;
         this.assistantSettings = assistantSettings;
-        this.coreFileManager = coreFileManager;
+        this.chatProjectService = chatProjectService;
+        this.projectFileManager = projectFileManager;
         this.chatHttpHandler = chatHttpHandler;
         this.standardChatTranslateFactory = standardChatTranslateFactory;
         this.toolExecutor = toolExecutor;
         this.chatAISettings = chatAISettings;
         this.chatProAISettings = chatProAISettings;
+        this.cubAISettings = cubAISettings;
     }
 
     @Override
@@ -112,7 +127,8 @@ public class InitSlashCommandHandler extends SlashCommandHandler {
                     **用法**：`/init <path>`
                     
                     传入要探索的本机目录路径，例如 `/init E:\\local\\my-project`，\
-                    探索完成后会生成结构化项目文档并保存到核心文件。""");
+                    探索完成后会生成结构化项目文档：按目录名建好项目（已有同名项目则复用），\
+                    文档写进该项目的 PROJECT.md，并把本次会话归入该项目。""");
             return;
         }
 
@@ -187,9 +203,10 @@ public class InitSlashCommandHandler extends SlashCommandHandler {
     }
 
     /**
-     * 末轮助手消息（无工具调用）落库前：报告写入核心文件，并在正文追加保存提示。
+     * 末轮助手消息（无工具调用）落库前：报告写进项目、会话归入项目，并在正文追加保存提示。
      * 带工具调用的中间轮不处理。
-     * <p>项目目录只加在写入的文件开头，消息正文不重复。
+     * <p>项目名取目录名：已有同名项目直接复用（文档视为刷新），没有才新建。
+     * 项目目录只加在写入的文件开头，消息正文不重复。
      */
     private ChatMessage persistReport(ChatMessage message) {
         if (!CollectionUtils.isEmpty(message.getToolCalls())) {
@@ -200,18 +217,89 @@ public class InitSlashCommandHandler extends SlashCommandHandler {
             return message;
         }
         try {
-            String projectName = resolveProjectName(projectDir);
-            String fileName = SessionFileManager.sanitizeFileName("PROJECT_" + projectName + ".md");
-            Path target = SessionFileManager.uniquePath(coreFileManager.buildCoreDirPath(), fileName);
-            String savedName = target.getFileName().toString();
-            // 文件开头补上项目目录（/init 的参数）
-            coreFileManager.writeCoreText(savedName, "> 项目目录：`" + projectDir + "`\n\n" + report.strip());
-            message.bodyText(report.strip() + "\n\n---\n\n> 📁 已保存到核心文件 `core/" + savedName + "`");
+            ChatProject project = resolveOrCreateProject(resolveProjectName(projectDir));
+            // 同名覆盖：同一个目录再 init 一次，就是刷新这个项目的 PROJECT.md
+            projectFileManager.writeProjectText(project.getId(), ChatProjectBindings.PROJECT_FILE_NAME,
+                    "> 项目目录：`" + projectDir + "`\n\n" + report.strip());
+            // 项目文档进「自动追加」：以后这个项目里新建的会话，一开口就带着它（幂等，反复 init 不会重复）
+            chatProjectService.updateAutoAppendFile(project.getId(), ChatProjectBindings.PROJECT_FILE_NAME, true);
+            // 顺手让 CUB 按文档写一句简短描述落到项目上（也当 Jev 判归属时的线索）
+            refreshProjectDescription(project, report);
+            // 会话归入项目：mergeExtension 只覆盖这一个键，反复 init 也幂等
+            if (chatSession != null && StringUtils.hasText(chatSession.getId())) {
+                chatProjectService.attachSession(chatSession.getId(), project.getId());
+            }
+            message.bodyText(report.strip() + "\n\n---\n\n> 📁 已保存到项目 **" + project.getName()
+                    + "** 的 `" + ChatProjectBindings.PROJECT_FILE_NAME + "`");
         } catch (Exception e) {
-            log.error("/init 报告落盘失败: {}", e.getMessage(), e);
-            message.bodyText(report.strip() + "\n\n---\n\n> ⚠️ 报告保存到核心文件失败：" + e.getMessage());
+            log.error("/init 报告写入项目失败: {}", e.getMessage(), e);
+            message.bodyText(report.strip() + "\n\n---\n\n> ⚠️ 报告写入项目失败：" + e.getMessage());
         }
         return message;
+    }
+
+    /**
+     * 让 CUB 按项目文档写一句简短描述，落到项目的 description 上。
+     * <p>描述不只是给人看的：Jev 判断「这条新消息属不属于这个项目」吃的就是项目名 + 描述，
+     * 所以刷新文档时顺手把它也刷了。生成失败就保留原描述，不拦主流程。
+     */
+    private void refreshProjectDescription(ChatProject project, String report) {
+        String description = generateDescription(report);
+        if (!StringUtils.hasText(description)) {
+            return;
+        }
+        try {
+            chatProjectService.update(project.getId(), project.getName(), description, null);
+            project.setDescription(description);
+            log.info("项目「{}」描述已更新: {}", project.getName(), description);
+        } catch (Exception e) {
+            log.warn("写入项目描述失败 projectId={}: {}", project.getId(), e.getMessage());
+        }
+    }
+
+    /**
+     * 调 CUB 生成一句话的项目描述；失败或返回空时返回 null（调用方保留原描述）。
+     * <p>与知识库生成简介是同一套写法（见 KnowledgeServiceImplement#generateIntro）。
+     */
+    private String generateDescription(String report) {
+        String prompt = """
+                你是一名项目档案编辑。请根据下面的项目文档，为这个项目写一段简短的【项目描述】。
+
+                要求：
+                1. 控制在 50 字以内，一句话说清这个项目是做什么的。
+                2. 点出项目名称与核心主题 —— 这段描述后续要用来判断「用户的新问题是否属于这个项目」。
+                3. 直接输出描述文本，不要加引号、不要加前缀或解释，也不要换行。
+                """;
+        try {
+            ChatRequest request = new ChatRequest().quickBuild(prompt, report, cubAISettings);
+            AtomicReference<String> description = new AtomicReference<>();
+            chatHttpHandler.translate(
+                    new ChatHttpHandler.TranslateData(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request),
+                    new ChatHttpHandler.TranslateHandler(null, (result, lastRes) -> {
+                        if (result != null && StringUtils.hasText(result.content())) {
+                            description.set(result.content().trim());
+                        }
+                    }),
+                    new ChatHttpHandler.TranslateOption().setStream(cubAISettings.getStream()));
+            return description.get();
+        } catch (Exception e) {
+            log.warn("生成项目描述失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 按名字取项目：已有同名项目直接复用，没有才新建。
+     * <p>重名判断走 listAll()：项目是个人量级（几个到几十个），不值得为它单开一个按名查的接口。
+     * 颜色传 null，交给 service 从色板自动分配。
+     */
+    private ChatProject resolveOrCreateProject(String name) {
+        for (ChatProject project : chatProjectService.listAll()) {
+            if (name.equalsIgnoreCase(project.getName())) {
+                return project;
+            }
+        }
+        return chatProjectService.create(name, "由 /init 探索目录 " + projectDir + " 生成", null);
     }
 
     private String resolveProjectName(Path dir) {

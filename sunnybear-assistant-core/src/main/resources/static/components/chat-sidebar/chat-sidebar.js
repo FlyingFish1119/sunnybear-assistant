@@ -219,7 +219,7 @@ const ChatSidebar = {
                          class="session-context-submenu-item"
                          :class="{ 'is-current': sessionProjectId(contextMenu.session) === p.id }"
                          @click="attachToProject(contextMenu.session, p)">
-                        <span class="session-context-submenu-bar" :style="{ backgroundColor: ProjectColor.of(p) }"></span>
+                        <span class="session-context-submenu-bar" :style="{ backgroundColor: projectColorOf(p) }"></span>
                         <span class="session-context-submenu-name">{{ p.name }}</span>
                         <i v-if="sessionProjectId(contextMenu.session) === p.id"
                            data-lucide="check"
@@ -722,6 +722,16 @@ const ChatSidebar = {
         /** 会话行竖色条的颜色 */
         sessionProjectColor: function (session) {
             return ProjectColor.of(this.sessionProject(session));
+        },
+
+        /**
+         * 子菜单里项目色条的取色。
+         * 模板里不能直接写 ProjectColor.of(...)：编译后的渲染函数会把没在组件上注册的标识符
+         * 当成 _ctx.ProjectColor 去取，取到 undefined 就直接抛错，Vue 会把整棵侧边栏卸载掉。
+         * 统一走这个方法，全局变量在 JS 里访问是正常的。
+         */
+        projectColorOf: function (project) {
+            return ProjectColor.of(project);
         },
 
         openProjectSub: function () {

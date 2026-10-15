@@ -44,4 +44,19 @@ public interface ChatProjectService {
 
     /** 列出某个项目下的全部会话（按最近更新倒序） */
     public List<ChatSession> listSessions(String projectId);
+
+    /**
+     * 项目「自动追加」清单里各文件的绝对路径 —— 新建会话第一条消息要挂的就是这批。
+     * <p>按清单顺序解析，文件已被删掉的条目静默跳过；项目不存在或清单为空时返回空列表。
+     */
+    public List<String> listAutoAppendPaths(String projectId);
+
+    /**
+     * 往自动追加清单里加一项 / 摘一项（幂等：状态已是要的样子就什么也不用写）。
+     * <p>不动 update_time：切个开关不该让项目在列表里跳位置。
+     *
+     * @param auto true = 加入；false = 摘掉
+     * @return 变更后的项目
+     */
+    public ChatProject updateAutoAppendFile(String projectId, String fileName, boolean auto);
 }

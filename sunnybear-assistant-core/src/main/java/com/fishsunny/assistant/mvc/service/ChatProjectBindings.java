@@ -40,6 +40,12 @@ public class ChatProjectBindings {
     public static final String UNBOUND = "";
 
     /**
+     * 项目入口文档名：落在 {basePath}/project/{projectId}/ 下。
+     * <p>新建项目时自动生成一份占位；{@code /init} 探索完也写这个名字（同名覆盖 = 刷新文档）。
+     */
+    public static final String PROJECT_FILE_NAME = "PROJECT.md";
+
+    /**
      * 从会话的 extension 中解析绑定的项目 ID。
      * <p>extension 形如 {"chat_project_id":"xxx"}，未绑定返回 null。
      */

@@ -4,6 +4,7 @@ package com.fishsunny.assistant.mvc.service.implement;
  * @Usage 项目服务实现。
  *        会话归属的读写一律经 ChatSessionService.mergeExtension —— 它是 extension 的唯一写入口，
  *        只覆盖传入的键，不会抹掉 token 统计、标记清单等其它模块写进去的东西。
+ *        删除项目 = 解绑会话 + 删记录 + 清 {basePath}/project/{projectId} 目录（资料跟着项目走）。
  *
  * @Project Assistant
  * @Author FlyingFish-SunnyBear
@@ -16,13 +17,17 @@ import com.fishsunny.assistant.mvc.dao.ChatProjectRepository;
 import com.fishsunny.assistant.mvc.service.ChatProjectBindings;
 import com.fishsunny.assistant.mvc.service.ChatProjectService;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
+import com.fishsunny.assistant.utils.ProjectFileManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
+import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -45,12 +50,15 @@ public class ChatProjectServiceImplement implements ChatProjectService {
 
     private final ChatProjectRepository chatProjectRepository;
     private final ChatSessionService chatSessionService;
+    private final ProjectFileManager projectFileManager;
 
     @Autowired
     public ChatProjectServiceImplement(ChatProjectRepository chatProjectRepository,
-                                       ChatSessionService chatSessionService) {
+                                       ChatSessionService chatSessionService,
+                                       ProjectFileManager projectFileManager) {
         this.chatProjectRepository = chatProjectRepository;
         this.chatSessionService = chatSessionService;
+        this.projectFileManager = projectFileManager;
     }
 
     @Override
@@ -84,7 +92,29 @@ public class ChatProjectServiceImplement implements ChatProjectService {
         project.setId(UUID.randomUUID().toString())
                 .setCreateTime(LocalDateTime.now())
                 .setUpdateTime(LocalDateTime.now());
-        return chatProjectRepository.insert(project);
+        // 新项目开局就带一份 PROJECT.md 进自动追加：之后建的会话一开口就拿着它当背景
+        project.setAutoAppendFiles(new ArrayList<>(List.of(ChatProjectBindings.PROJECT_FILE_NAME)));
+        ChatProject saved = chatProjectRepository.insert(project);
+        // 每个项目自带一份 PROJECT.md 作为资料入口；同名直接覆盖，不做唯一名绕行。
+        // 生成失败不拦项目创建，记条日志就行（面板里也能自己再建一份）。
+        try {
+            projectFileManager.writeProjectText(saved.getId(), ChatProjectBindings.PROJECT_FILE_NAME, buildProjectReadme(saved));
+        } catch (Exception e) {
+            log.warn("生成项目文档失败 projectId={}: {}", saved.getId(), e.getMessage());
+        }
+        return saved;
+    }
+
+    /** 项目入口文档的初始内容：名字与描述打底，往下写什么交给用户 */
+    private String buildProjectReadme(ChatProject project) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# ").append(project.getName()).append("\n\n");
+        if (StringUtils.hasText(project.getDescription())) {
+            sb.append(project.getDescription()).append("\n\n");
+        }
+        sb.append("> 这是本项目的资料入口文档，存在 data/project/").append(project.getId()).append("/ 下。\n");
+        sb.append("> 同目录的其它文本文件，可以在导航轨「项目」面板里直接新建、编辑、删除。\n");
+        return sb.toString();
     }
 
     @Override
@@ -114,6 +144,41 @@ public class ChatProjectServiceImplement implements ChatProjectService {
     }
 
     @Override
+    public List<String> listAutoAppendPaths(String projectId) {
+        ChatProject project = findById(projectId);
+        if (project == null || CollectionUtils.isEmpty(project.getAutoAppendFiles())) {
+            return List.of();
+        }
+        List<String> paths = new ArrayList<>(project.getAutoAppendFiles().size());
+        for (String fileName : project.getAutoAppendFiles()) {
+            Path file = projectFileManager.resolveExistingProjectFile(projectId, fileName);
+            if (file != null) {
+                paths.add(file.toString());
+            }
+        }
+        return paths;
+    }
+
+    @Override
+    public ChatProject updateAutoAppendFile(String projectId, String fileName, boolean auto) {
+        if (!StringUtils.hasText(fileName)) {
+            throw new IllegalArgumentException("文件名不能为空");
+        }
+        ChatProject current = chatProjectRepository.selectById(projectId);
+        if (current == null) {
+            throw new IllegalArgumentException("项目不存在：" + projectId);
+        }
+        List<String> files = new ArrayList<>(current.getAutoAppendFiles());
+        // 幂等：已经是要的样子就原样返回，既不白写一次库，也不动 update_time
+        boolean changed = auto ? files.add(fileName) : files.remove(fileName);
+        if (!changed) {
+            return current;
+        }
+        current.setAutoAppendFiles(files);
+        return chatProjectRepository.update(current);
+    }
+
+    @Override
     public void delete(String id) {
         ChatProject project = chatProjectRepository.selectById(id);
         if (project == null) {
@@ -131,6 +196,9 @@ public class ChatProjectServiceImplement implements ChatProjectService {
             }
         }
         chatProjectRepository.deleteById(id);
+        // 记录删掉之后才清目录：删库失败时目录还在，资料不会「库没了、文件也没了」；
+        // 清目录本身失败只记日志（deleteProjectDir 内部已兜），不回滚这次删除。
+        projectFileManager.deleteProjectDir(id);
         log.info("项目已删除并解绑 {} 个会话：{}", bound.size(), project.getName());
     }
 
