@@ -14,7 +14,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /*
  * @Usage
@@ -58,7 +60,7 @@ public class UserMessageAppender {
                                           String parentId,
                                           String prompt,
                                           List<String> fileUrls) throws Exception {
-        return appendUserMessage(sessionId, parentId, prompt, fileUrls, null);
+        return appendUserMessage(sessionId, parentId, prompt, fileUrls, null, null);
     }
 
     /**
@@ -73,6 +75,24 @@ public class UserMessageAppender {
                                           String prompt,
                                           List<String> fileUrls,
                                           List<MessageContent> extraContents) throws Exception {
+        return appendUserMessage(sessionId, parentId, prompt, fileUrls, extraContents, null);
+    }
+
+    /**
+     * 添加用户消息（含文件附件、额外内容块与消息 extension）。
+     *
+     * @param extraContents    附加内容块，可为 null
+     * @param messageExtension 本条用户消息的 extension（来自
+     *                         {@code ChatMessageRequest.messageExtension}），可为 null；
+     *                         这是客户端给单条消息挂自定义键的唯一入口，
+     *                         后端自己写的那些消息键走各自的写入方（见 CHAT_MESSAGE_EXTENSION.md）
+     */
+    public ChatMessage appendUserMessage(String sessionId,
+                                          String parentId,
+                                          String prompt,
+                                          List<String> fileUrls,
+                                          List<MessageContent> extraContents,
+                                          Map<String, Object> messageExtension) throws Exception {
         if (StringUtils.hasText(parentId)) {
             // 父消息是工具消息，则插入一个空的助手消息作为占位符
             ChatMessage lastMessage = chatMessageService.findById(parentId);
@@ -98,6 +118,11 @@ public class UserMessageAppender {
         ChatMessage chatMessage = new ChatMessage()
                 .user(prompt, fileContents)
                 .makeInsertable(sessionId, parentId, userSettings.getUsername());
+        // 客户端随请求带来的消息 extension：落库前挂好
+        // （下面 attachPending 只往 contents 追加文本块，不碰 extension，顺序无所谓，放前面更清楚）
+        if (!CollectionUtils.isEmpty(messageExtension)) {
+            chatMessage.setExtension(new LinkedHashMap<>(messageExtension));
+        }
         // 落库前探一次后台任务总线：上一轮遗留的在途结果作为追加文本块挂到这条用户消息末尾
         backgroundToolResponseBus.attachPending(chatMessage);
 

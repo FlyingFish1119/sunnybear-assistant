@@ -44,7 +44,8 @@ public class AppendChatMessageRequestHandler implements ChatMessageRequestHandle
         ChatMessage last = ObjectUtils.getLast(messages);
         String parentId = last == null ? null : last.getId();
         List<String> appendFileUrls = sessionFileWriter.writeSessionFile(request.getFiles(), chatSession);
-        ChatMessage newMessage = userMessageAppender.appendUserMessage(request.getSessionId(), parentId, request.getContent(), appendFileUrls);
+        ChatMessage newMessage = userMessageAppender.appendUserMessage(request.getSessionId(), parentId, request.getContent(),
+                appendFileUrls, null, request.getMessageExtension());
         messages.add(newMessage);
         return new ChatSessionModeParseResult(chatSession, false, messages);
     }

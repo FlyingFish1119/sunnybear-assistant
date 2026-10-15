@@ -25,9 +25,11 @@ import com.fishsunny.assistant.websocket.request.ChatMessageRequestProvider;
 import com.fishsunny.assistant.websocket.request.ChatSessionModeParseResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 @Component
@@ -92,6 +94,10 @@ public class EditChatMessageRequestHandler implements ChatMessageRequestHandler 
         ChatMessage chatMessage = new ChatMessage()
                 .user(request.getContent(), preservedContents)
                 .makeInsertable(request.getSessionId(), parentId, userSettings.getUsername());
+        // 客户端随请求带来的消息 extension（编辑同样是新建一条用户消息，照常挂上）
+        if (!CollectionUtils.isEmpty(request.getMessageExtension())) {
+            chatMessage.setExtension(new LinkedHashMap<>(request.getMessageExtension()));
+        }
 
         try {
             ChatMessage message = chatMessageService.save(chatMessage);

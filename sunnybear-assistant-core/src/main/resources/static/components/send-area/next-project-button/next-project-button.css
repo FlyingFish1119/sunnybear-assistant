@@ -1,0 +1,208 @@
+/* ============================================
+   下一次新对话的项目归属 — 发送区工具栏插件
+   收起态：方块图标按钮（不指定，中性灰）
+           / 图标 + 项目名的胶囊（已指定，主色）
+   展开态：上浮的项目选择面板（可搜索，顶部一条「不指定」）
+   尺寸、圆角与 hover 基底继承 send-area.css 的 .send-area-icon-btn，这里只加差异。
+
+   ⚠ 外层 .next-project-button-wrap 只做定位锚点，绝不写 z-index ——
+   一旦拿到非 auto 的 z-index 就自建堆叠上下文，上浮的面板会被锁在工具栏里，
+   翻不过看板熊（.mascot-root，z-index: 30）。详见 send-area.css 顶部那段说明。
+   ============================================ */
+
+.next-project-button-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* 已有会话里不生效（只对新建）：弱化成「看得见但不吵」，与旁边档位按钮一致 */
+.next-project-button:disabled {
+    opacity: 0.35;
+    background: transparent;
+    color: #666;
+    cursor: not-allowed;
+}
+
+/* 已选定项目：从方块撑成胶囊，直接把项目名摆出来 */
+.next-project-button.is-locked:not(:disabled) {
+    width: auto;
+    max-width: 190px;
+    padding: 0 10px;
+    gap: 5px;
+    color: var(--main-color, lightsalmon);
+    background: color-mix(in srgb, var(--main-color, lightsalmon) 16%, #fff);
+}
+
+/* 锁定态的点击反馈：只压暗自身，避免 hover 的灰底盖掉主色 */
+.next-project-button.is-locked:hover:not(:disabled) {
+    filter: brightness(0.96);
+}
+
+.next-project-button-label {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+/* ---- 面板 ---- */
+
+/* 点击面板外部关闭（低于面板、高于看板熊） */
+.next-project-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+}
+
+.next-project-panel {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    z-index: 60;
+    width: 260px;
+    max-width: calc(100vw - 24px);
+    padding: 8px;
+    box-sizing: border-box;
+    background: #fff;
+    border: 1px solid #eceef1;
+    border-radius: 14px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14);
+    transform-origin: bottom left;
+}
+
+.next-project-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    margin-bottom: 6px;
+    background: #f4f5f7;
+    border-radius: 9px;
+    color: #b9bec7;
+}
+
+.next-project-search i,
+.next-project-search svg {
+    width: 14px;
+    height: 14px;
+    flex: none;
+}
+
+.next-project-search input {
+    flex: 1;
+    min-width: 0;
+    height: 30px;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #333;
+    font-family: inherit;
+    font-size: 12px;
+}
+
+.next-project-list {
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.next-project-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.next-project-item:hover {
+    background: #f4f5f7;
+}
+
+.next-project-item.is-current {
+    color: var(--main-color, lightsalmon);
+    font-weight: 600;
+}
+
+/* 项目色小圆点：颜色由内联 style 给（ProjectColor.of） */
+.next-project-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+/* 「不指定」那条的圆点：中性空心，跟项目色区分开 */
+.next-project-dot--auto {
+    background: transparent;
+    border: 1.5px solid #c6cbd4;
+}
+
+.next-project-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12.5px;
+}
+
+.next-project-check {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    color: var(--main-color, lightsalmon);
+}
+
+.next-project-empty {
+    padding: 14px 8px;
+    text-align: center;
+    font-size: 12px;
+    color: #b9bec7;
+}
+
+.next-project-hint {
+    padding: 6px 8px 2px;
+    margin-top: 4px;
+    border-top: 1px solid #f2f3f5;
+    font-size: 11px;
+    color: #b9bec7;
+}
+
+/* ---- 打开 / 关闭动画（与模型切换面板同节奏） ---- */
+.next-project-fade-enter-active,
+.next-project-fade-leave-active {
+    transition: opacity 0.18s ease;
+}
+
+.next-project-fade-enter-from,
+.next-project-fade-leave-to {
+    opacity: 0;
+}
+
+.next-project-pop-enter-active {
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.next-project-pop-leave-active {
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.next-project-pop-enter-from,
+.next-project-pop-leave-to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+}
+
+/* 小屏：面板收窄，避免溢出屏幕 */
+@media (max-width: 768px) {
+    .next-project-panel {
+        width: 220px;
+    }
+
+    .next-project-button-label {
+        max-width: 96px;
+    }
+}

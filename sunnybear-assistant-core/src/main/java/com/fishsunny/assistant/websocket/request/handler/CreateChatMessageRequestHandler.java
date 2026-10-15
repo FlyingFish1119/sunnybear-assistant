@@ -85,7 +85,7 @@ public class CreateChatMessageRequestHandler implements ChatMessageRequestHandle
         List<String> createFileUrls = sessionFileWriter.writeSessionFile(request.getFiles(), chatSession);
         List<MessageContent> messageContents = autoAppendContents(chatSession);
         ChatMessage newMessage = userMessageAppender.appendUserMessage(chatSession.getId(), null, request.getContent(),
-                createFileUrls, messageContents);
+                createFileUrls, messageContents, request.getMessageExtension());
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(newMessage);
         return new ChatSessionModeParseResult(chatSession, true, messages);

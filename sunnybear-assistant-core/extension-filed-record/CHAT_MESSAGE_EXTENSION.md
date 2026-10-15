@@ -64,6 +64,16 @@
 - 前端 `session-store.js` 处理 `TTS_AUDIO` 帧时注入当前流式 assistant 消息的 extension，
   保序入队实时播放；**仅前端实时用，不落库**（落库的是整轮 `ttsAudio`）。
 
+## 客户端上行入口
+
+消息 extension 目前只有一个上行入口：`ChatMessageRequest.messageExtension`。
+create / append / edit 三种模式会把它的键写进新建的那条用户消息（落库前挂好）；
+replace 只停用旧助手分支、不新建用户消息，故不读。
+
+⚠ 别和 `ChatMessageRequest.extension` 混：那个是**新会话**的初始 extension，
+落点 `ChatSession.extension`，只有 create 模式读（见 `CHAT_SESSION_EXTENSION.md`）。
+除这个上行入口之外的键，一律由后端各写入方自己 `put`。
+
 ## 注意事项
 
 - 不要与会话的 extension 混淆。`worldId`、`characterId`、`chat_mark`、`chat_total_tokens`

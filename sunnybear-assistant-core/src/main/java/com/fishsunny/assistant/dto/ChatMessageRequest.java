@@ -86,11 +86,34 @@ public class ChatMessageRequest {
     }
 
     /**
-     * 扩展字段
+     * 新会话的初始 extension —— 落点是 {@code ChatSession.extension}，<b>不是消息的 extension</b>。
+     *
+     * <p>只有 create 模式读它：新建会话那会儿会话还没落库，没有 mergeExtension 的对象，
+     * 只能借 create 请求把这包键值整体送进去（见 CreateChatMessageRequestHandler#createChatSession）。
+     * append / edit / replace 三个模式完全不看这个字段。
+     *
+     * <p>键的语义与登记见 extension-filed-record/CHAT_SESSION_EXTENSION.md
+     * （worldId / characterId / chat_project_id 都走这条路）。
      */
     private Map<String, Object> extension;
     public ChatMessageRequest setExtension(Map<String, Object> extension) {
         this.extension = extension == null ? new HashMap<>() : extension;
+        return this;
+    }
+
+    /**
+     * 本条用户消息的 extension —— 落点是 {@code ChatMessage.extension}，键由调用方自定义。
+     *
+     * <p>create / append / edit 三种模式读它：这三种都会新建一条用户消息，值在落库前挂好；
+     * replace 只是停用旧助手分支、不新建用户消息，因此不读。
+     *
+     * <p>与上面那个 {@link #extension} 是两个不同的口袋：那个进会话，这个进消息。
+     * 后端自己写的那些消息键（chat_usage / ttsAudio / reasoningSignature 等）
+     * 见 extension-filed-record/CHAT_MESSAGE_EXTENSION.md。
+     */
+    private Map<String, Object> messageExtension;
+    public ChatMessageRequest setMessageExtension(Map<String, Object> messageExtension) {
+        this.messageExtension = messageExtension == null ? new HashMap<>() : messageExtension;
         return this;
     }
 

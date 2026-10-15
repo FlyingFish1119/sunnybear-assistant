@@ -169,7 +169,12 @@ const SessionStore = (function () {
          * 下一次新建会话的模型档位指定：null = 不干预（自动判断）/ false = 强制普通 / true = 强制高级。
          * 由发送区的三态按钮循环切换，只作用于 create 请求，请求发出后立即复位（见 sendMessage）。
          */
-        nextProForce: null
+        nextProForce: null,
+        /**
+         * 下一次新建会话的项目归属指定：null = 不干预（交给 Jev 按消息内容判定）/ 项目 id = 强制归入该项目。
+         * 由发送区的项目选择器设置，只作用于 create 请求，请求发出后立即复位（见 sendMessage）。
+         */
+        nextProjectId: null
     });
 
     /** 判断某条消息是否为「在途流式占位」（以 streaming_ 前缀标识 id） */
@@ -329,6 +334,16 @@ const SessionStore = (function () {
          * 由发送区的三态按钮循环切换，仅作用于 create 请求。
          */
         get nextProForce() { return state.nextProForce; },
+        /**
+         * 下一次新建会话的项目归属指定：null = 不干预（交给 Jev 判定）/ 项目 id = 强制归入该项目。
+         * 由发送区的项目选择器设置，仅作用于 create 请求。
+         */
+        get nextProjectId() { return state.nextProjectId; },
+        /** 项目列表（按名字排序，与左侧会话列表「归入项目」子菜单同一顺序） */
+        get projectList() {
+            return Object.values(state.projectMap)
+                .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+        },
         get isStreaming() { return !!state.streamingMap[currentSessionId()]; },
         /** 当前会话的上下文压缩状态：'running' | 'done' | null */
         get compressState() { return state.compressMap[currentSessionId()] || null; },
@@ -443,6 +458,15 @@ const SessionStore = (function () {
         cycleNextProForce() {
             state.nextProForce = state.nextProForce === null ? false
                 : (state.nextProForce === false ? true : null);
+        },
+
+        /**
+         * 设置「下一次新建会话」的项目归属：传项目 id = 强制归入该项目
+         * （服务端见新会话已自带 chat_project_id 就不再让 Jev 猜），传 null / 空 = 退回不干预。
+         * 值只在新建会话时随请求发出（见 sendMessage），发出后自动复位。
+         */
+        setNextProject(projectId) {
+            state.nextProjectId = projectId ? String(projectId) : null;
         },
 
         /* ================= 会话列表 ================= */
@@ -768,11 +792,22 @@ const SessionStore = (function () {
                     console.error('buildCreateRequest 钩子出错:', e);
                 }
             }
+            // 新建会话 + 发送区选定了项目：强制挂上 project_id
+            // （服务端见新会话已自带 chat_project_id 就跳过 Jev 归属判定，直接归入该项目）
+            // 放在插件钩子之后合并，保证「主人显式指定」永远优先，不被角色 / 世界插件的 extension 覆盖
+            if (!sessionId && state.nextProjectId) {
+                request.extension = Object.assign({}, request.extension,
+                    { [PROJECT_EXTENSION_KEY]: state.nextProjectId });
+            }
             const ws = WsBus.getSocket();
             if (ws) {
                 ws.send(JSON.stringify(request));
-                // 档位只对「下一次新建」生效：创建请求一经发出即复位，避免之后的新会话继续被锁定
-                if (!sessionId) state.nextProForce = null;
+                // 档位与项目归属都只对「下一次新建」生效：创建请求一经发出即复位，
+                // 避免之后的新会话继续被锁定
+                if (!sessionId) {
+                    state.nextProForce = null;
+                    state.nextProjectId = null;
+                }
             } else {
                 console.error('WebSocket 未连接，消息发送失败');
             }
