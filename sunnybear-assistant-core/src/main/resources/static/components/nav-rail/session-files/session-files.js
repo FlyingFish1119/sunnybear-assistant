@@ -9,10 +9,14 @@
  * 交互：
  *   导航轨「会话文件」按钮 → 第一层抽屉（资源树，贴左侧滑出）
  *   点文件 → 第二层抽屉（内容区，在第一层右边接着展开），两层可共存
- *   文本 → Ace 编辑器：停输 1.5s 自动落盘，Ctrl/Cmd+S 立即保存
- *   图片 → 直接显示（走 /session/file/raw）
- *   视频 → 内嵌播放器（同一个 raw 接口，靠 Range 支持拖动进度；浏览器不认的封装格式只能下载看）
- *   其他 → 提示下载
+ *
+ * 第二层（内容区）已拆成同目录的独立组件 sf-viewer.js —— 局部注册，不对外公用；
+ * 这里只留「点哪一行、看哪个文件」这件事，current 是两边唯一的事实来源：
+ *   文本     → Ace 编辑器：停输 1.5s 自动落盘，Ctrl/Cmd+S 立即保存
+ *   Markdown → 头部「编辑 / 预览」切换，预览走全局 $md 渲染成只读正文
+ *   图片     → 直接显示（走 /session/file/raw）
+ *   视频     → 内嵌播放器（同一个 raw 接口，靠 Range 支持拖动进度；浏览器不认的封装格式只能下载看）
+ *   其他     → 提示下载
  *
  * 提升为核心（会话模式）：
  *   · 单个文件行 → 复制进核心根目录
@@ -169,39 +173,8 @@ const SessionFiles = {
             </div>
         </aside>
 
-        <!-- 第二层：内容区 -->
-        <aside v-if="current" class="sf-drawer sf-drawer--viewer">
-            <div class="sf-head">
-                <div class="sf-title">
-                    <i :data-lucide="rowIcon(current)"></i>
-                    <span class="sf-title-text">{{ current.name }}</span>
-                </div>
-                <button class="sf-btn" title="下载" @click="downloadCurrent">
-                    <i data-lucide="download"></i>
-                </button>
-                <button class="sf-btn" title="关闭" @click="closeViewer">
-                    <i data-lucide="x"></i>
-                </button>
-            </div>
-            <div class="sf-viewer-body">
-                <div v-if="viewKind === 'text'" ref="editorHost" class="sf-editor-host"></div>
-                <div v-else-if="viewKind === 'image'" class="sf-image-wrap">
-                    <img :src="imageUrl" :alt="current.name">
-                </div>
-                <div v-else-if="viewKind === 'video'" class="sf-video-wrap">
-                    <video :src="videoUrl" controls preload="metadata" playsinline></video>
-                </div>
-                <div v-else class="sf-empty">{{ viewerHint }}</div>
-            </div>
-            <div class="sf-status">
-                <template v-if="viewKind === 'text'">
-                    <span class="sf-status-dot" :class="statusClass"></span>
-                    <span>{{ statusText }}</span>
-                </template>
-                <span class="sf-status-path" :title="current.path">{{ current.path }}</span>
-                <span v-if="viewKind === 'text' && dirty" class="sf-status-action" @click="saveNow">立即保存</span>
-            </div>
-        </aside>
+        <!-- 第二层：内容区（会话文件模块自己的抽屉，见 sf-viewer.js） -->
+        <sf-viewer :file="current" :api="viewerApi" @close="closeViewer"></sf-viewer>
     </div>
 
     <!-- 删除确认：走项目自绘的 confirm-dialog，跟会话删除、知识删除那批保持同一套视觉 -->
@@ -209,6 +182,11 @@ const SessionFiles = {
     <!-- 上传文件的隐藏选择器 -->
     <input ref="uploadInput" type="file" multiple style="display: none" @change="onUploadPicked">
     `,
+
+    /* 二级抽屉（文件内容区）：会话文件模块自己的子组件，局部注册，不进全局组件表 */
+    components: {
+        'sf-viewer': SfViewer
+    },
 
     emits: ['visible-change'],
 
@@ -236,19 +214,8 @@ const SessionFiles = {
             dirLoadingSet: {},
             rootLoading: false,
 
-            /* 当前打开的文件 */
+            /* 当前打开的文件 { name, path }；内容区由子组件 sf-viewer 渲染 */
             current: null,
-            viewKind: '',          // text | image | video | other
-            imageUrl: '',
-            videoUrl: '',
-            viewerHint: '',
-
-            /* 编辑器状态 */
-            editor: null,
-            dirty: false,
-            saving: false,
-            saveFailed: false,
-            savedTip: '',
 
             /* 大文件分片上传任务：{ id, file, dir, name, total, loaded, percent, status, message, cancelled } */
             uploadTasks: []
@@ -302,18 +269,9 @@ const SessionFiles = {
             return Object.keys(this.dirLoadingSet).filter((d) => this.dirLoadingSet[d]);
         },
 
-        statusClass() {
-            if (this.saveFailed) return 'is-error';
-            if (this.saving) return 'is-saving';
-            if (this.dirty) return 'is-dirty';
-            return 'is-saved';
-        },
-
-        statusText() {
-            if (this.saveFailed) return '保存失败';
-            if (this.saving) return '保存中…';
-            if (this.dirty) return '未保存（停手 1.5 秒自动保存）';
-            return this.savedTip ? '已保存 ' + this.savedTip : '已保存';
+        /** 内容区抽屉用的文件接口：跟资源树共用同一套适配层，切模式自动跟着变 */
+        viewerApi() {
+            return this.fileApi();
         },
 
         mainColor: function () {
@@ -375,21 +333,9 @@ const SessionFiles = {
             this.closeAll();
         },
 
+        /** 收起内容区。关闭前把没落盘的内容存了，由子组件随 file 变 null 时处理 */
         closeViewer() {
-            // 关掉之前把没落盘的内容先存了，别让用户白写
-            if (this.dirty && this.editor && this.current) {
-                this.saveContent(this.editor.getValue(), this.current.path);
-            }
-            clearTimeout(this._autoSaveTimer);
-            this.destroyEditor();
             this.current = null;
-            this.viewKind = '';
-            this.imageUrl = '';
-            this.videoUrl = '';
-            this.viewerHint = '';
-            this.dirty = false;
-            this.saveFailed = false;
-            this.savedTip = '';
         },
 
         async refreshAll() {
@@ -471,133 +417,13 @@ const SessionFiles = {
 
         /* ==================== 打开文件 ==================== */
 
-        async openFile(row) {
-            // 切文件前先把上一个没保存的落盘
-            await this.saveNow();
-            this.destroyEditor();
+        /**
+         * 点一行文件 → 换给内容区。
+         * <p>切文件前把上一个没落盘的内容存了、旧编辑器销毁，都在子组件里随 file 变化做
+         * （见 sf-viewer.js），这里只管换 current 这一个事实来源。
+         */
+        openFile(row) {
             this.current = { name: row.name, path: row.path, directory: false };
-            this.dirty = false;
-            this.saveFailed = false;
-            this.savedTip = '';
-            this.viewerHint = '';
-
-            const kind = this.kindOf(row.name);
-            this.viewKind = kind;
-
-            if (kind === 'image') {
-                this.imageUrl = this.fileApi().rawUrl(row.path);
-                return;
-            }
-            if (kind === 'video') {
-                this.videoUrl = this.fileApi().rawUrl(row.path);
-                return;
-            }
-            if (kind === 'text') {
-                await this.loadText(row.path);
-                return;
-            }
-            this.viewerHint = '这个类型没法在线预览，点右上角下载吧';
-        },
-
-        async loadText(path) {
-            try {
-                const res = await this.fileApi().read(path);
-                if (res.status !== 200) {
-                    this.viewKind = 'other';
-                    this.viewerHint = res.message || '读取失败';
-                    return;
-                }
-                await this.$nextTick();
-                this.mountEditor(res.data || '', path);
-            } catch (e) {
-                this.viewKind = 'other';
-                this.viewerHint = '读取失败: ' + e.message;
-            }
-        },
-
-        mountEditor(content, path) {
-            const host = this.$refs.editorHost;
-            if (!host || !window.ace) return;
-            // mode / theme 都放在本地 lib/ace 下，basePath 必须指过去，
-            // 否则 ace 会跑去默认 CDN 找 mode 文件（断网就白屏）
-            window.ace.config.set('basePath', API.BASE_PATH + 'lib/ace/');
-            const editor = window.ace.edit(host);
-            editor.setTheme('ace/theme/textmate');
-            editor.session.setMode('ace/mode/' + this.aceMode(path));
-            editor.session.setUseWorker(false);      // 没放 worker 文件，关掉语法检查线程
-            editor.session.setUseWrapMode(true);     // 长行折行，别逼人横向拖
-            editor.setOptions({
-                fontSize: '13px',
-                showPrintMargin: false,
-                tabSize: 4,
-                useSoftTabs: true
-            });
-            editor.setValue(content, -1);
-            editor.clearSelection();
-            editor.on('change', this.onEditorChange);
-            editor.commands.addCommand({
-                name: 'saveSessionFile',
-                bindKey: { win: 'Ctrl-S', mac: 'Command-S' },
-                exec: () => this.saveNow()
-            });
-            this.editor = editor;
-            this.dirty = false;
-            editor.focus();
-        },
-
-        destroyEditor() {
-            if (this.editor) {
-                try {
-                    this.editor.destroy();
-                } catch (e) {
-                    /* 宿主已被移除时 destroy 可能抛错，忽略即可 */
-                }
-                this.editor = null;
-            }
-        },
-
-        onEditorChange() {
-            this.dirty = true;
-            this.saveFailed = false;
-            clearTimeout(this._autoSaveTimer);
-            this._autoSaveTimer = setTimeout(() => this.saveNow(), 1500);
-        },
-
-        /* ==================== 保存 ==================== */
-
-        async saveNow() {
-            clearTimeout(this._autoSaveTimer);
-            if (!this.current || !this.dirty || this.saving || !this.editor) return;
-            await this.saveContent(this.editor.getValue(), this.current.path);
-        },
-
-        async saveContent(content, path) {
-            if ((this.mode === 'session' && !this.sessionId) || !path) return;
-            this.saving = true;
-            try {
-                const res = await this.fileApi().write(path, content);
-                if (res.status === 200) {
-                    this.saveFailed = false;
-                    this.savedTip = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-                    // 保存期间用户又改了内容 → 保持脏标记，让下一轮自动保存接手
-                    if (this.editor && this.current && this.current.path === path
-                        && this.editor.getValue() !== content) {
-                        this.dirty = true;
-                        clearTimeout(this._autoSaveTimer);
-                        this._autoSaveTimer = setTimeout(() => this.saveNow(), 1500);
-                    } else {
-                        this.dirty = false;
-                    }
-                } else {
-                    this.saveFailed = true;
-                    if (window.SbToast) window.SbToast.error(res.message || '保存失败');
-                }
-            } catch (e) {
-                this.saveFailed = true;
-                if (window.SbToast) window.SbToast.error('保存失败: ' + e.message);
-            } finally {
-                this.saving = false;
-            }
         },
 
         /* ==================== 增 / 改名 / 删 ==================== */
@@ -706,16 +532,6 @@ const SessionFiles = {
             } catch (e) {
                 if (window.SbToast) window.SbToast.error('删除失败: ' + e.message);
             }
-        },
-
-        downloadCurrent() {
-            if (!this.current) return;
-            const a = document.createElement('a');
-            a.href = this.fileApi().rawUrl(this.current.path);
-            a.download = this.current.name;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
         },
 
         /* ==================== 双模式适配 / 上传 / 引用 ==================== */
@@ -1194,24 +1010,9 @@ const SessionFiles = {
 
         /* ==================== 类型判定 / 展示辅助 ==================== */
 
-        kindOf(name) {
-            const dot = String(name).lastIndexOf('.');
-            const ext = dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
-            if (IMAGE_EXTS.indexOf(ext) >= 0) return 'image';
-            if (VIDEO_EXTS.indexOf(ext) >= 0) return 'video';
-            if (dot < 0 || TEXT_EXTS.indexOf(ext) >= 0) return 'text';
-            return 'other';
-        },
-
-        aceMode(name) {
-            const dot = String(name).lastIndexOf('.');
-            const ext = dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
-            return ACE_MODES[ext] || 'text';
-        },
-
         rowIcon(row) {
             if (row.directory) return this.expanded[row.path] ? 'folder-open' : 'folder';
-            const kind = this.kindOf(row.name);
+            const kind = SfFileKind.of(row.name);
             if (kind === 'image') return 'image';
             if (kind === 'video') return 'file-video';
             return 'file-text';
@@ -1250,8 +1051,6 @@ const SessionFiles = {
 
     beforeUnmount() {
         document.removeEventListener('keydown', this.onKeydown);
-        clearTimeout(this._autoSaveTimer);
-        this.destroyEditor();
     },
 
     updated() {
@@ -1261,39 +1060,8 @@ const SessionFiles = {
 
 /* ==================== 扩展名约定 ==================== */
 
-/** 能直接预览的图片类型 */
-const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'avif'];
-
-/**
- * 能内嵌播放的视频类型。
- * 只列浏览器真认的封装（mp4 / webm 是主路，mov / ogv 看浏览器脸色）；
- * mkv / avi / wmv / flv 一律不进 —— 后端不给它们兜底 MIME，播放器也多半放不出来，走下载更省事。
- */
-const VIDEO_EXTS = ['mp4', 'm4v', 'webm', 'ogv', 'mov'];
-
-/** 按文本打开的扩展名；没有扩展名的文件也当文本试（日志、脚本产物多是这样） */
-const TEXT_EXTS = [
-    'txt', 'md', 'markdown', 'json', 'jsonl', 'csv', 'tsv', 'log', 'ini', 'conf', 'config', 'properties', 'env',
-    'js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'vue', 'svelte',
-    'html', 'htm', 'css', 'scss', 'less', 'xml', 'xsl', 'svg',
-    'yml', 'yaml', 'toml',
-    'java', 'kt', 'kts', 'groovy', 'gradle', 'py', 'rb', 'php', 'go', 'rs', 'c', 'h', 'cpp', 'hpp', 'cs',
-    'sh', 'bash', 'zsh', 'bat', 'cmd', 'ps1', 'sql', 'pl', 'lua', 'r', 'swift', 'dart', 'scala'
-];
-
-/** 扩展名 → ace mode（ace 没装对应 mode 的走 text，纯高亮差异，不影响编辑） */
-const ACE_MODES = {
-    js: 'javascript', mjs: 'javascript', cjs: 'javascript', jsx: 'javascript',
-    ts: 'typescript', tsx: 'typescript',
-    json: 'json', jsonl: 'json',
-    html: 'html', htm: 'html', vue: 'html', svelte: 'html',
-    css: 'css', scss: 'css', less: 'css',
-    xml: 'xml', svg: 'xml', xsl: 'xml',
-    md: 'markdown', markdown: 'markdown',
-    java: 'java', py: 'python',
-    sh: 'sh', bash: 'sh', zsh: 'sh', bat: 'sh', cmd: 'sh',
-    sql: 'sql', yml: 'yaml', yaml: 'yaml'
-};
+/* 类型判定与 ace 语言映射已随内容区搬到 sf-viewer.js 的 SfFileKind：
+   资源树按它取图标 kind，内容区按它决定怎么打开，模块内共用一份。 */
 
 // 自注册进左侧导航轨（registry 定义于 nav-rail.js，须先于本文件加载）
 if (typeof RailPlugins !== 'undefined') {

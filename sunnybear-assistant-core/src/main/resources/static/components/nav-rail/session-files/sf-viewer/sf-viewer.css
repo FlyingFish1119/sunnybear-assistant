@@ -1,0 +1,183 @@
+/* ============================================================
+   Session Files · 二级抽屉（文件内容区）
+   ------------------------------------------------------------
+   会话文件模块拆出来的子组件样式，只管「打开一个文件看内容」这一层。
+
+   抽屉公共件（.sf-drawer 的身子、.sf-head / .sf-title / .sf-btn、
+   @keyframes sf-slide-in）与宽度变量 --sf-viewer-w 仍在 session-files.css 里：
+   两个文件同属一个模块、同页加载，这里直接用，不重复定义。
+   ============================================================ */
+
+.sf-drawer--viewer{
+    flex: 1;
+    max-width: var(--sf-viewer-w);
+    animation: sf-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ---- 内容区 ---- */
+.sf-viewer-body{
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: #fbfbfc;
+}
+
+.sf-editor-host{
+    flex: 1;
+    min-height: 0;
+    position: relative;
+}
+
+/* Ace 会往宿主里塞自己的 DOM，这里只保证宿主撑满 */
+.sf-editor-host .ace_editor{
+    position: absolute;
+    inset: 0;
+    font-size: 13px;
+}
+
+/* ---- Markdown 只读预览 ---- */
+/* 正文样式全交给全局 .markdown-body（css/markdown.css），这里只管滚动容器与留白 */
+.sf-preview{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 18px 22px 32px;
+    background: #fff;
+    scrollbar-width: thin;
+}
+
+/* markdown-body 自带的首尾间距在抽屉里显得空，收掉 */
+.sf-preview > :first-child{ margin-top: 0; }
+.sf-preview > :last-child{ margin-bottom: 0; }
+
+/* ---- Word（.docx）只读预览 ---- */
+/* 排版整体复用 .markdown-body（表格 / 图片 / 标题都吃它那一套），这里只补一条：
+   v-html 还没塞进内容时元素是空的，用 :empty 顶个「解析中」提示，省掉一个 JS 加载态 */
+.sf-docx:empty::before{
+    content: '正在解析 Word 文档…';
+    color: var(--text-muted, #999);
+    font-size: 12.5px;
+}
+
+/* ---- PDF 预览 ---- */
+/* 不解析、不翻页容器：直接把 raw 接口丢给浏览器自带的阅读器（Chrome / Edge / Firefox 都认）。
+   深灰底是各家阅读器的通用底色，先铺上，避免加载那一瞬的白闪 */
+.sf-pdf-wrap{
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    background: #525659;
+}
+
+.sf-pdf-wrap iframe{
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+}
+
+.sf-image-wrap{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background:
+        linear-gradient(45deg, #f0f0f2 25%, transparent 25%, transparent 75%, #f0f0f2 75%),
+        linear-gradient(45deg, #f0f0f2 25%, transparent 25%, transparent 75%, #f0f0f2 75%);
+    background-size: 18px 18px;
+    background-position: 0 0, 9px 9px;
+    background-color: #fafafa;
+}
+
+.sf-image-wrap img{
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    box-shadow: 0 6px 24px rgba(17, 24, 39, 0.16);
+    border-radius: 4px;
+}
+
+/* 视频：深底居中，跟图片区一样的撑满与留白逻辑 */
+.sf-video-wrap{
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: #1b1c1f;
+}
+
+.sf-video-wrap video{
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 4px;
+    background: #000;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* ---- 状态条：保存状态 / 文件信息 ---- */
+.sf-status{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 30px;
+    padding: 0 14px;
+    box-sizing: border-box;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    background: #fff;
+    font-size: 11.5px;
+    color: var(--text-muted, #999);
+}
+
+.sf-status-dot{
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #c9ccd1;
+    flex: none;
+}
+
+.sf-status-dot.is-dirty{ background: #f0a02a; }
+.sf-status-dot.is-saving{ background: #3b82f6; }
+.sf-status-dot.is-saved{ background: #2fb344; }
+.sf-status-dot.is-error{ background: #e5484d; }
+
+.sf-status-path{
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: rtl;              /* 路径太长时保留尾部（文件名那端） */
+    text-align: left;
+}
+
+.sf-status-action{
+    flex: none;
+    cursor: pointer;
+    color: #4b5563;
+}
+
+.sf-status-action:hover{ text-decoration: underline; }
+
+/* 跟随系统的「减少动态效果」偏好 */
+@media (prefers-reduced-motion: reduce){
+    .sf-drawer--viewer{ animation: none; }
+}
+
+/* ---- 窄屏：空间不够并排，内容区盖住整屏 ---- */
+@media (max-width: 768px){
+    .sf-drawer--viewer{
+        position: absolute;
+        left: 0;
+        right: 0;
+        max-width: none;
+    }
+}
