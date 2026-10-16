@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -150,7 +151,8 @@ public class ChatProjectServiceImplement implements ChatProjectService {
             return List.of();
         }
         List<String> paths = new ArrayList<>(project.getAutoAppendFiles().size());
-        for (String fileName : project.getAutoAppendFiles()) {
+        // 去重兜底：清单有存量重复时，同一个文件也只解析一次、只挂一次
+        for (String fileName : new LinkedHashSet<>(project.getAutoAppendFiles())) {
             Path file = projectFileManager.resolveExistingProjectFile(projectId, fileName);
             if (file != null) {
                 paths.add(file.toString());
@@ -168,11 +170,19 @@ public class ChatProjectServiceImplement implements ChatProjectService {
         if (current == null) {
             throw new IllegalArgumentException("项目不存在：" + projectId);
         }
-        List<String> files = new ArrayList<>(current.getAutoAppendFiles());
-        // 幂等：已经是要的样子就原样返回，既不白写一次库，也不动 update_time
-        boolean changed = auto ? files.add(fileName) : files.remove(fileName);
-        if (!changed) {
+        List<String> raw = CollectionUtils.isEmpty(current.getAutoAppendFiles())
+                ? List.of() : current.getAutoAppendFiles();
+        // LinkedHashSet 一步做两件事：判重（同名只留一份）+ 顺手洗掉存量重复项
+        List<String> files = new ArrayList<>(new LinkedHashSet<>(raw));
+        // 幂等：既是要的样子、又没有存量重复，就原样返回，不白写一次库、也不动 update_time
+        boolean alreadyRight = files.contains(fileName) == auto;
+        if (alreadyRight && files.size() == raw.size()) {
             return current;
+        }
+        if (auto) {
+            files.add(fileName);
+        } else {
+            files.remove(fileName);
         }
         current.setAutoAppendFiles(files);
         return chatProjectRepository.update(current);
