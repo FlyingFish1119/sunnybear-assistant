@@ -194,10 +194,16 @@
 }
 
 /* ---- 项目行 ---- */
+/* 栅格布局：竖条独占一条纵列并跨满两行；标题行与描述各占一行，
+   描述横跨到最右（伸到操作按钮 / 箭头底下），不再被它们挤在半路 */
 .pp-item-head{
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+        "bar title actions caret"
+        "bar desc  desc    desc";
+    align-items: center;
+    column-gap: 8px;
     padding: 8px 8px 8px 6px;
     border-radius: 9px;
     cursor: pointer;
@@ -207,23 +213,27 @@
 
 .pp-item-head:hover{ background: #f4f5f7; }
 
+/* 各块在 head 栅格里的落点：集中声明，免得散在各条规则里对不上 */
+.pp-item-bar{ grid-area: bar; }
+.pp-item-title-row{ grid-area: title; }
+.pp-item-actions{ grid-area: actions; }
+.pp-item-caret{ grid-area: caret; }
+.pp-item-desc{ grid-area: desc; }
+
 /* 项目色竖条：与左侧会话列表里会话行那条同一套视觉语言 */
+/* 高度跟着项目行内容走（align-self: stretch）：desc 折两行、展开后摊开都自动适配，
+   不再写死高度 —— 写死的话 desc 一变行数竖条就显短 */
 .pp-item-bar{
     flex: none;
+    align-self: stretch;
     width: 3px;
-    height: 32px;
-    margin-top: 1px;
     border-radius: 2px;
     background: #d8dadd;
 }
 
-.pp-item-main{
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
+/* main 只是分组用的中转层：盒子拆掉（display: contents），
+   让标题行 / 操作 / 箭头 / 描述直接参与 head 的栅格行列分配 */
+.pp-item-main{ display: contents; }
 
 .pp-item-title-row{
     display: flex;
@@ -251,11 +261,23 @@
 
 .pp-item-desc{
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    margin-top: 3px;      /* 跟标题行之间那点呼吸位（原来靠 main 的 gap 给） */
     font-size: 11.5px;
+    line-height: 1.5;
     color: var(--text-muted, #999);
+    /* 折叠态：最多两行，超出打省略号（长串路径 / URL 也允许在任意位置断开） */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+}
+
+/* 展开态：解除行数限制，desc 全文摊开（描述里手敲的换行也保留） */
+.pp-item.is-open .pp-item-desc{
+    display: block;
+    -webkit-line-clamp: none;
+    white-space: pre-wrap;
 }
 
 /* 行内操作：默认隐藏（visibility 而非 display，hover 不产生布局位移） */
