@@ -3,7 +3,7 @@
    ------------------------------------------------------------
    结构：遮罩 + 两层浮层抽屉（都从左往右依次展开）
      · 第一层 .sf-drawer--tree    资源树（贴着导航轨滑出）
-     · 第二层 .sf-drawer--viewer  内容区（在第一层右边接着展开）
+     · 第二层 .sf-drawer--viewer  内容区（已拆成子组件 sf-viewer，样式见 sf-viewer.css）
    两层可共存：点文件不收起列表，方便连着翻几个文件看。
 
    宽度：第一层 320px、第二层占容器 60%（宽屏跟着屏幕变宽），窄屏按比例收。
@@ -41,12 +41,6 @@
     flex: none;
     width: var(--sf-tree-w);
     border-right: 1px solid rgba(0, 0, 0, 0.06);
-    animation: sf-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.sf-drawer--viewer{
-    flex: 1;
-    max-width: var(--sf-viewer-w);
     animation: sf-slide-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -284,115 +278,7 @@
     color: var(--text-muted, #999);
 }
 
-/* ---- 第二层：内容区 ---- */
-.sf-viewer-body{
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    background: #fbfbfc;
-}
-
-.sf-editor-host{
-    flex: 1;
-    min-height: 0;
-    position: relative;
-}
-
-/* Ace 会往宿主里塞自己的 DOM，这里只保证宿主撑满 */
-.sf-editor-host .ace_editor{
-    position: absolute;
-    inset: 0;
-    font-size: 13px;
-}
-
-.sf-image-wrap{
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    display: grid;
-    place-items: center;
-    padding: 18px;
-    background:
-        linear-gradient(45deg, #f0f0f2 25%, transparent 25%, transparent 75%, #f0f0f2 75%),
-        linear-gradient(45deg, #f0f0f2 25%, transparent 25%, transparent 75%, #f0f0f2 75%);
-    background-size: 18px 18px;
-    background-position: 0 0, 9px 9px;
-    background-color: #fafafa;
-}
-
-.sf-image-wrap img{
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    box-shadow: 0 6px 24px rgba(17, 24, 39, 0.16);
-    border-radius: 4px;
-}
-
-/* 视频：深底居中，跟图片区一样的撑满与留白逻辑 */
-.sf-video-wrap{
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    display: grid;
-    place-items: center;
-    padding: 18px;
-    background: #1b1c1f;
-}
-
-.sf-video-wrap video{
-    max-width: 100%;
-    max-height: 100%;
-    border-radius: 4px;
-    background: #000;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
-}
-
-/* ---- 状态条：保存状态 / 文件信息 ---- */
-.sf-status{
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    height: 30px;
-    padding: 0 14px;
-    box-sizing: border-box;
-    border-top: 1px solid rgba(0, 0, 0, 0.06);
-    background: #fff;
-    font-size: 11.5px;
-    color: var(--text-muted, #999);
-}
-
-.sf-status-dot{
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #c9ccd1;
-    flex: none;
-}
-
-.sf-status-dot.is-dirty{ background: #f0a02a; }
-.sf-status-dot.is-saving{ background: #3b82f6; }
-.sf-status-dot.is-saved{ background: #2fb344; }
-.sf-status-dot.is-error{ background: #e5484d; }
-
-.sf-status-path{
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    direction: rtl;              /* 路径太长时保留尾部（文件名那端） */
-    text-align: left;
-}
-
-.sf-status-action{
-    flex: none;
-    cursor: pointer;
-    color: #4b5563;
-}
-
-.sf-status-action:hover{ text-decoration: underline; }
+/* 第二层的样式（内容区 / 图片 / 视频 / 状态条 / Markdown 预览）跟着子组件走，见 sf-viewer.css */
 
 /* ---- 大文件分片上传进度 ---- */
 .sf-uploads{
@@ -470,8 +356,7 @@
 
 /* 跟随系统的「减少动态效果」偏好 */
 @media (prefers-reduced-motion: reduce){
-    .sf-drawer--tree,
-    .sf-drawer--viewer{ animation: none; }
+    .sf-drawer--tree{ animation: none; }
 }
 
 /* ---- 窄屏：导航轨不显示，抽屉从 0 起算；第二层不再挤在右边，改为盖在第一层上 ---- */
@@ -482,11 +367,5 @@
         --sf-viewer-w: 100vw;
     }
 
-    /* 移动端空间不够并排，内容区盖住整屏 */
-    .sf-drawer--viewer{
-        position: absolute;
-        left: 0;
-        right: 0;
-        max-width: none;
-    }
+    /* 窄屏下内容区盖住整屏：那条规则跟着组件走，见 sf-viewer.css */
 }
