@@ -189,6 +189,31 @@ public class ChatProjectServiceImplement implements ChatProjectService {
     }
 
     @Override
+    public void renameAutoAppendFile(String projectId, String oldName, String newName) {
+        if (!StringUtils.hasText(oldName) || !StringUtils.hasText(newName)) {
+            return;
+        }
+        ChatProject current = chatProjectRepository.selectById(projectId);
+        if (current == null || CollectionUtils.isEmpty(current.getAutoAppendFiles())) {
+            return;
+        }
+        List<String> raw = current.getAutoAppendFiles();
+        if (!raw.contains(oldName)) {
+            return;   // 这份文件本来就不在清单里，改名与自动追加无关
+        }
+        // 旧名换新名；顺手把存量重复、以及新名与别的条目撞车的情况一并抹平，顺序照旧
+        List<String> files = new ArrayList<>(raw.size());
+        for (String name : raw) {
+            String target = oldName.equals(name) ? newName : name;
+            if (!files.contains(target)) {
+                files.add(target);
+            }
+        }
+        current.setAutoAppendFiles(files);
+        chatProjectRepository.update(current);
+    }
+
+    @Override
     public void delete(String id) {
         ChatProject project = chatProjectRepository.selectById(id);
         if (project == null) {

@@ -59,4 +59,13 @@ public interface ChatProjectService {
      * @return 变更后的项目
      */
     public ChatProject updateAutoAppendFile(String projectId, String fileName, boolean auto);
+
+    /**
+     * 文件改名后，把自动追加清单里的旧名换成新名。
+     * <p>清单只认文件名，不跟着换的话，改一次名钉子就凭空掉了 ——
+     * 明明还是同一份资料，却要主人再点一次图钉才能找回来。
+     * <p>清单里本来就没有旧名时什么都不做（改名与自动追加无关，不白写一次库）；
+     * 同样不动 update_time，理由与 {@link #updateAutoAppendFile} 一致。
+     */
+    public void renameAutoAppendFile(String projectId, String oldName, String newName);
 }
