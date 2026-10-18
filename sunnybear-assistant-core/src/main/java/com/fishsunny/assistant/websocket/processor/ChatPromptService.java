@@ -9,13 +9,17 @@ package com.fishsunny.assistant.websocket.processor;
  */
 
 import com.fishsunny.assistant.constants.ControlSign;
+import com.fishsunny.assistant.engine.protocol.project.entity.ChatProject;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.mvc.service.ChatProjectBindings;
+import com.fishsunny.assistant.mvc.service.ChatProjectService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
 import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
+import com.fishsunny.assistant.utils.ProjectFileManager;
 import com.fishsunny.assistant.websocket.provider.ChatProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -55,6 +59,8 @@ public class ChatPromptService {
     private final KnowledgeService knowledgeService;
     private final MemoryService memoryService;
     private final MemorySettings memorySettings;
+    private final ChatProjectService chatProjectService;
+    private final ProjectFileManager projectFileManager;
 
     public String defaultSystemPrompt(ChatProvider.SystemProviderContext context, AssistantSettings activeAssistantSettings, String effectiveModelName, WebSocketSession session) throws Exception {
         ChatSession chatSession = context.chatSession();
@@ -72,10 +78,41 @@ public class ChatPromptService {
                 .replace(TOOL_NOTE, TOOL_NOTE_CONTENT)
         );
 
+        injectProjectPrompt(chatSession, systemPrompt);
         injectKnowledgePrompt(originMessages, chatSession, systemPrompt, session);
         injectMemoryPrompt(systemPrompt);
 
         return systemPrompt.toString();
+    }
+
+    /**
+     * 项目文档目录注入。
+     * <p>项目会话（extension 里挂着 chat_project_id）在系统提示词末尾带一段项目背景：
+     * 项目名 + 资料目录绝对路径 + 入口文档名。
+     * <p>只给「文档放在哪里」，不把内容读出来塞进上下文 ——
+     * 项目资料是跟着项目走的活文件，每轮都可能被改，让模型需要时自己用文件工具读，
+     * 才不会拿着一份开局快照说事。
+     */
+    private void injectProjectPrompt(ChatSession chatSession, StringBuilder systemPrompt) {
+        String projectId = ChatProjectBindings.resolveProjectId(chatSession);
+        if (!StringUtils.hasText(projectId)) {
+            return;
+        }
+        try {
+            // 项目记录已不在（删除过程中的中间态）时不注入：不该把模型引向一个无主目录
+            ChatProject project = chatProjectService.findById(projectId);
+            if (project == null) {
+                return;
+            }
+            // 绝对路径：base-path 配置是相对路径（data/），原样给模型会依赖工作目录，读起来不确定
+            String projectDir = projectFileManager.buildProjectDirPath(projectId)
+                    .toAbsolutePath().normalize().toString();
+            systemPrompt.append("\n[project]\n")
+                    .append("当前会话属于项目「").append(project.getName()).append("」，")
+                    .append("该项目的资料目录：`").append(projectDir).append("`\n");
+        } catch (Exception e) {
+            log.warn("项目文档目录注入失败: projectId={}, {}", projectId, e.getMessage());
+        }
     }
 
     private void injectKnowledgePrompt(List<ChatMessage> originMessages, ChatSession chatSession, StringBuilder systemPrompt, WebSocketSession session) {

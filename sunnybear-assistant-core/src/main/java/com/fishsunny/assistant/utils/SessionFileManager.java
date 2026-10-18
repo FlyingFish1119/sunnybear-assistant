@@ -586,13 +586,32 @@ public class SessionFileManager {
                                 "用户上传了文本文件：" + path + "（大小 " + bytes.length + " 字节，超过 " + maxBytes + " 字节上限，未展开原文）"));
                         continue;
                     }
-                    messageContents.add(new TextContent(new String(bytes, StandardCharsets.UTF_8)));
+                    // 文本进上下文时先在开头标一行 [文件名]：一段裸文本模型无从判断它出自哪个文件，
+                    // 多个附件挂在一起更是分不清边界；文件名只取最后一段，不泄露沙箱外的目录结构
+                    messageContents.add(new TextContent(
+                            "[" + resolveDisplayFileName(path) + "]\n" + new String(bytes, StandardCharsets.UTF_8)));
                 } catch (Exception e) {
                     log.error("Error loading file: {}", path, e);
                 }
             }
         }
         return messageContents;
+    }
+
+    /**
+     * 从文件引用里取出给模型看的文件名。
+     * <p>引用有两种形态：会话沙箱的 {@code sessionId:相对路径}、项目自动追加文件的绝对路径。
+     * 模型只需要知道「这段文本出自哪个文件」，所以一律取最后一段；
+     * 取不出名字时用「文件」兜底，避免前缀变成一对空括号。
+     */
+    private String resolveDisplayFileName(String path) {
+        String value = path == null ? "" : path.trim();
+        if (value.startsWith(SESSION_MARKER)) {
+            value = value.substring(SESSION_MARKER.length());
+        }
+        int slash = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'));
+        String name = slash >= 0 ? value.substring(slash + 1) : value;
+        return StringUtils.hasText(name) ? name : "文件";
     }
 
     /**
