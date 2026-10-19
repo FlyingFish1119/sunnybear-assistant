@@ -2,8 +2,8 @@ package com.fishsunny.assistant.plug.qq.service;
 
 /*
  * @Usage QQ Bot 服务实现 —— 通过 ChatWebSocketProxy 复用 Web 端完整对话流程。
- *        回复切分以 ChatWebSocketProxy 的流式分片为主，这里承担发送侧兜底：
- *        残留记号再切一次、单片超长按句末标点二次切分、多段之间留出连发节奏。
+ *        段落切分由 ChatWebSocketProxy 按流式段边界（空行）完成，这里承担发送侧兜底：
+ *        单段超长时按句末标点二次切分，多段之间留出连发节奏。
  *
  * @Project sunnybear-assistant
  * @Author FlyingFish-SunnyBear
@@ -28,9 +28,6 @@ import java.util.Map;
 public class QQBotServiceImplement implements QQBotService {
 
     private static final Logger log = LoggerFactory.getLogger(QQBotServiceImplement.class);
-
-    /** 分条记号兜底：正常分片已由 ChatWebSocketProxy 按流式切好，这里再兜一次，防记号漏到 QQ 正文里 */
-    private static final String SEGMENT_MARK_REGEX = "(?m)^[ \\t]*%{3}[ \\t]*\\r?$";
 
     /** 单条消息字符数兜底上限：超过则按句末标点二次切分（QQ 单条消息过长会被截断或拒收） */
     private static final int MAX_SEGMENT_LENGTH = 1500;
@@ -102,33 +99,20 @@ public class QQBotServiceImplement implements QQBotService {
     // ==================== 回复分条 ====================
 
     /**
-     * 发送一片 AI 回复：可能来自流式分片，也可能是轮次结束时补发的整段。
-     * 先按残留记号拆一次（兜底），再对仍超长的段落做句末标点二次切分，最后依次发出。
-     * 模型按语义给出断点，程序按长度兜底，两层叠加避免断在半句话上。
+     * 发送一段 AI 回复：段落切分已由 ChatWebSocketProxy 按流式段边界（空行）完成，
+     * 这里只做超长兜底（QQ 单条消息过长会被截断或拒收）与多段之间的连发节奏。
      */
     private void sendSegments(QQMessage msg, String text) {
-        List<String> segments = splitSegments(text);
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        List<String> segments = limitLength(text.strip(), MAX_SEGMENT_LENGTH);
         for (int i = 0; i < segments.size(); i++) {
             if (i > 0) {
                 sleepQuietly(SEGMENT_INTERVAL_MS);
             }
             sendReply(msg, segments.get(i));
         }
-    }
-
-    private List<String> splitSegments(String text) {
-        if (text == null || text.isBlank()) {
-            return Collections.emptyList();
-        }
-        List<String> segments = new ArrayList<>();
-        for (String block : text.split(SEGMENT_MARK_REGEX)) {
-            String trimmed = block.strip();
-            if (trimmed.isEmpty()) {
-                continue;
-            }
-            segments.addAll(limitLength(trimmed, MAX_SEGMENT_LENGTH));
-        }
-        return segments;
     }
 
     /** 把超长段落按句末标点贪心切成若干段，尽量不切断句子 */

@@ -38,6 +38,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 通过 CapturingSession 把 QQ 消息注入 WebSocket 对话管道，
@@ -48,12 +50,16 @@ import java.util.function.Consumer;
 @RequiredArgsConstructor
 public class ChatWebSocketProxy {
 
-    /** 分条记号：独占一行的三个百分号，语义与 plug.qq.prompt 中的约定一致 */
-    private static final String SEGMENT_MARK = "%%%";
+    /**
+     * 分条边界：段与段之间的空行。AI 用空行分段，段落之间就作为独立的 QQ 消息发出，
+     * 不引入人造记号；段内的普通换行只作排版，不触发分条。
+     */
+    private static final Pattern SEGMENT_BOUNDARY = Pattern.compile("\\n[ \\t\\r]*\\n");
 
     private final QQChatWebSocketHandler handler;
     private final ObjectMapper objectMapper;
     private final ChatCancelRegistry cancelRegistry;
+    private final SessionMessageBus sessionMessageBus;
 
     /** QQ 用户标识 → 网页端 ChatSession ID */
     private final Map<String, String> sessionMap = new ConcurrentHashMap<>();
@@ -85,15 +91,30 @@ public class ChatWebSocketProxy {
         handler.processMessage(session, new TextMessage(payload));
 
         boolean finished = session.latch.await(300, TimeUnit.SECONDS);
-        if (!finished) {
-            log.warn("QQ 对话超时，session={}", session.id);
-            progressCallback.accept("处理超时，请稍后重试");
+        try {
+            if (!finished) {
+                log.warn("QQ 对话超时，session={}", session.id);
+                progressCallback.accept("处理超时，请稍后重试");
+            }
+        } finally {
+            releaseSession(qqUserId, session);
+        }
+    }
+
+    /**
+     * 把这一轮的伪装会话从总线摘除，并记下会话映射供下一轮 APPEND 复用。
+     * <p>CapturingSession 是伪造连接，没有「连接关闭」这个事件（前端真实连接靠 afterConnectionClosed 退订），
+     * 必须在这里显式摘除：否则订阅者会随对话轮数一轮一轮累积，同一帧被广播给历次残留会话，
+     * 每个残留会话又各自握着自己那一轮回调往 QQ 发一遍，表现就是第 N 轮回复被重复发送 N 次。
+     */
+    private void releaseSession(String qqUserId, CapturingSession session) {
+        String sessionId = session.capturedSessionId;
+        if (sessionId == null) {
+            // 会话都没建起来（如请求校验失败）：订阅未发生，无需摘除
             return;
         }
-
-        if (session.capturedSessionId != null) {
-            sessionMap.put(qqUserId, session.capturedSessionId);
-        }
+        sessionMap.put(qqUserId, sessionId);
+        sessionMessageBus.unsubscribe(sessionId, session);
     }
 
     /** 清除指定用户的会话映射 */
@@ -124,8 +145,9 @@ public class ChatWebSocketProxy {
         String capturedSessionId;
 
         /**
-         * 流式增量缓冲：正文增量先落在这里，命中分条记号才把记号之前的内容交出去，
-         * 尾部不足一个完整记号的继续留着等下一片——这样记号被拆在两个 chunk 里也不会漏判。
+         * 流式增量缓冲：正文先落在这里，遇到段与段之间的空行才把上一段交出去。
+         * 末尾那个孤零零的换行继续留着——空行完全可能被拆在两个 chunk 里
+         * （前一片结尾一个换行、后一片开头一个换行），当场判断会把段落切错。
          */
         private final StringBuilder streamBuffer = new StringBuilder();
 
@@ -183,7 +205,7 @@ public class ChatWebSocketProxy {
 
         /**
          * 流式增量：原样追加（纯空白增量也要保留，否则流式下 \n\n 这类段落分隔会丢），
-         * 命中分条记号就把记号之前的内容作为一条发出去。
+         * 攒到空行就把上一段作为一条发出去。
          */
         private void appendDelta(ChatResponse resp) {
             String delta = textOf(resp);
@@ -201,7 +223,7 @@ public class ChatWebSocketProxy {
 
         /**
          * 助手消息完成：流式已接管则只发残余；若本轮根本没收到增量（非流式协议），
-         * 就把这条完整消息按记号切分后补发，保证两条路径行为一致。
+         * 就把这条完整消息按段落切分后补发，保证两条路径行为一致。
          */
         private void finishAssistant(ChatResponse resp) {
             List<String> ready;
@@ -237,18 +259,20 @@ public class ChatWebSocketProxy {
             latch.countDown();
         }
 
-        /** 锁内：切出缓冲区里所有已成形分片（记号本身吃掉，不进入正文） */
+        /** 锁内：切出缓冲区里所有已成形的段落（作为分隔符的空行不进入正文） */
         private List<String> drainSegments() {
             List<String> segments = new ArrayList<>();
-            int idx;
-            while ((idx = streamBuffer.indexOf(SEGMENT_MARK)) >= 0) {
-                String segment = streamBuffer.substring(0, idx).strip();
-                streamBuffer.delete(0, idx + SEGMENT_MARK.length());
+            while (true) {
+                Matcher matcher = SEGMENT_BOUNDARY.matcher(streamBuffer);
+                if (!matcher.find()) {
+                    return segments;
+                }
+                String segment = streamBuffer.substring(0, matcher.start()).strip();
+                streamBuffer.delete(0, matcher.end());
                 if (!segment.isEmpty()) {
                     segments.add(segment);
                 }
             }
-            return segments;
         }
 
         /** 锁内：把缓冲区残余整体取走并清空 */
