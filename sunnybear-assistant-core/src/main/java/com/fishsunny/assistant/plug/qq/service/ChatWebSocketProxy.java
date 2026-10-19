@@ -14,9 +14,19 @@ import com.fishsunny.assistant.dto.ChatMessageRequest;
 import com.fishsunny.assistant.engine.cancel.ChatCancelRegistry;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.plug.qq.component.QQChatWebSocketHandler;
+import com.fishsunny.assistant.websocket.processor.ChatProcessor;
+import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
+import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
+import com.fishsunny.assistant.websocket.provider.DefaultChatProviderFactory;
+import com.fishsunny.assistant.websocket.request.ChatMessageRequestHandlerFactory;
 import com.fishsunny.assistant.websocket.ws.ChatWebSocketHandler;
+import com.fishsunny.assistant.websocket.ws.SessionMessageBus;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -40,23 +50,17 @@ import java.util.function.Consumer;
  * 通过 CapturingSession 把 QQ 消息注入 WebSocket 对话管道，
  * 使得 QQ 对话在网页端可以像普通会话一样显示和继续操作。
  */
+@Slf4j
 @Component
+@RequiredArgsConstructor
 public class ChatWebSocketProxy {
 
-    private static final Logger log = LoggerFactory.getLogger(ChatWebSocketProxy.class);
-
-    private final ChatWebSocketHandler handler;
+    private final QQChatWebSocketHandler handler;
     private final ObjectMapper objectMapper;
     private final ChatCancelRegistry cancelRegistry;
 
     /** QQ 用户标识 → 网页端 ChatSession ID */
     private final Map<String, String> sessionMap = new ConcurrentHashMap<>();
-
-    public ChatWebSocketProxy(ChatWebSocketHandler handler, ObjectMapper objectMapper, ChatCancelRegistry cancelRegistry) {
-        this.handler = handler;
-        this.objectMapper = objectMapper;
-        this.cancelRegistry = cancelRegistry;
-    }
 
     /**
      * 将 QQ 消息注入 Web 对话管道，所有 AI 回复通过 callback 推送。
@@ -159,11 +163,13 @@ public class ChatWebSocketProxy {
                         continue;
                     }
 
+                    // 工具结果是过程信息，不外显到 QQ（与 QQ 提示词中的「过程不外显」约定一致），仅记日志便于排查
                     if (ChatMessage.ROLE_TOOL.equals(msg.getRole())) {
-                        progressCallback.accept("[工具结果] " + (text.length() > 1000 ? text.substring(0, 1000) + "..." : text));
-                    } else {
-                        progressCallback.accept(text);
+                        log.debug("QQ 对话工具结果（不外显）: {}", text);
+                        continue;
                     }
+
+                    progressCallback.accept(text);
                 }
             } catch (Exception ignored) {
                 // 非 ChatResponse 格式（TOOL_ASK 等）跳过

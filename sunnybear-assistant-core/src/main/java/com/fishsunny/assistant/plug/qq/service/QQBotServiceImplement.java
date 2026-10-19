@@ -1,7 +1,8 @@
 package com.fishsunny.assistant.plug.qq.service;
 
 /*
- * @Usage QQ Bot 服务实现 —— 通过 ChatWebSocketProxy 复用 Web 端完整对话流程
+ * @Usage QQ Bot 服务实现 —— 通过 ChatWebSocketProxy 复用 Web 端完整对话流程，
+ *        回复侧按分条记号切分、超长按句末标点兜底，逐条发到 QQ
  *
  * @Project sunnybear-assistant
  * @Author FlyingFish-SunnyBear
@@ -16,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -25,6 +27,15 @@ import java.util.Map;
 public class QQBotServiceImplement implements QQBotService {
 
     private static final Logger log = LoggerFactory.getLogger(QQBotServiceImplement.class);
+
+    /** AI 回复的分条记号：独占一行的三个百分号，与 plug.qq.prompt 中的约定一致 */
+    private static final String SEGMENT_MARK_REGEX = "(?m)^[ \\t]*%{3}[ \\t]*\\r?$";
+
+    /** 单条消息字符数兜底上限：超过则按句末标点二次切分（QQ 单条消息过长会被截断或拒收） */
+    private static final int MAX_SEGMENT_LENGTH = 1500;
+
+    /** 分条连发的间隔毫秒数，避免瞬间刷屏 */
+    private static final long SEGMENT_INTERVAL_MS = 400L;
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
@@ -68,7 +79,7 @@ public class QQBotServiceImplement implements QQBotService {
         // 委托 ChatWebSocketProxy 执行完整 Web 对话流程，所有回复通过 callback 推送到 QQ
         try {
             webSocketProxy.processMessage(userId, senderNick, msg.getRawMessage(),
-                    progress -> sendReply(msg, progress));
+                    progress -> sendSegments(msg, progress));
         } catch (Exception e) {
             log.error("Web 对话流程处理失败: {}", e.getMessage(), e);
             sendReply(msg, "抱歉，处理你的消息时出错了: " + e.getMessage());
@@ -85,6 +96,78 @@ public class QQBotServiceImplement implements QQBotService {
                     new SendMsgRequest().setGroupId(msg.getGroupId()).setMessage(text));
         }
         return null;
+    }
+
+    // ==================== 回复分条 ====================
+
+    /**
+     * 发送 AI 回复：先按分条记号拆成多条，再对仍超长的段落做句末标点二次切分，最后依次发出。
+     * 模型按语义给出断点，程序按长度兜底，两层叠加避免断在半句话上。
+     */
+    private void sendSegments(QQMessage msg, String text) {
+        List<String> segments = splitSegments(text);
+        for (int i = 0; i < segments.size(); i++) {
+            if (i > 0) {
+                sleepQuietly(SEGMENT_INTERVAL_MS);
+            }
+            sendReply(msg, segments.get(i));
+        }
+    }
+
+    private List<String> splitSegments(String text) {
+        if (text == null || text.isBlank()) {
+            return Collections.emptyList();
+        }
+        List<String> segments = new ArrayList<>();
+        for (String block : text.split(SEGMENT_MARK_REGEX)) {
+            String trimmed = block.strip();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            segments.addAll(limitLength(trimmed, MAX_SEGMENT_LENGTH));
+        }
+        return segments;
+    }
+
+    /** 把超长段落按句末标点贪心切成若干段，尽量不切断句子 */
+    private List<String> limitLength(String segment, int limit) {
+        List<String> result = new ArrayList<>();
+        String remaining = segment;
+        while (remaining.length() > limit) {
+            int cut = findCutPoint(remaining, limit);
+            String head = remaining.substring(0, cut).strip();
+            remaining = remaining.substring(cut).strip();
+            if (!head.isEmpty()) {
+                result.add(head);
+            }
+        }
+        if (!remaining.isEmpty()) {
+            result.add(remaining);
+        }
+        return result;
+    }
+
+    /** 在 [limit/2, limit) 内自后向前找最近的断句位置；找不到就硬切在 limit 处 */
+    private int findCutPoint(String text, int limit) {
+        for (int i = limit - 1; i > limit / 2; i--) {
+            if (isSentenceEnd(text.charAt(i))) {
+                return i + 1;
+            }
+        }
+        return limit;
+    }
+
+    private boolean isSentenceEnd(char c) {
+        return c == '\n' || c == '。' || c == '！' || c == '？' || c == '；' || c == '…'
+                || c == '.' || c == '!' || c == '?' || c == ';';
+    }
+
+    private void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private ApiResponse handleCommand(String rawMessage, String userId, QQMessage msg) {
