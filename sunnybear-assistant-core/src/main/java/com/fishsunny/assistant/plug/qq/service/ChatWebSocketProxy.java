@@ -1,7 +1,9 @@
 package com.fishsunny.assistant.plug.qq.service;
 
 /*
- * @Usage QQ → Web 对话代理 —— 调用 ChatWebSocketHandler.processMessage 复用完整对话流程
+ * @Usage QQ → Web 对话代理 —— 调用 ChatWebSocketHandler.processMessage 复用完整对话流程。
+ *        流式接管：CapturingSession 累积流式增量，命中分条记号即发一片，轮次收尾时发出残余，
+ *        使 QQ 侧能边生成边收到消息，而不是等整轮 ReAct 结束才一次性吐出。
  *
  * @Project sunnybear-assistant
  * @Author FlyingFish-SunnyBear
@@ -15,28 +17,19 @@ import com.fishsunny.assistant.engine.cancel.ChatCancelRegistry;
 import com.fishsunny.assistant.engine.protocol.project.ChatResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.plug.qq.component.QQChatWebSocketHandler;
-import com.fishsunny.assistant.websocket.processor.ChatProcessor;
-import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
-import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
-import com.fishsunny.assistant.websocket.provider.DefaultChatProviderFactory;
-import com.fishsunny.assistant.websocket.request.ChatMessageRequestHandlerFactory;
-import com.fishsunny.assistant.websocket.ws.ChatWebSocketHandler;
 import com.fishsunny.assistant.websocket.ws.SessionMessageBus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
-import org.springframework.util.StringUtils;
 import org.springframework.web.socket.*;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.security.Principal;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -55,6 +48,9 @@ import java.util.function.Consumer;
 @RequiredArgsConstructor
 public class ChatWebSocketProxy {
 
+    /** 分条记号：独占一行的三个百分号，语义与 plug.qq.prompt 中的约定一致 */
+    private static final String SEGMENT_MARK = "%%%";
+
     private final QQChatWebSocketHandler handler;
     private final ObjectMapper objectMapper;
     private final ChatCancelRegistry cancelRegistry;
@@ -68,10 +64,10 @@ public class ChatWebSocketProxy {
      * @param qqUserId         QQ 用户标识（QQ 号字符串）
      * @param userName         显示的用户名
      * @param message          用户消息文本
-     * @param progressCallback AI 回复 / 进度回调，不可为 null
+     * @param progressCallback AI 回复 / 进度回调，不可为 null；流式下会按分片多次调用
      */
     public void processMessage(String qqUserId, String userName, String message,
-                                Consumer<String> progressCallback) throws Exception {
+                                 Consumer<String> progressCallback) throws Exception {
         CapturingSession session = new CapturingSession("qq-" + qqUserId, progressCallback, objectMapper);
 
         String existingSessionId = sessionMap.get(qqUserId);
@@ -127,6 +123,15 @@ public class ChatWebSocketProxy {
 
         String capturedSessionId;
 
+        /**
+         * 流式增量缓冲：正文增量先落在这里，命中分条记号才把记号之前的内容交出去，
+         * 尾部不足一个完整记号的继续留着等下一片——这样记号被拆在两个 chunk 里也不会漏判。
+         */
+        private final StringBuilder streamBuffer = new StringBuilder();
+
+        /** 本轮助手消息是否已有流式增量流入：有则 init_assistant 只做收尾，不重复发一遍正文 */
+        private boolean streamedThisTurn;
+
         CapturingSession(String id, Consumer<String> progressCallback, ObjectMapper objectMapper) {
             this.id = id;
             this.progressCallback = progressCallback;
@@ -136,43 +141,144 @@ public class ChatWebSocketProxy {
         @Override
         public void sendMessage(WebSocketMessage<?> message) throws IOException {
             String payload = message.getPayload() instanceof String ? (String) message.getPayload() : null;
-            if (payload == null) return;
+            if (payload == null) {
+                return;
+            }
 
             if (payload.startsWith(ControlSign.SIGN_START)) {
                 capturedSessionId = payload.substring(ControlSign.SIGN_START.length());
                 return;
             }
             if (payload.startsWith(ControlSign.SIGN_END)) {
+                List<String> tail;
+                synchronized (streamBuffer) {
+                    tail = flushSegments();
+                    streamedThisTurn = false;
+                }
+                tail.forEach(this::emit);
                 latch.countDown();
                 return;
             }
 
             try {
-                ChatResponse resp = objectMapper.readValue(payload, ChatResponse.class);
-                String status = resp.getStatus();
-                if (CollectionUtils.isEmpty(resp.getMessages()) || progressCallback == null) {
-                    return;
-                }
-                // 只推送完整的消息，跳过流式 chunk
-                if (!ChatResponse.STATUS_INIT_ASSISTANT.equals(status) && !ChatResponse.STATUS_TOOL_RESPONSE.equals(status)) {
-                    return;
-                }
-                for (ChatMessage msg : resp.getMessages()) {
-                    String text = msg.resolveText();
-                    if (!StringUtils.hasText(text)) {
-                        continue;
-                    }
+                handleResponse(objectMapper.readValue(payload, ChatResponse.class));
+            } catch (Exception e) {
+                // 控制信号（TOOL_ASK / QUESTION 等）与其它非对话帧：不入 QQ，忽略
+                log.debug("QQ 会话收到非对话帧，已忽略: {}", e.getMessage());
+            }
+        }
 
-                    // 工具结果是过程信息，不外显到 QQ（与 QQ 提示词中的「过程不外显」约定一致），仅记日志便于排查
-                    if (ChatMessage.ROLE_TOOL.equals(msg.getRole())) {
-                        log.debug("QQ 对话工具结果（不外显）: {}", text);
-                        continue;
-                    }
+        private void handleResponse(ChatResponse resp) {
+            String status = resp.getStatus();
+            // done 帧在部分协议（如 Gemini）里同样携带正文增量，与 chunk 一并按增量处理
+            if (ChatResponse.STATUS_CHUNK.equals(status) || ChatResponse.STATUS_DONE.equals(status)) {
+                appendDelta(resp);
+            } else if (ChatResponse.STATUS_INIT_ASSISTANT.equals(status)) {
+                finishAssistant(resp);
+            } else if (ChatResponse.STATUS_ERROR.equals(status)) {
+                failTurn(resp);
+            }
+            // 其余状态（工具消息、临时提示等）都属于过程信息，不外显到 QQ
+        }
 
-                    progressCallback.accept(text);
+        /**
+         * 流式增量：原样追加（纯空白增量也要保留，否则流式下 \n\n 这类段落分隔会丢），
+         * 命中分条记号就把记号之前的内容作为一条发出去。
+         */
+        private void appendDelta(ChatResponse resp) {
+            String delta = textOf(resp);
+            if (delta == null || delta.isEmpty()) {
+                return;
+            }
+            List<String> ready;
+            synchronized (streamBuffer) {
+                streamBuffer.append(delta);
+                streamedThisTurn = true;
+                ready = drainSegments();
+            }
+            ready.forEach(this::emit);
+        }
+
+        /**
+         * 助手消息完成：流式已接管则只发残余；若本轮根本没收到增量（非流式协议），
+         * 就把这条完整消息按记号切分后补发，保证两条路径行为一致。
+         */
+        private void finishAssistant(ChatResponse resp) {
+            List<String> ready;
+            synchronized (streamBuffer) {
+                if (!streamedThisTurn) {
+                    String whole = textOf(resp);
+                    if (whole != null) {
+                        streamBuffer.append(whole);
+                    }
                 }
-            } catch (Exception ignored) {
-                // 非 ChatResponse 格式（TOOL_ASK 等）跳过
+                ready = drainSegments();
+                ready.addAll(flushSegments());
+                streamedThisTurn = false;
+            }
+            ready.forEach(this::emit);
+        }
+
+        /**
+         * 本轮出错：先发出已经生成的内容，再把错误原因说明出去，并结束等待。
+         * 不加这一步，错误路径不会推 END 帧，QQ 侧只能干等到 300 秒超时才吐一句「处理超时」。
+         */
+        private void failTurn(ChatResponse resp) {
+            List<String> ready;
+            synchronized (streamBuffer) {
+                ready = flushSegments();
+                streamedThisTurn = false;
+            }
+            ready.forEach(this::emit);
+            String reason = textOf(resp);
+            if (reason != null) {
+                emit(reason);
+            }
+            latch.countDown();
+        }
+
+        /** 锁内：切出缓冲区里所有已成形分片（记号本身吃掉，不进入正文） */
+        private List<String> drainSegments() {
+            List<String> segments = new ArrayList<>();
+            int idx;
+            while ((idx = streamBuffer.indexOf(SEGMENT_MARK)) >= 0) {
+                String segment = streamBuffer.substring(0, idx).strip();
+                streamBuffer.delete(0, idx + SEGMENT_MARK.length());
+                if (!segment.isEmpty()) {
+                    segments.add(segment);
+                }
+            }
+            return segments;
+        }
+
+        /** 锁内：把缓冲区残余整体取走并清空 */
+        private List<String> flushSegments() {
+            String tail = streamBuffer.toString().strip();
+            streamBuffer.setLength(0);
+            return tail.isEmpty() ? List.of() : List.of(tail);
+        }
+
+        /** 取一帧里的正文文本；工具消息与思考内容（reasoningContent）都不计入 */
+        private String textOf(ChatResponse resp) {
+            if (CollectionUtils.isEmpty(resp.getMessages())) {
+                return null;
+            }
+            StringBuilder text = new StringBuilder();
+            for (ChatMessage msg : resp.getMessages()) {
+                if (ChatMessage.ROLE_TOOL.equals(msg.getRole())) {
+                    continue;
+                }
+                String content = msg.resolveText();
+                if (content != null) {
+                    text.append(content);
+                }
+            }
+            return text.isEmpty() ? null : text.toString();
+        }
+
+        private void emit(String text) {
+            if (progressCallback != null && !text.isEmpty()) {
+                progressCallback.accept(text);
             }
         }
 
