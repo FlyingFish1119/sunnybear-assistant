@@ -16,7 +16,9 @@ import com.fishsunny.assistant.plug.qq.config.QQBotOption;
 import com.fishsunny.assistant.plug.qq.entity.FriendInfo;
 import com.fishsunny.assistant.plug.qq.service.QQBotService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
@@ -35,7 +37,7 @@ public class QQListWhitelistTool implements ToolHandler {
     private final QQBotService qqBotService;
     private final QQBotOption qqBotOption;
 
-    public QQListWhitelistTool(QQBotService qqBotService, QQBotOption qqBotOption) {
+    public QQListWhitelistTool(@Lazy QQBotService qqBotService, QQBotOption qqBotOption) {
         this.qqBotService = qqBotService;
         this.qqBotOption = qqBotOption;
 

@@ -13,6 +13,8 @@ package com.fishsunny.assistant.plug.qq.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.plug.qq.config.QQBotOption;
 import com.fishsunny.assistant.plug.qq.entity.*;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -25,10 +27,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class QQBotServiceImplement implements QQBotService {
-
-    private static final Logger log = LoggerFactory.getLogger(QQBotServiceImplement.class);
 
     /** 段落边界：空行。与 ChatWebSocketProxy 的流式段边界同一规则，两条发送路径分段一致 */
     private static final String SEGMENT_BOUNDARY_REGEX = "\\r?\\n[ \\t]*\\r?\\n";
@@ -43,16 +45,6 @@ public class QQBotServiceImplement implements QQBotService {
     private final ObjectMapper objectMapper;
     private final QQBotOption qqBotOption;
     private final ChatWebSocketProxy webSocketProxy;
-
-    public QQBotServiceImplement(RestTemplate restTemplate,
-                                 ObjectMapper objectMapper,
-                                 QQBotOption qqBotOption,
-                                 ChatWebSocketProxy webSocketProxy) {
-        this.restTemplate = restTemplate;
-        this.objectMapper = objectMapper;
-        this.qqBotOption = qqBotOption;
-        this.webSocketProxy = webSocketProxy;
-    }
 
     @Override
     public ApiResponse handleAndReply(QQMessage msg) {

@@ -16,6 +16,7 @@ import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent
 import com.fishsunny.assistant.plug.qq.service.QQBotService;
 import lombok.Data;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
@@ -31,7 +32,7 @@ public class QQSendGroupMessageTool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final QQBotService qqBotService;
 
-    public QQSendGroupMessageTool(ObjectMapper objectMapper, QQBotService qqBotService) {
+    public QQSendGroupMessageTool(ObjectMapper objectMapper, @Lazy QQBotService qqBotService) {
         this.objectMapper = objectMapper;
         this.qqBotService = qqBotService;
 
