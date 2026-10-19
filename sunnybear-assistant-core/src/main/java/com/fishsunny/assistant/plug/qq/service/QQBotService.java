@@ -17,6 +17,26 @@ public interface QQBotService {
     /** 接收消息并处理回复 */
     ApiResponse handleAndReply(QQMessage message);
 
+    // ==================== 主动发送（工具调用，非消息回复） ====================
+
+    /**
+     * 主动向指定好友发送消息，文本按空行分段、超长按句末标点兜底，逐条发出。
+     *
+     * @param userId  接收者 QQ 号
+     * @param message 消息内容
+     * @return 实际发送的条数
+     */
+    int sendPrivateMessage(Long userId, String message);
+
+    /**
+     * 主动向指定群发送消息，分段规则同上。
+     *
+     * @param groupId 群号
+     * @param message 消息内容
+     * @return 实际发送的条数
+     */
+    int sendGroupMessage(Long groupId, String message);
+
     // ==================== 查询信息 ====================
 
     LoginInfo getLoginInfo();

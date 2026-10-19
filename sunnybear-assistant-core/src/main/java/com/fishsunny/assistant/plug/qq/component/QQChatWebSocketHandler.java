@@ -1,7 +1,8 @@
 package com.fishsunny.assistant.plug.qq.component;
 
 /*
- * @Usage QQ 对话 WebSocket 处理器 —— 在全局主提示词之后追加 QQ 环境说明，让 AI 明确当前在 QQ 里说话
+ * @Usage QQ 对话 WebSocket 处理器 —— 在全局主提示词之后追加 QQ 环境说明，让 AI 明确当前在 QQ 里说话；
+ *        同时从工具表里摘掉主动发送工具，避免与自动回复撞成重复
  *
  * @Project sunnybear-assistant
  * @Author FlyingFish-SunnyBear
@@ -10,6 +11,8 @@ package com.fishsunny.assistant.plug.qq.component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
+import com.fishsunny.assistant.plug.qq.tool.QQSendGroupMessageTool;
+import com.fishsunny.assistant.plug.qq.tool.QQSendPrivateMessageTool;
 import com.fishsunny.assistant.websocket.processor.ChatProcessor;
 import com.fishsunny.assistant.websocket.processor.ServiceProcessor;
 import com.fishsunny.assistant.websocket.processor.TempChatProcessor;
@@ -24,18 +27,29 @@ import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.Set;
 import java.util.function.Function;
 
 /**
  * QQ 渠道的对话处理器。
  *
- * <p>与网页端共用同一条对话管道，唯一差异在系统提示词：以默认 provider（全局主提示词 + 知识库 + 记忆）为基底，
- * 在其后追加 {@code plug.qq.prompt} 配置的 QQ 环境说明，用于约束纯文本输出、篇幅与「过程不外显」。
- * 工具表与设置项均不改动，QQ 与网页端的能力保持一致。
+ * <p>与网页端共用同一条对话管道，差异只有两处：
+ * 一是系统提示词，以默认 provider（全局主提示词 + 知识库 + 记忆）为基底，追加 {@code plug.qq.prompt} 的
+ * QQ 环境说明，用于约束纯文本输出、篇幅与「段落即分条」；
+ * 二是工具表，摘掉主动发送那一对工具——本渠道的回复本来就发往 QQ，再调工具等于重复发一遍。
+ * 其余设置项不改动，QQ 与网页端的能力保持一致。
  */
 @Slf4j
 @Component("qqChatWebSocketHandler")
 public class QQChatWebSocketHandler extends ChatWebSocketHandler {
+
+    /**
+     * 本渠道摘除的工具：主动发送。工具本身给网页端对话与定时任务用，
+     * 在 QQ 渠道里用只会在自动回复之外多发一遍。
+     */
+    private static final Set<String> CHANNEL_EXCLUDED_TOOLS = Set.of(
+            QQSendPrivateMessageTool.NAME,
+            QQSendGroupMessageTool.NAME);
 
     private final String qqPrompt;
 
@@ -53,12 +67,16 @@ public class QQChatWebSocketHandler extends ChatWebSocketHandler {
     }
 
     /**
-     * 会话感知版 ChatProvider：在默认系统提示词之后追加 QQ 环境说明。
-     * 未配置 {@code plug.qq.prompt} 时行为与网页端完全一致，不会注入空段落。
+     * 会话感知版 ChatProvider：默认提示词追加 QQ 环境说明，工具表摘除主动发送工具。
+     * 未配置 {@code plug.qq.prompt} 时只做工具摘除，提示词沿用网页端那一份。
      */
     @Override
     public ChatProvider chatToAiProvider(ChatSession chatSession) {
-        ChatProvider provider = defaultChatProviderFactory.newProvider();
+        ChatProvider provider = defaultChatProviderFactory.newProvider()
+                .setToolProvider(context -> context.toolRegisters().stream()
+                        .filter(register -> !CHANNEL_EXCLUDED_TOOLS.contains(register.getFunction().getName()))
+                        .toList());
+
         if (!StringUtils.hasText(qqPrompt)) {
             log.warn("未配置 plug.qq.prompt，QQ 对话将沿用网页端系统提示词");
             return provider;

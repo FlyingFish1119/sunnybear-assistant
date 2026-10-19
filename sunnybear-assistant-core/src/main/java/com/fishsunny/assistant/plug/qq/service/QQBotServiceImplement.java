@@ -23,11 +23,15 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 @Service
 public class QQBotServiceImplement implements QQBotService {
 
     private static final Logger log = LoggerFactory.getLogger(QQBotServiceImplement.class);
+
+    /** 段落边界：空行。与 ChatWebSocketProxy 的流式段边界同一规则，两条发送路径分段一致 */
+    private static final String SEGMENT_BOUNDARY_REGEX = "\\r?\\n[ \\t]*\\r?\\n";
 
     /** 单条消息字符数兜底上限：超过则按句末标点二次切分（QQ 单条消息过长会被截断或拒收） */
     private static final int MAX_SEGMENT_LENGTH = 1500;
@@ -77,7 +81,7 @@ public class QQBotServiceImplement implements QQBotService {
         // 委托 ChatWebSocketProxy 执行完整 Web 对话流程，所有回复通过 callback 推送到 QQ
         try {
             webSocketProxy.processMessage(userId, senderNick, msg.getRawMessage(),
-                    progress -> sendSegments(msg, progress));
+                    progress -> sendReplySegmented(msg, progress));
         } catch (Exception e) {
             log.error("Web 对话流程处理失败: {}", e.getMessage(), e);
             sendReply(msg, "抱歉，处理你的消息时出错了: " + e.getMessage());
@@ -98,21 +102,58 @@ public class QQBotServiceImplement implements QQBotService {
 
     // ==================== 回复分条 ====================
 
+    // ==================== 主动发送（工具调用） ====================
+
+    @Override
+    public int sendPrivateMessage(Long userId, String message) {
+        return sendSegmented(segment -> doPost("/send_private_msg",
+                new SendMsgRequest().setUserId(userId).setMessage(segment)), message);
+    }
+
+    @Override
+    public int sendGroupMessage(Long groupId, String message) {
+        return sendSegmented(segment -> doPost("/send_group_msg",
+                new SendMsgRequest().setGroupId(groupId).setMessage(segment)), message);
+    }
+
+    // ==================== 发送分段 ====================
+
+    /** 对话回复：按消息来源回发，分段规则与主动发送一致 */
+    private void sendReplySegmented(QQMessage msg, String text) {
+        sendSegmented(segment -> sendReply(msg, segment), text);
+    }
+
     /**
-     * 发送一段 AI 回复：段落切分已由 ChatWebSocketProxy 按流式段边界（空行）完成，
-     * 这里只做超长兜底（QQ 单条消息过长会被截断或拒收）与多段之间的连发节奏。
+     * 分段发送：按空行切段，超长段落再按句末标点兜底切分，段间留出连发间隔。
+     * 流式分片与工具的整段文本都走这里，保证两条路径的分段与节奏一致。
+     *
+     * @return 实际发送的条数
      */
-    private void sendSegments(QQMessage msg, String text) {
-        if (text == null || text.isBlank()) {
-            return;
-        }
-        List<String> segments = limitLength(text.strip(), MAX_SEGMENT_LENGTH);
+    private int sendSegmented(Consumer<String> sender, String text) {
+        List<String> segments = splitSegments(text);
         for (int i = 0; i < segments.size(); i++) {
             if (i > 0) {
                 sleepQuietly(SEGMENT_INTERVAL_MS);
             }
-            sendReply(msg, segments.get(i));
+            sender.accept(segments.get(i));
         }
+        return segments.size();
+    }
+
+    /** 整段文本 → 若干条待发消息：先按空行分段，逐段再做长度兜底 */
+    private List<String> splitSegments(String text) {
+        if (text == null || text.isBlank()) {
+            return Collections.emptyList();
+        }
+        List<String> segments = new ArrayList<>();
+        for (String block : text.split(SEGMENT_BOUNDARY_REGEX)) {
+            String trimmed = block.strip();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            segments.addAll(limitLength(trimmed, MAX_SEGMENT_LENGTH));
+        }
+        return segments;
     }
 
     /** 把超长段落按句末标点贪心切成若干段，尽量不切断句子 */
