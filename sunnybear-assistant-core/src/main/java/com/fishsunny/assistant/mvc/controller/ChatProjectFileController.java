@@ -148,6 +148,46 @@ public class ChatProjectFileController {
     }
 
     /**
+     * 文件改名。
+     * <p>项目文件没有目录层级（写入那一头就不许带分隔符），所以这里只换文件名、不搬位置，
+     * 新名照样受「不许带路径分隔符或 ..」的约束，与新建保持一致。
+     * <p>改名成功且这份文件在「自动追加」清单里时，清单里的名字跟着换成新名 ——
+     * 清单只认文件名，不跟着换的话，改一次名钉子就凭空掉了。
+     */
+    @PostMapping("/rename")
+    public RestResponse rename(@RequestBody(required = false) FileForm form) {
+        if (form == null || !StringUtils.hasText(form.getProjectId()) || !StringUtils.hasText(form.getPath())) {
+            return new RestResponse().error("项目 ID 与文件名不能为空");
+        }
+        String newName = form.getNewPath() == null ? "" : form.getNewPath().trim();
+        if (!StringUtils.hasText(newName)) {
+            return new RestResponse().error("新文件名不能为空");
+        }
+        if (newName.equals(form.getPath())) {
+            return new RestResponse().error("新文件名与原文件名一样");
+        }
+        if (newName.contains("/") || newName.contains("\\") || newName.contains("..")) {
+            return new RestResponse().error("文件名不能带路径分隔符或 ..（项目文件只放根目录下）");
+        }
+        try {
+            projectFileManager.renameProjectFile(form.getProjectId(), form.getPath(), newName);
+        } catch (IllegalArgumentException e) {
+            return new RestResponse().error(e.getMessage());
+        } catch (Exception e) {
+            log.error("重命名项目文件失败", e);
+            return new RestResponse().error("重命名失败: " + e.getMessage());
+        }
+        // 文件已经改好名了，清单同步失败不回滚（资料还在，顶多钉子要重新点一下），记条日志留痕
+        try {
+            chatProjectService.renameAutoAppendFile(form.getProjectId(), form.getPath(), newName);
+        } catch (Exception e) {
+            log.warn("同步自动追加清单失败 projectId={}, {} -> {}: {}",
+                    form.getProjectId(), form.getPath(), newName, e.getMessage());
+        }
+        return new RestResponse().success(newName);
+    }
+
+    /**
      * 切换某个文件是否进「自动追加」清单（清单里的文件，项目会话的第一条消息会带上）。
      * <p>传的是目标状态而不是「翻转」：连点、重试都不会把状态拧反。
      */
@@ -167,13 +207,15 @@ public class ChatProjectFileController {
         }
     }
 
-    /** 文件表单：create / write / delete 共用 */
+    /** 文件表单：create / write / delete / rename 共用（rename 额外用 newPath 带新文件名） */
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class FileForm {
         private String projectId;
         private String path;
         private String content;
+        /** 改名后的新文件名：只有 rename 用 */
+        private String newPath;
     }
 
     /** 自动追加表单：path 是项目根下的文件名，auto 是切换后的目标状态 */

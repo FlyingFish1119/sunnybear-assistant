@@ -391,6 +391,8 @@ const API = (function () {
             create: function (data) { return post('chat/project/file/create', data); },
             /** 保存文本文件（整文件覆盖） */
             write: function (data) { return post('chat/project/file/write', data); },
+            /** 改名（{ projectId, path, newPath }）：只换文件名，不搬位置；清单里的钉子跟着换 */
+            rename: function (data) { return post('chat/project/file/rename', data); },
             /** 删除文件（后端会顺手把它从自动追加清单里摘掉） */
             remove: function (data) { return post('chat/project/file/delete', data); },
             /** 切换某个文件是否进「自动追加」清单（清单里的文件，项目会话第一条消息会带上） */

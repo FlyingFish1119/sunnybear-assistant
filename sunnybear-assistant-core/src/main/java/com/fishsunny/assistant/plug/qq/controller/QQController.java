@@ -36,7 +36,7 @@ public class QQController {
      * 由 NapCat / LLOneBot 等框架主动推送。
      */
     @PostMapping("/message/get")
-    public void receiveMessage(@RequestBody QQMessage message) {
+    public synchronized void receiveMessage(@RequestBody QQMessage message) {
         String type = message.getMessageType();
         Long senderId = message.getUserId();
         String senderNick = message.getSender() != null ? message.getSender().getNickname() : "未知";

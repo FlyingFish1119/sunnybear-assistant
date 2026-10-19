@@ -12,6 +12,8 @@
  *   3) 点会话 → sessionStore.selectSession(session) 在消息区打开，并收起面板；
  *      点文件 → 在第一层右边接着展开第二层抽屉（Ace 全高编辑，与「会话文件」同一套两层门户），
  *      保存走 /chat/project/file/write；点「+」新建也是这一层，头部换成文件名输入框。
+ *      行的铅笔按钮是「重命名」：走 confirm-dialog 的输入框形态填新文件名，再调
+ *      /chat/project/file/rename —— 与会话文件面板同一套语义（编辑内容点行，改名走铅笔）。
  *
  * 项目文件区只做文本文件的增 / 改 / 删：没有拖动、没有文件夹、没有上传。
  * 列表里只认普通文件，目录一律跳过不显示（删除接口那边也只认文件）。
@@ -102,7 +104,7 @@ const ProjectPanel = {
 
                         <!-- 展开区：项目文件（上）+ 项目会话（下） -->
                         <div v-if="expandedProjectId === project.id" class="pp-expand">
-                            <!-- 项目文件：一条一组「编辑 / 删除」，栏头加号新建 -->
+                            <!-- 项目文件：一条一组「重命名 / 删除」，栏头加号新建；点行本身才是打开编辑器 -->
                             <div class="pp-files">
                                 <div class="pp-files-head">
                                     <span class="pp-files-title">项目文件</span>
@@ -128,7 +130,7 @@ const ProjectPanel = {
                                             <i data-lucide="pin"></i>
                                         </span>
                                         <span class="pp-file-actions" @click.stop>
-                                            <button class="pp-item-btn" title="编辑" @click="openFile(project, f)">
+                                            <button class="pp-item-btn" title="重命名" @click="renameFile(project, f)">
                                                 <i data-lucide="pencil-line"></i>
                                             </button>
                                             <button class="pp-item-btn is-danger" title="删除" @click="deleteFile(project, f)">
@@ -557,6 +559,57 @@ const ProjectPanel = {
                 if (window.SbToast) window.SbToast.error('切换失败: ' + e.message);
             } finally {
                 this.pinBusy = false;
+            }
+        },
+
+        /**
+         * 重命名：项目文件只有一层目录，弹个输入框填新文件名就够了，没有路径要拼。
+         * <p>正在编辑的就是这份文件时跟着换到新名字上 —— 不然接着按保存，会把旧名字又写回来。
+         * <p>钉子（自动追加清单）跟着走：后端已把清单里的旧名换成新名，本地这份同步一下，
+         * 免得图钉的亮灭跟真实清单错位。
+         */
+        async renameFile(project, file) {
+            const dialog = this.$refs.confirmDialog;
+            if (!dialog) return;
+            let input;
+            try {
+                input = await dialog.show({
+                    title: '重命名',
+                    message: '给「' + file.name + '」换一个文件名',
+                    confirmText: '确定',
+                    cancelText: '取消',
+                    type: 'info',
+                    inputValue: file.name,
+                    inputPlaceholder: '新文件名，比如 需求.md'
+                });
+            } catch (e) {
+                return; // 用户取消
+            }
+            const newName = String(input || '').trim();
+            if (!newName || newName === file.name) return;
+            try {
+                const res = await API.projectFile.rename({
+                    projectId: project.id, path: file.path, newPath: newName
+                });
+                if (res.status !== 200) {
+                    if (window.SbToast) window.SbToast.error(res.message || '重命名失败');
+                    return;
+                }
+                if (window.SbToast) window.SbToast.success('已重命名');
+                if (project.autoAppendFiles && project.autoAppendFiles.includes(file.name)) {
+                    const next = [];
+                    for (const name of project.autoAppendFiles) {
+                        const target = name === file.name ? newName : name;
+                        if (!next.includes(target)) next.push(target);
+                    }
+                    project.autoAppendFiles = next;
+                }
+                if (this.fileForm.visible && this.fileForm.path === file.path) {
+                    this.fileForm.path = newName;
+                }
+                await this.loadFiles(project.id);
+            } catch (e) {
+                if (window.SbToast) window.SbToast.error('重命名失败: ' + e.message);
             }
         },
 
