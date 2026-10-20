@@ -205,6 +205,7 @@
 
 .cp-badge.is-pro{ background: #fff3e0; color: #e08b00; }
 .cp-badge.is-unreviewed{ background: #fdecec; color: #e5484d; }
+.cp-badge.is-local{ background: #eaf1fd; color: #2f6fdd; }
 
 .cp-job-sub{
     display: flex;

@@ -117,6 +117,7 @@ public class CronJobController {
             String message = body.message();
             boolean enablePro = Boolean.TRUE.equals(body.enablePro());
             boolean unreviewed = Boolean.TRUE.equals(body.unreviewed());
+            boolean localOnly = Boolean.TRUE.equals(body.localOnly());
 
             if (!StringUtils.hasText(title)) {
                 return new RestResponse().error("title 不能为空");
@@ -131,10 +132,10 @@ public class CronJobController {
             CronJob saved;
             if (body.id() != null) {
                 saved = cronJobService.update(body.id(), title.trim(), description.trim(),
-                        cron.trim(), message, enablePro, unreviewed);
+                        cron.trim(), message, enablePro, unreviewed, localOnly);
             } else {
                 saved = cronJobService.create(title.trim(), description.trim(),
-                        cron.trim(), message, enablePro, unreviewed);
+                        cron.trim(), message, enablePro, unreviewed, localOnly);
             }
             return new RestResponse().success(saved);
         } catch (Exception e) {
@@ -146,7 +147,7 @@ public class CronJobController {
     /** 新增/更新定时任务的请求体；id 为空表示新增，非空表示更新 */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record CronJobSaveRequest(String title, String description, String cron, String message,
-                                     Boolean enablePro, Boolean unreviewed, Integer id) {
+                                     Boolean enablePro, Boolean unreviewed, Boolean localOnly, Integer id) {
     }
 
     /** 删除定时任务 */

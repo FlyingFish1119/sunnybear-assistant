@@ -57,6 +57,7 @@ const CronPanel = {
                                     <span class="cp-job-title">{{ job.title }}</span>
                                     <span v-if="job.enablePro" class="cp-badge is-pro">Pro</span>
                                     <span v-if="job.unreviewed" class="cp-badge is-unreviewed">无审查</span>
+                                    <span v-if="job.localOnly" class="cp-badge is-local">单点</span>
                                 </span>
                                 <span class="cp-job-sub">
                                     <code class="cp-cron">{{ job.cron }}</code>

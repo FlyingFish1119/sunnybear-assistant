@@ -10,6 +10,7 @@ package com.fishsunny.assistant.mvc.dao.implement;
 
 import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
 import com.fishsunny.assistant.mvc.dao.CronJobRepository;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -33,10 +34,36 @@ public class CronJobRepositoryImplement implements CronJobRepository {
 
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    /** 单点模式列名（老库缺的就是它） */
+    private static final String COLUMN_LOCAL_ONLY = "local_only";
+
+    /** SQLite 没有 ADD COLUMN IF NOT EXISTS，重复执行会报错，所以补列前必须先查列在不在 */
+    private static final String DDL_ADD_LOCAL_ONLY =
+            "ALTER TABLE cron_job ADD COLUMN local_only INTEGER NOT NULL DEFAULT 0";
+
     private final JdbcTemplate jdbcTemplate;
 
     public CronJobRepositoryImplement(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+    }
+
+    /**
+     * 老库补列：建表用的是 CREATE TABLE IF NOT EXISTS，早就存在的库不会跟着 schema.sql 长出新列。
+     * <p>先查列清单再决定补不补 —— 表已经建出来但缺列时才 ALTER，列在、表还没建出来都直接跳过。
+     */
+    @PostConstruct
+    public void ensureColumns() {
+        try {
+            List<String> columns = jdbcTemplate.query("PRAGMA table_info(cron_job)",
+                    (resultSet, i) -> resultSet.getString("name"));
+            if (columns.isEmpty() || columns.contains(COLUMN_LOCAL_ONLY)) {
+                return;
+            }
+            jdbcTemplate.execute(DDL_ADD_LOCAL_ONLY);
+            log.info("cron_job 补列完成: {}", COLUMN_LOCAL_ONLY);
+        } catch (Exception e) {
+            log.warn("cron_job 补列检查失败（老库可手工执行一次 {}）: {}", DDL_ADD_LOCAL_ONLY, e.getMessage());
+        }
     }
 
     private final RowMapper<CronJob> rowMapper = new RowMapper<>() {
@@ -49,7 +76,8 @@ public class CronJobRepositoryImplement implements CronJobRepository {
                     .setCron(rs.getString("cron"))
                     .setMessage(rs.getString("message"))
                     .setEnablePro(rs.getInt("enable_pro") == 1)
-                    .setUnreviewed(rs.getInt("unreviewed") == 1);
+                    .setUnreviewed(rs.getInt("unreviewed") == 1)
+                    .setLocalOnly(rs.getInt(COLUMN_LOCAL_ONLY) == 1);
             try {
                 cronJob.setCreateTime(LocalDateTime.parse(rs.getString("create_time"), FORMATTER));
                 cronJob.setUpdateTime(LocalDateTime.parse(rs.getString("update_time"), FORMATTER));
@@ -64,8 +92,8 @@ public class CronJobRepositoryImplement implements CronJobRepository {
     @Override
     public CronJob insert(CronJob cronJob) {
         String sql = """
-                INSERT INTO cron_job (title, description, cron, message, enable_pro, unreviewed, create_time, update_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO cron_job (title, description, cron, message, enable_pro, unreviewed, local_only, create_time, update_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         String now = LocalDateTime.now().format(FORMATTER);
@@ -79,8 +107,9 @@ public class CronJobRepositoryImplement implements CronJobRepository {
             ps.setString(4, cronJob.getMessage());
             ps.setInt(5, cronJob.getEnablePro() != null && cronJob.getEnablePro() ? 1 : 0);
             ps.setInt(6, cronJob.getUnreviewed() != null && cronJob.getUnreviewed() ? 1 : 0);
-            ps.setString(7, now);
+            ps.setInt(7, cronJob.getLocalOnly() != null && cronJob.getLocalOnly() ? 1 : 0);
             ps.setString(8, now);
+            ps.setString(9, now);
             return ps;
         }, keyHolder);
 
@@ -98,6 +127,7 @@ public class CronJobRepositoryImplement implements CronJobRepository {
                     message = ?,
                     enable_pro = ?,
                     unreviewed = ?,
+                    local_only = ?,
                     update_time = ?
                 WHERE id = ?
                 """;
@@ -110,6 +140,7 @@ public class CronJobRepositoryImplement implements CronJobRepository {
                 cronJob.getMessage(),
                 cronJob.getEnablePro() != null && cronJob.getEnablePro() ? 1 : 0,
                 cronJob.getUnreviewed() != null && cronJob.getUnreviewed() ? 1 : 0,
+                cronJob.getLocalOnly() != null && cronJob.getLocalOnly() ? 1 : 0,
                 now,
                 cronJob.getId());
 

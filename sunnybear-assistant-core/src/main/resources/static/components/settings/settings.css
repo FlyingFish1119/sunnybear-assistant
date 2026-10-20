@@ -512,6 +512,11 @@ body {
     color: #e5484d;
 }
 
+.cron-badge.is-local {
+    background: #eaf1fd;
+    color: #2f6fdd;
+}
+
 .entry-item-content {
     font-size: 13px;
     color: var(--text-secondary);

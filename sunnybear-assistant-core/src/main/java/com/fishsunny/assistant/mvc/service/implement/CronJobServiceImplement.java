@@ -33,7 +33,7 @@ public class CronJobServiceImplement implements CronJobService {
     }
 
     @Override
-    public CronJob create(String title, String description, String cron, String message, boolean enablePro, boolean unreviewed) {
+    public CronJob create(String title, String description, String cron, String message, boolean enablePro, boolean unreviewed, boolean localOnly) {
         validateCron(cron);
         CronJob cronJob = new CronJob()
                 .setTitle(title)
@@ -41,15 +41,17 @@ public class CronJobServiceImplement implements CronJobService {
                 .setCron(cron)
                 .setMessage(message)
                 .setEnablePro(enablePro)
-                .setUnreviewed(unreviewed);
+                .setUnreviewed(unreviewed)
+                .setLocalOnly(localOnly);
         CronJob saved = cronJobRepository.insert(cronJob);
-        log.info("创建定时任务: id={}, title={}, cron={}, enablePro={}, unreviewed={}", saved.getId(), saved.getTitle(), saved.getCron(), saved.getEnablePro(), saved.getUnreviewed());
+        log.info("创建定时任务: id={}, title={}, cron={}, enablePro={}, unreviewed={}, localOnly={}",
+                saved.getId(), saved.getTitle(), saved.getCron(), saved.getEnablePro(), saved.getUnreviewed(), saved.getLocalOnly());
         cronScheduler.scheduleJob(saved);
         return saved;
     }
 
     @Override
-    public CronJob update(Integer id, String title, String description, String cron, String message, boolean enablePro, boolean unreviewed) {
+    public CronJob update(Integer id, String title, String description, String cron, String message, boolean enablePro, boolean unreviewed, boolean localOnly) {
         validateCron(cron);
         CronJob existing = cronJobRepository.selectById(id);
         if (existing == null) {
@@ -61,8 +63,9 @@ public class CronJobServiceImplement implements CronJobService {
         existing.setMessage(message);
         existing.setEnablePro(enablePro);
         existing.setUnreviewed(unreviewed);
+        existing.setLocalOnly(localOnly);
         CronJob saved = cronJobRepository.update(existing);
-        log.info("更新定时任务: id={}", saved.getId());
+        log.info("更新定时任务: id={}, localOnly={}", saved.getId(), saved.getLocalOnly());
         cronScheduler.scheduleJob(saved);
         return saved;
     }

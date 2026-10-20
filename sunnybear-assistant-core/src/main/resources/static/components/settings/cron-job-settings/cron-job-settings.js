@@ -48,6 +48,7 @@ const CronJobSettings = {
                             <code style="background:#f0f0f0;padding:1px 6px;border-radius:3px;font-size:12px;margin-left:8px">{{ item.cron }}</code>
                             <span v-if="item.enablePro" class="cron-badge is-pro" style="margin-left:6px">Pro</span>
                             <span v-if="item.unreviewed" class="cron-badge is-unreviewed" style="margin-left:6px">无审查</span>
+                            <span v-if="item.localOnly" class="cron-badge is-local" style="margin-left:6px">单点</span>
                         </div>
                         <div class="entry-item-content" style="max-height:40px;overflow:hidden">{{ item.message }}</div>
                         <div class="entry-item-time">{{ formatTime(item.createTime) }}</div>
@@ -98,6 +99,10 @@ const CronJobSettings = {
                     <el-switch v-model="cronJobEditForm.unreviewed" active-text="开启" inactive-text="关闭"></el-switch>
                     <span style="margin-left:12px;color:#909399;font-size:13px">开启后触发时跳过工具确认与 AI 危险审查</span>
                 </el-form-item>
+                <el-form-item label="单点模式">
+                    <el-switch v-model="cronJobEditForm.localOnly" active-text="开启" inactive-text="关闭"></el-switch>
+                    <span style="margin-left:12px;color:#909399;font-size:13px">开启后只在 local 模式实例执行，remote 模式实例不调度</span>
+                </el-form-item>
             </el-form>
             <template #footer>
                 <div class="dialog-footer">
@@ -122,7 +127,7 @@ const CronJobSettings = {
             dialogs: { cronjobmanage: false, cronjobedit: false },
             cronJobList: [],
             cronJobLoading: false,
-            cronJobEditForm: { id: null, title: '', description: '', cron: '', message: '', enablePro: false, unreviewed: false }
+            cronJobEditForm: { id: null, title: '', description: '', cron: '', message: '', enablePro: false, unreviewed: false, localOnly: false }
         };
     },
 
@@ -161,10 +166,11 @@ const CronJobSettings = {
                     id: item.id, title: item.title, description: item.description || '',
                     cron: item.cron, message: item.message,
                     enablePro: item.enablePro || false,
-                    unreviewed: item.unreviewed || false
+                    unreviewed: item.unreviewed || false,
+                    localOnly: item.localOnly || false
                 };
             } else {
-                this.cronJobEditForm = { id: null, title: '', description: '', cron: '', message: '', enablePro: false, unreviewed: false };
+                this.cronJobEditForm = { id: null, title: '', description: '', cron: '', message: '', enablePro: false, unreviewed: false, localOnly: false };
             }
             this.dialogs.cronjobedit = true;
             this.$nextTick(() => lucide.createIcons());
@@ -191,7 +197,8 @@ const CronJobSettings = {
                     cron: this.cronJobEditForm.cron.trim(),
                     message: this.cronJobEditForm.message,
                     enablePro: this.cronJobEditForm.enablePro,
-                    unreviewed: this.cronJobEditForm.unreviewed
+                    unreviewed: this.cronJobEditForm.unreviewed,
+                    localOnly: this.cronJobEditForm.localOnly
                 };
                 if (this.cronJobEditForm.id) {
                     body.id = this.cronJobEditForm.id;

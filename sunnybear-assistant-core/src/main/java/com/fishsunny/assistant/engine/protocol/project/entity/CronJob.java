@@ -38,6 +38,13 @@ public class CronJob {
     /** 无审查模式：开启后该定时任务触发的会话自动跳过工具确认与 AI 危险审查 */
     private Boolean unreviewed = false;
 
+    /**
+     * 单点模式：为 true 时只在 {@code assistant.remote-storage.mode=local} 的实例上调度执行，
+     * {@code mode=remote} 的实例直接跳过（不注册调度）。
+     * <p>多实例共用同一套库时，用它把任务钉在权威库所在的那台机器上，免得两边各跑一遍。
+     */
+    private Boolean localOnly = false;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 

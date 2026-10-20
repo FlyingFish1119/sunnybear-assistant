@@ -82,7 +82,8 @@ public class CronCreateTool implements ToolHandler {
                     arguments.getCron().trim(),
                     arguments.getMessage(),
                     enablePro,
-                    false); // 无审查开关仅由用户在设置页显式开启，AI 不可通过工具开启
+                    false, // 无审查开关仅由用户在设置页显式开启，AI 不可通过工具开启
+                    false); // 单点模式同理：属于部署范畴的开关，只由用户在设置页决定
 
             return new ToolExecutor.ToolExecuteResponse(name(),
                     String.format("定时任务创建成功:\n  ID: %s\n  标题: %s\n  描述: %s\n  cron: %s\n  消息: %s\n  高级模型: %s",

@@ -82,7 +82,8 @@ public class CronUpdateTool implements ToolHandler {
             boolean enablePro = arguments.getEnablePro() != null ? arguments.getEnablePro() : (existing.getEnablePro() != null && existing.getEnablePro());
 
             CronJob saved = cronJobService.update(arguments.getId(), title, description, cron, message, enablePro,
-                    existing.getUnreviewed() != null && existing.getUnreviewed()); // 无审查开关仅由用户在设置页显式开启，AI 不可通过工具修改
+                    existing.getUnreviewed() != null && existing.getUnreviewed(), // 无审查开关仅由用户在设置页显式开启，AI 不可通过工具修改
+                    existing.getLocalOnly() != null && existing.getLocalOnly());  // 单点模式同理：工具既不读也不改，原样保留
 
             return new ToolExecutor.ToolExecuteResponse(name(),
                     String.format("定时任务更新成功:\n  ID: %s\n  标题: %s\n  描述: %s\n  cron: %s\n  消息: %s\n  高级模型: %s",

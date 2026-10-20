@@ -23,9 +23,10 @@ public interface CronJobService {
      * @param message     触发消息
      * @param enablePro   是否启用高级模型
      * @param unreviewed  是否无审查模式
+     * @param localOnly   是否单点模式（只在 mode=local 的实例上调度执行）
      * @return 创建后的 CronJob
      */
-    CronJob create(String title, String description, String cron, String message, boolean enablePro, boolean unreviewed);
+    CronJob create(String title, String description, String cron, String message, boolean enablePro, boolean unreviewed, boolean localOnly);
 
     /**
      * 更新定时任务
@@ -37,9 +38,10 @@ public interface CronJobService {
      * @param message     新的触发消息
      * @param enablePro   是否启用高级模型
      * @param unreviewed  是否无审查模式
+     * @param localOnly   是否单点模式（只在 mode=local 的实例上调度执行）
      * @return 更新后的 CronJob
      */
-    CronJob update(Integer id, String title, String description, String cron, String message, boolean enablePro, boolean unreviewed);
+    CronJob update(Integer id, String title, String description, String cron, String message, boolean enablePro, boolean unreviewed, boolean localOnly);
 
     /**
      * 删除定时任务

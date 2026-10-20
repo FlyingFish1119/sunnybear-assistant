@@ -11,9 +11,11 @@ package com.fishsunny.assistant.websocket.processor;
 import com.fishsunny.assistant.constants.ControlSign;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatProject;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
+import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.mvc.service.ChatProjectBindings;
 import com.fishsunny.assistant.mvc.service.ChatProjectService;
+import com.fishsunny.assistant.mvc.service.CronJobService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
 import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AssistantSettings;
@@ -61,6 +63,7 @@ public class ChatPromptService {
     private final MemorySettings memorySettings;
     private final ChatProjectService chatProjectService;
     private final ProjectFileManager projectFileManager;
+    private final CronJobService cronJobService;
 
     public String defaultSystemPrompt(ChatProvider.SystemProviderContext context, AssistantSettings activeAssistantSettings, String effectiveModelName, WebSocketSession session) throws Exception {
         ChatSession chatSession = context.chatSession();
@@ -78,11 +81,59 @@ public class ChatPromptService {
                 .replace(TOOL_NOTE, TOOL_NOTE_CONTENT)
         );
 
+        injectCronPrompt(chatSession, systemPrompt);
         injectProjectPrompt(chatSession, systemPrompt);
         injectKnowledgePrompt(originMessages, chatSession, systemPrompt, session);
         injectMemoryPrompt(systemPrompt);
 
         return systemPrompt.toString();
+    }
+
+    /**
+     * 定时任务会话提示。
+     * <p>判定只看会话本身（{@code cronId} 非空即由定时任务开出来的会话），不往消息上打任何标记。
+     * 真正的区分放在提示词里交给模型：第一条消息是定时器写的、没人现场提问，后面若还有消息，
+     * 那就是用户本人回来接着谈这件事了。模型看得见完整历史，这件事它自己判得出来。
+     * <p>顺带带上任务的 meta（标题 / cron / 描述），模型才晓得这一趟跑的是哪件事。
+     * 任务可能已被删而执行会话还留着，这时只降级成「定时任务会话」，不阻断对话。
+     * <p>文案一律用中性称呼（用户），不写任何角色设定的称呼 —— 这段是通用提示词，
+     * 不该掺进某个助手的人格。
+     */
+    private void injectCronPrompt(ChatSession chatSession, StringBuilder systemPrompt) {
+        if (chatSession == null || chatSession.getCronId() == null) {
+            return;
+        }
+        CronJob job = findCronJob(chatSession.getCronId());
+        if (job == null) {
+            throw new RuntimeException("定时任务信息读取失败: cronId=" + chatSession.getCronId());
+        }
+
+        String title = StringUtils.hasText(job.getTitle()) ? job.getTitle() : "无标题";
+        String cron = StringUtils.hasText(job.getCron()) ? job.getCron() : "ERROR";
+        String description = StringUtils.hasText(job.getDescription()) ? job.getDescription() : "无描述";
+        String template = """
+                \n[cron]
+                这个会话不是用户实时跟你对话开出来的，而是定时任务 **${title}** 到点自动建立的。
+                任务信息：cron `**${cron}**`；描述：**${description}**。
+                会话里的第一条用户消息由系统定时器写入，写的时候没人现场提问，也没人在等着你立刻回话。
+                处理这第一条消息时不要摆出对话姿态：
+                  1. 不要寒暄开场，不要反问澄清，不要把话头抛回去等回复，也不要写“需要我再做点什么吗”这类等人接话的收尾；
+                  2. 把消息里的要求当成一个独立任务，一次做完，直接给出完整、可读的结果，结论写全，让人事后自己来看也能看懂。
+                如果这个会话里出现了第一条之后的消息，那就是用户本人回来接着跟你聊这件事了：那时候按正常对话对待。
+                """.replace("${title}", title)
+                .replace("${cron}", cron)
+                .replace("${description}", description);
+        systemPrompt.append(template);
+    }
+
+    /** 任务可能已被删掉而历史执行会话还留着：查不到、或查库出岔子都返回 null，调用方降级 */
+    private CronJob findCronJob(Integer cronId) {
+        try {
+            return cronJobService.findById(cronId);
+        } catch (Exception e) {
+            log.warn("定时任务信息读取失败: cronId={}, {}", cronId, e.getMessage());
+            throw new RuntimeException("定时任务信息读取失败: cronId=" + cronId, e);
+        }
     }
 
     /**

@@ -17,6 +17,7 @@ import com.fishsunny.assistant.websocket.ws.NoOpWebSocketSession;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.support.CronTrigger;
@@ -41,17 +42,22 @@ public class CronScheduler {
     private final ChatWebSocketHandler chatWebSocketHandler;
     private final ObjectMapper objectMapper;
 
+    /** 存储模式：remote 表示本实例是外挂端（库在远端），单点任务不在本机跑 */
+    private final String storageMode;
+
     /** 已调度的任务：cronJobId → ScheduledFuture */
     private final Map<Integer, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
 
     public CronScheduler(TaskScheduler taskScheduler,
                          CronJobRepository cronJobRepository,
                          @Lazy ChatWebSocketHandler chatWebSocketHandler,
-                         ObjectMapper objectMapper) {
+                         ObjectMapper objectMapper,
+                         @Value("${assistant.remote-storage.mode:local}") String storageMode) {
         this.taskScheduler = taskScheduler;
         this.cronJobRepository = cronJobRepository;
         this.chatWebSocketHandler = chatWebSocketHandler;
         this.objectMapper = objectMapper;
+        this.storageMode = storageMode;
     }
 
     /** 启动时加载所有 cron 任务并注册 */
@@ -67,6 +73,12 @@ public class CronScheduler {
     /** 注册一个 cron 任务（新增或更新后调用） */
     public void scheduleJob(CronJob job) {
         cancelJob(job.getId()); // 先取消旧的
+
+        // 单点任务只在 mode=local 的实例上跑；remote 端连调度都不注册，免得空转触发
+        if (Boolean.TRUE.equals(job.getLocalOnly()) && isRemoteStorage()) {
+            log.info("跳过单点任务调度（当前为 remote 模式，只在 local 实例执行）: id={}, title={}", job.getId(), job.getTitle());
+            return;
+        }
 
         try {
             CronTrigger trigger = new CronTrigger(job.getCron(), TimeZone.getTimeZone(ZoneId.systemDefault()));
@@ -85,6 +97,11 @@ public class CronScheduler {
             future.cancel(false);
             log.info("已取消定时任务: id={}", id);
         }
+    }
+
+    /** 当前实例的存储模式是否为 remote（remote 端不跑单点任务） */
+    private boolean isRemoteStorage() {
+        return "remote".equalsIgnoreCase(storageMode);
     }
 
     /** cron 触发时执行：构建 ChatMessageRequest → 走 WebSocket handler 流程 */
