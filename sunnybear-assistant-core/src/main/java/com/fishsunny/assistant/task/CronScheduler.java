@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.dto.ChatMessageRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
 import com.fishsunny.assistant.mvc.dao.CronJobRepository;
+import com.fishsunny.assistant.remote.RepoLink;
 import com.fishsunny.assistant.websocket.ws.ChatWebSocketHandler;
 import com.fishsunny.assistant.websocket.ws.NoOpWebSocketSession;
 import jakarta.annotation.PostConstruct;
@@ -37,10 +38,14 @@ public class CronScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(CronScheduler.class);
 
+    /** 通道没就绪时的等待步长：不阻塞启动，通道来了立刻补加载，没来就继续等 */
+    private static final long WAIT_CHANNEL_INTERVAL_MS = 5000L;
+
     private final TaskScheduler taskScheduler;
     private final CronJobRepository cronJobRepository;
     private final ChatWebSocketHandler chatWebSocketHandler;
     private final ObjectMapper objectMapper;
+    private final RepoLink repoLink;
 
     /** 存储模式：remote 表示本实例是外挂端（库在远端），单点任务不在本机跑 */
     private final String storageMode;
@@ -53,20 +58,61 @@ public class CronScheduler {
                          @Lazy ChatWebSocketHandler chatWebSocketHandler,
                          ObjectMapper objectMapper,
                          @Value("${assistant.remote-storage.mode:local}") String storageMode) {
+                         ObjectMapper objectMapper,
+                         RepoLink repoLink) {
         this.taskScheduler = taskScheduler;
         this.cronJobRepository = cronJobRepository;
         this.chatWebSocketHandler = chatWebSocketHandler;
         this.objectMapper = objectMapper;
         this.storageMode = storageMode;
+        this.repoLink = repoLink;
     }
 
-    /** 启动时加载所有 cron 任务并注册 */
+    /**
+     * 启动时加载所有 cron 任务并注册。
+     * <p>role=remote 时仓储在远端，启动这一刻通道可能还没建立（behavior=accept 还得等对端连进来）。
+     * 这里绝不能把异常抛出去 —— @PostConstruct 抛异常会让整个 Spring 上下文起不来。
+     * 拿不到就先放行，交给后台等通道就绪后补加载。
+     */
     @PostConstruct
     public void init() {
-        List<CronJob> jobs = cronJobRepository.selectAll();
+        if (loadJobs()) {
+            return;
+        }
+        log.info("定时任务暂不加载：等仓储通道就绪后再补（不阻塞启动）");
+        Thread retry = new Thread(this::loadWhenChannelReady, "cron-init-wait");
+        retry.setDaemon(true);
+        retry.start();
+    }
+
+    /** 加载一次 DB 里的全部任务；远程仓储还没连上时返回 false，由调用方决定要不要重试 */
+    private boolean loadJobs() {
+        List<CronJob> jobs;
+        try {
+            jobs = cronJobRepository.selectAll();
+        } catch (Exception e) {
+            log.warn("定时任务加载失败，稍后重试：{}", e.getMessage());
+            return false;
+        }
         log.info("CronScheduler 启动，加载 {} 个定时任务", jobs.size());
         for (CronJob job : jobs) {
             scheduleJob(job);
+        }
+        return true;
+    }
+
+    /** 等通道就绪后补加载，成功一次就退出；连接器关闭（应用停止）时一并退出 */
+    @SuppressWarnings("resource")
+    private void loadWhenChannelReady() {
+        while (!repoLink.isClosed()) {
+            try {
+                if (repoLink.acquire() != null && loadJobs()) {
+                    log.info("仓储通道已就绪，定时任务补加载完成");
+                    return;
+                }
+            } catch (Exception e) {
+                log.error("定时任务加载失败：{}", e.getMessage());
+            }
         }
     }
 
