@@ -21,6 +21,7 @@ import com.fishsunny.assistant.remote.config.RemoteRepositoryProperties;
 import com.fishsunny.assistant.remote.config.RemoteRepositoryProperties.Target;
 import jakarta.websocket.ContainerProvider;
 import jakarta.websocket.WebSocketContainer;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.springframework.web.socket.CloseStatus;
@@ -61,6 +62,7 @@ public class RepoLink {
     private final ConcurrentMap<String, Channel> channels = new ConcurrentHashMap<>();
 
     private volatile ScheduledExecutorService worker;
+    @Getter
     private volatile boolean closed;
 
     public RepoLink(RemoteRepositoryProperties properties, RepoRpcFrameHandler frameHandler) {
@@ -81,6 +83,11 @@ public class RepoLink {
         if (!properties.initiatesConnection()) {
             log.info("仓储连接器就绪：role={} node={} behavior={}，不主动连接，只等对端接入",
                     properties.getRole(), properties.getNode(), properties.resolvedBehavior());
+            if (properties.isRemote()) {
+                log.info("当前是 role=remote + behavior={}：本机不主动连接，必须由对端（role=local）配 behavior=connect，"
+                                + "并在 link.local-urls 里指向本机 /ws/repo，通道才会建立",
+                        properties.resolvedBehavior());
+            }
             return;
         }
         List<Target> targets = properties.connectTargets();
@@ -134,7 +141,8 @@ public class RepoLink {
                 throw new RepoRpcException("仓储连接器已关闭");
             }
             if (System.currentTimeMillis() >= deadline) {
-                throw new RepoRpcException("没有可用的仓储通道（role=" + properties.getRole()
+                throw new RepoRpcException(
+                        "没有可用的仓储通道（role=" + properties.getRole()
                         + "，behavior=" + properties.resolvedBehavior()
                         + "），请检查对端是否可达、两端角色是否互补");
             }
