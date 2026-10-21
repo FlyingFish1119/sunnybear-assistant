@@ -659,17 +659,52 @@ const MarkdownUtils = (function () {
         });
     }
 
-    /** 同步输出 mermaid 块的 HTML：优先精确 SVG，其次上一个可渲染版本，最后源码占位 */
+    /**
+     * 同步输出 mermaid 块的 HTML：优先精确 SVG，其次上一个可渲染版本，最后源码占位。
+     * <p>块右上角常驻一条小工具条：下载 SVG / 在侧边栏预览（预览里可缩放拖动）。
+     * <p>图本体裹在 .mermaid-figure 里：工具条上的 lucide 图标也是 <svg>，
+     * 不隔离开的话按 svg 标签取图会抓到按钮图标去。
+     */
     function renderMermaidBlock(code) {
         var svg = _mermaidSvgCache.get(code);
         if (!svg) {
             scheduleMermaidRender(code);
             svg = lookupMermaidPrefixSvg(code);
         }
+        var toolbar = buildMermaidToolbar();
         if (svg) {
-            return '<div class="mermaid-wrapper">' + svg + '</div>';
+            return '<div class="mermaid-wrapper">' + toolbar
+                + '<div class="mermaid-figure">' + svg + '</div></div>';
         }
-        return '<div class="mermaid-wrapper"><div class="mermaid">' + code + '</div></div>';
+        return '<div class="mermaid-wrapper">' + toolbar
+            + '<div class="mermaid-figure"><div class="mermaid">' + code + '</div></div></div>';
+    }
+
+    /**
+     * mermaid 块右上角的工具条。
+     * <p>图标直接内联成 svg 字符串：这些按钮是 v-html 塞进来的，
+     * 交给各组件的 createIcons 刷新要等更新时机，不如一次生成到位。
+     */
+    function buildMermaidToolbar() {
+        return '<div class="mermaid-toolbar">'
+            + '<button type="button" class="mermaid-btn" data-mermaid-action="preview"'
+            + ' title="在侧边栏预览（可缩放拖动）">' + inlineLucideIcon('panel-right-open') + '</button>'
+            + '<button type="button" class="mermaid-btn" data-mermaid-action="download"'
+            + ' title="下载 SVG">' + inlineLucideIcon('download') + '</button>'
+            + '</div>';
+    }
+
+    /** 内联 lucide 图标（直接产出 svg 字符串，绕开 v-html 注入后的图标刷新时序） */
+    function inlineLucideIcon(name) {
+        try {
+            if (typeof lucide === 'undefined' || !lucide.icons || typeof lucide.createElement !== 'function') return '';
+            var pascal = String(name).replace(/(^|[-_]+)(\w)/g, function (m, sep, ch) { return ch.toUpperCase(); });
+            var node = lucide.icons[pascal] || lucide.icons[name];
+            if (!node) return '';
+            return lucide.createElement(node, { width: 16, height: 16 }).outerHTML;
+        } catch (e) {
+            return '';
+        }
     }
 
     /**
@@ -781,5 +816,185 @@ const MarkdownUtils = (function () {
         var blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
         window.open(blobUrl, '_blank', 'noopener');
         setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 60000);
+    });
+})();
+
+/* ============================================================
+   Mermaid 块工具条：下载 SVG / 在侧边栏预览
+   ------------------------------------------------------------
+   按钮由 renderMermaidBlock 生成（v-html 内容，没法逐个绑事件），
+   所以在 document 上兜一层 —— 与 HTML 代码块的「在侧边栏打开」同一套思路。
+   ============================================================ */
+(function registerMermaidToolbarDelegate() {
+    if (typeof document === 'undefined') return;
+
+    /**
+     * 预览文档里自带的缩放 / 拖动脚本。
+     * <p>缩放锚点取光标位置：以锚点为中心放大，才不用「放大 → 拖 → 再放大」来回折腾。
+     * <p>平移与缩放共用一套 transform（translate + scale），origin 设在中心，
+     * 与 image-viewer 的算法一致。
+     */
+    var PREVIEW_SCRIPT = [
+        '(function(){',
+        'var stage=document.getElementById("stage");',
+        'var el=stage&&stage.firstElementChild;',
+        'if(!el)return;',
+        'var t={s:1,x:0,y:0};',
+        'var MIN=0.2,MAX=8;',
+        'function apply(){el.style.transform="translate("+t.x+"px,"+t.y+"px) scale("+t.s+")";}',
+        'function zoomTo(ns,ax,ay){',
+        'var s=Math.min(MAX,Math.max(MIN,ns));',
+        'var k=s/t.s;',
+        'if(k===1)return;',
+        't.x=ax-(ax-t.x)*k;',
+        't.y=ay-(ay-t.y)*k;',
+        't.s=s;apply();',
+        '}',
+        'function toLocal(cx,cy){',
+        'var r=stage.getBoundingClientRect();',
+        'return {x:cx-r.left-r.width/2,y:cy-r.top-r.height/2};',
+        '}',
+        'stage.addEventListener("wheel",function(e){',
+        'e.preventDefault();',
+        'var p=toLocal(e.clientX,e.clientY);',
+        'zoomTo(t.s*(e.deltaY<0?1.12:1/1.12),p.x,p.y);',
+        '},{passive:false});',
+        'var drag=null;',
+        'stage.addEventListener("pointerdown",function(e){',
+        'e.preventDefault();',
+        'drag={x:e.clientX,y:e.clientY,tx:t.x,ty:t.y};',
+        'stage.classList.add("is-drag");',
+        'try{stage.setPointerCapture(e.pointerId);}catch(err){}',
+        '});',
+        'stage.addEventListener("pointermove",function(e){',
+        'if(!drag)return;',
+        't.x=drag.tx+(e.clientX-drag.x);',
+        't.y=drag.ty+(e.clientY-drag.y);',
+        'apply();',
+        '});',
+        'function endDrag(){drag=null;stage.classList.remove("is-drag");}',
+        'stage.addEventListener("pointerup",endDrag);',
+        'stage.addEventListener("pointercancel",endDrag);',
+        'stage.addEventListener("dblclick",function(){t={s:1,x:0,y:0};apply();});',
+        '})();'
+    ].join('\n');
+
+    /** 取 svg 的 viewBox（没有就退回 getBBox 量一次） */
+    function viewBoxOf(svg) {
+        var raw = svg.getAttribute('viewBox') || svg.getAttribute('viewbox');
+        if (raw) {
+            var parts = String(raw).trim().split(/[\s,]+/).map(Number);
+            if (parts.length === 4 && parts.every(function (n) { return isFinite(n); })) {
+                return { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+            }
+        }
+        try {
+            var box = svg.getBBox();
+            if (box && box.width) return { x: box.x, y: box.y, w: box.width, h: box.height };
+        } catch (e) {
+            /* 未挂载 / 浏览器不给量时按没有 viewBox 处理 */
+        }
+        return null;
+    }
+
+    /**
+     * 把页面上的 svg 元素序列化成能独立打开的 svg 文本。
+     * <p>mermaid 输出的根元素是 width="100%" + style="max-width:xxxpx"，
+     * 那样存下来在别的软件里会被宽度上限卡住，所以换成 viewBox 的实际尺寸。
+     */
+    function serializeSvg(svg) {
+        var clone = svg.cloneNode(true);
+        var vb = viewBoxOf(clone);
+        clone.removeAttribute('style');
+        if (vb) {
+            clone.setAttribute('width', vb.w);
+            clone.setAttribute('height', vb.h);
+        }
+        if (!clone.getAttribute('xmlns')) clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        try {
+            return new XMLSerializer().serializeToString(clone);
+        } catch (e) {
+            return clone.outerHTML || '';
+        }
+    }
+
+    /** 文件名时间戳：mermaid-20261021-114233.svg */
+    function stamp() {
+        var d = new Date();
+        function p(n) { return (n < 10 ? '0' : '') + n; }
+        return '' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate())
+            + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+    }
+
+    /** 下载：存成 .svg 文件 */
+    function downloadSvg(svg) {
+        var text = serializeSvg(svg);
+        if (!text) return;
+        var blob = new Blob([text], { type: 'image/svg+xml;charset=utf-8' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'mermaid-' + stamp() + '.svg';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+    }
+
+    /**
+     * 侧边栏预览：把 svg 包成一份独立 HTML 文档，交给 SbWebViewer 的右侧抽屉。
+     * <p>为什么走抽屉而不是图片浮窗：mermaid 的节点标签是 foreignObject，
+     * 塞进 <img> 会被浏览器按「图片沙箱」丢掉（节点上的字就没了）；
+     * 独立 HTML 文档里是正常渲染的。
+     */
+    function previewSvg(svg) {
+        var text = serializeSvg(svg);
+        if (!text) return;
+        var doc = buildPreviewDoc(text);
+        if (window.SbWebViewer && window.SbWebViewer.openHtml) {
+            window.SbWebViewer.openHtml(doc, 'Mermaid 预览');
+            return;
+        }
+        // 没有抽屉（插件页等）就退化成新标签页打开
+        var blobUrl = URL.createObjectURL(new Blob([doc], { type: 'text/html;charset=utf-8' }));
+        window.open(blobUrl, '_blank', 'noopener');
+        setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 60000);
+    }
+
+    /** 预览文档：白底居中 + 滚轮缩放 + 拖动平移 + 双击复位 */
+    function buildPreviewDoc(svg) {
+        return '<!DOCTYPE html><html><head><meta charset="utf-8">'
+            + '<style>'
+            + 'html,body{margin:0;height:100%;background:#fff;overflow:hidden;}'
+            + 'body{position:relative;font:13px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;color:#24292e;}'
+            + '.stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:grab;overflow:hidden;'
+            + 'user-select:none;-webkit-user-select:none;}'
+            + '.stage.is-drag{cursor:grabbing;}'
+            + '.stage>svg{max-width:100%;height:auto;transform-origin:center center;will-change:transform;user-select:none;-webkit-user-select:none;}'
+            + '.hint{position:absolute;left:12px;bottom:10px;font-size:12px;color:#a0a6ad;pointer-events:none;user-select:none;}'
+            + '</style></head><body>'
+            + '<div class="stage" id="stage">' + svg + '</div>'
+            + '<div class="hint">滚轮缩放 · 拖动平移 · 双击复位</div>'
+            + '<script>' + PREVIEW_SCRIPT + '<\/script>'
+            + '</body></html>';
+    }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest('.mermaid-btn') : null;
+        if (!btn) return;
+        var wrapper = btn.closest('.mermaid-wrapper');
+        if (!wrapper) return;
+        // 只认 .mermaid-figure 里的图：工具条上的 lucide 图标也是 <svg>，别抓错
+        var svg = wrapper.querySelector('.mermaid-figure > svg');
+        if (!svg) {
+            if (window.SbToast) window.SbToast.error('图还没渲染好，等一下再试');
+            return;
+        }
+        var action = btn.getAttribute('data-mermaid-action');
+        if (action === 'download') {
+            downloadSvg(svg);
+        } else if (action === 'preview') {
+            previewSvg(svg);
+        }
     });
 })();

@@ -418,6 +418,22 @@
     background: #fff;
 }
 
+/* ---- 第二层抽屉里的 Markdown 只读预览 ---- */
+/* 正文样式全交给全局 .markdown-body（css/markdown.css），这里只管滚动容器与留白 */
+.pp-preview{
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    overflow: auto;
+    padding: 18px 22px 32px;
+    background: #fff;
+    scrollbar-width: thin;
+}
+
+/* markdown-body 自带的首尾间距在抽屉里显得空，收掉 */
+.pp-preview > :first-child{ margin-top: 0; }
+.pp-preview > :last-child{ margin-bottom: 0; }
+
 .pp-session{
     display: flex;
     align-items: center;

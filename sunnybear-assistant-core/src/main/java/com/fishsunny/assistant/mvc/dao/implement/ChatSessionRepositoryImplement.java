@@ -30,7 +30,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Repository
-@ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
+@ConditionalOnProperty(name = "assistant.remote-storage.role", havingValue = "local", matchIfMissing = true)
 public class ChatSessionRepositoryImplement implements ChatSessionRepository {
 
     private static final Logger log = LoggerFactory.getLogger(ChatSessionRepositoryImplement.class);

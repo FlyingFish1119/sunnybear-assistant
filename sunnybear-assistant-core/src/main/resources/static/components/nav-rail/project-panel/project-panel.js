@@ -12,6 +12,8 @@
  *   3) 点会话 → sessionStore.selectSession(session) 在消息区打开，并收起面板；
  *      点文件 → 在第一层右边接着展开第二层抽屉（Ace 全高编辑，与「会话文件」同一套两层门户），
  *      保存走 /chat/project/file/write；点「+」新建也是这一层，头部换成文件名输入框。
+ *      Markdown 文件（.md / .markdown）头部多一个「编辑 / 预览」切换：预览走全局 $md 渲染成
+ *      只读正文，与会话文件的 Markdown 预览同一套口径（代码高亮 / Mermaid / KaTeX 都一样）。
  *      行的铅笔按钮是「重命名」：走 confirm-dialog 的输入框形态填新文件名，再调
  *      /chat/project/file/rename —— 与会话文件面板同一套语义（编辑内容点行，改名走铅笔）。
  *
@@ -221,6 +223,13 @@ const ProjectPanel = {
                     <span v-else class="pp-title-text">{{ fileForm.path }}</span>
                 </div>
                 <span v-if="fileSubmitting" class="pp-editor-state">保存中…</span>
+                <!-- Markdown 才有的「编辑 / 预览」切换，与会话文件抽屉同一套口径 -->
+                <button v-if="canPreview"
+                        class="pp-btn"
+                        :title="previewMode ? '切回编辑' : '预览 Markdown'"
+                        @click="togglePreview">
+                    <i :data-lucide="previewMode ? 'pencil-line' : 'eye'"></i>
+                </button>
                 <button class="pp-btn"
                         :title="fileForm.mode === 'create' ? '新建' : '保存'"
                         :disabled="fileSubmitting"
@@ -233,7 +242,10 @@ const ProjectPanel = {
             </div>
             <div v-if="fileForm.error" class="pp-editor-error">{{ fileForm.error }}</div>
             <div class="pp-editor-body">
-                <div ref="fileEditorHost" class="pp-editor-host"></div>
+                <!-- 编辑态：切预览时只藏不销毁，切回来光标与未保存的内容都还在 -->
+                <div v-show="!previewMode" ref="fileEditorHost" class="pp-editor-host"></div>
+                <!-- Markdown 只读预览：渲染编辑器里的当前值，没保存也能看效果 -->
+                <div v-if="previewMode" class="pp-preview markdown-body" v-html="previewHtml"></div>
             </div>
         </aside>
     </div>
@@ -286,6 +298,10 @@ const ProjectPanel = {
             },
             fileSubmitting: false,
 
+            /** Markdown 预览：只读，内容取自编辑器里的当前值（没保存也能看效果） */
+            previewMode: false,
+            previewHtml: '',
+
             /** 换色板：与后端 ChatProjectServiceImplement.PALETTE 是同一套 */
             palette: ProjectColor.PALETTE
         };
@@ -295,12 +311,26 @@ const ProjectPanel = {
         mainColor: function () {
             if (this.appSettings && this.appSettings.mainColor) return this.appSettings.mainColor;
             return '';
+        },
+
+        /** 当前这份文件是不是 Markdown（只有它才出「编辑 / 预览」按钮） */
+        canPreview() {
+            if (!this.fileForm.visible) return false;
+            return this.isMarkdownName(this.fileForm.path);
         }
     },
 
     watch: {
         visible(val) {
             this.$emit('visible-change', val);
+        },
+
+        /**
+         * 文件改名后不再是 Markdown 时，预览态得自己退回来：
+         * 否则编辑区被藏着、预览按钮又没了，用户就卡在预览里出不来。
+         */
+        canPreview(val) {
+            if (!val) this.resetPreview();
         }
     },
 
@@ -406,6 +436,7 @@ const ProjectPanel = {
 
         openNewFile(project) {
             this.destroyFileEditor();
+            this.resetPreview();
             this.fileForm = {
                 visible: true,
                 mode: 'create',
@@ -429,6 +460,7 @@ const ProjectPanel = {
                     return;
                 }
                 this.destroyFileEditor();
+                this.resetPreview();
                 this.fileForm = {
                     visible: true,
                     mode: 'edit',
@@ -485,6 +517,51 @@ const ProjectPanel = {
         closeFileForm() {
             this.destroyFileEditor();
             this.fileForm.visible = false;
+        },
+
+        /* ==================== Markdown 预览 ==================== */
+
+        /** 切预览：进预览时把编辑器藏起来（不销毁），切回来光标与未保存内容都还在 */
+        togglePreview() {
+            if (!this.canPreview) return;
+            if (this.previewMode) {
+                this.previewMode = false;
+                // 编辑器藏在 display:none 里量不到尺寸，切回来先让它重新量一次
+                this.$nextTick(() => {
+                    if (this.editor) {
+                        this.editor.resize();
+                        this.editor.focus();
+                    }
+                });
+                return;
+            }
+            this.renderPreview();
+            this.previewMode = true;
+        },
+
+        /**
+         * 渲染的是编辑器里的当前内容：没保存也能看效果，脏标记该怎么亮还怎么亮。
+         * <p>走全局 $md（MarkdownUtils），与聊天气泡、Word 预览共用同一套渲染口径
+         * （代码高亮 / Mermaid / KaTeX / 原始 HTML 沙盒都在里头）。
+         */
+        renderPreview() {
+            const text = this.editor ? this.editor.getValue() : '';
+            this.previewHtml = (this.$md && typeof this.$md.render === 'function')
+                ? this.$md.render(text)
+                : '';
+        },
+
+        /** 换文件 / 关抽屉时把预览态清干净，别把上一份文件的预览留在界面上 */
+        resetPreview() {
+            this.previewMode = false;
+            this.previewHtml = '';
+        },
+
+        /** 是不是 Markdown（只有它才出预览按钮；判定与会话文件那边一致） */
+        isMarkdownName(name) {
+            const dot = String(name || '').lastIndexOf('.');
+            const ext = dot < 0 ? '' : String(name).substring(dot + 1).toLowerCase();
+            return ext === 'md' || ext === 'markdown';
         },
 
         /**
@@ -843,10 +920,20 @@ const ProjectPanel = {
 
     mounted() {
         document.addEventListener('keydown', this.onKeydown);
+        // mermaid 异步出图后重渲染，把预览里的源码占位换成 SVG（合并到同一帧）
+        if (this.$md && typeof this.$md.onMermaidRendered === 'function') {
+            this._offMermaid = this.$md.onMermaidRendered(() => {
+                if (this.previewMode) this.renderPreview();
+            });
+        }
     },
 
     beforeUnmount() {
         document.removeEventListener('keydown', this.onKeydown);
+        if (this._offMermaid) {
+            this._offMermaid();
+            this._offMermaid = null;
+        }
         this.destroyFileEditor();
     },
 
