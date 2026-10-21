@@ -16,8 +16,7 @@ import com.fishsunny.assistant.remote.RepoLink;
 import com.fishsunny.assistant.websocket.ws.ChatWebSocketHandler;
 import com.fishsunny.assistant.websocket.ws.NoOpWebSocketSession;
 import jakarta.annotation.PostConstruct;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.TaskScheduler;
@@ -33,13 +32,9 @@ import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 
+@Slf4j
 @Component
 public class CronScheduler {
-
-    private static final Logger log = LoggerFactory.getLogger(CronScheduler.class);
-
-    /** 通道没就绪时的等待步长：不阻塞启动，通道来了立刻补加载，没来就继续等 */
-    private static final long WAIT_CHANNEL_INTERVAL_MS = 5000L;
 
     private final TaskScheduler taskScheduler;
     private final CronJobRepository cronJobRepository;
@@ -48,7 +43,7 @@ public class CronScheduler {
     private final RepoLink repoLink;
 
     /** 存储模式：remote 表示本实例是外挂端（库在远端），单点任务不在本机跑 */
-    private final String storageMode;
+    private final String storageRole;
 
     /** 已调度的任务：cronJobId → ScheduledFuture */
     private final Map<Integer, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
@@ -57,14 +52,13 @@ public class CronScheduler {
                          CronJobRepository cronJobRepository,
                          @Lazy ChatWebSocketHandler chatWebSocketHandler,
                          ObjectMapper objectMapper,
-                         @Value("${assistant.remote-storage.mode:local}") String storageMode) {
-                         ObjectMapper objectMapper,
+                         @Value("${assistant.remote-storage.role:local}") String storageRole,
                          RepoLink repoLink) {
         this.taskScheduler = taskScheduler;
         this.cronJobRepository = cronJobRepository;
         this.chatWebSocketHandler = chatWebSocketHandler;
         this.objectMapper = objectMapper;
-        this.storageMode = storageMode;
+        this.storageRole = storageRole;
         this.repoLink = repoLink;
     }
 
@@ -147,7 +141,7 @@ public class CronScheduler {
 
     /** 当前实例的存储模式是否为 remote（remote 端不跑单点任务） */
     private boolean isRemoteStorage() {
-        return "remote".equalsIgnoreCase(storageMode);
+        return "remote".equalsIgnoreCase(storageRole);
     }
 
     /** cron 触发时执行：构建 ChatMessageRequest → 走 WebSocket handler 流程 */
