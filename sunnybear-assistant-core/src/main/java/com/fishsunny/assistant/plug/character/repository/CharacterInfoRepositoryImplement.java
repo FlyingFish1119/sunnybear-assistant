@@ -20,7 +20,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Repository
-@ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
+@ConditionalOnProperty(name = "assistant.remote-storage.role", havingValue = "local", matchIfMissing = true)
 public class CharacterInfoRepositoryImplement implements CharacterInfoRepository {
 
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");

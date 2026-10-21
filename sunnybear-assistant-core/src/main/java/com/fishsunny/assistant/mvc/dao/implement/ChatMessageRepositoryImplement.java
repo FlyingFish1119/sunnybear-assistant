@@ -28,7 +28,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Repository
-@ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
+@ConditionalOnProperty(name = "assistant.remote-storage.role", havingValue = "local", matchIfMissing = true)
 public class ChatMessageRepositoryImplement implements ChatMessageRepository {
 
     private static final Logger log = LoggerFactory.getLogger(ChatMessageRepositoryImplement.class);

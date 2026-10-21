@@ -1,6 +1,8 @@
 package com.fishsunny.assistant.config;
 
-import com.fishsunny.assistant.remote.RepoRpcServerHandler;
+import com.fishsunny.assistant.remote.RepoRpcEndpoint;
+import com.fishsunny.assistant.remote.RepoRpcHandshakeInterceptor;
+import com.fishsunny.assistant.remote.config.RemoteRepositoryProperties;
 import com.fishsunny.assistant.terminal.TerminalHandshakeInterceptor;
 import com.fishsunny.assistant.terminal.TerminalWebSocketHandler;
 import com.fishsunny.assistant.websocket.ws.ChatWebSocketHandler;
@@ -25,7 +27,9 @@ import org.springframework.web.socket.server.standard.ServletServerContainerFact
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final ChatWebSocketHandler chatWebSocketHandler;
-    private final RepoRpcServerHandler repoRpcServerHandler;
+    private final RepoRpcEndpoint repoRpcEndpoint;
+    private final RepoRpcHandshakeInterceptor repoRpcHandshakeInterceptor;
+    private final RemoteRepositoryProperties remoteRepositoryProperties;
     private final TerminalWebSocketHandler terminalWebSocketHandler;
     private final TerminalHandshakeInterceptor terminalHandshakeInterceptor;
 
@@ -33,9 +37,12 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(chatWebSocketHandler, "/ws/chat")
                 .setAllowedOrigins("*");
-        // 仓储 RPC 端点：本地 remote 模式的客户端连这里，把 Repository 调用代理到云端执行
-        registry.addHandler(repoRpcServerHandler, "/ws/repo")
-                .setAllowedOrigins("*");
+        // 仓储端点只是会合点：谁都能连，身份由握手头声明；只有会接受连接时才注册这个口子
+        if (remoteRepositoryProperties.acceptsConnection()) {
+            registry.addHandler(repoRpcEndpoint, "/ws/repo")
+                    .addInterceptors(repoRpcHandshakeInterceptor)
+                    .setAllowedOrigins("*");
+        }
         // 本地交互式终端：xterm.js ↔ PTY，握手拦截器只放行本机来源
         registry.addHandler(terminalWebSocketHandler, "/ws/terminal")
                 .addInterceptors(terminalHandshakeInterceptor)

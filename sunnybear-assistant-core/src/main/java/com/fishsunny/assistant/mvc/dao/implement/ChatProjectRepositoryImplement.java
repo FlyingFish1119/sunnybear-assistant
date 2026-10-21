@@ -31,7 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Repository
-@ConditionalOnProperty(name = "assistant.remote-storage.mode", havingValue = "local", matchIfMissing = true)
+@ConditionalOnProperty(name = "assistant.remote-storage.role", havingValue = "local", matchIfMissing = true)
 public class ChatProjectRepositoryImplement implements ChatProjectRepository {
 
     private static final Logger log = LoggerFactory.getLogger(ChatProjectRepositoryImplement.class);
