@@ -59,6 +59,85 @@ const SfFileKind = {
      */
     PDF_EXTS: ['pdf'],
 
+    /* ---------- 下面几组清单只服务「图标 + 类型色」，不参与「怎么打开」的判定 ---------- */
+
+    /** 音频 */
+    AUDIO_EXTS: ['mp3', 'wav', 'flac', 'aac', 'ogg', 'oga', 'm4a', 'wma', 'opus', 'ape'],
+
+    /** 表格 */
+    SHEET_EXTS: ['csv', 'tsv', 'xlsx', 'xls', 'ods'],
+
+    /** 压缩包 / 归档（jar、war 本质上也是 zip，一并归进来） */
+    ARCHIVE_EXTS: ['zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'zst', 'jar', 'war', 'iso'],
+
+    /** 数据库文件与 SQL 脚本 */
+    DB_EXTS: ['db', 'sqlite', 'sqlite3', 'sql', 'mdb'],
+
+    /** JSON 系（单独拎出来，跟一般源码分开认） */
+    JSON_EXTS: ['json', 'jsonl', 'ndjson', 'geojson'],
+
+    /** Markdown：图标与彩色都单独一档，跟纯文本区分开 */
+    MARKDOWN_EXTS: ['md', 'markdown'],
+
+    /** 配置文件 */
+    CONFIG_EXTS: ['yml', 'yaml', 'toml', 'ini', 'conf', 'config', 'properties', 'env', 'lock', 'editorconfig'],
+
+    /** 脚本 */
+    SCRIPT_EXTS: ['sh', 'bash', 'zsh', 'fish', 'bat', 'cmd', 'ps1', 'psm1', 'vbs'],
+
+    /** 源码 */
+    CODE_EXTS: [
+        'js', 'mjs', 'cjs', 'jsx', 'ts', 'tsx', 'vue', 'svelte',
+        'html', 'htm', 'css', 'scss', 'less', 'sass',
+        'xml', 'xsl', 'xsd',
+        'java', 'kt', 'kts', 'groovy', 'gradle', 'scala',
+        'py', 'rb', 'php', 'go', 'rs', 'c', 'h', 'cpp', 'hpp', 'cc', 'cs',
+        'swift', 'dart', 'lua', 'pl', 'r'
+    ],
+
+    /**
+     * 类型 → lucide 图标名。名字都核对过本地 lucide.min.js，不会画出空白。
+     * <p>Word 和纯文本共用 file-text 是故意的：lucide 没有 file-word / file-pdf 这号图标，
+     * 靠类型色（红 / 蓝 / 灰）分就够了，不必为了凑图标去加重依赖。
+     */
+    FILE_ICONS: {
+        image: 'file-image',
+        video: 'file-video',
+        audio: 'file-audio',
+        pdf: 'file-type',
+        word: 'file-text',
+        markdown: 'book-open-text',
+        sheet: 'file-spreadsheet',
+        json: 'file-json',
+        code: 'file-code',
+        config: 'file-cog',
+        script: 'file-terminal',
+        archive: 'file-archive',
+        database: 'database',
+        text: 'file-text',
+        other: 'file'
+    },
+
+    /**
+     * 类型色板：全部压过饱和度，浅底上认得出、又不至于把列表刷成调色盘。
+     * <p>纯文本与未知类型故意不给色 —— 它们占绝大多数，满屏抢眼反而看不清重点。
+     */
+    FILE_TONES: {
+        image: '#5f9a7a',
+        video: '#8b78c8',
+        audio: '#c07a9c',
+        pdf: '#c96a6a',
+        word: '#7a86b8',
+        markdown: '#4f9aa8',
+        sheet: '#5a9e7a',
+        json: '#b3924a',
+        code: '#5b8ac4',
+        config: '#7d8f7d',
+        script: '#8a7d6a',
+        archive: '#c08a3e',
+        database: '#7a8fa8'
+    },
+
     /** 按文本打开的扩展名；没有扩展名的文件也当文本试（日志、脚本产物多是这样） */
     TEXT_EXTS: [
         'txt', 'md', 'markdown', 'json', 'jsonl', 'csv', 'tsv', 'log', 'ini', 'conf', 'config', 'properties', 'env',
@@ -109,6 +188,41 @@ const SfFileKind = {
     /** 扩展名 → ace mode */
     aceModeOf(name) {
         return this.ACE_MODES[this.extOf(name)] || 'text';
+    },
+
+    /**
+     * 图标大类：比 of() 细一层，专门回答「这文件该长什么样」。
+     * <p>of() 只管「怎么打开」（预览 / 下载 / 编辑），这里只管「长什么样」，
+     * 两套清单各管各的 —— 想给某类文件换外观，动这里，别去碰 of()。
+     * 顺序即优先级，从上往下第一个命中的就是归属。
+     */
+    fileCategoryOf(name) {
+        const ext = this.extOf(name);
+        if (this.IMAGE_EXTS.indexOf(ext) >= 0) return 'image';
+        if (this.VIDEO_EXTS.indexOf(ext) >= 0) return 'video';
+        if (this.AUDIO_EXTS.indexOf(ext) >= 0) return 'audio';
+        if (this.PDF_EXTS.indexOf(ext) >= 0) return 'pdf';
+        if (this.DOCX_EXTS.indexOf(ext) >= 0) return 'word';
+        if (this.MARKDOWN_EXTS.indexOf(ext) >= 0) return 'markdown';
+        if (this.SHEET_EXTS.indexOf(ext) >= 0) return 'sheet';
+        if (this.ARCHIVE_EXTS.indexOf(ext) >= 0) return 'archive';
+        if (this.DB_EXTS.indexOf(ext) >= 0) return 'database';
+        if (this.JSON_EXTS.indexOf(ext) >= 0) return 'json';
+        if (this.CONFIG_EXTS.indexOf(ext) >= 0) return 'config';
+        if (this.SCRIPT_EXTS.indexOf(ext) >= 0) return 'script';
+        if (this.CODE_EXTS.indexOf(ext) >= 0) return 'code';
+        if (!ext || this.TEXT_EXTS.indexOf(ext) >= 0) return 'text';
+        return 'other';
+    },
+
+    /** 文件名 → lucide 图标名（列表行与抽屉标题共用这一份，别在组件里各写一套） */
+    iconOf(name) {
+        return this.FILE_ICONS[this.fileCategoryOf(name)] || 'file';
+    },
+
+    /** 文件名 → 类型色；纯文本 / 未知返回空串，交给列表本来的默认灰 */
+    toneOf(name) {
+        return this.FILE_TONES[this.fileCategoryOf(name)] || '';
     }
 };
 
@@ -206,9 +320,7 @@ const SfViewer = {
         },
 
         headerIcon() {
-            if (this.viewKind === 'image') return 'image';
-            if (this.viewKind === 'video') return 'file-video';
-            return 'file-text';
+            return SfFileKind.iconOf(this.file && this.file.name);
         },
 
         statusClass() {

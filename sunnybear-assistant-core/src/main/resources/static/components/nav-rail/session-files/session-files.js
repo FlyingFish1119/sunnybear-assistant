@@ -111,7 +111,7 @@ const SessionFiles = {
                          @dragover.stop.prevent="onRowDragOver($event, row)"
                          @dragleave.stop.prevent="onRowDragLeave($event, row)"
                          @drop.stop.prevent="onRowDrop($event, row)">
-                        <span class="sf-row-icon"><i :data-lucide="rowIcon(row)"></i></span>
+                        <span class="sf-row-icon" :style="rowTone(row)"><i :data-lucide="rowIcon(row)"></i></span>
                         <span class="sf-row-name">{{ row.name }}</span>
                         <span class="sf-row-size">{{ row.directory ? '' : formatSize(row.size) }}</span>
                         <span class="sf-row-actions" @click.stop>
@@ -1012,10 +1012,17 @@ const SessionFiles = {
 
         rowIcon(row) {
             if (row.directory) return this.expanded[row.path] ? 'folder-open' : 'folder';
-            const kind = SfFileKind.of(row.name);
-            if (kind === 'image') return 'image';
-            if (kind === 'video') return 'file-video';
-            return 'file-text';
+            return SfFileKind.iconOf(row.name);
+        },
+
+        /**
+         * 文件按类型上色；文件夹不吃这道色 —— 它归 CSS 里的主色调管，
+         * 免得文件夹和压缩包都染成一片橙，看着分不出谁是目录。
+         */
+        rowTone(row) {
+            if (row.directory) return null;
+            const tone = SfFileKind.toneOf(row.name);
+            return tone ? { color: tone } : null;
         },
 
         formatSize(size) {

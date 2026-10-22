@@ -123,7 +123,7 @@ const ProjectPanel = {
                                          :key="f.path"
                                          class="pp-file"
                                          @click="openFile(project, f)">
-                                        <span class="pp-file-icon"><i data-lucide="file-text"></i></span>
+                                        <span class="pp-file-icon" :style="fileTone(f)"><i :data-lucide="fileIcon(f)"></i></span>
                                         <span class="pp-file-name">{{ f.name }}</span>
                                         <span class="pp-pin"
                                               :class="{ 'is-on': isAutoAppend(project, f) }"
@@ -213,7 +213,7 @@ const ProjectPanel = {
         <aside v-if="fileForm.visible" class="pp-drawer pp-drawer--editor">
             <div class="pp-head">
                 <div class="pp-title">
-                    <i data-lucide="file-text"></i>
+                    <i :data-lucide="fileFormIcon" :style="fileFormTone"></i>
                     <input v-if="fileForm.mode === 'create'"
                            ref="fileNameInput"
                            class="pp-editor-name"
@@ -317,6 +317,18 @@ const ProjectPanel = {
         canPreview() {
             if (!this.fileForm.visible) return false;
             return this.isMarkdownName(this.fileForm.path);
+        },
+
+        /** 文件编辑抽屉标题的图标与颜色，跟列表行共用 SfFileKind 那一份判定 */
+        fileFormIcon() {
+            return SfFileKind.iconOf(this.fileForm.path);
+        },
+
+        fileFormTone() {
+            // 兜底给 inherit 而不是 null：lucide-safe 会把样式搬到 svg 上存成基线，
+            // 返回 null 时浏览器那边宿主属性虽然没了，基线里的旧颜色却还留着，
+            // 从 .md 改名成 .txt 就能看到蓝色洗不干净。给个合法值让它每轮都被覆盖。
+            return { color: SfFileKind.toneOf(this.fileForm.path) || 'inherit' };
         }
     },
 
@@ -335,6 +347,18 @@ const ProjectPanel = {
     },
 
     methods: {
+        /* ==================== 类型图标与配色 ==================== */
+
+        /** 项目文件行的图标与颜色，判定统一走 SfFileKind（会话文件面板用的是同一份） */
+        fileIcon(f) {
+            return SfFileKind.iconOf(f.name);
+        },
+
+        fileTone(f) {
+            const tone = SfFileKind.toneOf(f.name);
+            return tone ? { color: tone } : null;
+        },
+
         /* ==================== 开合 ==================== */
 
         toggle() {
