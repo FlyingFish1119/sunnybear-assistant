@@ -102,7 +102,10 @@
     height: 52px;
     padding: 0 10px 0 14px;
     box-sizing: border-box;
+    /* 与下方内容区分界的那道细线用主色调：标题图标改成按文件类型上色之后，
+       主色调就从图标上退到这条线上。先写灰线兜底，不认 color-mix 时退回原样。 */
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    border-bottom-color: color-mix(in srgb, var(--main-color, #FFA07A) 32%, #fff);
     background: #fff;
 }
 
@@ -121,7 +124,8 @@
     width: 16px;
     height: 16px;
     flex: none;
-    color: var(--main-color, lightsalmon);
+    /* 颜色不在这里定：按文件类型由 project-panel.js 的 fileFormTone 内联给出，
+       主色调留给头部那条分界线 */
 }
 
 .pp-title-text{

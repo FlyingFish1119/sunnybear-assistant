@@ -58,7 +58,11 @@
     height: 52px;
     padding: 0 10px 0 14px;
     box-sizing: border-box;
+    /* 与下方内容区分界的那道细线用主色调：标题图标改成按文件类型上色之后，
+       主色调就从图标上退到这条线上，这层抽屉照样有自己的强调色。
+       先写灰线兜底，浏览器不认 color-mix 时会退回原来的样子。 */
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    border-bottom-color: color-mix(in srgb, var(--main-color, #FFA07A) 32%, #fff);
     background: #fff;
 }
 
@@ -77,7 +81,8 @@
     width: 16px;
     height: 16px;
     flex: none;
-    color: var(--main-color, lightsalmon);
+    /* 颜色不在这里定：按文件类型由 sf-viewer.js 的 headerTone 内联给出，
+       主色调留给头部那条分界线 */
 }
 
 /* 文件名太长时省略，不把操作按钮挤掉 */

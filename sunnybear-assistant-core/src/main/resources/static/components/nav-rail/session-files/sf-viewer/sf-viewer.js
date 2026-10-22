@@ -233,7 +233,7 @@ const SfViewer = {
     <aside v-if="file" class="sf-drawer sf-drawer--viewer">
         <div class="sf-head">
             <div class="sf-title">
-                <i :data-lucide="headerIcon"></i>
+                <i :data-lucide="headerIcon" :style="headerTone"></i>
                 <span class="sf-title-text">{{ file.name }}</span>
             </div>
             <button v-if="canPreview" class="sf-btn"
@@ -321,6 +321,15 @@ const SfViewer = {
 
         headerIcon() {
             return SfFileKind.iconOf(this.file && this.file.name);
+        },
+
+        /**
+         * 标题图标跟列表行同色，一左一右能对上。
+         * <p>纯文本 / 未知类型兜 inherit，而不是返回 null —— lucide-safe 会把样式搬到 svg
+         * 上存成基线，返回 null 时旧颜色会赖在基线上，从 .md 改名成 .txt 就洗不掉了。
+         */
+        headerTone() {
+            return { color: SfFileKind.toneOf(this.file && this.file.name) || 'inherit' };
         },
 
         statusClass() {
