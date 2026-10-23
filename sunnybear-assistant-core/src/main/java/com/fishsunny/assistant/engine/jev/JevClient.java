@@ -11,6 +11,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 
 /*
  * @Usage
@@ -42,6 +43,7 @@ public class JevClient {
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + properties.getApiKey())
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
+                .timeout(Duration.ofSeconds(properties.getTimeoutS()))
                 .build();
 
         HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
