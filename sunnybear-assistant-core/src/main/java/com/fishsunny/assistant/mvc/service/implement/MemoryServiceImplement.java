@@ -50,15 +50,18 @@ public class MemoryServiceImplement implements MemoryService {
     private final AISettings cubAISettings;
     private final ChatHttpHandler chatHttpHandler;
     private final ObjectMapper objectMapper;
+    private final MemorySettings memorySettings;
 
     public MemoryServiceImplement(MemoryRepository memoryRepository,
                                   @Qualifier(AISettings.CUB) AISettings cubAISettings,
+                                  MemorySettings memorySettings,
                                   ChatHttpHandler chatHttpHandler,
                                   ObjectMapper objectMapper) {
         this.chatHttpHandler = chatHttpHandler;
         this.memoryRepository = memoryRepository;
         this.cubAISettings = cubAISettings;
         this.objectMapper = objectMapper;
+        this.memorySettings = memorySettings;
     }
 
     @Override
@@ -128,6 +131,9 @@ public class MemoryServiceImplement implements MemoryService {
 
     @Override
     public String buildMemorySection() {
+        if (!Boolean.TRUE.equals(memorySettings.getEnable())) {
+            return;
+        }
         List<MemoryRecord> memories = memoryRepository.selectAll();
         if (memories == null || memories.isEmpty()) {
             return "";

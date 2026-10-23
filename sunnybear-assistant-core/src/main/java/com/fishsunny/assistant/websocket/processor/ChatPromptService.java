@@ -21,7 +21,6 @@ import com.fishsunny.assistant.mvc.service.KnowledgeService;
 import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.McpSettings;
-import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.ProjectFileManager;
 import com.fishsunny.assistant.websocket.provider.ChatProvider;
@@ -62,7 +61,6 @@ public class ChatPromptService {
 
     private final KnowledgeService knowledgeService;
     private final MemoryService memoryService;
-    private final MemorySettings memorySettings;
     private final ChatProjectService chatProjectService;
     private final ProjectFileManager projectFileManager;
     private final CronJobService cronJobService;
@@ -195,9 +193,6 @@ public class ChatPromptService {
 
     private void injectMemoryPrompt(StringBuilder systemPrompt) {
         // 记忆注入开关：关闭后对话不再注入记忆（不影响记忆 CRUD 与问候语个性化）
-        if (!Boolean.TRUE.equals(memorySettings.getEnable())) {
-            return;
-        }
         try {
             String memorySection = memoryService.buildMemorySection();
             if (StringUtils.hasText(memorySection)) {
