@@ -106,6 +106,13 @@ const McpPanel = {
                 </label>
 
                 <label class="mcp-field">
+                    <span class="mcp-field-label">说明</span>
+                    <textarea class="mcp-textarea" v-model="form.desc" rows="2"
+                              placeholder="这个 MCP 是干嘛用的，例如：查询各类库的最新文档与代码示例（可选）"
+                              @input="markDirty"></textarea>
+                </label>
+
+                <label class="mcp-field">
                     <span class="mcp-field-label">传输方式</span>
                     <el-select v-model="form.transport" style="width:100%" @change="markDirty">
                         <el-option label="http — Streamable HTTP 远端服务" value="http"></el-option>
@@ -178,6 +185,7 @@ const McpPanel = {
             isNew: false,
             form: {
                 serverName: '',
+                desc: '',
                 transport: 'http',
                 url: '',
                 command: '',
@@ -287,6 +295,7 @@ const McpPanel = {
         },
 
         describe(c) {
+            if (c.desc) return c.desc;
             if ((c.transport || 'http') === 'stdio') {
                 const parts = [c.command || ''].concat(c.args || []).filter(Boolean);
                 return parts.join(' ') || '（未配置命令）';
@@ -297,6 +306,7 @@ const McpPanel = {
         blankForm() {
             return {
                 serverName: '',
+                desc: '',
                 transport: 'http',
                 url: '',
                 command: '',
@@ -336,6 +346,7 @@ const McpPanel = {
         loadForm(c) {
             return {
                 serverName: c.serverName || '',
+                desc: c.desc || '',
                 transport: c.transport || 'http',
                 url: c.url || '',
                 command: c.command || '',
@@ -356,6 +367,7 @@ const McpPanel = {
             const transport = this.form.transport === 'stdio' ? 'stdio' : 'http';
             return {
                 serverName: (this.form.serverName || '').trim(),
+                desc: (this.form.desc || '').trim(),
                 transport: transport,
                 url: transport === 'http' ? (this.form.url || '').trim() : null,
                 command: transport === 'stdio' ? (this.form.command || '').trim() : null,

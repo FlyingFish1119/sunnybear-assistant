@@ -75,6 +75,7 @@ public class McpSettingsController {
                 return new RestResponse().error("MCP Server 名称重复: " + serverName);
             }
             client.setServerName(serverName);
+            client.setDesc(StringUtils.hasText(client.getDesc()) ? client.getDesc().trim() : null);
 
             boolean stdio = client.isStdio();
             client.setTransport(stdio ? "stdio" : "http");

@@ -91,6 +91,9 @@ public class McpListTool implements ToolHandler {
     /** 渲染单个 server 的工具清单；查询失败不影响其余 server */
     private String renderServer(McpSettings.Client target) {
         StringBuilder output = new StringBuilder("## MCP Server [").append(target.getServerName()).append("]");
+        if (StringUtils.hasText(target.getDesc())) {
+            output.append("（").append(target.getDesc()).append("）");
+        }
         try {
             McpListToolsResult result = mcpClientService.listTools(target.getServerName());
             List<McpTool> tools = result.tools() == null ? List.of() : result.tools();

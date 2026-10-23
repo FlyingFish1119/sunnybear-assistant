@@ -13,12 +13,14 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatProject;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.CronJob;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
+import com.fishsunny.assistant.engine.tool.service.mcp.McpClientService;
 import com.fishsunny.assistant.mvc.service.ChatProjectBindings;
 import com.fishsunny.assistant.mvc.service.ChatProjectService;
 import com.fishsunny.assistant.mvc.service.CronJobService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
 import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AssistantSettings;
+import com.fishsunny.assistant.settings.McpSettings;
 import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.ProjectFileManager;
@@ -64,6 +66,7 @@ public class ChatPromptService {
     private final ChatProjectService chatProjectService;
     private final ProjectFileManager projectFileManager;
     private final CronJobService cronJobService;
+    private final McpClientService mcpClientService;
 
     public String defaultSystemPrompt(ChatProvider.SystemProviderContext context, AssistantSettings activeAssistantSettings, String effectiveModelName, WebSocketSession session) throws Exception {
         ChatSession chatSession = context.chatSession();
@@ -85,6 +88,7 @@ public class ChatPromptService {
         injectProjectPrompt(chatSession, systemPrompt);
         injectKnowledgePrompt(originMessages, chatSession, systemPrompt, session);
         injectMemoryPrompt(systemPrompt);
+        injectMcpPrompt(systemPrompt);
 
         return systemPrompt.toString();
     }
@@ -201,6 +205,33 @@ public class ChatPromptService {
             }
         } catch (Exception e) {
             log.warn("核心记忆注入失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * MCP Server 清单注入。
+     * <p>只给「接了哪些 MCP、各自是干嘛的」，不罗列具体工具名与入参 Schema ——
+     * 工具明细由 mcp_list_tool 现查，避免开局就把一堆 schema 塞进上下文。
+     * <p>文案用中性称呼（用户），不掺任何角色设定的人格称呼。
+     */
+    private void injectMcpPrompt(StringBuilder systemPrompt) {
+        try {
+            List<McpSettings.Client> clients = mcpClientService.clients();
+            if (clients == null || clients.isEmpty()) {
+                return;
+            }
+            StringBuilder section = new StringBuilder("\n[mcp]\n");
+            section.append("已接入以下 MCP Server，需要具体工具清单时用 mcp_list_tool 查询：\n");
+            for (McpSettings.Client client : clients) {
+                section.append("- ").append(client.getServerName());
+                if (StringUtils.hasText(client.getDesc())) {
+                    section.append("：").append(client.getDesc());
+                }
+                section.append("\n");
+            }
+            systemPrompt.append(section);
+        } catch (Exception e) {
+            log.warn("MCP Server 清单注入失败: {}", e.getMessage());
         }
     }
 }

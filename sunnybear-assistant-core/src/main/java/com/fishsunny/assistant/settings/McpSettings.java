@@ -28,6 +28,9 @@ public class McpSettings {
 
         private String serverName = "MCP Server";
 
+        /** 该 MCP Server 的用途说明，仅用于面板展示与工具清单提示，不参与连接逻辑 */
+        private String desc;
+
         /** 传输方式：http（Streamable HTTP，默认）| stdio（本地子进程） */
         private String transport = "http";
 
