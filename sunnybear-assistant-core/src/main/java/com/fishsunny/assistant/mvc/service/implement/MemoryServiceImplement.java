@@ -15,6 +15,7 @@ import com.fishsunny.assistant.engine.protocol.project.entity.MemoryRecord;
 import com.fishsunny.assistant.mvc.dao.MemoryRepository;
 import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AISettings;
+import com.fishsunny.assistant.settings.MemorySettings;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -132,7 +133,7 @@ public class MemoryServiceImplement implements MemoryService {
     @Override
     public String buildMemorySection() {
         if (!Boolean.TRUE.equals(memorySettings.getEnable())) {
-            return;
+            return "";
         }
         List<MemoryRecord> memories = memoryRepository.selectAll();
         if (memories == null || memories.isEmpty()) {

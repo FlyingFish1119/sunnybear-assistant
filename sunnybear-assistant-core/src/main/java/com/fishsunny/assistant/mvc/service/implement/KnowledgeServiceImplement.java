@@ -344,13 +344,13 @@ public class KnowledgeServiceImplement implements KnowledgeService {
 
     /**
      * 格式化知识条目列表为系统提示词片段。
+     * 编号直接使用知识条目 ID，便于模型精确引用、更新或删除指定条目。
      */
     private String formatKnowledgeSection(List<KnowledgeRecord> entries) {
         StringBuilder sb = new StringBuilder("\n[knowledge]\n");
-        sb.append("以下是从知识库中检索到的相关知识，可能对当前对话有帮助：\n");
-        for (int i = 0; i < entries.size(); i++) {
-            KnowledgeRecord entry = entries.get(i);
-            sb.append(i + 1).append(". 【").append(entry.getIntro()).append("】")
+        sb.append("以下是从知识库中检索到的相关知识（每条开头的数字为该知识条目的 ID），可能对当前对话有帮助：\n");
+        for (KnowledgeRecord entry : entries) {
+            sb.append(entry.getId()).append(". 【").append(entry.getIntro()).append("】")
                     .append(entry.getContent()).append("\n");
         }
         return sb.toString();
