@@ -344,14 +344,18 @@ public class KnowledgeServiceImplement implements KnowledgeService {
 
     /**
      * 格式化知识条目列表为系统提示词片段。
-     * 编号直接使用知识条目 ID，便于模型精确引用、更新或删除指定条目。
+     * 每条用 &lt;knowledge id="x"&gt; 标签整体包裹，ID 放在标签属性上：
+     * 正文多为 Markdown，内部常有序号列表，用包裹标签可避免与条目标识混淆。
      */
     private String formatKnowledgeSection(List<KnowledgeRecord> entries) {
         StringBuilder sb = new StringBuilder("\n[knowledge]\n");
-        sb.append("以下是从知识库中检索到的相关知识（每条开头的数字为该知识条目的 ID），可能对当前对话有帮助：\n");
+        sb.append("以下是从知识库中检索到的相关知识，每条由 <knowledge id=\"x\"> 标签包裹，id 即知识条目 ID，标签内为该条目的正文（可能包含 Markdown）：\n");
         for (KnowledgeRecord entry : entries) {
-            sb.append(entry.getId()).append(". 【").append(entry.getIntro()).append("】")
-                    .append(entry.getContent()).append("\n");
+            sb.append("\n<knowledge id=\"").append(entry.getId()).append("\">\n");
+            if (StringUtils.hasText(entry.getIntro())) {
+                sb.append("【").append(entry.getIntro()).append("】\n");
+            }
+            sb.append(entry.getContent()).append("\n</knowledge>\n");
         }
         return sb.toString();
     }
