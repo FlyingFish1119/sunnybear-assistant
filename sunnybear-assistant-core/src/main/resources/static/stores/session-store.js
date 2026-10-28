@@ -46,6 +46,13 @@ const SessionStore = (function () {
     const PROJECT_EXTENSION_KEY = 'chat_project_id';
 
     /**
+     * 「强制不绑定项目」的哨兵值，必须与后端 ChatProjectBindings.FORCE_UNBOUND 保持一致（-1）。
+     * 新建请求把它当作 chat_project_id 发出去，含义是「这条会话必须是散会话，别让 Jev 猜」：
+     * 服务端见它就不做项目归属判定，也不把这个键写进会话 extension。
+     */
+    const FORCE_UNBOUND_PROJECT_ID = '-1';
+
+    /**
      * 会话按 (updateTime, id) 降序比较 —— 与后端 /session/get/page 的排序一致。
      * updateTime 为 "yyyy-MM-dd HH:mm:ss" 文本，字典序即时间序；id 仅作同秒内稳定平局裁决。
      */
@@ -171,7 +178,9 @@ const SessionStore = (function () {
          */
         nextProForce: null,
         /**
-         * 下一次新建会话的项目归属指定：null = 不干预（交给 Jev 按消息内容判定）/ 项目 id = 强制归入该项目。
+         * 下一次新建会话的项目归属指定：
+         * null = 不干预（交给 Jev 按消息内容判定）/ 项目 id = 强制归入该项目 /
+         * '-1'（FORCE_UNBOUND_PROJECT_ID）= 强制不绑定，服务端连判定都不做。
          * 由发送区的项目选择器设置，只作用于 create 请求，请求发出后立即复位（见 sendMessage）。
          */
         nextProjectId: null
@@ -319,6 +328,9 @@ const SessionStore = (function () {
         /** 响应式状态（组件可直接读写；state.currentSession 等） */
         state: state,
 
+        /** 「强制不绑定项目」哨兵值：组件比较 nextProjectId 时用，免得各处硬编码 '-1' */
+        FORCE_UNBOUND_ID: FORCE_UNBOUND_PROJECT_ID,
+
         /* ================= 派生属性 ================= */
 
         get sessions() { return state.sessions; },
@@ -335,7 +347,8 @@ const SessionStore = (function () {
          */
         get nextProForce() { return state.nextProForce; },
         /**
-         * 下一次新建会话的项目归属指定：null = 不干预（交给 Jev 判定）/ 项目 id = 强制归入该项目。
+         * 下一次新建会话的项目归属指定：
+         * null = 不干预（交给 Jev 判定）/ 项目 id = 强制归入该项目 / '-1' = 强制不绑定（散会话）。
          * 由发送区的项目选择器设置，仅作用于 create 请求。
          */
         get nextProjectId() { return state.nextProjectId; },
@@ -462,8 +475,9 @@ const SessionStore = (function () {
 
         /**
          * 设置「下一次新建会话」的项目归属：传项目 id = 强制归入该项目
-         * （服务端见新会话已自带 chat_project_id 就不再让 Jev 猜），传 null / 空 = 退回不干预。
-         * 值只在新建会话时随请求发出（见 sendMessage），发出后自动复位。
+         * （服务端见新会话已自带 chat_project_id 就不再让 Jev 猜）；
+         * 传 -1 = 强制不绑定，服务端会把这个键从会话上摘掉并跳过判定；
+         * 传 null / 空 = 退回不干预。值只在新建会话时随请求发出（见 sendMessage），发出后自动复位。
          */
         setNextProject(projectId) {
             state.nextProjectId = projectId ? String(projectId) : null;
@@ -792,8 +806,9 @@ const SessionStore = (function () {
                     console.error('buildCreateRequest 钩子出错:', e);
                 }
             }
-            // 新建会话 + 发送区选定了项目：强制挂上 project_id
+            // 新建会话 + 发送区选定了项目归属：强制挂上 project_id
             // （服务端见新会话已自带 chat_project_id 就跳过 Jev 归属判定，直接归入该项目）
+            // 值也可能是 '-1'（强制不绑定）：照样发出去，由服务端认这个哨兵并把它从会话上摘掉
             // 放在插件钩子之后合并，保证「主人显式指定」永远优先，不被角色 / 世界插件的 extension 覆盖
             if (!sessionId && state.nextProjectId) {
                 request.extension = Object.assign({}, request.extension,

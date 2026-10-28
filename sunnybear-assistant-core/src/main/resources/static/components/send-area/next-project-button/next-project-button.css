@@ -2,7 +2,8 @@
    下一次新对话的项目归属 — 发送区工具栏插件
    收起态：方块图标按钮（不指定，中性灰）
            / 图标 + 项目名的胶囊（已指定，主色）
-   展开态：上浮的项目选择面板（可搜索，顶部一条「不指定」）
+           / 图标 + 「不绑定项目」的胶囊（强制散会话，中性灰）
+   展开态：上浮的项目选择面板（可搜索，顶部「不指定」「强制不绑定」两条）
    尺寸、圆角与 hover 基底继承 send-area.css 的 .send-area-icon-btn，这里只加差异。
 
    ⚠ 外层 .next-project-button-wrap 只做定位锚点，绝不写 z-index ——
@@ -36,6 +37,21 @@
 
 /* 锁定态的点击反馈：只压暗自身，避免 hover 的灰底盖掉主色 */
 .next-project-button.is-locked:hover:not(:disabled) {
+    filter: brightness(0.96);
+}
+
+/* 强制不绑定（散会话）：同样撑成胶囊，但走中性灰 —— 不抢项目的色，又能一眼看出这条会话被锁了 */
+.next-project-button.is-unbound:not(:disabled) {
+    width: auto;
+    max-width: 190px;
+    padding: 0 10px;
+    gap: 5px;
+    color: #6b7280;
+    background: #f1f2f4;
+}
+
+/* 与锁定态同款点击反馈：只压暗自身，别被 hover 的灰底覆盖 */
+.next-project-button.is-unbound:hover:not(:disabled) {
     filter: brightness(0.96);
 }
 
@@ -138,6 +154,11 @@
 .next-project-dot--auto {
     background: transparent;
     border: 1.5px solid #c6cbd4;
+}
+
+/* 「强制不绑定」那条的圆点：实心中性灰 —— 空心是「不指定」，实心灰是「锁死不绑」 */
+.next-project-dot--unbound {
+    background: #c6cbd4;
 }
 
 .next-project-name {

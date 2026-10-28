@@ -40,6 +40,22 @@ public class ChatProjectBindings {
     public static final String UNBOUND = "";
 
     /**
+     * 新建会话请求里「强制不绑定项目」的哨兵值：{@code chat_project_id = "-1"}。
+     * <p>它只活在请求里，绝不会落到会话上：{@code CreateChatMessageRequestHandler} 建库前会把这个键剔掉，
+     * 同时跳过 Jev 项目归属判定 —— 语义就是「这条会话必须是散会话，别给我猜」。
+     * <p>与 {@link #UNBOUND} 的区别：UNBOUND 是解绑之后写进库的空串（键在、值为空），
+     * 这里是前端表达意图的临时值（键直接不写）。
+     */
+    public static final String FORCE_UNBOUND = "-1";
+
+    /**
+     * 判断一个 extension 值是不是「强制不绑定项目」的哨兵。
+     */
+    public static boolean isForceUnbound(Object value) {
+        return value != null && FORCE_UNBOUND.equals(String.valueOf(value).trim());
+    }
+
+    /**
      * 项目入口文档名：落在 {basePath}/project/{projectId}/ 下。
      * <p>新建项目时自动生成一份占位；{@code /init} 探索完也写这个名字（同名覆盖 = 刷新文档）。
      */

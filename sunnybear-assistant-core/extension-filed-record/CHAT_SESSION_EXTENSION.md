@@ -50,6 +50,10 @@
   后端 `CreateChatMessageRequestHandler.createChatSession()` 写入。
   项目另有两条后置写入路径：Jev 判中后 `attachJudgedProject()`、会话列表右键「归入项目」，
   都走 `ChatProjectService.attachSession()` → `mergeExtension()` 合并写入。
+- `chat_project_id` 有一个**只在请求里存在**的哨兵值 `-1`（`ChatProjectBindings.FORCE_UNBOUND`）：
+  语义是「这条会话强制不绑定项目（散会话）」。`createChatSession()` 落库前会把这个键摘掉，
+  `judgeProjectTask()` 见到它直接跳过 Jev 归属判定，因此它**永远不会写进 `chat_session.extension`**。
+  别把它和 `UNBOUND`（解绑后写进库的空串，键在值为空）混为一谈。
 
 ## 注意事项
 

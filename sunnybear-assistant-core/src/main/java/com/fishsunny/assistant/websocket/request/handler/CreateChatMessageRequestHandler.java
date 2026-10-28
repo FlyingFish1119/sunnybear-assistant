@@ -36,7 +36,9 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
@@ -103,7 +105,15 @@ public class CreateChatMessageRequestHandler implements ChatMessageRequestHandle
             chatSession.setType(sessionType);
         }
         if (!CollectionUtils.isEmpty(request.getExtension())) {
-            chatSession.setExtension(new java.util.LinkedHashMap<>(request.getExtension()));
+            Map<String, Object> extension = new LinkedHashMap<>(request.getExtension());
+            // projectId = -1 是前端「强制不绑定项目」的哨兵，只在请求里表达意图，
+            // 落库前把键摘掉：会话的 extension 里不该出现这个值，否则 ResolveProjectId 会当成真项目去查
+            if (ChatProjectBindings.isForceUnbound(extension.get(ChatProjectBindings.EXTENSION_KEY))) {
+                extension.remove(ChatProjectBindings.EXTENSION_KEY);
+            }
+            if (!extension.isEmpty()) {
+                chatSession.setExtension(extension);
+            }
         }
         try {
             return chatSessionService.save(chatSession);
@@ -184,15 +194,19 @@ public class CreateChatMessageRequestHandler implements ChatMessageRequestHandle
 
     /**
      * 起一个虚拟线程跑项目归属判定；不需要判的时候返回 null。
-     * <p>三种不判的情况：主人没开自动归入；新会话已经自带项目（主人的指定优先，不再猜）；
+     * <p>四种不判的情况：没开自动归入；新会话已经自带项目（用户的指定优先，不再猜）；
+     * 新会话显式要求「强制不绑定」（{@code chat_project_id = -1}，同样是不许猜）；
      * 消息没有文本（纯附件）。结果由 {@link #attachJudgedProject} 取用。
      */
     private FutureTask<ChatProject> judgeProjectTask(ChatMessageRequest request) {
         if (!Boolean.TRUE.equals(userSettings.getEnableAutoMatchProject())) {
             return null;
         }
-        if (!CollectionUtils.isEmpty(request.getExtension())
-                && StringUtils.hasText(String.valueOf(request.getExtension().get(ChatProjectBindings.EXTENSION_KEY)))) {
+        // 前端只要表过态就不能再猜：指定了项目 → 归入它；指定 -1 → 必须是散会话。
+        // 判空要显式做：String.valueOf(null) 返回的是 "null"，直接 hasText 会把「只带了别的键」误判成已指定
+        Object specifiedProjectId = request.getExtension() == null
+                ? null : request.getExtension().get(ChatProjectBindings.EXTENSION_KEY);
+        if (specifiedProjectId != null && StringUtils.hasText(String.valueOf(specifiedProjectId).trim())) {
             return null;
         }
         if (!StringUtils.hasText(request.getContent())) {
