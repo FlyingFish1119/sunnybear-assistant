@@ -7,7 +7,7 @@
  *
  * 加载时自注册到发送区工具栏槽（见文件末尾）：order -20，站工具行第一位。
  * 用负数权重是为了排在插件按钮（如世界页的私聊/移交，order 0 / 10）之前，
- * 同 topbar-right 里 knowledge-flash 取 -10 的做法。
+ * 同 topbar-right 里 connection 槽取负权重的做法。
  *
  * 两个图标同时挂在 DOM 上、用 v-show 切换：lucide-safe 要求宿主元素常驻，
  * 用 v-if 会令 vnode.el 失效（见 utils/lucide-safe.js 顶部说明）。

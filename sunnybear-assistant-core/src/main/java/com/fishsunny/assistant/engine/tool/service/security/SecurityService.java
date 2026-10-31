@@ -21,6 +21,7 @@ import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
 import com.fishsunny.assistant.utils.EasyReActProcessor;
+import com.fishsunny.assistant.utils.JsonUtils;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.instance.file.FileListTool;
@@ -260,7 +261,7 @@ public class SecurityService {
         }
         String text = finalText.trim();
 
-        String json = extractJsonObject(text);
+        String json = JsonUtils.extractJsonObject(text);
         if (!StringUtils.hasText(json)) {
             throw new ToolExecutor.ToolExecuteException(
                     "AI 安全审查未返回可识别的判定格式，工具停止执行。审查原文：" + snippet(text));
@@ -277,44 +278,6 @@ public class SecurityService {
         }
         throw new ToolExecutor.ToolExecuteException(
                 "AI 安全审查未返回可识别的判定格式，工具停止执行。审查原文：" + snippet(text));
-    }
-
-    /** 从文本中提取第一个完整的 JSON 对象（含字符串转义与嵌套判断），找不到返回 null */
-    private String extractJsonObject(String text) {
-        int start = text.indexOf('{');
-        if (start < 0) {
-            return null;
-        }
-        int depth = 0;
-        boolean inString = false;
-        boolean escaped = false;
-        for (int i = start; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (escaped) {
-                escaped = false;
-                continue;
-            }
-            if (c == '\\') {
-                escaped = true;
-                continue;
-            }
-            if (c == '"') {
-                inString = !inString;
-                continue;
-            }
-            if (inString) {
-                continue;
-            }
-            if (c == '{') {
-                depth++;
-            } else if (c == '}') {
-                depth--;
-                if (depth == 0) {
-                    return text.substring(start, i + 1);
-                }
-            }
-        }
-        return null;
     }
 
     private String snippet(String text) {

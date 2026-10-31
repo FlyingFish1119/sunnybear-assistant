@@ -61,7 +61,9 @@ const MessageArea = {
     inject: {
         appSettings: { default: null },
         // 主应用必注：会话/消息仓库
-        sessionStore: { required: true }
+        sessionStore: { required: true },
+        // 本地事件总线（可选）：知识库命中信号走 WsBus，未注入时退回全局 WsBus
+        wsBus: { default: null }
     },
 
     /**
@@ -137,6 +139,17 @@ const MessageArea = {
         isNewChat: function () {
             return !this.currentSessionId && this.currentMessages.length === 0;
         },
+        /**
+         * 当前最后一条用户消息的 id（知识库命中动效的目标）。
+         * 命中信号到达时，本轮提问的 user 消息正好是列表里的最后一条 user。
+         */
+        lastUserMessageId: function () {
+            const list = this.currentMessages;
+            for (let i = list.length - 1; i >= 0; i--) {
+                if (list[i].role === 'user') return list[i].id;
+            }
+            return null;
+        },
         /** 列表顶部插件槽（锚点 'message-list-top'） */
         listTopSlots: function () {
             return this.context.actions.slotsFor('message-list-top');
@@ -171,9 +184,45 @@ const MessageArea = {
             renderMermaid: () => { if (typeof MermaidUtils !== 'undefined') MermaidUtils.renderAll(); },
             clearMdCache: () => { if (this.$md && typeof this.$md.clearCache === 'function') this.$md.clearCache(); }
         });
+
+        // 知识库命中：后端注入新知识条目时发 KNOWLEDGE_HIT（payload 为会话 id），
+        // 这里转成「最后一条 user 气泡边框动效」，替代原先顶栏那个闪烁图标。
+        const bus = this.wsBus || (typeof WsBus !== 'undefined' ? WsBus : null);
+        if (bus) {
+            this._unsubKnowledgeHit = bus.on('KNOWLEDGE_HIT', (sessionId) => this.flashKnowledgeHit(sessionId));
+        }
     },
 
     methods: {
+        /**
+         * 知识库命中：给当前最后一条用户消息打上边框动效标记，5 秒后自动撤销
+         * （时长与 message-area.css 里的 kb-hit-border-breathe 一致）。
+         * payload 是命中的会话 id：不是当前会话就忽略，避免切换会话时串台。
+         * @param {string} [sessionId] - 后端下发的会话 id
+         */
+        flashKnowledgeHit: function (sessionId) {
+            if (sessionId && this.currentSessionId
+                    && String(sessionId) !== String(this.currentSessionId)) {
+                return;
+            }
+            const targetId = this.lastUserMessageId;
+            if (targetId === null || targetId === undefined) return;
+
+            clearTimeout(this._kbHitTimer);
+            if (this.context.knowledgeHitMsgId === targetId) {
+                // 同一条消息再次命中（如失败重试）：先摘掉 class，下一帧再加回，强制动画重播
+                this.context.knowledgeHitMsgId = null;
+                this.$nextTick(() => {
+                    this.context.knowledgeHitMsgId = targetId;
+                });
+            } else {
+                this.context.knowledgeHitMsgId = targetId;
+            }
+            this._kbHitTimer = setTimeout(() => {
+                this.context.knowledgeHitMsgId = null;
+            }, 5000);
+        },
+
         /**
          * 滚动消息列表到底部
          * @param {boolean} force - 为 true 时无视 _autoFollowPaused 强制滚动
@@ -195,6 +244,11 @@ const MessageArea = {
     beforeUnmount: function () {
         if (this._onDocClick) {
             document.removeEventListener('click', this._onDocClick);
+        }
+        clearTimeout(this._kbHitTimer);
+        if (this._unsubKnowledgeHit) {
+            this._unsubKnowledgeHit();
+            this._unsubKnowledgeHit = null;
         }
     }
 };

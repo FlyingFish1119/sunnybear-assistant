@@ -185,6 +185,9 @@ function createMessageAreaContext(sessionStore) {
         collapsedState: {},
         // mermaid 异步出图完成时需要让子组件重渲染（渲染时会读取该计数）
         mermaidNonce: 0,
+        // 知识库命中动效：当前要闪边框的用户消息 id。
+        // 骨架收到 KNOWLEDGE_HIT 时写入「最后一条 user 消息」的 id，5 秒后置回 null。
+        knowledgeHitMsgId: null,
         // 插件渲染槽：锚点名 → 槽条目数组（元素形如 { component, order }）。
         // 初始即纳入启动阶段通过 MessageAreaPlugins 登记的插件。
         slots: {

@@ -25,7 +25,7 @@
  *   'topbar-right'  右栏
  *
  * 顶栏内置元素（模型名 / 会话名 / 上下文用量环 / 工具确认 / 结构化提问 /
- * 知识库闪现 / 连接状态）也一律以槽组件形式默认注册（见本文件底部）。
+ * 连接状态）也一律以槽组件形式默认注册（见本文件底部）。
  * 页面可用同名 key 覆盖（registerSlot）或移除（removeSlot），无需 hideBuiltin。
  *
  * 内置 key 与默认锚点/顺序：
@@ -34,7 +34,6 @@
  *   'ctx-gauge'        topbar-left  order  20
  *   'pending-tool'     topbar-left  order  30
  *   'pending-question' topbar-left  order  40
- *   'knowledge-flash'  topbar-right order -10
  *   'connection'       topbar-right order  -5
  * （插件页普通插件一律 order 0，落在 model 之后 / session-name 之前，与旧布局一致）
  */
@@ -92,9 +91,6 @@ if (typeof ToolConfirm !== 'undefined') {
 }
 if (typeof ToolQuestion !== 'undefined') {
     TopbarPlugins.registerSlot('topbar-left', ToolQuestion, 40, 'pending-question');
-}
-if (typeof KnowledgeFlash !== 'undefined') {
-    TopbarPlugins.registerSlot('topbar-right', KnowledgeFlash, -10, 'knowledge-flash');
 }
 if (typeof ChatConnection !== 'undefined') {
     TopbarPlugins.registerSlot('topbar-right', ChatConnection, -5, 'connection');

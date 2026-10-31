@@ -293,28 +293,48 @@
     vertical-align: middle;
 }
 
-/* ---- 表格 ---- */
+/* ---- 表格 ----
+   外框与网格线走主题色 --main-color（跟随设置里的主色热更新），
+   浓度由 color-mix 控制：外框 55%、内部网格 26%，浅色主题下也够清楚又不刺眼。
+   圆角必须配 border-collapse: separate，collapse 下 border-radius 不生效；
+   单元格只画「右 + 下」两条线，避免相邻两格各画一条叠成 2px 的双线。 */
 .markdown-body table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     margin: 0.6em 0;
     font-size: 0.9em;
+    border: 1px solid color-mix(in srgb, var(--main-color, lightsalmon) 55%, transparent);
+    border-radius: var(--radius-md, 10px);
+    /* 把表头 / 斑马行的直角背景裁进圆角内，否则四角会露出方形色块 */
+    overflow: hidden;
 }
 
 .markdown-body th,
 .markdown-body td {
     padding: 8px 12px;
-    border: 1px solid rgba(128, 128, 128, 0.25);
     text-align: left;
+    border-right: 1px solid color-mix(in srgb, var(--main-color, lightsalmon) 26%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--main-color, lightsalmon) 26%, transparent);
+}
+
+/* 最后一列 / 最后一行不画线，边框交给 table 自己的外框 */
+.markdown-body th:last-child,
+.markdown-body td:last-child {
+    border-right: none;
+}
+
+.markdown-body tbody tr:last-child td {
+    border-bottom: none;
 }
 
 .markdown-body th {
-    background: rgba(128, 128, 128, 0.1);
+    background: color-mix(in srgb, var(--main-color, lightsalmon) 14%, transparent);
     font-weight: 600;
 }
 
 .markdown-body tr:nth-child(even) td {
-    background: rgba(128, 128, 128, 0.03);
+    background: color-mix(in srgb, var(--main-color, lightsalmon) 4%, transparent);
 }
 
 /* ---- 链接 ---- */

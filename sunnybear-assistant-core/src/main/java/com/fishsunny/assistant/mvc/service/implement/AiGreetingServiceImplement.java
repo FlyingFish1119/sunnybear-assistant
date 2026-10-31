@@ -19,6 +19,7 @@ import com.fishsunny.assistant.mvc.service.AiGreetingService;
 import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
+import com.fishsunny.assistant.utils.JsonUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -172,7 +173,7 @@ public class AiGreetingServiceImplement implements AiGreetingService {
 
     /** 解析生成结果：优先按 JSON 解析出 greeting + suggestions，失败则整体当问候语 */
     private AiGreeting parseGenerated(String raw, String greetingTime) {
-        String json = extractJson(raw);
+        String json = JsonUtils.extractJsonObject(raw);
         String text = null;
         List<String> suggestions = new ArrayList<>();
         try {
@@ -199,30 +200,6 @@ public class AiGreetingServiceImplement implements AiGreetingService {
                 .setSuggestions(suggestions)
                 .setGreetingTime(greetingTime)
                 .setCreateTime(LocalDateTime.now());
-    }
-
-    /** 去掉可能的 ```json 代码围栏，并截取第一个 { 到最后一个 } 之间的 JSON */
-    private String extractJson(String raw) {
-        if (raw == null) {
-            return "";
-        }
-        String text = raw.trim();
-        if (text.startsWith("```")) {
-            int firstNewline = text.indexOf('\n');
-            if (firstNewline >= 0) {
-                text = text.substring(firstNewline + 1);
-            }
-            if (text.endsWith("```")) {
-                text = text.substring(0, text.length() - 3);
-            }
-            text = text.trim();
-        }
-        int left = text.indexOf('{');
-        int right = text.lastIndexOf('}');
-        if (left >= 0 && right > left) {
-            text = text.substring(left, right + 1);
-        }
-        return text;
     }
 
     @Override

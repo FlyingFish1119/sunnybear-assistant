@@ -16,6 +16,7 @@ import com.fishsunny.assistant.mvc.dao.MemoryRepository;
 import com.fishsunny.assistant.mvc.service.MemoryService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.MemorySettings;
+import com.fishsunny.assistant.utils.JsonUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -189,7 +190,7 @@ public class MemoryServiceImplement implements MemoryService {
             throw new IllegalStateException("自动分组调用模型失败: " + e.getMessage(), e);
         }
 
-        String json = extractJson(rawContent.get());
+        String json = JsonUtils.extractJsonObject(rawContent.get());
         if (!StringUtils.hasText(json)) {
             throw new IllegalStateException("自动分组模型返回为空");
         }
@@ -230,29 +231,6 @@ public class MemoryServiceImplement implements MemoryService {
         }
         log.info("自动分组完成: 共 {} 条记忆，调整 {} 条", memories.size(), changed);
         return memoryRepository.selectAll();
-    }
-
-    private String extractJson(String raw) {
-        if (raw == null) {
-            return "";
-        }
-        String text = raw.trim();
-        if (text.startsWith("```")) {
-            int firstNewline = text.indexOf('\n');
-            if (firstNewline >= 0) {
-                text = text.substring(firstNewline + 1);
-            }
-            if (text.endsWith("```")) {
-                text = text.substring(0, text.length() - 3);
-            }
-            text = text.trim();
-        }
-        int left = text.indexOf('{');
-        int right = text.lastIndexOf('}');
-        if (left >= 0 && right > left) {
-            text = text.substring(left, right + 1);
-        }
-        return text;
     }
 
     private record MemoryGround(Map<String, List<Integer>> groups) {}

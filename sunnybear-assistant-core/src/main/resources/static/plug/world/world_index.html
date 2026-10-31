@@ -60,7 +60,6 @@
     <!-- 顶栏内置槽组件（必须先于 message-topbar.js，由其默认注册进左/右栏） -->
     <script src="../../components/message-topbar/model-name/model-name.js"></script>
     <script src="../../components/message-topbar/ctx-gauge/ctx-gauge.js"></script>
-    <script src="../../components/message-topbar/knowledge-flash/knowledge-flash.js"></script>
     <script src="../../components/message-topbar/message-topbar.js"></script>
     <script src="../../components/send-area/mark-tracker/mark-tracker.js"></script>
     <script src="../../components/send-area/send-area.js"></script>
@@ -285,7 +284,6 @@
     // 顶栏：世界页顶栏只有会话名 + 连接状态
     TopbarPlugins.removeSlot('topbar-left', 'model');
     TopbarPlugins.removeSlot('topbar-left', 'ctx-gauge');
-    TopbarPlugins.removeSlot('topbar-right', 'knowledge-flash');
     // 侧边栏：无定时器概念；右键菜单只留删除 / 导出；设置按钮跳世界专属页
     ChatSidebarPlugins.hideBuiltin('list-mode-toggle');
     ChatSidebarPlugins.hideBuiltin('menu-pro');

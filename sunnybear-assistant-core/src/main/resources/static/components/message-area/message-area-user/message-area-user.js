@@ -27,6 +27,7 @@ const MessageAreaUser = {
 
     template: `
     <div class="message-area-bubble"
+         :class="{ 'kb-hit-flash': isKnowledgeHit }"
          :style="{'background-color': userBubbleBg}">
         <!-- 编辑模式：显示 textarea -->
         <div v-if="ctx.currentEditId === msg.id">
@@ -130,6 +131,10 @@ const MessageAreaUser = {
         /** 本轮不可交互（请求在途或流式输出中）：隐藏操作按钮 */
         busy: function () {
             return this.sessionStore.busy;
+        },
+        /** 本条消息是否刚命中知识库：骨架写入 ctx.knowledgeHitMsgId，5 秒后自动撤销 */
+        isKnowledgeHit: function () {
+            return this.ctx.knowledgeHitMsgId === this.msg.id;
         },
         /** 用户消息气泡背景色：跟随主色自动变浅 */
         userBubbleBg: function () {
