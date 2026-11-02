@@ -144,9 +144,6 @@ public class ToolSettingsController {
         if (settings.getTimeout() == null || settings.getTimeout() < 0) {
             return new RestResponse().error("Invalid settings");
         }
-        if (settings.getSafetyOutputSize() == null || settings.getSafetyOutputSize() < 0) {
-            return new RestResponse().error("Invalid settings");
-        }
         if (settings.getMaxOutputSize() == null || settings.getMaxOutputSize() < 0) {
             return new RestResponse().error("Invalid settings");
         }
@@ -155,7 +152,6 @@ public class ToolSettingsController {
                 .setBlackList(settings.getBlackList())
                 .setWhiteList(settings.getWhiteList())
                 .setTimeout(settings.getTimeout())
-                .setSafetyOutputSize(settings.getSafetyOutputSize())
                 .setMaxOutputSize(settings.getMaxOutputSize());
         toolSettingsMap.put(CommandTool.SETTINGS, commandToolSettings);
         try {

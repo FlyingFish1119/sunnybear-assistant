@@ -88,7 +88,7 @@ public class ToolSettingsLoader {
                         "reg delete", "reg add", "bcdedit", "shutdown", "netsh",
                         "icacls", "takeown", "cacls", "sc delete", "wmic delete"
                 ))
-                .setMaxOutputSize(32768L).setSafetyOutputSize(8192L));
+                .setMaxOutputSize(32768L));
         defaults.put(WebSearchTool.SETTINGS, new WebSearchTool.Settings("", ""));
         defaults.put(ExtensionScriptTool.SETTINGS, new ExtensionScriptTool.Settings());
         defaults.put(ViewCaptionTool.SETTINGS, new ViewCaptionTool.Settings());

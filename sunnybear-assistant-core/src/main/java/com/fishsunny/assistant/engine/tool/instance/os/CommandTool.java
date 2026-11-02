@@ -19,7 +19,6 @@ import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
-import com.fishsunny.assistant.utils.ProcessUtils;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -128,9 +127,6 @@ public class CommandTool implements ToolHandler {
     /** 默认命令执行超时时间（秒） */
     private static final int DEFAULT_TIMEOUT_SECONDS = 10;
 
-    /** 默认安全输出大小限制（字节） */
-    private static final long DEFAULT_SAFETY_OUTPUT_SIZE = 8192L;
-
     /** 默认最大输出大小限制（字节） */
     private static final long DEFAULT_MAX_OUTPUT_SIZE = 32768L;
 
@@ -209,52 +205,61 @@ public class CommandTool implements ToolHandler {
             }
 
             // ======================== 前台执行模式 ========================
+            ChatSession chatSession = (ChatSession) context.get("chatSession");
+            String sessionId = chatSession.getId();
+            String fileName = "command_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS")) + ".log";
+            Path logFile;
+            try {
+                logFile = sessionFileManager.prepareSessionFile(sessionId, fileName);
+            } catch (IOException e) {
+                throw new ToolExecutor.ToolExecuteException("无法创建命令输出目录: " + e.getMessage());
+            }
+
             String[] shell = getShell();
             ProcessBuilder processBuilder = new ProcessBuilder(shell[0], shell[1], arguments.getCommand());
             processBuilder.redirectErrorStream(true);
             Process process = processBuilder.start();
 
-            Future<String> future = EXECUTOR_SERVICE.submit(() -> {
-                byte[] bytes = process.getInputStream().readAllBytes();
-                return new String(bytes, StandardCharsets.UTF_8);
-            });
+            // 输出一边进内存（封顶，避免长期跑的命令撑爆堆），一边实时落盘。
+            // 落盘使超时后可以直接把管道交给后台，不需要事后重建日志。
+            Future<OSToolKit.CapturedOutput> future = EXECUTOR_SERVICE.submit(
+                    () -> OSToolKit.readToFile(logFile, process, resolveMemoryCap()));
 
-            String result;
+            OSToolKit.CapturedOutput output;
             try {
-                result = future.get(settings.getTimeout(), TimeUnit.SECONDS);
+                output = future.get(settings.getTimeout(), TimeUnit.SECONDS);
             } catch (TimeoutException e) {
-                // 读输出的任务还挂在管道上，先取消
-                future.cancel(true);
-                // 连子孙一起杀：只 destroy 父进程的话，cmd.exe 派生的子进程会继续跑完，
-                // 于是出现「工具已经报超时，命令却还在后台改文件」的怪象
-                ProcessUtils.killTree(process);
-                throw new ToolExecutor.ToolExecuteException("命令执行超时（" + settings.getTimeout() + "秒），已终止该命令及其子进程。如果该命令打开了一个进程用于运行GUI等，那么这个报错是正常。");
+                // 超时不杀进程：命令常常还在正常干活（编译、装依赖、跑服务），
+                // 杀掉既丢结果，又会让 AI 误判失败而重跑一遍，制造端口/文件锁冲突。
+                if (!future.isDone()) {
+                    watchBackgroundFinish(future, process, sessionId, arguments.getCommand(), logFile);
+                    return new ToolExecutor.ToolExecuteResponse(name(),
+                            buildTimeoutToBackgroundMessage(settings.getTimeout(), fileName));
+                }
+                output = future.get();
             }
 
             int exitCode = process.waitFor();
             if (exitCode != 0) {
-                throw new ToolExecutor.ToolExecuteException("命令执行失败，退出码：" + exitCode + "，输出：" + result);
-            }
-
-            long outputSize = result.getBytes(StandardCharsets.UTF_8).length;
-
-            // 1. 硬限制检查：maxOutputSize 始终生效，不受 skipSafeMode 影响
-            //    超限不再报错中断，而是把完整输出落盘到会话文件，只回提示，由 AI 自行决定是否读取
-            Long maxSize = settings.getMaxOutputSize();
-            if (maxSize != null && maxSize > 0 && outputSize > maxSize) {
-                return saveOversizeOutput(context, result, outputSize, "最大限制", maxSize);
-            }
-
-            // 2. 安全限制检查：仅在未跳过安全模式时生效
-            //    与硬限制同样处理，超限落盘而非拦截
-            if (!Boolean.TRUE.equals(arguments.getSkipSafeMode())) {
-                Long safetySize = settings.getSafetyOutputSize();
-                if (safetySize != null && safetySize > 0 && outputSize > safetySize) {
-                    return saveOversizeOutput(context, result, outputSize, "安全限制", safetySize);
+                String message = "命令执行失败，退出码：" + exitCode + "，输出：" + output.text();
+                if (output.truncated()) {
+                    message += "\n（输出过长已截断，完整输出见会话文件："
+                            + SessionFileManager.buildSessionMarker(fileName) + "）";
+                } else {
+                    discardQuietly(logFile);
                 }
+                throw new ToolExecutor.ToolExecuteException(message);
             }
 
-            return new ToolExecutor.ToolExecuteResponse(name(), result);
+            // 输出限制检查：超限不再报错中断，日志文件本来就有全量输出，
+            // 直接给标记由 AI 自行决定是否读取
+            Long maxSize = settings.getMaxOutputSize();
+            if (maxSize != null && maxSize > 0 && output.totalBytes() > maxSize) {
+                return oversizeResponse(logFile, output.totalBytes(), maxSize);
+            }
+
+            discardQuietly(logFile);
+            return new ToolExecutor.ToolExecuteResponse(name(), output.text());
 
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
@@ -406,41 +411,75 @@ public class CommandTool implements ToolHandler {
         securityService.ask(NAME, message, null, context);
     }
 
+    /** 内存累积上限：等于输出上限，没配就退回默认值，超出部分只落盘不占堆 */
+    private long resolveMemoryCap() {
+        Long max = settings.getMaxOutputSize();
+        return max != null && max > 0 ? max : DEFAULT_MAX_OUTPUT_SIZE;
+    }
+
     /**
-     * 命令输出超过限制时的落盘处理：把完整输出写入会话文件，返回提示而非报错中断。
+     * 前台超时后，在后台等命令真正跑完，把退出码与日志尾部投递回对话。
      * <p>
-     * 设计意图：命令本身已经执行成功，只是输出体量大。抛异常会让 AI 误以为命令失败、
-     * 甚至重跑一次，成本更高。落盘后提示里只给模型侧沙箱标记（{@code sessionId:文件名}），
-     * 不暴露真实会话 ID，需要时用 file_read_tool 传入该标记读取，不需要时也不占用上下文。
+     * 只做「等结果 + 投递」，不去碰进程：不 destroy、不 cancel。
+     * 读取输出的任务跑完即代表 stdout 已关闭、进程即将或已经退出。
      * </p>
      *
-     * @param context    工具上下文（取 chatSession 作为落盘会话）
-     * @param result     命令的完整输出
+     * @param future    读取输出的任务
+     * @param process   仍在运行的子进程
+     * @param sessionId 会话 id
+     * @param command   原始命令
+     * @param logFile   输出日志文件
+     */
+    private void watchBackgroundFinish(Future<OSToolKit.CapturedOutput> future, Process process,
+                                       String sessionId, String command, Path logFile) {
+        EXECUTOR_SERVICE.submit(() -> {
+            try {
+                future.get();
+                notifyBackgroundFinish(sessionId, command, logFile, process.waitFor(), null);
+            } catch (Exception e) {
+                notifyBackgroundFinish(sessionId, command, logFile, null, e.getMessage());
+            }
+            return null;
+        });
+    }
+
+    /**
+     * 超时转后台时回给模型的说明。
+     * <p>
+     * 措辞重点是「命令仍在跑，别重跑」——超时报错最容易诱使模型把同一条命令再敲一遍，
+     * 于是端口被占、文件被锁、编译互相打架。这里把状态讲清楚，并把日志路径交出去。
+     * </p>
+     */
+    private String buildTimeoutToBackgroundMessage(long timeoutSeconds, String fileName) {
+        return "命令执行时间已超过 " + timeoutSeconds + " 秒，进程没有被终止，已自动转入后台继续运行。\n"
+                + "输出日志文件: " + SessionFileManager.buildSessionMarker(fileName) + "\n"
+                + "> 请勿重复执行这条命令。想看进度用 file_read_tool 读取该日志文件；"
+                + "命令结束后退出码与日志尾部会自动投递到本条对话。";
+    }
+
+    /**
+     * 输出超过限制时的提示：日志文件里本来就有全量输出，直接给模型侧标记，不再二次写文件。
+     *
+     * @param logFile    已写入完整输出的日志文件
      * @param outputSize 输出字节数
-     * @param limitName  触发的是哪层限制（仅用于提示文案，如「最大限制」「安全限制」）
-     * @param limitSize  该层限制的字节数
+     * @param limitSize  输出上限字节数
      * @return 携带落盘标记的提示响应
      */
-    private ToolExecutor.ToolExecuteResponse saveOversizeOutput(Map<String, Object> context, String result,
-                                                                long outputSize, String limitName, long limitSize) throws Exception {
-        ChatSession chatSession = (ChatSession) context.get("chatSession");
-        String sessionId = chatSession.getId();
-
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        String fileName = "command_output_" + timestamp + ".log";
-
-        String marker;
-        try {
-            marker = sessionFileManager.writeSessionFileMarker(sessionId, fileName, result.getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("命令输出过大（" + ToolKit.formatSize(outputSize)
-                    + "），尝试保存到会话文件时失败: " + e.getMessage());
-        }
-
-        String message = "命令输出过大（" + ToolKit.formatSize(outputSize) + "，超过" + limitName
-                + " " + ToolKit.formatSize(limitSize) + "），已保存到会话文件：" + marker
+    private ToolExecutor.ToolExecuteResponse oversizeResponse(Path logFile, long outputSize, long limitSize) {
+        String marker = SessionFileManager.buildSessionMarker(logFile.getFileName().toString());
+        String message = "命令输出过大（" + ToolKit.formatSize(outputSize) + "，超过上限 "
+                + ToolKit.formatSize(limitSize) + "），已保存到会话文件：" + marker
                 + "。如需查看完整输出，请用 file_read_tool 读取该文件。";
         return new ToolExecutor.ToolExecuteResponse(name(), message);
+    }
+
+    /** 正常收尾时清掉临时日志文件；清不掉也无所谓，残留文件不影响任何逻辑 */
+    private void discardQuietly(Path logFile) {
+        try {
+            Files.deleteIfExists(logFile);
+        } catch (IOException ignored) {
+            // 忽略清理失败
+        }
     }
 
     /**
@@ -597,11 +636,10 @@ public class CommandTool implements ToolHandler {
         };
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("在终端中执行命令。" + modeDesc + "默认有安全输出限制。")
+                .setDescription("在终端中执行命令。" + modeDesc + "命令超过超时时间会自动转入后台继续执行。" + buildLimitDescription())
                 .setRequired(List.of("command"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("command", "string", "你准备执行的命令"),
-                        new ToolRegister.Parameters("skipSafeMode", "boolean", "设为 true 跳过安全限制以获取完整输出（大输出时建议开启）"),
                         new ToolRegister.Parameters("background", "boolean", "设为 true 后台执行（无超时限制），适合长时间任务。输出写入日志文件。")
                 ));
     }
@@ -610,22 +648,16 @@ public class CommandTool implements ToolHandler {
      * 构建输出限制的描述信息
      */
     private String buildLimitDescription() {
-        StringBuilder sb = new StringBuilder();
-        Long safetySize = settings.getSafetyOutputSize();
         Long maxSize = settings.getMaxOutputSize();
-        if (safetySize != null && safetySize > 0) {
-            sb.append(" 命令输出安全限制为 ").append(ToolKit.formatSize(safetySize)).append("（超过此限制将被拦截）。");
-        }
         if (maxSize != null && maxSize > 0) {
-            sb.append(" 最大输出限制为 ").append(ToolKit.formatSize(maxSize)).append("（硬限制，不可跳过）。");
+            return "命令输出上限为 " + ToolKit.formatSize(maxSize) + "，超出部分落盘到会话文件。";
         }
-        return sb.toString();
+        return "";
     }
 
     @Data
     private static class Arguments {
         private String command;
-        private Boolean skipSafeMode;
         /** 设为 true 时命令在后台执行：无超时限制、无输出大小限制，输出以追加模式写入 session/file 目录下的日志文件 */
         private Boolean background;
     }
@@ -650,22 +682,18 @@ public class CommandTool implements ToolHandler {
             return this;
         }
 
-        /** 命令执行超时时间，单位秒 */
+        /** 命令执行超时时间，单位秒；超时后命令转入后台继续执行 */
         private Long timeout;
-        /** 超过输出字节数则默认拒绝（UTF-8 编码） */
-        private Long safetyOutputSize;
-        /** 输出字节数超过此值则直接拒绝执行 */
+        /** 输出字节数上限（UTF-8 编码），超出部分落盘到会话文件 */
         private Long maxOutputSize;
         public Settings() {
             this.mode = "auto";
             this.timeout = (long) DEFAULT_TIMEOUT_SECONDS;
-            this.safetyOutputSize = DEFAULT_SAFETY_OUTPUT_SIZE;
             this.maxOutputSize = DEFAULT_MAX_OUTPUT_SIZE;
         }
         public Settings(String mode) {
             this.mode = mode;
             this.timeout = (long) DEFAULT_TIMEOUT_SECONDS;
-            this.safetyOutputSize = DEFAULT_SAFETY_OUTPUT_SIZE;
             this.maxOutputSize = DEFAULT_MAX_OUTPUT_SIZE;
         }
     }

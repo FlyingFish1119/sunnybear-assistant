@@ -9,6 +9,7 @@ package com.fishsunny.assistant.engine.tool.service.extension;
  */
 
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
+import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import com.fishsunny.assistant.engine.tool.instance.os.ExtensionScriptTool;
 import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
@@ -62,45 +63,129 @@ public class ExtensionScriptService {
         this.backgroundToolResponseBus = backgroundToolResponseBus;
     }
 
-    public String runScript(String name, Map<String, Object> arguments, long timeout) throws Exception {
+    /**
+     * 前台执行脚本并返回输出。
+     * <p>
+     * 输出从进程启动那一刻起就实时落盘，所以超时不必杀进程：直接把读取任务放手交给后台线程，
+     * 让它跑完之后再收尾（清理临时脚本、投递退出码）。与 CommandTool 的超时处理保持同一套逻辑——
+     * 杀掉只会让脚本白跑一趟，还会诱使模型把同一个脚本再执行一遍，制造更严重的重复占用。
+     * </p>
+     *
+     * @param name      脚本名称
+     * @param arguments 脚本参数
+     * @param timeout   超时秒数；小于 0 表示不限时
+     * @param sessionId 会话 id，超时转后台时用于落盘与结果投递
+     * @param memoryCap 内存累积上限（字节），超出部分只落盘
+     * @return 脚本输出；超时转后台、或输出过大时返回提示文本
+     */
+    public String runScript(String name, Map<String, Object> arguments, long timeout,
+                            String sessionId, long memoryCap) throws Exception {
         PreparedScript prepared = prepareScript(name, arguments);
 
-        Process process = null;
-        try {
-            process = prepared.processBuilder().start();
-            String result;
-            if (timeout < 0) {
-                result = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            } else {
-                final Process finalProcess = process;
-                Future<String> future = EXECUTOR_SERVICE.submit(() -> {
-                    byte[] bytes = finalProcess.getInputStream().readAllBytes();
-                    return new String(bytes, StandardCharsets.UTF_8);
-                });
-                try {
-                    result = future.get(timeout, TimeUnit.SECONDS);
-                } catch (TimeoutException e) {
-                    future.cancel(true);
-                    // 脚本内部再起进程时，只杀父进程会留下孤儿继续跑
-                    ProcessUtils.killTree(process);
+        // 不限时：一次读完，用完即清理
+        if (timeout < 0) {
+            Process process = prepared.processBuilder().start();
+            try {
+                String result = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                int exitCode = process.waitFor();
+                if (exitCode != 0) {
                     throw new ToolExecutor.ToolExecuteException(
-                            "脚本执行超时（" + timeout + "秒）: " + prepared.script().getName());
+                            "脚本执行失败，退出码：" + exitCode + "，输出：" + result);
                 }
-            }
-
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                throw new ToolExecutor.ToolExecuteException(
-                        "脚本执行失败，退出码：" + exitCode + "，输出：" + result);
-            }
-            return result;
-        } finally {
-            if (process != null) {
-                // 收尾路径也走杀树：异常分支下脚本可能已经派生了子进程
+                return result;
+            } finally {
                 ProcessUtils.killTree(process);
+                deleteTempScript(prepared.tempFile());
             }
-            deleteTempScript(prepared.tempFile());
         }
+
+        // 有限超时：边跑边落盘，超时就直接放手
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS"));
+        String fileName = "script_" + timestamp + ".log";
+        Path logFile;
+        try {
+            logFile = sessionFileManager.prepareSessionFile(sessionId, fileName);
+        } catch (IOException e) {
+            deleteTempScript(prepared.tempFile());
+            throw new ToolExecutor.ToolExecuteException("无法创建脚本输出目录: " + e.getMessage());
+        }
+
+        Process process = prepared.processBuilder().start();
+        Future<OSToolKit.CapturedOutput> future = EXECUTOR_SERVICE.submit(
+                () -> OSToolKit.readToFile(logFile, process, memoryCap));
+
+        OSToolKit.CapturedOutput output;
+        try {
+            output = future.get(timeout, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            if (!future.isDone()) {
+                handOverToBackground(future, process, prepared, logFile, sessionId);
+                return "脚本执行时间已超过 " + timeout + " 秒，进程没有被终止，已自动转入后台继续运行。\n"
+                        + "输出日志文件: " + SessionFileManager.buildSessionMarker(fileName) + "\n"
+                        + "> 请勿重复执行这个脚本。想看进度用 file_read_tool 读取该日志文件；"
+                        + "脚本结束后退出码会自动投递到本条对话。";
+            }
+            output = future.get();
+        }
+
+        int exitCode = process.waitFor();
+        // 收尾路径照旧走杀树：脚本可能派生过子进程，主进程退出不代表孙子也走了
+        ProcessUtils.killTree(process);
+        deleteTempScript(prepared.tempFile());
+
+        if (exitCode != 0) {
+            String message = "脚本执行失败，退出码：" + exitCode + "，输出：" + output.text();
+            if (output.truncated()) {
+                message += "\n（输出过长已截断，完整输出见会话文件："
+                        + SessionFileManager.buildSessionMarker(fileName) + "）";
+            } else {
+                Files.deleteIfExists(logFile);
+            }
+            throw new ToolExecutor.ToolExecuteException(message);
+        }
+
+        // 内存里被截断说明输出已经超过上限，磁盘日志里是全量，直接交标记让模型按需读取
+        if (output.truncated()) {
+            return "脚本输出过大（" + ToolKit.formatSize(output.totalBytes()) + "），已保存到会话文件："
+                    + SessionFileManager.buildSessionMarker(fileName)
+                    + "。如需查看完整输出，请用 file_read_tool 读取该文件。";
+        }
+
+        Files.deleteIfExists(logFile);
+        return output.text();
+    }
+
+    /**
+     * 前台脚本超时后把收尾交给后台：等读取任务跑完（代表输出已读尽、进程退出），
+     * 再清理临时脚本并投递退出码。全程不 destroy、不 cancel。
+     *
+     * @param future    读取输出的任务
+     * @param process   仍在运行的子进程
+     * @param prepared  已准备的脚本（收尾要用的脚本元数据与临时文件）
+     * @param logFile   输出日志文件
+     * @param sessionId 会话 id
+     */
+    private void handOverToBackground(Future<OSToolKit.CapturedOutput> future, Process process,
+                                      PreparedScript prepared, Path logFile, String sessionId) {
+        EXECUTOR_SERVICE.submit(() -> {
+            Exception error = null;
+            int exitCode = 0;
+            try {
+                future.get();
+                exitCode = process.waitFor();
+            } catch (Exception e) {
+                error = e;
+            } finally {
+                ProcessUtils.killTree(process);
+                deleteTempScript(prepared.tempFile());
+            }
+            if (error == null) {
+                notifyBackgroundFinish(sessionId, prepared.script(), logFile, exitCode, null);
+            } else {
+                notifyBackgroundFinish(sessionId, prepared.script(), logFile, null, error.getMessage());
+            }
+            return null;
+        });
     }
 
     /**

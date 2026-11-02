@@ -2,7 +2,7 @@
  * 命令执行工具设置组件
  *
  * 展示：命令执行条目（模式/超时摘要）
- * 修改：对话框内编辑执行模式、超时、安全/最大输出大小、白名单、黑名单
+ * 修改：对话框内编辑执行模式、超时、输出上限、白名单、黑名单
  * 保存成功后 emit('saved')，由父组件刷新全部设置
  */
 const CommandSettings = {
@@ -51,9 +51,6 @@ const CommandSettings = {
                 <el-form-item label="超时 (秒)">
                     <input class="settings-input-number" type="number" v-model.number="commandForm.timeout" min="1" max="3600">
                 </el-form-item>
-                <el-form-item label="安全输出大小 (B)">
-                    <input class="settings-input-number" type="number" v-model.number="commandForm.safetyOutputSize" min="0" step="1024">
-                </el-form-item>
                 <el-form-item label="最大输出大小 (B)">
                     <input class="settings-input-number" type="number" v-model.number="commandForm.maxOutputSize" min="0" step="1024">
                 </el-form-item>
@@ -79,7 +76,7 @@ const CommandSettings = {
     data() {
         return {
             dialogs: { command: false },
-            commandForm: { mode: 'auto', timeout: 10, safetyOutputSize: 8192, maxOutputSize: 32768, whiteListStr: '', blackListStr: '' }
+            commandForm: { mode: 'auto', timeout: 10, maxOutputSize: 32768, whiteListStr: '', blackListStr: '' }
         };
     },
 
@@ -88,7 +85,6 @@ const CommandSettings = {
             this.commandForm = {
                 mode: this.settings.mode || 'auto',
                 timeout: this.settings.timeout != null ? this.settings.timeout : 10,
-                safetyOutputSize: this.settings.safetyOutputSize != null ? this.settings.safetyOutputSize : 8192,
                 maxOutputSize: this.settings.maxOutputSize != null ? this.settings.maxOutputSize : 32768,
                 whiteListStr: (this.settings.whiteList || []).join('\n'),
                 blackListStr: (this.settings.blackList || []).join('\n')
@@ -106,16 +102,12 @@ const CommandSettings = {
             if (this.commandForm.timeout == null || this.commandForm.timeout < 0) {
                 ElementPlus.ElMessage.warning('超时时间不能为负数'); return;
             }
-            if (this.commandForm.safetyOutputSize == null || this.commandForm.safetyOutputSize < 0) {
-                ElementPlus.ElMessage.warning('安全输出大小不能为负数'); return;
-            }
             if (this.commandForm.maxOutputSize == null || this.commandForm.maxOutputSize < 0) {
                 ElementPlus.ElMessage.warning('最大输出大小不能为负数'); return;
             }
             const body = {
                 mode: mode,
                 timeout: this.commandForm.timeout,
-                safetyOutputSize: this.commandForm.safetyOutputSize,
                 maxOutputSize: this.commandForm.maxOutputSize,
                 whiteList: (this.commandForm.whiteListStr || '').split('\n').map(s => s.trim()).filter(Boolean),
                 blackList: (this.commandForm.blackListStr || '').split('\n').map(s => s.trim()).filter(Boolean)

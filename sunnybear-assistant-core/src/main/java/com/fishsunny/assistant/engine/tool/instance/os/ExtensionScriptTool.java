@@ -74,7 +74,12 @@ public class ExtensionScriptTool implements ToolHandler {
                 ChatSession chatSession = (ChatSession) context.get("chatSession");
                 result = extensionScriptService.runScriptAsync(arguments.getScriptName(), params, chatSession.getId());
             } else {
-                result = extensionScriptService.runScript(arguments.getScriptName(), params, settings.getTimeout());
+                ChatSession chatSession = (ChatSession) context.get("chatSession");
+                Long maxSize = settings.getMaxOutputSize();
+                // 内存累积按最大输出限制封顶：超过的部分只落盘，不占堆
+                long memoryCap = maxSize != null && maxSize > 0 ? maxSize : DEFAULT_MAX_OUTPUT_SIZE;
+                result = extensionScriptService.runScript(arguments.getScriptName(), params,
+                        settings.getTimeout(), chatSession.getId(), memoryCap);
             }
 
             // 5. 输出大小限制：超限不再报错中断，把完整输出落盘到会话文件，只回沙箱标记
