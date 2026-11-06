@@ -19,11 +19,9 @@ spring:
       max-request-size: 50MB
   sql:
     init:
-      mode: always                      # 每次启动执行 schema.sql
+      mode: always                      # 每次启动执行 sql/ 下所有建表脚本（含 plug 子目录）
       schema-locations:
-        - classpath:sql/schema.sql
-        - classpath:sql/character_schema.sql
-        - classpath:sql/world_schema.sql
+        - classpath*:sql/**/*.sql
 
 # 助手业务配置
 assistant:

@@ -48,7 +48,7 @@ public class CronJobRepositoryImplement implements CronJobRepository {
     }
 
     /**
-     * 老库补列：建表用的是 CREATE TABLE IF NOT EXISTS，早就存在的库不会跟着 schema.sql 长出新列。
+     * 老库补列：建表用的是 CREATE TABLE IF NOT EXISTS，早就存在的库不会跟着建表脚本长出新列。
      * <p>先查列清单再决定补不补 —— 表已经建出来但缺列时才 ALTER，列在、表还没建出来都直接跳过。
      */
     @PostConstruct
