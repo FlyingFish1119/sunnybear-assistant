@@ -25,12 +25,6 @@ import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.engine.protocol.project.entity.MemoryRecord;
 import com.fishsunny.assistant.engine.protocol.project.entity.SessionMemoryJob;
 import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessage;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.MessageContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.audio.AudioContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.file.FileContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.image.ImageContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.text.TextContent;
-import com.fishsunny.assistant.engine.protocol.project.entity.message.content.video.VideoContent;
 import com.fishsunny.assistant.mvc.dao.SessionMemoryJobRepository;
 import com.fishsunny.assistant.mvc.service.ChatMessageService;
 import com.fishsunny.assistant.mvc.service.ChatSessionService;
@@ -39,12 +33,12 @@ import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
 import com.fishsunny.assistant.settings.MemorySettings;
 import com.fishsunny.assistant.utils.JsonUtils;
+import com.fishsunny.assistant.utils.SessionFileManager;
 import com.fishsunny.assistant.websocket.processor.ChatPromptService;
 import com.fishsunny.assistant.websocket.provider.ChatProvider;
 import com.fishsunny.assistant.websocket.ws.NoOpWebSocketSession;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -81,18 +75,12 @@ public class MemoryRecordService {
 
     private final SessionMemoryJobRepository repository;
 
-    /**
-     * 自动记忆只在权威库这一侧执行。
-     * <p>remote 实例同样持有仓储 bean（由 RemoteRepositoryConfig 提供 RPC 代理），若那边也去跑，
-     * 同一段对话就会被两处各整理一次、记忆成双份。所以只看本实例的 role，remote 一律不参与。
-     */
-    private final boolean localStorage;
-
     private final ChatSessionService chatSessionService;
     private final ChatMessageService chatMessageService;
     private final ChatPromptService chatPromptService;
     private final ChatHttpHandler chatHttpHandler;
     private final MemoryService memoryService;
+    private final SessionFileManager sessionFileManager;
     private final AssistantSettings assistantSettings;
     private final MemorySettings memorySettings;
     private final AISettings chatAISettings;
@@ -104,18 +92,18 @@ public class MemoryRecordService {
                                ChatPromptService chatPromptService,
                                ChatHttpHandler chatHttpHandler,
                                MemoryService memoryService,
+                               SessionFileManager sessionFileManager,
                                AssistantSettings assistantSettings,
                                MemorySettings memorySettings,
                                @Qualifier(AISettings.CHAT) AISettings chatAISettings,
-                               @Value("${assistant.remote-storage.role:local}") String storageRole,
                                ObjectMapper objectMapper) {
         this.repository = repository;
-        this.localStorage = !"remote".equalsIgnoreCase(storageRole);
         this.chatSessionService = chatSessionService;
         this.chatMessageService = chatMessageService;
         this.chatPromptService = chatPromptService;
         this.chatHttpHandler = chatHttpHandler;
         this.memoryService = memoryService;
+        this.sessionFileManager = sessionFileManager;
         this.assistantSettings = assistantSettings;
         this.memorySettings = memorySettings;
         this.chatAISettings = chatAISettings;
@@ -125,63 +113,44 @@ public class MemoryRecordService {
     // ======================== 续期与查询 ========================
 
     /**
-     * 续期：每轮对话把到期时间往后推。开关关闭 / 非普通会话 / 远端模式下返回 null。
-     *
-     * @return 写入的待办，供调度器重排定时器
+     * 续期：每轮对话把到期时间往后推。开关关闭 / 非普通会话时什么都不做。
+     * <p>只写库、不碰调度：写到哪里由 Repository 是本地实现还是 RPC 代理决定，
+     * 所以 remote 实例也能正常续期，真正执行由权威库那侧轮询捡走。
      */
-    public SessionMemoryJob touch(ChatSession chatSession) {
+    public void touch(ChatSession chatSession) {
         try {
-            if (!localStorage || chatSession == null
+            if (chatSession == null
                     || !Boolean.TRUE.equals(memorySettings.getEnableAutoRecord())
                     || !ChatSession.TYPE_CHAT.equals(chatSession.getType())) {
-                return null;
+                return;
             }
             LocalDateTime now = LocalDateTime.now();
-            SessionMemoryJob job = new SessionMemoryJob()
+            repository.upsert(new SessionMemoryJob()
                     .setSessionId(chatSession.getId())
                     .setDueTime(now.plusHours(memorySettings.getAutoRecordIdleHours()))
-                    .setLastMessageTime(now);
-            repository.upsert(job);
-            return job;
+                    .setLastMessageTime(now));
         } catch (Exception e) {
             // 续期出问题只是这一轮不参与自动整理，不能影响正常对话
             log.warn("自动记忆续期失败 [{}]: {}", chatSession.getId(), e.getMessage());
-            return null;
         }
     }
 
-    public List<SessionMemoryJob> listAll() {
-        return localStorage ? repository.selectAll() : List.of();
-    }
-
-    public SessionMemoryJob find(String sessionId) {
-        return localStorage ? repository.selectBySessionId(sessionId) : null;
+    /** 到期待办（轮询用）；开关关闭时整轮不动，行原样留在库里 */
+    public List<SessionMemoryJob> findDue() {
+        if (!Boolean.TRUE.equals(memorySettings.getEnableAutoRecord())) {
+            return List.of();
+        }
+        return repository.selectDue(LocalDateTime.now());
     }
 
     // ======================== 执行 ========================
 
-    /** 立即整理一次（调试 / 手动触发）：把到期时间设为现在再走正常流程，不受空闲计时约束 */
-    public String runNow(String sessionId) {
-        if (!localStorage) {
-            return null;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        repository.upsert(new SessionMemoryJob()
-                .setSessionId(sessionId)
-                .setDueTime(now)
-                .setLastMessageTime(now));
-        return execute(sessionId);
-    }
-
     /**
      * 执行一次整理：删行即认领，认领不到说明已被别处拿走或期间被续期。
      *
-     * @return 结果描述；未认领到（或远端模式）时返回 null
+     * @return 结果描述；未认领到时返回 null
      */
     public String execute(String sessionId) {
-        if (!localStorage) {
-            return null;
-        }
         SessionMemoryJob job = repository.selectBySessionId(sessionId);
         if (job == null || !repository.take(sessionId, job.getLastMessageTime())) {
             return null;
@@ -190,6 +159,7 @@ public class MemoryRecordService {
         try {
             ChatSession session = chatSessionService.findById(sessionId);
             if (session == null) {
+                // 待办已在 take 时删掉，这里只是收尾：会话被删后残留的待办就是这样自然收敛的
                 return "跳过：会话已删除";
             }
             if (!ChatSession.TYPE_CHAT.equals(session.getType())) {
@@ -202,7 +172,7 @@ public class MemoryRecordService {
             log.info("自动记忆完成 [{}]：{}", sessionId, result);
             return result;
         } catch (Exception e) {
-            // 待办已经删掉了，失败不自动重试：等用户下次进这个会话聊两句，续期会重新排一次
+            // 待办已经删掉了，失败不自动重试：等用户下次进这个会话聊两句，续期会重新写一条待办
             log.warn("自动记忆整理失败 [{}]，等下次续期再排：{}", sessionId, e.getMessage(), e);
             return "失败: " + rootMessage(e);
         }
@@ -211,30 +181,12 @@ public class MemoryRecordService {
     // ======================== 组装请求 ========================
 
     /**
-     * 历史只保留文本：图片/附件/音视频换成占位，纯附件消息补一个空标记。
-     * <p>不展开文件（data URI 太大且整理用不上），也不把原始内容块丢给各协议适配器——
-     * 标准协议只认文本/图片/音频，FileContent 会被静默丢掉，留下空 content 反而可能被拒。
+     * 历史装载成可发送形态：与主对话走同一个 {@link SessionFileManager#loadSessionFile}。
+     * <p>图片/音视频展开成 data URI、附件读成文本，主对话能发什么，这里就发什么，不做裁剪。
      */
     private List<ChatMessage> plainHistory(List<ChatMessage> history) {
         history.removeIf(message -> message == null || !StringUtils.hasText(message.getRole()));
-        for (ChatMessage message : history) {
-            List<MessageContent> contents = new ArrayList<>();
-            for (MessageContent content : message.getContents()) {
-                if (content instanceof TextContent text) {
-                    contents.add(new TextContent(text.getContent() == null ? "" : text.getContent()));
-                } else if (content instanceof ImageContent) {
-                    contents.add(new TextContent("[图片]"));
-                } else if (content instanceof FileContent) {
-                    contents.add(new TextContent("[附件]"));
-                } else if (content instanceof AudioContent) {
-                    contents.add(new TextContent("[音频]"));
-                } else if (content instanceof VideoContent) {
-                    contents.add(new TextContent("[视频]"));
-                }
-            }
-            message.setContents(contents.isEmpty() ? new ArrayList<>(List.of(new TextContent("（空）"))) : contents);
-        }
-        return history;
+        return sessionFileManager.loadSessionFile(history);
     }
 
     /** 与正常对话同源的系统提示词，由 ChatPromptService 统一拼装 */
@@ -242,7 +194,7 @@ public class MemoryRecordService {
         NoOpWebSocketSession noop = new NoOpWebSocketSession("memory-record-" + session.getId());
         ChatProvider.SystemProviderContext context = new ChatProvider.SystemProviderContext(
                 session, history, noop, chatAISettings, assistantSettings);
-        return chatPromptService.defaultSystemPrompt(context, assistantSettings, chatAISettings.getModel(), noop);
+        return chatPromptService.defaultSystemPrompt(context);
     }
 
     /** 发一次普通对话请求（不带工具） */

@@ -60,8 +60,7 @@ public class DefaultChatProviderFactory {
 
     private String defaultSystemProviderContext(ChatProvider.SystemProviderContext ctx) {
         try {
-            return chatPromptService.defaultSystemPrompt(
-                    ctx, ctx.assistantSettings(), ctx.effectiveSettings().getModel(), ctx.session());
+            return chatPromptService.defaultSystemPrompt(ctx);
         } catch (Exception e) {
             throw new RuntimeException("构建默认系统提示词失败: " + e.getMessage(), e);
         }

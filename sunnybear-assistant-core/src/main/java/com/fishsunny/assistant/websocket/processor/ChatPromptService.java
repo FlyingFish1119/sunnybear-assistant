@@ -24,6 +24,7 @@ import com.fishsunny.assistant.settings.McpSettings;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.ProjectFileManager;
 import com.fishsunny.assistant.websocket.provider.ChatProvider;
+import com.fishsunny.assistant.websocket.ws.NoOpWebSocketSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -66,9 +67,12 @@ public class ChatPromptService {
     private final CronJobService cronJobService;
     private final McpClientService mcpClientService;
 
-    public String defaultSystemPrompt(ChatProvider.SystemProviderContext context, AssistantSettings activeAssistantSettings, String effectiveModelName, WebSocketSession session) throws Exception {
+    public String defaultSystemPrompt(ChatProvider.SystemProviderContext context) throws Exception {
         ChatSession chatSession = context.chatSession();
         List<ChatMessage> originMessages = context.originMessages();
+        WebSocketSession session = context.session();
+        AssistantSettings activeAssistantSettings = context.assistantSettings();
+        String effectiveModelName = context.effectiveSettings().getModel();
 
         // 替换变量（系统提示词使用助手设定，模型名使用实际生效的模型）
         String dayOfWeek = LocalDate.now().getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.CHINA);

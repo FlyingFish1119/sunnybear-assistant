@@ -3,7 +3,8 @@ package com.fishsunny.assistant.mvc.dao.implement;
 /*
  * @Usage 自动记忆整理待办的数据访问实现（本地 SQLite）
  *
- *        只在 role=local 时装配；remote 模式下整块功能静默不启用，避免多实例重复整理同一段对话。
+ *        只在 role=local 时装配；remote 模式下由 RemoteRepositoryConfig 提供 RPC 代理顶替，
+ *        续期照常写到权威库，只有轮询执行留在权威库这一侧跑。
  *
  * @Project sunnybear-assistant-core
  * @Author FlyingFish-SunnyBear
@@ -94,11 +95,6 @@ public class SessionMemoryJobRepositoryImplement implements SessionMemoryJobRepo
     }
 
     @Override
-    public List<SessionMemoryJob> selectAll() {
-        return jdbcTemplate.query("SELECT * FROM session_memory_job", rowMapper);
-    }
-
-    @Override
     public void upsert(SessionMemoryJob job) {
         // 续期就是"这段对话重新开始计时"：一条语句覆盖到期时间与计时依据
         String sql = """
@@ -119,7 +115,9 @@ public class SessionMemoryJobRepositoryImplement implements SessionMemoryJobRepo
     }
 
     @Override
-    public int deleteBySessionId(String sessionId) {
-        return jdbcTemplate.update("DELETE FROM session_memory_job WHERE session_id = ?", sessionId);
+    public List<SessionMemoryJob> selectDue(LocalDateTime now) {
+        return jdbcTemplate.query(
+                "SELECT * FROM session_memory_job WHERE due_time <= ? ORDER BY due_time",
+                rowMapper, format(now));
     }
 }

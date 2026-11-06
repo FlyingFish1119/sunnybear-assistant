@@ -521,6 +521,7 @@ public class SessionFileManager {
                     byte[] bytes = readSessionFile(url);
                     if (bytes == null) {
                         log.warn("Image file not found: {}", url);
+                        messageContents.add(missingMediaNotice("[图片]", url));
                         continue;
                     }
                     byte[] scaled = downscaleImage(ObjectUtils.getFileExtension(url), bytes);
@@ -528,6 +529,7 @@ public class SessionFileManager {
                     messageContents.add(new ImageContent(dataUrl));
                 } catch (Exception e) {
                     log.error("Error loading image file: {}", url, e);
+                    messageContents.add(missingMediaNotice("[图片]", url));
                 }
             }
             if (content instanceof VideoContent videoContent) {
@@ -540,12 +542,14 @@ public class SessionFileManager {
                     byte[] bytes = readSessionFile(url);
                     if (bytes == null) {
                         log.warn("Video file not found: {}", url);
+                        messageContents.add(missingMediaNotice("[视频]", url));
                         continue;
                     }
                     String dataUrl = ObjectUtils.encodeToDataUrl(url, bytes);
                     messageContents.add(new VideoContent(dataUrl));
                 } catch (Exception e) {
                     log.error("Error loading video file: {}", url, e);
+                    messageContents.add(missingMediaNotice("[视频]", url));
                 }
             }
             if (content instanceof AudioContent audioContent) {
@@ -558,12 +562,14 @@ public class SessionFileManager {
                     byte[] bytes = readSessionFile(url);
                     if (bytes == null) {
                         log.warn("Audio file not found: {}", url);
+                        messageContents.add(missingMediaNotice("[音频]", url));
                         continue;
                     }
                     String dataUrl = ObjectUtils.encodeToDataUrl(url, bytes);
                     messageContents.add(new AudioContent(dataUrl));
                 } catch (Exception e) {
                     log.error("Error loading audio file: {}", url, e);
+                    messageContents.add(missingMediaNotice("[音频]", url));
                 }
             }
             if (content instanceof FileContent fileContent) {
@@ -578,6 +584,7 @@ public class SessionFileManager {
                     byte[] bytes = readSessionFile(path);
                     if (bytes == null) {
                         log.warn("File not found: {}", path);
+                        messageContents.add(new TextContent("用户上传了文件：" + path + "（读取失败，可能已被删除）"));
                         continue;
                     }
                     int maxBytes = userSettings == null ? 0 : userSettings.getMaxTextFileBytes();
@@ -592,10 +599,19 @@ public class SessionFileManager {
                             "[" + resolveDisplayFileName(path) + "]\n" + new String(bytes, StandardCharsets.UTF_8)));
                 } catch (Exception e) {
                     log.error("Error loading file: {}", path, e);
+                    messageContents.add(new TextContent("用户上传了文件：" + path + "（读取失败）"));
                 }
             }
         }
         return messageContents;
+    }
+
+    /**
+     * 媒体文件读不到时的占位：不能静默丢掉，否则模型眼里这条消息从来没带过这个文件。
+     * <p>只取文件名，避免把沙箱里的完整路径塞进上下文。
+     */
+    private TextContent missingMediaNotice(String kind, String url) {
+        return new TextContent(kind + "（读取失败：" + resolveDisplayFileName(url) + "）");
     }
 
     /**
