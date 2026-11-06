@@ -33,6 +33,35 @@ const MemorySettings = {
             </div>
         </div>
 
+        <div class="settings-item">
+            <div class="settings-item-left">
+                <div class="settings-item-icon"><i data-lucide="refresh-cw" style="width:16px;height:16px"></i></div>
+                <div class="settings-item-info">
+                    <span class="settings-item-label">自动记忆</span>
+                    <span class="settings-item-desc">{{ autoRecord ? '已开启 · 对话静默满设定时长后自动整理' : '已关闭 · 不会自动整理记忆' }}</span>
+                </div>
+            </div>
+            <div class="settings-item-right">
+                <el-switch v-model="autoRecord" @change="saveAutoRecordSettings" :disabled="saving.autorecord"></el-switch>
+            </div>
+        </div>
+
+        <div class="settings-item">
+            <div class="settings-item-left">
+                <div class="settings-item-icon"><i data-lucide="clock" style="width:16px;height:16px"></i></div>
+                <div class="settings-item-info">
+                    <span class="settings-item-label">空闲时长</span>
+                    <span class="settings-item-desc">最后一轮对话之后静默多久，才认为这段会话结束</span>
+                </div>
+            </div>
+            <div class="settings-item-right">
+                <el-input-number v-model="autoRecordIdleHours" :min="1" :max="720" :step="1" size="small"
+                                 :disabled="saving.autorecord" controls-position="right"
+                                 @change="saveAutoRecordSettings" style="width:110px"></el-input-number>
+                <span class="settings-item-value" style="margin-left:8px">小时</span>
+            </div>
+        </div>
+
         <div class="settings-item" @click="openManage">
             <div class="settings-item-left">
                 <div class="settings-item-icon"><i data-lucide="list" style="width:16px;height:16px"></i></div>
@@ -143,7 +172,9 @@ const MemorySettings = {
             memoryList: [],
             memoryLoading: false,
             memoryEditForm: { id: null, content: '', groupName: '' },
-            enable: false
+            enable: false,
+            autoRecord: false,
+            autoRecordIdleHours: 24
         };
     },
 
@@ -179,10 +210,12 @@ const MemorySettings = {
     },
 
     watch: {
-        // 父组件刷新设置后同步开关状态
+        // 父组件刷新设置后同步开关与时长
         settings: {
             handler(v) {
                 this.enable = !!(v && v.enable);
+                this.autoRecord = !!(v && v.enableAutoRecord);
+                this.autoRecordIdleHours = (v && v.autoRecordIdleHours) || 24;
             },
             immediate: true
         }
@@ -212,6 +245,29 @@ const MemorySettings = {
                 console.error(e);
             } finally {
                 this.saving.memoryenable = false;
+            }
+        },
+
+        /* ---------- 自动记忆开关与空闲时长（两者共用一次保存） ---------- */
+        async saveAutoRecordSettings() {
+            this.saving.autorecord = true;
+            try {
+                const r = await API.settings.memorysettings.save({
+                    enable: this.enable,
+                    enableAutoRecord: !!this.autoRecord,
+                    autoRecordIdleHours: this.autoRecordIdleHours || 24
+                });
+                if (r.status === 200) {
+                    ElementPlus.ElMessage.success('保存成功');
+                    this.$emit('saved');
+                } else {
+                    ElementPlus.ElMessage.error(r.message || '保存失败');
+                }
+            } catch (e) {
+                ElementPlus.ElMessage.error('网络请求失败');
+                console.error(e);
+            } finally {
+                this.saving.autorecord = false;
             }
         },
 

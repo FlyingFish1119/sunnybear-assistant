@@ -20,6 +20,7 @@ import com.fishsunny.assistant.engine.tool.service.ToolVisibilityPolicy;
 import com.fishsunny.assistant.exception.UserException;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.AssistantSettings;
+import com.fishsunny.assistant.task.MemoryRecordScheduler;
 import com.fishsunny.assistant.utils.ObjectUtils;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import com.fishsunny.assistant.websocket.provider.ChatProvider;
@@ -47,6 +48,7 @@ public class ChatProcessor {
     private final ToolVisibilityPolicy toolVisibilityPolicy;
     private final ContextCompressor contextCompressor;
     private final StandardChatTranslateFactory standardChatTranslateFactory;
+    private final MemoryRecordScheduler memoryRecordScheduler;
 
     /**
      * 核心对话处理逻辑
@@ -62,6 +64,14 @@ public class ChatProcessor {
                                       ) throws Exception {
         if (chatProvider == null) {
             throw new UserException("无效的 ChatProvider");
+        }
+
+        // 自动记忆续期：每轮真实对话把该会话的整理时间往后推（开关关闭 / 非 chat 会话时内部直接返回）。
+        // 失败只告警：续期出问题不该拖累对话本身。
+        try {
+            memoryRecordScheduler.touch(chatSession);
+        } catch (Exception e) {
+            log.warn("自动记忆续期异常 [{}]: {}", chatSession == null ? null : chatSession.getId(), e.getMessage());
         }
         // 包装会话，用于消息的广播
 

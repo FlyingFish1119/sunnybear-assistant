@@ -49,7 +49,11 @@ public class MemorySettingsController {
         if (settings == null) {
             return new RestResponse().error("Invalid settings");
         }
-        memorySettings.setEnable(Boolean.TRUE.equals(settings.getEnable()));
+        Integer idleHours = settings.getAutoRecordIdleHours();
+        // 整体写回单例 bean：三个字段一次到位，避免某次只传了一个字段把其它字段清掉
+        memorySettings.setEnable(Boolean.TRUE.equals(settings.getEnable()))
+                .setEnableAutoRecord(Boolean.TRUE.equals(settings.getEnableAutoRecord()))
+                .setAutoRecordIdleHours(idleHours == null || idleHours <= 0 ? 24 : idleHours);
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(memorySettingsPath), memorySettings);
         } catch (Exception e) {

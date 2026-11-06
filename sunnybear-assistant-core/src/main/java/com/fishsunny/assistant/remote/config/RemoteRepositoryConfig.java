@@ -24,6 +24,7 @@ import com.fishsunny.assistant.mvc.dao.CronJobRepository;
 import com.fishsunny.assistant.mvc.dao.KnowledgeRepository;
 import com.fishsunny.assistant.mvc.dao.MemoryRepository;
 import com.fishsunny.assistant.mvc.dao.SessionKnowledgeRepository;
+import com.fishsunny.assistant.mvc.dao.SessionMemoryJobRepository;
 import com.fishsunny.assistant.mvc.dao.TaskPromptRepository;
 import com.fishsunny.assistant.mvc.dao.TaskRepository;
 import com.fishsunny.assistant.mvc.dao.TaskStepRepository;
@@ -126,5 +127,11 @@ public class RemoteRepositoryConfig {
     @ConditionalOnProperty(name = "assistant.remote-storage.role", havingValue = "remote")
     public TaskStepRepository taskStepRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
         return RemoteRepositoryFactory.create(TaskStepRepository.class, repoRpcClient, objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "assistant.remote-storage.role", havingValue = "remote")
+    public SessionMemoryJobRepository sessionMemoryJobRepository(RepoRpcClient repoRpcClient, ObjectMapper objectMapper) {
+        return RemoteRepositoryFactory.create(SessionMemoryJobRepository.class, repoRpcClient, objectMapper);
     }
 }

@@ -12,6 +12,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fishsunny.assistant.dto.RestResponse;
 import com.fishsunny.assistant.engine.protocol.project.entity.MemoryRecord;
 import com.fishsunny.assistant.mvc.service.MemoryService;
+import com.fishsunny.assistant.task.MemoryRecordService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,10 +28,12 @@ public class MemoryController {
     private static final Logger log = LoggerFactory.getLogger(MemoryController.class);
 
     private final MemoryService memoryService;
+    private final MemoryRecordService memoryRecordService;
 
     @Autowired
-    public MemoryController(MemoryService memoryService) {
+    public MemoryController(MemoryService memoryService, MemoryRecordService memoryRecordService) {
         this.memoryService = memoryService;
+        this.memoryRecordService = memoryRecordService;
     }
 
     /** 列出所有记忆 */
@@ -109,6 +112,28 @@ public class MemoryController {
     /** 分组重命名请求体：组下所有记忆一起改名 */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record GroupRenameRequest(String oldName, String newName) {
+    }
+
+    /**
+     * 立即对指定会话跑一次自动记忆整理（调试用，不等空闲计时）。
+     * <p>不受 enableAutoRecord 开关约束 —— 这是明确的「现在就整理」指令；
+     * 但会话必须是 chat 会话且消息条数达标，否则返回 skipped 及原因。
+     */
+    @PostMapping("/auto-record/{sessionId}")
+    public RestResponse autoRecord(@PathVariable("sessionId") String sessionId) {
+        if (!StringUtils.hasText(sessionId)) {
+            return new RestResponse().error("sessionId 不能为空");
+        }
+        try {
+            String result = memoryRecordService.runNow(sessionId);
+            if (result == null) {
+                return new RestResponse().error("没有可执行的整理待办（远端存储模式，或已被别处认领）");
+            }
+            return new RestResponse().success(result);
+        } catch (Exception e) {
+            log.error("立即整理记忆失败", e);
+            return new RestResponse().error("立即整理记忆失败: " + e.getMessage());
+        }
     }
 
     /** 删除记忆 */

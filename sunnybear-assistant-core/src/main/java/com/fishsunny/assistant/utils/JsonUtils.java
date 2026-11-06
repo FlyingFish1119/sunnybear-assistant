@@ -59,4 +59,51 @@ public final class JsonUtils {
         }
         return "";
     }
+
+    /**
+     * 从一段可能夹带说明文字或 ```json 代码围栏的文本里，提取第一个完整的 JSON 数组。
+     * <p>与 {@link #extractJsonObject(String)} 同一套括号配平扫描，只是外层符号换成方括号；
+     * 字符串内部的 [ ] 与转义字符同样不参与配对。
+     *
+     * @return 提取到的数组文本；找不到完整数组时返回空串
+     */
+    public static String extractJsonArray(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        int start = raw.indexOf('[');
+        if (start < 0) {
+            return "";
+        }
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = start; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (c == '"') {
+                inString = !inString;
+                continue;
+            }
+            if (inString) {
+                continue;
+            }
+            if (c == '[') {
+                depth++;
+            } else if (c == ']') {
+                depth--;
+                if (depth == 0) {
+                    return raw.substring(start, i + 1);
+                }
+            }
+        }
+        return "";
+    }
 }
