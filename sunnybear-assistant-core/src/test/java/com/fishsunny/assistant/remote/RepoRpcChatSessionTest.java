@@ -92,5 +92,13 @@ class RepoRpcChatSessionTest {
         public List<ChatSession> selectByTypeAndExtensionValue(String type, String jsonKey, String value) {
             return List.of();
         }
+
+        @Override
+        public void touchUpdateTime(String id, LocalDateTime updateTime) {
+            ChatSession session = db.get(id);
+            if (session != null) {
+                session.setUpdateTime(updateTime);
+            }
+        }
     }
 }

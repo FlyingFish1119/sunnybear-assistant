@@ -11,6 +11,7 @@ package com.fishsunny.assistant.mvc.dao;
 import com.fishsunny.assistant.engine.protocol.project.entity.ChatSession;
 import com.fishsunny.assistant.remote.RemoteRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -33,6 +34,13 @@ public interface ChatSessionRepository {
     public Map<String, Object> mergeExtension(String id, Map<String, Object> fields);
 
     public ChatSession deleteById(String id);
+
+    /**
+     * 只刷新最近活跃时间（update_time）：name / extension / 开关一律不动。
+     * <p>与 mergeExtension 分开的原因：合并 extension 的调用方（项目绑定、步骤清单）不该影响会话排序，
+     * 只有「用户真的用了这个会话」才应该把它顶到列表最前。
+     */
+    public void touchUpdateTime(String id, LocalDateTime updateTime);
 
     public List<ChatSession> selectAll();
 

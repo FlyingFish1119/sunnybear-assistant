@@ -44,13 +44,11 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
-public class CreateChatMessageRequestHandler implements ChatMessageRequestHandler {
+public class CreateChatMessageRequestHandler extends ChatMessageRequestHandler {
 
     /** 等 Jev 项目判定结果的上限：超时按「没判中」处理，不拖住会话创建 */
     private static final long JUDGE_TIMEOUT_SECONDS = 5;
 
-    private final ChatSessionService chatSessionService;
     private final CronJobService cronJobService;
     private final SessionFileWriter sessionFileWriter;
     private final UserMessageAppender userMessageAppender;
@@ -59,8 +57,26 @@ public class CreateChatMessageRequestHandler implements ChatMessageRequestHandle
     private final JevClient jevClient;
     private final ChatProjectService chatProjectService;
 
+    public CreateChatMessageRequestHandler(ChatSessionService chatSessionService,
+                                           CronJobService cronJobService,
+                                           SessionFileWriter sessionFileWriter,
+                                           UserMessageAppender userMessageAppender,
+                                           UserSettings userSettings,
+                                           SessionMessageBus sessionMessageBus,
+                                           JevClient jevClient,
+                                           ChatProjectService chatProjectService) {
+        super(chatSessionService);
+        this.cronJobService = cronJobService;
+        this.sessionFileWriter = sessionFileWriter;
+        this.userMessageAppender = userMessageAppender;
+        this.userSettings = userSettings;
+        this.sessionMessageBus = sessionMessageBus;
+        this.jevClient = jevClient;
+        this.chatProjectService = chatProjectService;
+    }
+
     @Override
-    public ChatSessionModeParseResult handle(ChatMessageRequest request, SynchronizedWebSocketSession safeSession, ChatMessageRequestProvider provider) throws Exception {
+    public ChatSessionModeParseResult doHandle(ChatMessageRequest request, SynchronizedWebSocketSession safeSession, ChatMessageRequestProvider provider) throws Exception {
         ChatSession chatSession;
         // cron 触发：通过 cronId 查库获取标题，session type = 'cron'
         if (request.getCronId() != null) {
@@ -116,7 +132,7 @@ public class CreateChatMessageRequestHandler implements ChatMessageRequestHandle
             }
         }
         try {
-            return chatSessionService.save(chatSession);
+            return super.chatSessionService.save(chatSession);
         } catch (Exception e) {
             log.error("Error create chat session: {}", e.getMessage());
             throw new UserException("创建会话失败: " + e.getMessage());
@@ -139,7 +155,7 @@ public class CreateChatMessageRequestHandler implements ChatMessageRequestHandle
         chatSession.setEnablePro(cronJob.getEnablePro() != null && cronJob.getEnablePro());
         chatSession.setUnreviewed(cronJob.getUnreviewed() != null && cronJob.getUnreviewed());
         try {
-            return chatSessionService.save(chatSession);
+            return super.chatSessionService.save(chatSession);
         } catch (Exception e) {
             log.error("Error create cron chat session: {}", e.getMessage());
             throw new UserException("创建 cron 会话失败: " + e.getMessage());

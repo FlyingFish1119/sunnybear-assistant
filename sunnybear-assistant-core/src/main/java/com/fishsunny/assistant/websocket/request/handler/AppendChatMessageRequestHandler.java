@@ -24,18 +24,30 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 @Component
-@RequiredArgsConstructor
-public class AppendChatMessageRequestHandler implements ChatMessageRequestHandler {
+public class AppendChatMessageRequestHandler extends ChatMessageRequestHandler {
 
     private final UserMessageAppender userMessageAppender;
     private final ChatMessageService chatMessageService;
-    private final ChatSessionService chatSessionService;
     private final SessionMessageBus sessionMessageBus;
     private final SessionFileWriter sessionFileWriter;
 
+    public AppendChatMessageRequestHandler(
+            UserMessageAppender userMessageAppender,
+            ChatMessageService chatMessageService,
+            SessionMessageBus sessionMessageBus,
+            SessionFileWriter sessionFileWriter,
+            ChatSessionService chatSessionService
+    ) {
+        super(chatSessionService);
+        this.userMessageAppender = userMessageAppender;
+        this.chatMessageService = chatMessageService;
+        this.sessionMessageBus = sessionMessageBus;
+        this.sessionFileWriter = sessionFileWriter;
+    }
+
     @Override
-    public ChatSessionModeParseResult handle(ChatMessageRequest request, SynchronizedWebSocketSession safeSession, ChatMessageRequestProvider provider) throws Exception {
-        ChatSession chatSession = chatSessionService.findById(request.getSessionId());
+    public ChatSessionModeParseResult doHandle(ChatMessageRequest request, SynchronizedWebSocketSession safeSession, ChatMessageRequestProvider provider) throws Exception {
+        ChatSession chatSession = super.chatSessionService.findById(request.getSessionId());
         if (chatSession == null) {
             throw new UserException("会话不存在: " + request.getSessionId());
         }

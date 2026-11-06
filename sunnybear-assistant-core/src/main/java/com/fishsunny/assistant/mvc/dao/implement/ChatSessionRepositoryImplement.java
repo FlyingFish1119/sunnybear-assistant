@@ -173,6 +173,12 @@ public class ChatSessionRepositoryImplement implements ChatSessionRepository {
         }
     }
 
+    @Override
+    public void touchUpdateTime(String id, LocalDateTime updateTime) {
+        jdbcTemplate.update("UPDATE chat_session SET update_time = ? WHERE id = ?",
+                updateTime.format(formatter), id);
+    }
+
 
     @Override
     @Transactional

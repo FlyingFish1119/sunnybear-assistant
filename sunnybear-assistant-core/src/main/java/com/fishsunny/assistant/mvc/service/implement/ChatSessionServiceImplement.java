@@ -77,6 +77,11 @@ public class ChatSessionServiceImplement implements ChatSessionService {
     }
 
     @Override
+    public void touchUpdateTime(String id) {
+        chatSessionRepository.touchUpdateTime(id, LocalDateTime.now());
+    }
+
+    @Override
     public Map<String, Object> mergeExtension(String id, Map<String, Object> fields) {
         return chatSessionRepository.mergeExtension(id, fields);
     }

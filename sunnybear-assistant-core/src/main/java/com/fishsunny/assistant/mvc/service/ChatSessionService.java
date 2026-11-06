@@ -33,6 +33,12 @@ public interface ChatSessionService {
     public ChatSession update(ChatSession chatSession);
 
     /**
+     * 只刷新会话的最近活跃时间：WS 消息处理成功即视为会话被使用，用于会话列表的最近排序。
+     * <p>不碰 name / extension / 开关，与 update() 区分开。
+     */
+    public void touchUpdateTime(String id);
+
+    /**
      * append-only 合并会话 extension：只覆盖传入的键，保留其它消费方的字段；
      * 不动 name / update_time。这是修改 extension 的唯一入口，不提供整段覆盖。
      *

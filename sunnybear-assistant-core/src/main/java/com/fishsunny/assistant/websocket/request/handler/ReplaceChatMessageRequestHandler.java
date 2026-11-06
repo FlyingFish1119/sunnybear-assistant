@@ -29,16 +29,24 @@ import java.util.List;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
-public class ReplaceChatMessageRequestHandler implements ChatMessageRequestHandler {
+public class ReplaceChatMessageRequestHandler extends ChatMessageRequestHandler {
 
-    private final ChatSessionService chatSessionService;
     private final ChatMessageService chatMessageService;
     private final SessionMessageBus sessionMessageBus;
 
+    public ReplaceChatMessageRequestHandler(
+            ChatSessionService chatSessionService,
+            ChatMessageService chatMessageService,
+            SessionMessageBus sessionMessageBus) {
+        super(chatSessionService);
+        this.chatMessageService = chatMessageService;
+        this.sessionMessageBus = sessionMessageBus;
+    }
+
+
     @Override
-    public ChatSessionModeParseResult handle(ChatMessageRequest request, SynchronizedWebSocketSession safeSession, ChatMessageRequestProvider provider) throws Exception {
-        ChatSession chatSession = chatSessionService.findById(request.getSessionId());
+    public ChatSessionModeParseResult doHandle(ChatMessageRequest request, SynchronizedWebSocketSession safeSession, ChatMessageRequestProvider provider) throws Exception {
+        ChatSession chatSession = super.chatSessionService.findById(request.getSessionId());
         if (chatSession == null) {
             throw new UserException("会话不存在: " + request.getSessionId());
         }
