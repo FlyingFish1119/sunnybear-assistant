@@ -53,12 +53,7 @@ public class StandardAIRequest implements AIRequest {
     /** 响应格式，null 时不序列化 */
     private ResponseFormat response_format;
 
-    private List<StandardToolRegister> tools = new ArrayList<>();
-
-    public StandardAIRequest setTools(List<StandardToolRegister> tools) {
-        this.tools = tools == null ? new ArrayList<>() : tools;
-        return this;
-    }
+    private List<StandardToolRegister> tools;
 
     /** 本请求体已序列化的顶层 key，同名自定义字段一律丢弃（内置优先） */
     private static final Set<String> RESERVED_BODY_KEYS = Set.of(
