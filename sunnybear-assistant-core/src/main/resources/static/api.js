@@ -308,6 +308,31 @@ const API = (function () {
             }
         },
 
+        /* ---------- 后台命令 / 脚本任务（Agent Log 面板的「后台任务」页签） ---------- */
+        commandTask: {
+            /** 列出当前会话还在跑的后台任务；任务一收尾就会从列表消失 */
+            list: function (sessionId) {
+                return get('command/task/list?sessionId=' + encodeURIComponent(sessionId || ''));
+            },
+            /**
+             * 增量读日志。offset 传上次返回的 offset，只回传新增部分；
+             * reset=true 表示游标失效（首次打开或文件被重建），前端应清空已有内容重新渲染。
+             * offset 为空时干脆不带这个参数 —— 空串绑到 Long 会触发类型转换错误。
+             */
+            log: function (sessionId, id, offset) {
+                var url = 'command/task/log?sessionId=' + encodeURIComponent(sessionId)
+                    + '&id=' + encodeURIComponent(id);
+                if (offset != null && offset !== '') {
+                    url += '&offset=' + encodeURIComponent(offset);
+                }
+                return get(url);
+            },
+            /** 结束一个后台任务（杀整棵进程树） */
+            kill: function (sessionId, id) {
+                return post('command/task/kill', { sessionId: sessionId, id: id });
+            }
+        },
+
         /* ---------- 核心文件（data/core，跨会话长期保存、随时引用） ---------- */
         coreFile: {
             /** 列出某一层目录；dir 为空表示核心目录 */

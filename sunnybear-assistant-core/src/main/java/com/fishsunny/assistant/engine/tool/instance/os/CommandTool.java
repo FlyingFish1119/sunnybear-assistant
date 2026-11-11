@@ -17,6 +17,7 @@ import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeConte
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
+import com.fishsunny.assistant.engine.tool.service.background.CommandTaskRegistry;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
 import com.fishsunny.assistant.utils.SessionFileManager;
@@ -144,18 +145,21 @@ public class CommandTool implements ToolHandler {
     private final SecurityService securityService;
     private final SessionFileManager sessionFileManager;
     private final BackgroundToolResponseBus backgroundToolResponseBus;
+    private final CommandTaskRegistry commandTaskRegistry;
 
     public CommandTool(ObjectMapper objectMapper,
                        @Qualifier(SETTINGS) Settings settings,
                        SecurityService securityService,
                        SessionFileManager sessionFileManager,
-                       BackgroundToolResponseBus backgroundToolResponseBus
+                       BackgroundToolResponseBus backgroundToolResponseBus,
+                       CommandTaskRegistry commandTaskRegistry
                        ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
         this.securityService = securityService;
         this.sessionFileManager = sessionFileManager;
         this.backgroundToolResponseBus = backgroundToolResponseBus;
+        this.commandTaskRegistry = commandTaskRegistry;
     }
 
     @Override
@@ -208,9 +212,11 @@ public class CommandTool implements ToolHandler {
             ChatSession chatSession = (ChatSession) context.get("chatSession");
             String sessionId = chatSession.getId();
             String fileName = "command_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS")) + ".log";
+            // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层
+            String logRelPath = SessionFileManager.buildLogRelativePath(fileName);
             Path logFile;
             try {
-                logFile = sessionFileManager.prepareSessionFile(sessionId, fileName);
+                logFile = sessionFileManager.prepareSessionLogFile(sessionId, fileName);
             } catch (IOException e) {
                 throw new ToolExecutor.ToolExecuteException("无法创建命令输出目录: " + e.getMessage());
             }
@@ -232,9 +238,9 @@ public class CommandTool implements ToolHandler {
                 // 超时不杀进程：命令常常还在正常干活（编译、装依赖、跑服务），
                 // 杀掉既丢结果，又会让 AI 误判失败而重跑一遍，制造端口/文件锁冲突。
                 if (!future.isDone()) {
-                    watchBackgroundFinish(future, process, sessionId, arguments.getCommand(), logFile);
+                    watchBackgroundFinish(future, process, sessionId, arguments.getCommand(), logFile, logRelPath);
                     return new ToolExecutor.ToolExecuteResponse(name(),
-                            buildTimeoutToBackgroundMessage(settings.getTimeout(), fileName));
+                            buildTimeoutToBackgroundMessage(settings.getTimeout(), logRelPath));
                 }
                 output = future.get();
             }
@@ -244,7 +250,7 @@ public class CommandTool implements ToolHandler {
                 String message = "命令执行失败，退出码：" + exitCode + "，输出：" + output.text();
                 if (output.truncated()) {
                     message += "\n（输出过长已截断，完整输出见会话文件："
-                            + SessionFileManager.buildSessionMarker(fileName) + "）";
+                            + SessionFileManager.buildSessionMarker(logRelPath) + "）";
                 } else {
                     discardQuietly(logFile);
                 }
@@ -255,7 +261,7 @@ public class CommandTool implements ToolHandler {
             // 直接给标记由 AI 自行决定是否读取
             Long maxSize = settings.getMaxOutputSize();
             if (maxSize != null && maxSize > 0 && output.totalBytes() > maxSize) {
-                return oversizeResponse(logFile, output.totalBytes(), maxSize);
+                return oversizeResponse(logRelPath, output.totalBytes(), maxSize);
             }
 
             discardQuietly(logFile);
@@ -423,22 +429,43 @@ public class CommandTool implements ToolHandler {
      * 只做「等结果 + 投递」，不去碰进程：不 destroy、不 cancel。
      * 读取输出的任务跑完即代表 stdout 已关闭、进程即将或已经退出。
      * </p>
+     * <p>
+     * 从超时那一刻起这条命令就算「后台任务」了，同步登记进 {@link CommandTaskRegistry}，
+     * 面板上立刻能看到进度、也能被手动结束。
+     * </p>
      *
-     * @param future    读取输出的任务
-     * @param process   仍在运行的子进程
-     * @param sessionId 会话 id
-     * @param command   原始命令
-     * @param logFile   输出日志文件
+     * @param future     读取输出的任务
+     * @param process    仍在运行的子进程
+     * @param sessionId  会话 id
+     * @param command    原始命令
+     * @param logFile    输出日志文件
+     * @param logRelPath 日志相对会话文件目录的路径（{@code logs/xxx.log}）
      */
     private void watchBackgroundFinish(Future<OSToolKit.CapturedOutput> future, Process process,
-                                       String sessionId, String command, Path logFile) {
+                                       String sessionId, String command, Path logFile, String logRelPath) {
+        CommandTaskRegistry.RunningTask task = commandTaskRegistry.register(
+                sessionId, CommandTaskRegistry.TaskType.COMMAND, command, logRelPath, process);
         EXECUTOR_SERVICE.submit(() -> {
+            Integer exitCode = null;
+            String failure = null;
             try {
                 future.get();
-                notifyBackgroundFinish(sessionId, command, logFile, process.waitFor(), null);
+                exitCode = process.waitFor();
             } catch (Exception e) {
-                notifyBackgroundFinish(sessionId, command, logFile, null, e.getMessage());
+                failure = e.getMessage();
+            } finally {
+                // 被手动结束的任务已经提前摘过一次，这里再摘是幂等空操作
+                commandTaskRegistry.finish(task == null ? null : task.getId());
             }
+            boolean killed = task != null && task.getKilled().get();
+            if (killed) {
+                OSToolKit.appendFooter(logFile, "命令已被用户手动结束");
+            } else if (failure != null) {
+                OSToolKit.appendFooter(logFile, "命令执行异常: " + failure);
+            } else {
+                OSToolKit.appendFooter(logFile, "命令执行完成，退出码: " + exitCode);
+            }
+            notifyBackgroundFinish(sessionId, command, logFile, logRelPath, exitCode, failure, killed);
             return null;
         });
     }
@@ -450,9 +477,9 @@ public class CommandTool implements ToolHandler {
      * 于是端口被占、文件被锁、编译互相打架。这里把状态讲清楚，并把日志路径交出去。
      * </p>
      */
-    private String buildTimeoutToBackgroundMessage(long timeoutSeconds, String fileName) {
+    private String buildTimeoutToBackgroundMessage(long timeoutSeconds, String logRelPath) {
         return "命令执行时间已超过 " + timeoutSeconds + " 秒，进程没有被终止，已自动转入后台继续运行。\n"
-                + "输出日志文件: " + SessionFileManager.buildSessionMarker(fileName) + "\n"
+                + "输出日志文件: " + SessionFileManager.buildSessionMarker(logRelPath) + "\n"
                 + "> 请勿重复执行这条命令。想看进度用 file_read_tool 读取该日志文件；"
                 + "命令结束后退出码与日志尾部会自动投递到本条对话。";
     }
@@ -460,13 +487,13 @@ public class CommandTool implements ToolHandler {
     /**
      * 输出超过限制时的提示：日志文件里本来就有全量输出，直接给模型侧标记，不再二次写文件。
      *
-     * @param logFile    已写入完整输出的日志文件
+     * @param logRelPath 日志相对会话文件目录的路径（{@code logs/xxx.log}）
      * @param outputSize 输出字节数
      * @param limitSize  输出上限字节数
      * @return 携带落盘标记的提示响应
      */
-    private ToolExecutor.ToolExecuteResponse oversizeResponse(Path logFile, long outputSize, long limitSize) {
-        String marker = SessionFileManager.buildSessionMarker(logFile.getFileName().toString());
+    private ToolExecutor.ToolExecuteResponse oversizeResponse(String logRelPath, long outputSize, long limitSize) {
+        String marker = SessionFileManager.buildSessionMarker(logRelPath);
         String message = "命令输出过大（" + ToolKit.formatSize(outputSize) + "，超过上限 "
                 + ToolKit.formatSize(limitSize) + "），已保存到会话文件：" + marker
                 + "。如需查看完整输出，请用 file_read_tool 读取该文件。";
@@ -503,11 +530,13 @@ public class CommandTool implements ToolHandler {
         ChatSession chatSession = (ChatSession) context.get("chatSession");
         String sessionId = chatSession.getId();
 
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS"));
         String fileName = "command_" + timestamp + ".log";
+        // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层
+        String logRelPath = SessionFileManager.buildLogRelativePath(fileName);
         Path logFile;
         try {
-            logFile = sessionFileManager.prepareSessionFile(sessionId, fileName);
+            logFile = sessionFileManager.prepareSessionLogFile(sessionId, fileName);
         } catch (IOException e) {
             throw new ToolExecutor.ToolExecuteException("无法创建后台输出目录: " + e.getMessage());
         }
@@ -526,14 +555,14 @@ public class CommandTool implements ToolHandler {
             headerWriter.newLine();
             headerWriter.write("命令: " + command);
             headerWriter.newLine();
-            headerWriter.write("日志文件: " + SessionFileManager.buildSessionMarker(fileName));
+            headerWriter.write("日志文件: " + SessionFileManager.buildSessionMarker(logRelPath));
             headerWriter.newLine();
             headerWriter.write("=".repeat(60));
             headerWriter.newLine();
             headerWriter.newLine();
             headerWriter.flush();
         } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + SessionFileManager.buildSessionMarker(fileName) + "]: " + e.getMessage());
+            throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + SessionFileManager.buildSessionMarker(logRelPath) + "]: " + e.getMessage());
         }
 
 
@@ -541,52 +570,43 @@ public class CommandTool implements ToolHandler {
         Thread backgroundThread = new Thread(() -> {
             Integer exitCode = null;
             String failure = null;
+            CommandTaskRegistry.RunningTask task = null;
             try {
                 String[] shell = getShell();
                 ProcessBuilder processBuilder = new ProcessBuilder(shell[0], shell[1], command);
                 processBuilder.redirectErrorStream(true);
                 Process process = processBuilder.start();
 
+                // 进程真的起来了才登记：起不来就没有「跑着的任务」可管，也不该在面板上闪一下
+                task = commandTaskRegistry.register(
+                        sessionId, CommandTaskRegistry.TaskType.COMMAND, command, logRelPath, process);
+
                 OSToolKit.writeLog(logFile, process);
                 exitCode = process.waitFor();
-
-                // 写入结束标记
-                try (BufferedWriter footerWriter = Files.newBufferedWriter(logFile, StandardCharsets.UTF_8,
-                        StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
-                    footerWriter.newLine();
-                    footerWriter.write("=".repeat(60));
-                    footerWriter.newLine();
-                    footerWriter.write("命令执行完成，退出码: " + exitCode);
-                    footerWriter.newLine();
-                    footerWriter.write("结束时间: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-                    footerWriter.newLine();
-                    footerWriter.flush();
-                }
             } catch (Exception e) {
                 failure = e.getMessage();
-                try (BufferedWriter errorWriter = Files.newBufferedWriter(logFile, StandardCharsets.UTF_8,
-                        StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
-                    errorWriter.newLine();
-                    errorWriter.write("=".repeat(60));
-                    errorWriter.newLine();
-                    errorWriter.write("命令执行异常: " + e.getMessage());
-                    errorWriter.newLine();
-                    errorWriter.write("结束时间: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-                    errorWriter.newLine();
-                    errorWriter.flush();
-                } catch (IOException ignored) {
-                    // 无法写入错误信息，静默忽略
-                }
+            } finally {
+                // 被手动结束的任务已经提前摘过一次，这里再摘是幂等空操作
+                commandTaskRegistry.finish(task == null ? null : task.getId());
+            }
+
+            boolean killed = task != null && task.getKilled().get();
+            if (killed) {
+                OSToolKit.appendFooter(logFile, "命令已被用户手动结束");
+            } else if (failure != null) {
+                OSToolKit.appendFooter(logFile, "命令执行异常: " + failure);
+            } else {
+                OSToolKit.appendFooter(logFile, "命令执行完成，退出码: " + exitCode);
             }
             // 成功或异常都要收尾投递：等下一次「有消息落地」的时机挂进对话
-            notifyBackgroundFinish(sessionId, command, logFile, exitCode, failure);
+            notifyBackgroundFinish(sessionId, command, logFile, logRelPath, exitCode, failure, killed);
         }, "command-bg-" + timestamp);
 
         backgroundThread.setDaemon(true);
         backgroundThread.start();
 
         String message = "命令已在后台启动执行。\n"
-                + "输出日志文件: " + SessionFileManager.buildSessionMarker(fileName) + "\n"
+                + "输出日志文件: " + SessionFileManager.buildSessionMarker(logRelPath) + "\n"
                 + "> 提示：使用 file_read_tool 读取日志文件内容查看命令输出。"
                 + "命令执行完成后，日志末尾会写入退出码和结束时间。\n"
                 + "> 命令执行完成后，结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。";
@@ -600,22 +620,27 @@ public class CommandTool implements ToolHandler {
      * 投递内容 = 退出码/异常 + 命令原文 + 日志路径 + 日志尾部：总线会在下一次「有消息落地」的
      * 时机把它作为追加文本块挂进对话，模型和用户不用再主动翻日志就知道后台跑完了。
      *
-     * @param sessionId 启动后台任务时捕获的会话 id（异步线程里 context 早已出栈，只能在此前捕获）
-     * @param command   原始命令
-     * @param logFile   输出日志文件
-     * @param exitCode  退出码；执行异常时为 null
-     * @param failure   异常信息；正常结束时为 null
+     * @param sessionId  启动后台任务时捕获的会话 id（异步线程里 context 早已出栈，只能在此前捕获）
+     * @param command    原始命令
+     * @param logFile    输出日志文件
+     * @param logRelPath 日志相对会话文件目录的路径（{@code logs/xxx.log}）
+     * @param exitCode   退出码；执行异常时为 null
+     * @param failure    异常信息；正常结束时为 null
+     * @param killed     是否由用户从面板手动结束
      */
-    private void notifyBackgroundFinish(String sessionId, String command, Path logFile,
-                                        Integer exitCode, String failure) {
+    private void notifyBackgroundFinish(String sessionId, String command, Path logFile, String logRelPath,
+                                        Integer exitCode, String failure, boolean killed) {
         StringBuilder text = new StringBuilder();
-        if (failure != null) {
+        if (killed) {
+            // 手动结束和「自己失败」必须区分开：退出码 1 那种写法会让人以为是命令本身出了问题
+            text.append("命令已被用户手动结束");
+        } else if (failure != null) {
             text.append("命令执行异常: ").append(failure);
         } else {
             text.append("命令执行完成，退出码: ").append(exitCode);
         }
         text.append("\n命令: ").append(command);
-        text.append("\n日志文件: ").append(SessionFileManager.buildSessionMarker(logFile.getFileName().toString()));
+        text.append("\n日志文件: ").append(SessionFileManager.buildSessionMarker(logRelPath));
 
         backgroundToolResponseBus.post(sessionId, name(), text.toString());
     }

@@ -13,6 +13,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
 import com.fishsunny.assistant.engine.tool.instance.os.ExtensionScriptTool;
 import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
+import com.fishsunny.assistant.engine.tool.service.background.CommandTaskRegistry;
 import com.fishsunny.assistant.utils.ProcessUtils;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import org.slf4j.Logger;
@@ -57,10 +58,15 @@ public class ExtensionScriptService {
     /** 后台脚本跑完把结果投递回对话，等下一次「有消息落地」的时机挂上去 */
     private final BackgroundToolResponseBus backgroundToolResponseBus;
 
+    /** 后台脚本的运行登记表：面板据此显示进度、也能被手动结束 */
+    private final CommandTaskRegistry commandTaskRegistry;
+
     public ExtensionScriptService(SessionFileManager sessionFileManager,
-                                  BackgroundToolResponseBus backgroundToolResponseBus) {
+                                  BackgroundToolResponseBus backgroundToolResponseBus,
+                                  CommandTaskRegistry commandTaskRegistry) {
         this.sessionFileManager = sessionFileManager;
         this.backgroundToolResponseBus = backgroundToolResponseBus;
+        this.commandTaskRegistry = commandTaskRegistry;
     }
 
     /**
@@ -102,9 +108,11 @@ public class ExtensionScriptService {
         // 有限超时：边跑边落盘，超时就直接放手
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS"));
         String fileName = "script_" + timestamp + ".log";
+        // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层
+        String logRelPath = SessionFileManager.buildLogRelativePath(fileName);
         Path logFile;
         try {
-            logFile = sessionFileManager.prepareSessionFile(sessionId, fileName);
+            logFile = sessionFileManager.prepareSessionLogFile(sessionId, fileName);
         } catch (IOException e) {
             deleteTempScript(prepared.tempFile());
             throw new ToolExecutor.ToolExecuteException("无法创建脚本输出目录: " + e.getMessage());
@@ -119,9 +127,9 @@ public class ExtensionScriptService {
             output = future.get(timeout, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             if (!future.isDone()) {
-                handOverToBackground(future, process, prepared, logFile, sessionId);
+                handOverToBackground(future, process, prepared, logFile, logRelPath, sessionId);
                 return "脚本执行时间已超过 " + timeout + " 秒，进程没有被终止，已自动转入后台继续运行。\n"
-                        + "输出日志文件: " + SessionFileManager.buildSessionMarker(fileName) + "\n"
+                        + "输出日志文件: " + SessionFileManager.buildSessionMarker(logRelPath) + "\n"
                         + "> 请勿重复执行这个脚本。想看进度用 file_read_tool 读取该日志文件；"
                         + "脚本结束后退出码会自动投递到本条对话。";
             }
@@ -137,7 +145,7 @@ public class ExtensionScriptService {
             String message = "脚本执行失败，退出码：" + exitCode + "，输出：" + output.text();
             if (output.truncated()) {
                 message += "\n（输出过长已截断，完整输出见会话文件："
-                        + SessionFileManager.buildSessionMarker(fileName) + "）";
+                        + SessionFileManager.buildSessionMarker(logRelPath) + "）";
             } else {
                 Files.deleteIfExists(logFile);
             }
@@ -147,7 +155,7 @@ public class ExtensionScriptService {
         // 内存里被截断说明输出已经超过上限，磁盘日志里是全量，直接交标记让模型按需读取
         if (output.truncated()) {
             return "脚本输出过大（" + ToolKit.formatSize(output.totalBytes()) + "），已保存到会话文件："
-                    + SessionFileManager.buildSessionMarker(fileName)
+                    + SessionFileManager.buildSessionMarker(logRelPath)
                     + "。如需查看完整输出，请用 file_read_tool 读取该文件。";
         }
 
@@ -158,15 +166,21 @@ public class ExtensionScriptService {
     /**
      * 前台脚本超时后把收尾交给后台：等读取任务跑完（代表输出已读尽、进程退出），
      * 再清理临时脚本并投递退出码。全程不 destroy、不 cancel。
+     * <p>
+     * 从超时那一刻起这个脚本就算「后台任务」了，同步登记进 {@link CommandTaskRegistry}，
+     * 面板上立刻能看到进度、也能被手动结束。
      *
-     * @param future    读取输出的任务
-     * @param process   仍在运行的子进程
-     * @param prepared  已准备的脚本（收尾要用的脚本元数据与临时文件）
-     * @param logFile   输出日志文件
-     * @param sessionId 会话 id
+     * @param future     读取输出的任务
+     * @param process    仍在运行的子进程
+     * @param prepared   已准备的脚本（收尾要用的脚本元数据与临时文件）
+     * @param logFile    输出日志文件
+     * @param logRelPath 日志相对会话文件目录的路径（{@code logs/xxx.log}）
+     * @param sessionId  会话 id
      */
     private void handOverToBackground(Future<OSToolKit.CapturedOutput> future, Process process,
-                                      PreparedScript prepared, Path logFile, String sessionId) {
+                                      PreparedScript prepared, Path logFile, String logRelPath, String sessionId) {
+        CommandTaskRegistry.RunningTask task = commandTaskRegistry.register(
+                sessionId, CommandTaskRegistry.TaskType.SCRIPT, scriptTitle(prepared.script()), logRelPath, process);
         EXECUTOR_SERVICE.submit(() -> {
             Exception error = null;
             int exitCode = 0;
@@ -178,14 +192,27 @@ public class ExtensionScriptService {
             } finally {
                 ProcessUtils.killTree(process);
                 deleteTempScript(prepared.tempFile());
+                // 被手动结束的任务已经提前摘过一次，这里再摘是幂等空操作
+                commandTaskRegistry.finish(task == null ? null : task.getId());
             }
-            if (error == null) {
-                notifyBackgroundFinish(sessionId, prepared.script(), logFile, exitCode, null);
+            boolean killed = task != null && task.getKilled().get();
+            Integer finalExitCode = error == null ? exitCode : null;
+            String failure = error == null ? null : error.getMessage();
+            if (killed) {
+                OSToolKit.appendFooter(logFile, "脚本已被用户手动结束");
+            } else if (failure != null) {
+                OSToolKit.appendFooter(logFile, "脚本执行异常: " + failure);
             } else {
-                notifyBackgroundFinish(sessionId, prepared.script(), logFile, null, error.getMessage());
+                OSToolKit.appendFooter(logFile, "脚本执行完成，退出码: " + finalExitCode);
             }
+            notifyBackgroundFinish(sessionId, prepared.script(), logFile, logRelPath, finalExitCode, failure, killed);
             return null;
         });
+    }
+
+    /** 脚本的展示标题：名称 + 类型，命令面板与回投文案共用同一套写法 */
+    private static String scriptTitle(ExtensionScriptMeta script) {
+        return script.getName() + " (" + script.getType() + ")";
     }
 
     /**
@@ -209,11 +236,13 @@ public class ExtensionScriptService {
         // 1. 同步准备脚本（查找、参数校验、占位符替换、写临时文件），错误即时反馈
         PreparedScript prepared = prepareScript(name, arguments);
 
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS"));
         String fileName = "script_" + timestamp + ".log";
+        // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层
+        String logRelPath = SessionFileManager.buildLogRelativePath(fileName);
         Path logFile;
         try {
-            logFile = sessionFileManager.prepareSessionFile(sessionId, fileName);
+            logFile = sessionFileManager.prepareSessionLogFile(sessionId, fileName);
         } catch (IOException e) {
             throw new ToolExecutor.ToolExecuteException("无法创建后台输出目录: " + e.getMessage());
         }
@@ -229,23 +258,24 @@ public class ExtensionScriptService {
             headerWriter.newLine();
             headerWriter.write("脚本文件: " + prepared.script().getFilePath());
             headerWriter.newLine();
-            headerWriter.write("日志文件: " + SessionFileManager.buildSessionMarker(fileName));
+            headerWriter.write("日志文件: " + SessionFileManager.buildSessionMarker(logRelPath));
             headerWriter.newLine();
             headerWriter.write("=".repeat(60));
             headerWriter.newLine();
             headerWriter.newLine();
             headerWriter.flush();
         } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + SessionFileManager.buildSessionMarker(fileName) + "]: " + e.getMessage());
+            throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + SessionFileManager.buildSessionMarker(logRelPath) + "]: " + e.getMessage());
         }
 
         // 3. 在守护线程中执行脚本，流式写入输出（sessionId 在此捕获，收尾投递要用）
-        Thread thread = new Thread(() -> runScriptToFile(prepared, logFile, sessionId), "script-executor-" + timestamp);
+        Thread thread = new Thread(() -> runScriptToFile(prepared, logFile, logRelPath, sessionId),
+                "script-executor-" + timestamp);
         thread.setDaemon(true);
         thread.start();
 
         return "脚本已在后台启动执行。\n"
-                + "输出日志文件: " + SessionFileManager.buildSessionMarker(fileName) + "\n"
+                + "输出日志文件: " + SessionFileManager.buildSessionMarker(logRelPath) + "\n"
                 + "> 提示：使用 file_read_tool 读取日志文件内容查看脚本输出。"
                 + "脚本执行完成后，日志末尾会写入退出码和结束时间。\n"
                 + "> 脚本执行完成后，结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。";
@@ -325,28 +355,42 @@ public class ExtensionScriptService {
      *
      * @param sessionId 启动后台任务时捕获的会话 id（异步线程里上下文早已出栈，只能靠调用方捕获）
      */
-    private void runScriptToFile(PreparedScript prepared, Path logFile, String sessionId) {
+    private void runScriptToFile(PreparedScript prepared, Path logFile, String logRelPath, String sessionId) {
         Process process = null;
         Integer exitCode = null;
         String failure = null;
+        CommandTaskRegistry.RunningTask task = null;
         try {
             process = prepared.processBuilder().start();
 
+            // 进程真的起来了才登记：起不来就没有「跑着的任务」可管，也不该在面板上闪一下
+            task = commandTaskRegistry.register(sessionId, CommandTaskRegistry.TaskType.SCRIPT,
+                    scriptTitle(prepared.script()), logRelPath, process);
+
             OSToolKit.writeLog(logFile, process);
             exitCode = process.waitFor();
-            appendFooter(logFile, "脚本执行完成，退出码: " + exitCode);
         } catch (Exception e) {
             failure = e.getMessage();
             log.error("Error executing script in background: {}", e.getMessage());
-            appendFooter(logFile, "脚本执行异常: " + e.getMessage());
         } finally {
             if (process != null) {
                 ProcessUtils.killTree(process);
             }
             deleteTempScript(prepared.tempFile());
+            // 被手动结束的任务已经提前摘过一次，这里再摘是幂等空操作
+            commandTaskRegistry.finish(task == null ? null : task.getId());
+        }
+
+        boolean killed = task != null && task.getKilled().get();
+        if (killed) {
+            OSToolKit.appendFooter(logFile, "脚本已被用户手动结束");
+        } else if (failure != null) {
+            OSToolKit.appendFooter(logFile, "脚本执行异常: " + failure);
+        } else {
+            OSToolKit.appendFooter(logFile, "脚本执行完成，退出码: " + exitCode);
         }
         // 成功或异常都要收尾投递
-        notifyBackgroundFinish(sessionId, prepared.script(), logFile, exitCode, failure);
+        notifyBackgroundFinish(sessionId, prepared.script(), logFile, logRelPath, exitCode, failure, killed);
     }
 
     /**
@@ -355,43 +399,29 @@ public class ExtensionScriptService {
      * 投递内容只写「退出码/异常 + 脚本标识 + 日志路径」，刻意不带日志尾部：脚本输出单行长度不可控，
      * 一行几十万字符的日志会把整段对话的上下文直接撑爆，要看内容让模型自己去读文件。
      *
-     * @param sessionId 启动后台任务时捕获的会话 id
-     * @param script    脚本元数据（取名称与类型）
-     * @param logFile   输出日志文件
-     * @param exitCode  退出码；执行异常时为 null
-     * @param failure   异常信息；正常结束时为 null
+     * @param sessionId  启动后台任务时捕获的会话 id
+     * @param script     脚本元数据（取名称与类型）
+     * @param logFile    输出日志文件
+     * @param logRelPath 日志相对会话文件目录的路径（{@code logs/xxx.log}）
+     * @param exitCode   退出码；执行异常时为 null
+     * @param failure    异常信息；正常结束时为 null
+     * @param killed     是否由用户从面板手动结束
      */
-    private void notifyBackgroundFinish(String sessionId, ExtensionScriptMeta script, Path logFile,
-                                        Integer exitCode, String failure) {
+    private void notifyBackgroundFinish(String sessionId, ExtensionScriptMeta script, Path logFile, String logRelPath,
+                                        Integer exitCode, String failure, boolean killed) {
         StringBuilder text = new StringBuilder();
-        if (failure != null) {
+        if (killed) {
+            // 手动结束和「自己失败」必须区分开：退出码 1 那种写法会让人以为是脚本本身出了问题
+            text.append("脚本已被用户手动结束");
+        } else if (failure != null) {
             text.append("脚本执行异常: ").append(failure);
         } else {
             text.append("脚本执行完成，退出码: ").append(exitCode);
         }
-        text.append("\n脚本: ").append(script.getName()).append(" (").append(script.getType()).append(")");
-        text.append("\n日志文件: ").append(SessionFileManager.buildSessionMarker(logFile.getFileName().toString()));
+        text.append("\n脚本: ").append(scriptTitle(script));
+        text.append("\n日志文件: ").append(SessionFileManager.buildSessionMarker(logRelPath));
 
         backgroundToolResponseBus.post(sessionId, ExtensionScriptTool.NAME, text.toString());
-    }
-
-    /**
-     * 向日志文件追加结束标记（退出码/异常信息 + 结束时间）。
-     */
-    private void appendFooter(Path logFile, String message) {
-        try (BufferedWriter footerWriter = Files.newBufferedWriter(logFile, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
-            footerWriter.newLine();
-            footerWriter.write("=".repeat(60));
-            footerWriter.newLine();
-            footerWriter.write(message);
-            footerWriter.newLine();
-            footerWriter.write("结束时间: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-            footerWriter.newLine();
-            footerWriter.flush();
-        } catch (IOException ignored) {
-            // 无法写入结束信息，静默忽略
-        }
     }
 
     private static final boolean IS_WINDOWS = System.getProperty("os.name").toLowerCase().contains("win");

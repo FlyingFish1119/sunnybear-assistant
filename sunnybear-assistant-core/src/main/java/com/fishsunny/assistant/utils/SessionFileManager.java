@@ -52,6 +52,13 @@ public class SessionFileManager {
     private static final String FILE_DIR = "file";
 
     /**
+     * 命令 / 扩展脚本的运行日志子目录名，相对会话文件目录（{@code file/logs}）。
+     * <p>这些日志是运行过程的副产物，跟用户自己的文件混在顶层会让资源栏一片嘈杂，
+     * 统一收进 logs/ 后既好找也好清理；模型侧标记仍然是 {@code sessionId:logs/xxx.log}。
+     */
+    public static final String LOG_DIR = "logs";
+
+    /**
      * 文件工具 path 中指向当前会话沙箱的固定字面前缀。
      * <p>模型只需写 {@code sessionId:相对路径}（如 {@code sessionId:notes/a.txt}），
      * 无需知道真实会话 ID；由 {@link #resolveToolPath(String, String)} 展开为当前会话目录。
@@ -158,6 +165,24 @@ public class SessionFileManager {
         Path filePath = buildSessionDirPath(sessionId).resolve(fileName);
         Files.createDirectories(filePath.getParent());
         return filePath;
+    }
+
+    /**
+     * 取得会话内运行日志的真实路径（{@code file/logs/文件名}），并确保目录已创建。
+     * <p>命令与扩展脚本的运行日志统一落在这里，不再散落在会话文件目录顶层。
+     *
+     * @return 日志文件的绝对真实路径
+     */
+    public Path prepareSessionLogFile(String sessionId, String fileName) throws IOException {
+        requireFileName(fileName);
+        Path filePath = buildSessionDirPath(sessionId).resolve(LOG_DIR).resolve(fileName);
+        Files.createDirectories(filePath.getParent());
+        return filePath;
+    }
+
+    /** 日志文件相对会话文件目录的路径（{@code logs/文件名}），供登记表与 REST 接口共用 */
+    public static String buildLogRelativePath(String fileName) {
+        return LOG_DIR + "/" + fileName;
     }
 
     /**

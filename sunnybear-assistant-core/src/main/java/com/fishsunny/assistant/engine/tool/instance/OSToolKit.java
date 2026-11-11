@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,6 +23,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Component
@@ -101,5 +104,30 @@ public class OSToolKit extends ToolKit {
 
     /** 一次前台抓取的结果：内存内文本、真实总字节数、内存是否被截断 */
     public record CapturedOutput(String text, long totalBytes, boolean truncated) {
+    }
+
+    /**
+     * 向日志文件追加结束标记（结果说明 + 结束时间）。
+     * <p>命令与扩展脚本共用：四条收尾路径（显式后台、前台超时转后台）都走这里，
+     * 免得同一种格式在两处各写一遍、哪天改文案还漏一处。写不进去就静默跳过，
+     * 日志尾巴缺失不影响任务本身是否已经跑完。
+     *
+     * @param logFile 输出日志文件
+     * @param message 结束说明，如「命令执行完成，退出码: 0」「命令已被用户手动结束」
+     */
+    public static void appendFooter(Path logFile, String message) {
+        try (BufferedWriter writer = Files.newBufferedWriter(logFile, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+            writer.newLine();
+            writer.write("=".repeat(60));
+            writer.newLine();
+            writer.write(message);
+            writer.newLine();
+            writer.write("结束时间: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            writer.newLine();
+            writer.flush();
+        } catch (IOException ignored) {
+            // 无法写入结束信息，静默忽略
+        }
     }
 }
