@@ -110,7 +110,7 @@ public class ExtensionScriptTool implements ToolHandler {
 
     @Override
     public ToolRegister getRegister() {
-        StringBuilder desc = new StringBuilder("执行扩展脚本。");
+        StringBuilder desc = new StringBuilder("执行扩展脚本。转入后台时会返回一个后台任务 ID，可用 wait_flow_tool 的 eventId 等它结束。");
         desc.append(extensionScriptService.buildScriptSection());
 
         // 输出限制
@@ -129,7 +129,7 @@ public class ExtensionScriptTool implements ToolHandler {
                                 "传递给脚本的参数，JSON 对象格式。键为参数名，值为参数值。"
                                 + "脚本中使用 {{参数名}} 引用这些值。如果脚本无需参数，可省略此字段。"),
                         new ToolRegister.Parameters("background", "boolean",
-                                "设为 true 后台执行（无超时限制），适合长时间任务。输出写入日志文件。")
+                                "设为 true 后台执行（无超时限制），适合长时间任务。输出写入日志文件；返回后台任务 ID 可供 wait_flow_tool 的 eventId 等待。")
                 ));
     }
 

@@ -238,9 +238,9 @@ public class CommandTool implements ToolHandler {
                 // 超时不杀进程：命令常常还在正常干活（编译、装依赖、跑服务），
                 // 杀掉既丢结果，又会让 AI 误判失败而重跑一遍，制造端口/文件锁冲突。
                 if (!future.isDone()) {
-                    watchBackgroundFinish(future, process, sessionId, arguments.getCommand(), logFile, logRelPath);
+                    String taskId = watchBackgroundFinish(future, process, sessionId, arguments.getCommand(), logFile, logRelPath);
                     return new ToolExecutor.ToolExecuteResponse(name(),
-                            buildTimeoutToBackgroundMessage(settings.getTimeout(), logRelPath));
+                            buildTimeoutToBackgroundMessage(settings.getTimeout(), logRelPath, taskId));
                 }
                 output = future.get();
             }
@@ -441,10 +441,12 @@ public class CommandTool implements ToolHandler {
      * @param logFile    输出日志文件
      * @param logRelPath 日志相对会话文件目录的路径（{@code logs/xxx.log}）
      */
-    private void watchBackgroundFinish(Future<OSToolKit.CapturedOutput> future, Process process,
+    private String watchBackgroundFinish(Future<OSToolKit.CapturedOutput> future, Process process,
                                        String sessionId, String command, Path logFile, String logRelPath) {
         CommandTaskRegistry.RunningTask task = commandTaskRegistry.register(
                 sessionId, CommandTaskRegistry.TaskType.COMMAND, command, logRelPath, process);
+        // 异步收尾里要用 id 摘任务，先在此处（同步路径）取好，顺手回给模型拿去 wait
+        final String taskId = task == null ? null : task.getId();
         EXECUTOR_SERVICE.submit(() -> {
             Integer exitCode = null;
             String failure = null;
@@ -455,7 +457,7 @@ public class CommandTool implements ToolHandler {
                 failure = e.getMessage();
             } finally {
                 // 被手动结束的任务已经提前摘过一次，这里再摘是幂等空操作
-                commandTaskRegistry.finish(task == null ? null : task.getId());
+                commandTaskRegistry.finish(taskId);
             }
             boolean killed = task != null && task.getKilled().get();
             if (killed) {
@@ -468,6 +470,7 @@ public class CommandTool implements ToolHandler {
             notifyBackgroundFinish(sessionId, command, logFile, logRelPath, exitCode, failure, killed);
             return null;
         });
+        return taskId;
     }
 
     /**
@@ -475,13 +478,20 @@ public class CommandTool implements ToolHandler {
      * <p>
      * 措辞重点是「命令仍在跑，别重跑」——超时报错最容易诱使模型把同一条命令再敲一遍，
      * 于是端口被占、文件被锁、编译互相打架。这里把状态讲清楚，并把日志路径交出去。
+     * 同时把后台任务 id 交出去，模型可用 wait_flow_tool 的 eventId 等它结束。
      * </p>
      */
-    private String buildTimeoutToBackgroundMessage(long timeoutSeconds, String logRelPath) {
-        return "命令执行时间已超过 " + timeoutSeconds + " 秒，进程没有被终止，已自动转入后台继续运行。\n"
-                + "输出日志文件: " + SessionFileManager.buildSessionMarker(logRelPath) + "\n"
-                + "> 请勿重复执行这条命令。想看进度用 file_read_tool 读取该日志文件；"
-                + "命令结束后退出码与日志尾部会自动投递到本条对话。";
+    private String buildTimeoutToBackgroundMessage(long timeoutSeconds, String logRelPath, String taskId) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("命令执行时间已超过 ").append(timeoutSeconds).append(" 秒，进程没有被终止，已自动转入后台继续运行。\n")
+                .append("输出日志文件: ").append(SessionFileManager.buildSessionMarker(logRelPath)).append("\n");
+        if (StringUtils.hasText(taskId)) {
+            sb.append("后台任务 ID: ").append(taskId).append("\n")
+                    .append("> 可用 wait_flow_tool 的 eventId 填这个 ID 等待任务结束。\n");
+        }
+        sb.append("> 请勿重复执行这条命令。想看进度用 file_read_tool 读取该日志文件；"
+                + "命令结束后退出码与日志尾部会自动投递到本条对话。");
+        return sb.toString();
     }
 
     /**
@@ -566,28 +576,34 @@ public class CommandTool implements ToolHandler {
         }
 
 
-        // 在守护线程中执行命令，流式写入输出（直接写字节，避免编码边界问题）
+        // 启动进程与登记都放在调用线程里同步完成：进程 start 是毫秒级、失败能当场报错，
+        // 更重要的是返回文案时这个 id 一定已经在登记表里 —— 模型紧接着用 wait_flow_tool 的
+        // eventId 等它，不会撞上「守护线程还没登记」而按「查不到即完成」被误判成已结束。
+        // 守护线程只负责流式写日志、等退出、收尾投递。
+        String[] shell = getShell();
+        ProcessBuilder processBuilder = new ProcessBuilder(shell[0], shell[1], command);
+        processBuilder.redirectErrorStream(true);
+        Process process;
+        try {
+            process = processBuilder.start();
+        } catch (Exception e) {
+            throw new ToolExecutor.ToolExecuteException("无法启动后台命令: " + e.getMessage());
+        }
+        CommandTaskRegistry.RunningTask task = commandTaskRegistry.register(
+                sessionId, CommandTaskRegistry.TaskType.COMMAND, command, logRelPath, process);
+        final String taskId = task == null ? null : task.getId();
+
         Thread backgroundThread = new Thread(() -> {
             Integer exitCode = null;
             String failure = null;
-            CommandTaskRegistry.RunningTask task = null;
             try {
-                String[] shell = getShell();
-                ProcessBuilder processBuilder = new ProcessBuilder(shell[0], shell[1], command);
-                processBuilder.redirectErrorStream(true);
-                Process process = processBuilder.start();
-
-                // 进程真的起来了才登记：起不来就没有「跑着的任务」可管，也不该在面板上闪一下
-                task = commandTaskRegistry.register(
-                        sessionId, CommandTaskRegistry.TaskType.COMMAND, command, logRelPath, process);
-
                 OSToolKit.writeLog(logFile, process);
                 exitCode = process.waitFor();
             } catch (Exception e) {
                 failure = e.getMessage();
             } finally {
                 // 被手动结束的任务已经提前摘过一次，这里再摘是幂等空操作
-                commandTaskRegistry.finish(task == null ? null : task.getId());
+                commandTaskRegistry.finish(taskId);
             }
 
             boolean killed = task != null && task.getKilled().get();
@@ -605,13 +621,19 @@ public class CommandTool implements ToolHandler {
         backgroundThread.setDaemon(true);
         backgroundThread.start();
 
-        String message = "命令已在后台启动执行。\n"
-                + "输出日志文件: " + SessionFileManager.buildSessionMarker(logRelPath) + "\n"
-                + "> 提示：使用 file_read_tool 读取日志文件内容查看命令输出。"
-                + "命令执行完成后，日志末尾会写入退出码和结束时间。\n"
-                + "> 命令执行完成后，结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。";
+        StringBuilder message = new StringBuilder("命令已在后台启动执行。\n");
+        if (StringUtils.hasText(taskId)) {
+            message.append("后台任务 ID: ").append(taskId).append("\n");
+        }
+        message.append("输出日志文件: ").append(SessionFileManager.buildSessionMarker(logRelPath)).append("\n")
+                .append("> 提示：使用 file_read_tool 读取日志文件内容查看命令输出。")
+                .append("命令执行完成后，日志末尾会写入退出码和结束时间。\n");
+        if (StringUtils.hasText(taskId)) {
+            message.append("> 可用 wait_flow_tool 的 eventId 填这个 ID 等待任务结束；\n");
+        }
+        message.append("> 命令执行完成后，结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。");
 
-        return new ToolExecutor.ToolExecuteResponse(name(), message);
+        return new ToolExecutor.ToolExecuteResponse(name(), message.toString());
     }
 
     /**
@@ -661,11 +683,12 @@ public class CommandTool implements ToolHandler {
         };
         return new ToolRegister()
                 .setName(NAME)
-                .setDescription("在终端中执行命令。" + modeDesc + "命令超过超时时间会自动转入后台继续执行。" + buildLimitDescription())
+                .setDescription("在终端中执行命令。" + modeDesc + "命令超过超时时间会自动转入后台继续执行。"
+                        + "转入后台时会返回一个后台任务 ID，可用 wait_flow_tool 的 eventId 等它结束。" + buildLimitDescription())
                 .setRequired(List.of("command"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("command", "string", "你准备执行的命令"),
-                        new ToolRegister.Parameters("background", "boolean", "设为 true 后台执行（无超时限制），适合长时间任务。输出写入日志文件。")
+                        new ToolRegister.Parameters("background", "boolean", "设为 true 后台执行（无超时限制），适合长时间任务。输出写入日志文件；返回后台任务 ID 可供 wait_flow_tool 的 eventId 等待。")
                 ));
     }
 

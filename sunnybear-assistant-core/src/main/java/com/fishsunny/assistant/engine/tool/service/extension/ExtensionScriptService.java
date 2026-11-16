@@ -127,11 +127,17 @@ public class ExtensionScriptService {
             output = future.get(timeout, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             if (!future.isDone()) {
-                handOverToBackground(future, process, prepared, logFile, logRelPath, sessionId);
-                return "脚本执行时间已超过 " + timeout + " 秒，进程没有被终止，已自动转入后台继续运行。\n"
-                        + "输出日志文件: " + SessionFileManager.buildSessionMarker(logRelPath) + "\n"
-                        + "> 请勿重复执行这个脚本。想看进度用 file_read_tool 读取该日志文件；"
-                        + "脚本结束后退出码会自动投递到本条对话。";
+                String taskId = handOverToBackground(future, process, prepared, logFile, logRelPath, sessionId);
+                StringBuilder sb = new StringBuilder();
+                sb.append("脚本执行时间已超过 ").append(timeout).append(" 秒，进程没有被终止，已自动转入后台继续运行。\n")
+                        .append("输出日志文件: ").append(SessionFileManager.buildSessionMarker(logRelPath)).append("\n");
+                if (StringUtils.hasText(taskId)) {
+                    sb.append("后台任务 ID: ").append(taskId).append("\n")
+                            .append("> 可用 wait_flow_tool 的 eventId 填这个 ID 等待任务结束。\n");
+                }
+                sb.append("> 请勿重复执行这个脚本。想看进度用 file_read_tool 读取该日志文件；"
+                        + "脚本结束后退出码会自动投递到本条对话。");
+                return sb.toString();
             }
             output = future.get();
         }
@@ -177,10 +183,12 @@ public class ExtensionScriptService {
      * @param logRelPath 日志相对会话文件目录的路径（{@code logs/xxx.log}）
      * @param sessionId  会话 id
      */
-    private void handOverToBackground(Future<OSToolKit.CapturedOutput> future, Process process,
+    private String handOverToBackground(Future<OSToolKit.CapturedOutput> future, Process process,
                                       PreparedScript prepared, Path logFile, String logRelPath, String sessionId) {
         CommandTaskRegistry.RunningTask task = commandTaskRegistry.register(
                 sessionId, CommandTaskRegistry.TaskType.SCRIPT, scriptTitle(prepared.script()), logRelPath, process);
+        // 同步路径上取好 id：既回给模型拿去 wait，也供异步收尾摘任务
+        final String taskId = task == null ? null : task.getId();
         EXECUTOR_SERVICE.submit(() -> {
             Exception error = null;
             int exitCode = 0;
@@ -193,7 +201,7 @@ public class ExtensionScriptService {
                 ProcessUtils.killTree(process);
                 deleteTempScript(prepared.tempFile());
                 // 被手动结束的任务已经提前摘过一次，这里再摘是幂等空操作
-                commandTaskRegistry.finish(task == null ? null : task.getId());
+                commandTaskRegistry.finish(taskId);
             }
             boolean killed = task != null && task.getKilled().get();
             Integer finalExitCode = error == null ? exitCode : null;
@@ -208,6 +216,7 @@ public class ExtensionScriptService {
             notifyBackgroundFinish(sessionId, prepared.script(), logFile, logRelPath, finalExitCode, failure, killed);
             return null;
         });
+        return taskId;
     }
 
     /** 脚本的展示标题：名称 + 类型，命令面板与回投文案共用同一套写法 */
@@ -268,17 +277,37 @@ public class ExtensionScriptService {
             throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + SessionFileManager.buildSessionMarker(logRelPath) + "]: " + e.getMessage());
         }
 
-        // 3. 在守护线程中执行脚本，流式写入输出（sessionId 在此捕获，收尾投递要用）
-        Thread thread = new Thread(() -> runScriptToFile(prepared, logFile, logRelPath, sessionId),
+        // 3. 启动进程与登记都同步完成，返回文案时 id 一定已在登记表里，
+        //    模型紧接着用 wait_flow_tool 的 eventId 等它不会撞上「还没登记」被误判成已完成。
+        Process process;
+        try {
+            process = prepared.processBuilder().start();
+        } catch (Exception e) {
+            deleteTempScript(prepared.tempFile());
+            throw new ToolExecutor.ToolExecuteException("无法启动后台脚本: " + e.getMessage());
+        }
+        CommandTaskRegistry.RunningTask task = commandTaskRegistry.register(sessionId, CommandTaskRegistry.TaskType.SCRIPT,
+                scriptTitle(prepared.script()), logRelPath, process);
+        final String taskId = task == null ? null : task.getId();
+
+        // 4. 守护线程只负责流式写日志、等退出、收尾投递
+        Thread thread = new Thread(() -> runScriptToFile(prepared, logFile, logRelPath, sessionId, process, task),
                 "script-executor-" + timestamp);
         thread.setDaemon(true);
         thread.start();
 
-        return "脚本已在后台启动执行。\n"
-                + "输出日志文件: " + SessionFileManager.buildSessionMarker(logRelPath) + "\n"
-                + "> 提示：使用 file_read_tool 读取日志文件内容查看脚本输出。"
-                + "脚本执行完成后，日志末尾会写入退出码和结束时间。\n"
-                + "> 脚本执行完成后，结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。";
+        StringBuilder sb = new StringBuilder("脚本已在后台启动执行。\n");
+        if (StringUtils.hasText(taskId)) {
+            sb.append("后台任务 ID: ").append(taskId).append("\n");
+        }
+        sb.append("输出日志文件: ").append(SessionFileManager.buildSessionMarker(logRelPath)).append("\n")
+                .append("> 提示：使用 file_read_tool 读取日志文件内容查看脚本输出。")
+                .append("脚本执行完成后，日志末尾会写入退出码和结束时间。\n");
+        if (StringUtils.hasText(taskId)) {
+            sb.append("> 可用 wait_flow_tool 的 eventId 填这个 ID 等待任务结束；\n");
+        }
+        sb.append("> 脚本执行完成后，结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。");
+        return sb.toString();
     }
 
     /**
@@ -355,30 +384,22 @@ public class ExtensionScriptService {
      *
      * @param sessionId 启动后台任务时捕获的会话 id（异步线程里上下文早已出栈，只能靠调用方捕获）
      */
-    private void runScriptToFile(PreparedScript prepared, Path logFile, String logRelPath, String sessionId) {
-        Process process = null;
+    private void runScriptToFile(PreparedScript prepared, Path logFile, String logRelPath, String sessionId,
+                                 Process process, CommandTaskRegistry.RunningTask task) {
         Integer exitCode = null;
         String failure = null;
-        CommandTaskRegistry.RunningTask task = null;
+        final String taskId = task == null ? null : task.getId();
         try {
-            process = prepared.processBuilder().start();
-
-            // 进程真的起来了才登记：起不来就没有「跑着的任务」可管，也不该在面板上闪一下
-            task = commandTaskRegistry.register(sessionId, CommandTaskRegistry.TaskType.SCRIPT,
-                    scriptTitle(prepared.script()), logRelPath, process);
-
             OSToolKit.writeLog(logFile, process);
             exitCode = process.waitFor();
         } catch (Exception e) {
             failure = e.getMessage();
             log.error("Error executing script in background: {}", e.getMessage());
         } finally {
-            if (process != null) {
-                ProcessUtils.killTree(process);
-            }
+            ProcessUtils.killTree(process);
             deleteTempScript(prepared.tempFile());
             // 被手动结束的任务已经提前摘过一次，这里再摘是幂等空操作
-            commandTaskRegistry.finish(task == null ? null : task.getId());
+            commandTaskRegistry.finish(taskId);
         }
 
         boolean killed = task != null && task.getKilled().get();

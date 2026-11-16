@@ -20,6 +20,7 @@ import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.instance.FlowToolKit;
+import com.fishsunny.assistant.engine.tool.service.background.CommandTaskRegistry;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import lombok.Data;
 import lombok.experimental.Accessors;
@@ -59,18 +60,34 @@ public class WaitFlowTool implements ToolHandler {
     private final ToolExecutor toolExecutor;
     private final SecurityService securityService;
     private final ObjectMapper objectMapper;
+    private final CommandTaskRegistry commandTaskRegistry;
 
     public WaitFlowTool(@Lazy ToolExecutor toolExecutor,
                         SecurityService securityService,
-                        ObjectMapper objectMapper) {
+                        ObjectMapper objectMapper,
+                        CommandTaskRegistry commandTaskRegistry) {
         this.toolExecutor = toolExecutor;
         this.securityService = securityService;
         this.objectMapper = objectMapper;
+        this.commandTaskRegistry = commandTaskRegistry;
 
         ToolRegister.Parameters millisecondsParam = new ToolRegister.Parameters()
                 .setParameterName("milliseconds")
                 .setType("integer")
-                .setDescription("需要等待的时间，单位：毫秒。工具会阻塞等待这段时间后返回结果。");
+                .setDescription("""
+                        等待时间，单位：毫秒。两种模式都用它：\
+                        纯定时模式下必填且必须大于 0，工具阻塞等待这段时间后返回；\
+                        事件模式（传了 eventId）下它退为可选的超时上限，到点任务还没结束就返回「仍在运行」，\
+                        不填或填 0 则不设上限、一直等到任务结束。""");
+
+        ToolRegister.Parameters eventIdParam = new ToolRegister.Parameters()
+                .setParameterName("eventId")
+                .setType("string")
+                .setDescription("""
+                        可选。要等待的后台任务 ID —— command_tool / extension_script_tool 转入后台时返回的「后台任务 ID」。\
+                        传了它就进入事件模式：等到该任务结束（自然退出、异常或被手动结束）立即返回，与纯定时互斥；\
+                        此时 toolChain 不生效；表里查不到这个 ID 一律视作已完成、立即返回，不阻塞。\
+                        唤醒后只返回「已结束」信号与等待时长，结果仍由后台总线照常回投到对话。""");
 
         ToolRegister.Parameters toolChainParam = new ToolRegister.Parameters()
                 .setParameterName("toolChain")
@@ -94,13 +111,14 @@ public class WaitFlowTool implements ToolHandler {
         register = new ToolRegister()
                 .setName(NAME)
                 .setDescription("""
-                        等待指定毫秒数后返回，让 AI 拥有真正的等待/定时概念。\
-                        可选传入 toolChain：在等待窗口内的指定时间节点自动触发其它工具（到点即触发、互不等待），\
-                        等待到该节点后立即介入，而不是等下一次 ReAct 再执行（避免时间偏差）。\
+                        两种互斥模式：① 纯定时 —— 传 milliseconds，等待指定毫秒数后返回，让 AI 拥有真正的等待/定时概念；\
+                        ② 事件 —— 传 eventId（后台任务 ID），等到该任务结束立即返回，可用 milliseconds 设超时上限。\
+                        纯定时模式可选传入 toolChain：在等待窗口内的指定时间节点自动触发其它工具（到点即触发、互不等待），\
+                        等待到该节点后立即介入，而不是等下一次 ReAct 再执行（避免时间偏差）；事件模式下 toolChain 不生效。\
                         提供 toolChain 时会先请求用户确认（会话已开启无审查时跳过），\
                         确认后在隔离的临时上下文中以「无审查」方式执行整条链，执行完毕即恢复。""")
-                .setRequired(List.of("milliseconds"))
-                .setParameters(List.of(millisecondsParam, toolChainParam));
+                .setRequired(List.of())
+                .setParameters(List.of(millisecondsParam, eventIdParam, toolChainParam));
     }
 
     @Override
@@ -112,9 +130,16 @@ public class WaitFlowTool implements ToolHandler {
             throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
         }
 
+        // 事件模式：传了 eventId 就等对应后台任务结束，与纯定时互斥
+        String eventId = arguments.getEventId();
+        if (StringUtils.hasText(eventId)) {
+            return awaitEvent(eventId.trim(), arguments.getMilliseconds());
+        }
+
+        // 纯定时模式：milliseconds 仍必填且必须大于 0（维持原行为）
         long milliseconds = arguments.getMilliseconds();
         if (milliseconds <= 0) {
-            throw new ToolExecutor.ToolExecuteException("参数 milliseconds 必须大于 0");
+            throw new ToolExecutor.ToolExecuteException("参数 milliseconds 必须大于 0（未传 eventId 时）");
         }
 
         List<ChainNode> chain = validateAndPrepareChain(arguments.getToolChain(), milliseconds);
@@ -418,9 +443,63 @@ public class WaitFlowTool implements ToolHandler {
     private record NodeResult(ChainNode node, LocalDateTime start, LocalDateTime end, ToolExecutor.ToolExecuteResponse response) {
     }
 
+    // ======================== 事件等待 ========================
+
+    /**
+     * 事件模式：等待某个后台任务结束。
+     * <p>
+     * 唤醒与「查不到即完成」的判定都在 {@link CommandTaskRegistry#await} 里：finish / kill 统一
+     * countDown，一个 latch 支持多个等待者；表里查不到 id 直接返回已完成。这里只负责计时与回文案。
+     * 等待线程被中断（对话取消）时沿用现有的「等待被中止」处理。
+     */
+    private ToolExecutor.ToolExecuteResponse awaitEvent(String eventId, long timeoutMillis) throws ToolExecutor.ToolExecuteException {
+        long startMillis = System.currentTimeMillis();
+        LocalDateTime startTime = LocalDateTime.now();
+        boolean finished;
+        try {
+            finished = commandTaskRegistry.await(eventId, timeoutMillis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ToolExecutor.ToolExecuteException("等待被中止");
+        }
+        return buildEventResponse(eventId, timeoutMillis, startMillis, startTime, finished);
+    }
+
+    private ToolExecutor.ToolExecuteResponse buildEventResponse(String eventId, long timeoutMillis,
+                                                                 long startMillis, LocalDateTime startTime,
+                                                                 boolean finished) {
+        LocalDateTime endTime = LocalDateTime.now();
+        long actualMillis = Math.max(0L, System.currentTimeMillis() - startMillis);
+        String expected = timeoutMillis > 0
+                ? timeoutMillis + " 毫秒（超时上限）"
+                : "不限时（一直等到任务结束）";
+        StringBuilder sb = new StringBuilder();
+        sb.append("""
+                ```flow
+                工具[wait_flow_tool]等待的后台任务**${state}**。
+                [任务ID]：${eventId}
+                [预计等待]：${expected}
+                [实际等待]：${actual} 毫秒
+                [开始时间]：${startTime}
+                [结束时间]：${endTime}
+                ```
+                """
+                .replace("${state}", finished ? "已结束" : "仍在运行（等待超时）")
+                .replace("${eventId}", eventId)
+                .replace("${expected}", expected)
+                .replace("${actual}", String.valueOf(actualMillis))
+                .replace("${startTime}", startTime.format(DATE_TIME_FORMATTER))
+                .replace("${endTime}", endTime.format(DATE_TIME_FORMATTER)));
+        if (!finished) {
+            sb.append("\n> 后台任务还在跑，结果稍后仍会由后台总线自动投递到本条对话。\n");
+        }
+        return new ToolExecutor.ToolExecuteResponse(name(), sb.toString());
+    }
+
     @Data
     private static class Arguments {
         private long milliseconds;
+        private String eventId;
         private List<ChainNodeArg> toolChain;
     }
 
