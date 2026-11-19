@@ -19,23 +19,17 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.utils.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.SubAgentComponent;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
-import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
-import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
-import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.engine.tool.instance.bot.BotChainTool;
 import com.fishsunny.assistant.engine.tool.instance.view.ScreenCaptureTool;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.settings.AISettings;
-import lombok.Data;
-import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -51,9 +45,9 @@ import java.util.Set;
  * 以 Operator 模型（视觉 + 交互能力强）做决策，工具集只开放桌面操作与截屏两项。
  */
 @Slf4j
-@ToolKitComponent(AgentToolKit.class)
+@Component
 @ConditionalOnExpression("${engine.tool.agent.enable:true} && ${engine.tool.agent.computer-use.enable:true}")
-public class ComputerUseTool implements SubAgentToolHandler {
+public class ComputerUseTool implements SubAgentComponent {
 
     public static final String NAME = "computer_use_tool";
 
@@ -63,67 +57,39 @@ public class ComputerUseTool implements SubAgentToolHandler {
             BotChainTool.NAME        // bot_chain_tool
     );
 
-    private final ToolRegister register;
-    private final ObjectMapper objectMapper;
     private final AISettings operatorAISettings;
     private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
     private final SecurityService securityService;
 
-    public ComputerUseTool(ObjectMapper objectMapper,
-                           @Qualifier(AISettings.OPERATOR) AISettings operatorAISettings,
+    public ComputerUseTool(@Qualifier(AISettings.OPERATOR) AISettings operatorAISettings,
                            EasyReActProcessor easyReActProcessor,
                            SecurityService securityService,
                            @Lazy ToolExecutor toolExecutor) {
-        this.objectMapper = objectMapper;
         this.operatorAISettings = operatorAISettings;
         this.easyReActProcessor = easyReActProcessor;
         this.securityService = securityService;
         this.toolExecutor = toolExecutor;
+    }
 
-        register = new ToolRegister()
-                .setName(NAME)
-                .setDescription("""
-                        计算机操控子 Agent。把一件需要在本机桌面上完成的事交给它：它先截屏看清当前界面，\
-                        再用鼠标、键盘真实操作，操作后截屏确认，如此循环推进直到完成，最后返回执行结果。\
-                        适合：图形界面里点按输入、拖拽、多步软件操作、按视觉目标定位后操作等需要「看屏幕并动手」的任务。\
-                        不适合：纯文本/文件/联网检索类任务，以及必须在主对话里先与用户对齐的判断。""")
-                .setRequired(List.of("target"));
-
-        ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
-                .setParameterName("target")
-                .setType("string")
-                .setDescription("要完成的桌面任务，交代清楚目标与验收标准。例如：'打开记事本输入“今晚加班”并保存到桌面为 todo.txt'、"
-                        + "'在浏览器里搜索今天的天气并告诉我结果'。越具体，它越能准确规划操作步骤。");
-
-        register.setParameters(List.of(targetParam));
+    @Override
+    public String description() {
+        return """
+                计算机操控子 Agent。把一件需要在本机桌面上完成的事交给它：它先截屏看清当前界面，\
+                再用鼠标、键盘真实操作，操作后截屏确认，如此循环推进直到完成，最后返回执行结果。\
+                适合：图形界面里点按输入、拖拽、多步软件操作、按视觉目标定位后操作等需要「看屏幕并动手」的任务。\
+                不适合：纯文本/文件/联网检索类任务，以及必须在主对话里先与用户对齐的判断。""";
     }
 
     @Override
     @ToolIncludeContext(key = {"chatSession", "session"}, type = {ChatSession.class, WebSocketSession.class})
-    public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
-        Arguments arguments;
-        try {
-            arguments = objectMapper.readValue(argumentsJson, Arguments.class);
-            if (arguments == null) {
-                throw new ToolExecutor.ToolExecuteException("参数为空");
-            }
-            if (!StringUtils.hasText(arguments.getTarget())) {
-                throw new ToolExecutor.ToolExecuteException("参数 target 不能为空，需说明要完成的桌面任务");
-            }
-        } catch (ToolExecutor.ToolExecuteException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
-        }
-
+    public ToolExecutor.ToolExecuteResponse action(SubAgentComponent.SubAgentArguments arguments, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
             // ========== 确认机制（无审查/定时任务由 SecurityService 统一裁决） ==========
             ask(context, arguments.getTarget());
 
             // ========== 构建请求 ==========
-            List<StandardToolRegister> subAgentTools = StandardToolRegister.buildToolRegisterByHandlers(
-                    toolExecutor, SUB_AGENT_TOOLS);
+            List<StandardToolRegister> subAgentTools = StandardToolRegister.buildToolRegisterByHandlers(toolExecutor, SUB_AGENT_TOOLS);
 
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(new ChatMessage().system(buildSystemPrompt()));
@@ -223,16 +189,5 @@ public class ComputerUseTool implements SubAgentToolHandler {
     @Override
     public String name() {
         return NAME;
-    }
-
-    @Override
-    public ToolRegister getRegister() {
-        return register;
-    }
-
-    @Data
-    @Accessors(chain = true)
-    private static class Arguments {
-        private String target;
     }
 }

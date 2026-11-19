@@ -1,8 +1,9 @@
 package com.fishsunny.assistant.engine.tool.framework;
 
 /*
- * @Usage 多模态工具结果处理接口。工具执行完毕后，若 ToolHandler 实现了本接口，
- *        ToolExecutor 会把工具的多模态内容（base64）交给本接口落盘。
+ * @Usage 多模态工具结果处理接口。工具执行完毕后，若外层 ToolHandler 实现了本接口，
+ *        ToolExecutor 会把工具的多模态内容（base64）交给本接口落盘；
+ *        子 Agent（SubAgentToolHandler）经 agent_tool 路由时，由 AgentTool 记下路由目标并转发到本接口。
  *        工具只需在 MultimodalContent 里给出会话内的文件名，落盘后这里会把
  *        path 回写为可移植引用（形如 "sessionId:fileName"），供外层读取 contents 后
  *        经 SessionFileManager.loadSessionFile 展开为 data URI。

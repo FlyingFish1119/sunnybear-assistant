@@ -1,7 +1,7 @@
 package com.fishsunny.assistant.engine.tool.service;
 
 /*
- * @Usage 主对话工具可见性判定 —— 把「哪些 kit / 工具不对主对话开放」收成一处。
+ * @Usage 主对话工具可见性判定 —— 把「哪些 kit 不对主对话开放」收成一处。
  *        两个来源：
  *          1. 代码声明：ToolKit.excludeFromMainAgent()，各 kit 自己声明默认值；
  *          2. 用户配置：ToolKitSettings.visibility（kit 全限定类名 → 是否可见），显式配置覆盖代码声明。
@@ -13,17 +13,12 @@ package com.fishsunny.assistant.engine.tool.service;
  * @Date 2026/9/12
  */
 
-import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.ToolKit;
 import com.fishsunny.assistant.settings.ToolKitSettings;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Component
@@ -32,11 +27,6 @@ public class ToolVisibilityPolicy {
     private final List<ToolKit> toolKits;
 
     private final ToolKitSettings settings;
-
-    private final Set<ToolHandler> excludedHandlers = ConcurrentHashMap.newKeySet();
-    public void addExcludedHandler(ToolHandler handler) {
-        excludedHandlers.add(handler);
-    }
 
     public ToolVisibilityPolicy(@Lazy List<ToolKit> toolKits,
                                 ToolKitSettings settings) {
@@ -59,13 +49,6 @@ public class ToolVisibilityPolicy {
                 .filter(kit -> !isVisible(kit))
                 .map(ToolVisibilityPolicy::typeOf)
                 .collect(Collectors.toUnmodifiableList());
-    }
-
-    /** 主对话需要排除的 handler 名（子 Agent 本体，只能经 agent_tool 路由调用） */
-    public Set<String> excludedHandlers() {
-        return excludedHandlers.stream()
-                .map(ToolHandler::name)
-                .collect(Collectors.toUnmodifiableSet());
     }
 
     private static Class<? extends ToolKit> typeOf(ToolKit kit) {

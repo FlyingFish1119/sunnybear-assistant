@@ -9,31 +9,28 @@ import com.fishsunny.assistant.utils.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
-import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
-import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
+import com.fishsunny.assistant.engine.tool.framework.SubAgentComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
-import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.plug.comfyui.dto.HistoryEntry;
 import com.fishsunny.assistant.plug.comfyui.dto.ViewImageResult;
 import com.fishsunny.assistant.plug.comfyui.service.ComfyUIBridgeService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.SessionFileManager;
-import lombok.Data;
-import lombok.experimental.Accessors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-@ToolKitComponent(AgentToolKit.class)
+@Component
 @ConditionalOnExpression("${engine.tool.agent.enable:true} && ${plug.comfyui.tool.agent.enable:true}")
-public class ComfyUISubAgentTool implements SubAgentToolHandler, MultimodalResultAble {
+public class ComfyUISubAgentTool implements SubAgentComponent, MultimodalResultAble {
 
     public static final String NAME = "comfyui_tool";
 
@@ -46,7 +43,6 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler, MultimodalResul
             ComfyUIWorkflowTool.NAME    // comfyui_workflow
     );
 
-    private final ToolRegister register;
     private final ObjectMapper objectMapper;
     private final AISettings missionAISettings;
     private final EasyReActProcessor easyReActProcessor;
@@ -66,38 +62,19 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler, MultimodalResul
         this.toolExecutor = toolExecutor;
         this.bridgeService = bridgeService;
         this.sessionFileManager = sessionFileManager;
-
-        register = new ToolRegister()
-                .setName(NAME)
-                .setDescription("""
-                        启动一个 ComfyUI 图像生成子 Agent。任何关于 ComfyUI 的操作优先使用此工具，同时图像生成结束后总是用 markdown 格式展示图片。
-                        建议：为了让生成的质量可控，尽可能的指定模型、LoRA、分辨率、是否高清放大等等。如果你不清楚当前有什么模型，可以直接询问子 Agent 当前可用的资源。
-                        """)
-                .setRequired(List.of("target"));
-
-        ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
-                .setParameterName("target")
-                .setType("string")
-                .setDescription("生图需求描述。描述你想要的画面内容、风格、尺寸、模型偏好等。越详细越好。");
-
-        register.setParameters(List.of(targetParam));
     }
 
     @Override
-    public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context)
-            throws ToolExecutor.ToolExecuteException {
-        Arguments arguments;
-        try {
-            arguments = objectMapper.readValue(argumentsJson, Arguments.class);
-            if (arguments == null || !StringUtils.hasText(arguments.getTarget())) {
-                throw new ToolExecutor.ToolExecuteException("参数 target 不能为空");
-            }
-        } catch (ToolExecutor.ToolExecuteException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
-        }
+    public String description() {
+        return """
+                启动一个 ComfyUI 图像生成子 Agent。任何关于 ComfyUI 的操作优先使用此工具，同时图像生成结束后总是用 markdown 格式展示图片。
+                建议：为了让生成的质量可控，尽可能的指定模型、LoRA、分辨率、是否高清放大等等。如果你不清楚当前有什么模型，可以直接询问子 Agent 当前可用的资源。
+                """;
+    }
 
+    @Override
+    public ToolExecutor.ToolExecuteResponse action(SubAgentComponent.SubAgentArguments arguments, Map<String, Object> context)
+            throws ToolExecutor.ToolExecuteException {
         // 获取 session ID
         String sessionId = null;
         if (context.get("chatSession") instanceof ChatSession cs) {
@@ -282,25 +259,13 @@ public class ComfyUISubAgentTool implements SubAgentToolHandler, MultimodalResul
     }
 
     @Override
-    public ToolRegister getRegister() {
-        return register;
-    }
-
-    @Override
     public List<ToolRegister.Parameters> extensionProperties() {
+        // 归属说明由框架拼在子 Agent 大清单里本工具的介绍条目后，这里只写字段本身的语义
         return List.of(new ToolRegister.Parameters()
                 .setParameterName("raw")
                 .setType("boolean")
-                .setDescription("适用于 " + NAME + "；是否以原始图片方式返回生成图，默认 false。" +
+                .setDescription("是否以原始图片方式返回生成图，默认 false。" +
                         "false：图片以 markdown 链接展示；" +
                         "true：图片作为多模态内容直接返回给模型查看，正文不再输出 markdown 链接。"));
-    }
-
-    @Data
-    @Accessors(chain = true)
-    private static class Arguments {
-        private String target;
-        /** 扩展选项，由 agent_tool 透传；raw 控制生成图的返回形式 */
-        private Map<String, Object> extension;
     }
 }

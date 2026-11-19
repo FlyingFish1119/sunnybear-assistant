@@ -17,33 +17,28 @@ import com.fishsunny.assistant.engine.protocol.project.entity.message.ChatMessag
 import com.fishsunny.assistant.utils.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.SubAgentComponent;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
-import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
-import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.engine.tool.instance.net.WebReaderTool;
 import com.fishsunny.assistant.engine.tool.instance.net.WebSearchTool;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.mvc.service.KnowledgeService;
 import com.fishsunny.assistant.settings.AISettings;
-import lombok.Data;
-import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.*;
 
 @Slf4j
-@ToolKitComponent(AgentToolKit.class)
+@Component
 @ConditionalOnExpression("${engine.tool.agent.enable:true} && ${engine.tool.agent.net-explore.enable:true}")
-public class NetExploreTool implements SubAgentToolHandler {
+public class NetExploreTool implements SubAgentComponent {
 
     public static final String NAME = "net_explore_tool";
 
@@ -53,71 +48,46 @@ public class NetExploreTool implements SubAgentToolHandler {
             WebReaderTool.NAME         // web_reader_tool
     );
 
-    private final ToolRegister register;
-    private final ObjectMapper objectMapper;
     private final AISettings missionAISettings;
     private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
     private final SecurityService securityService;
     private final KnowledgeService knowledgeService;
 
-    public NetExploreTool(ObjectMapper objectMapper,
-                          @Qualifier(AISettings.MISSION) AISettings missionAISettings,
+    public NetExploreTool(@Qualifier(AISettings.MISSION) AISettings missionAISettings,
                           EasyReActProcessor easyReActProcessor,
                           SecurityService securityService,
                           KnowledgeService knowledgeService,
                           @Lazy ToolExecutor toolExecutor) {
-        this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
         this.easyReActProcessor = easyReActProcessor;
         this.securityService = securityService;
         this.knowledgeService = knowledgeService;
         this.toolExecutor = toolExecutor;
+    }
 
-        register = new ToolRegister()
-                .setName(NAME)
-                .setDescription("""
-                        联网探索信息的子 Agent。接受一个收集目标，自动搜索、阅读网页、评估结果，\
-                        最终返回一份结构化的收集报告。适合需要深度调研某个主题的场景。""")
-                .setRequired(List.of("target"));
-
-        ToolRegister.Parameters targetParam = new ToolRegister.Parameters()
-                .setParameterName("target")
-                .setType("string")
-                .setDescription("收集目标，描述你需要收集什么信息。例如'AI 安全的最新进展'、'微服务架构最佳实践'");
-
-        register.setParameters(List.of(targetParam));
+    @Override
+    public String description() {
+        return """
+                联网探索信息的子 Agent。接受一个收集目标，自动搜索、阅读网页、评估结果，\
+                最终返回一份结构化的收集报告。适合需要深度调研某个主题的场景。""";
     }
 
     /**
      * 向 agent_tool 申报本子 Agent 的 extension 扩展字段。
-     * 好莱坞原则：AgentTool 构造时只负责聚合各子 Agent 的申报，不认识任何具体字段。
+     * 好莱坞原则：字段会被平铺进 agent_tool 的 extension schema，并作为参数清单
+     * 拼在本子 Agent 于大清单里的介绍条目后面，因此这里只写字段本身的语义，不写归属文案。
      */
     @Override
     public List<ToolRegister.Parameters> extensionProperties() {
         return List.of(new ToolRegister.Parameters(
                 "addToKnowledge", "boolean",
-                "适用于 " + NAME + "；为 true 时，探索完成后自动将最终收集报告存入知识库"));
+                "为 true 时，探索完成后自动将最终收集报告存入知识库"));
     }
 
     @Override
     @ToolIncludeContext(key = {"chatSession", "session"}, type = {ChatSession.class, WebSocketSession.class})
-    public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
-        Arguments arguments;
-        try {
-            arguments = objectMapper.readValue(argumentsJson, Arguments.class);
-            if (arguments == null) {
-                throw new ToolExecutor.ToolExecuteException("参数为空");
-            }
-            if (!StringUtils.hasText(arguments.getTarget())) {
-                throw new ToolExecutor.ToolExecuteException("参数 target 不能为空");
-            }
-        } catch (ToolExecutor.ToolExecuteException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
-        }
-
+    public ToolExecutor.ToolExecuteResponse action(SubAgentComponent.SubAgentArguments arguments, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
             // ========== 确认机制（无审查/定时任务由 SecurityService 统一裁决） ==========
             ask(context, arguments.getTarget());
@@ -269,18 +239,5 @@ public class NetExploreTool implements SubAgentToolHandler {
     @Override
     public String name() {
         return NAME;
-    }
-
-    @Override
-    public ToolRegister getRegister() {
-        return register;
-    }
-
-    @Data
-    @Accessors(chain = true)
-    private static class Arguments {
-        private String target;
-        /** agent_tool 透传的扩展参数；字段由各子 Agent 申报，未申报的键会被忽略 */
-        private Map<String, Object> extension;
     }
 }

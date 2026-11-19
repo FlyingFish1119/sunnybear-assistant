@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalContent;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
-import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.SubAgentComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
@@ -43,8 +43,8 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
     /** 扩展参数名：schema 由各子 Agent 自行申报、此处聚合（好莱坞原则） */
     public static final String PARAM_EXTENSION = "extension";
 
-    /** 子 Agent 路由表：key = 子 Agent 工具名（name()），value = 子 Agent 工具 */
-    private final Map<String, ToolHandler> registry;
+    /** 子 Agent 路由表：key = 子 Agent 名称（name()），value = 子 Agent 组件 */
+    private final Map<String, SubAgentComponent> registry;
     private final ToolRegister register;
     private final ObjectMapper objectMapper;
 
@@ -54,13 +54,13 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
      * 判断是否要落盘，经 agent_tool 路由时外层是 AgentTool，拿不到具体子 Agent，
      * 所以这里在 action 里记一笔，落盘阶段再取出来分派。
      */
-    private final ThreadLocal<ToolHandler> routedSubAgent = new ThreadLocal<>();
+    private final ThreadLocal<SubAgentComponent> routedSubAgent = new ThreadLocal<>();
 
-    public AgentTool(ObjectMapper objectMapper, List<SubAgentToolHandler> subAgents) {
+    public AgentTool(ObjectMapper objectMapper, List<SubAgentComponent> subAgents) {
         this.objectMapper = objectMapper;
 
         this.registry = new HashMap<>();
-        for (SubAgentToolHandler subAgent : subAgents) {
+        for (SubAgentComponent subAgent : subAgents) {
             registry.put(subAgent.name(), subAgent);
         }
 
@@ -74,11 +74,16 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
                 .setType("string")
                 .setDescription("任务描述，描述你希望子 Agent 完成什么。");
 
-        // extension：字段由各子 Agent 自行申报，此处只聚合（好莱坞原则），AgentTool 不认识任何具体字段。
+        // extension：字段平铺聚合，schema 层只挂申报方的纯语义描述——归属信息在各子 Agent 的介绍条目里
+        // （getSubDescription 会把参数清单拼在它自己的介绍后面），不在字段描述里重复。
+        // AgentTool 仍然不认识任何具体字段，只负责拼装与透传（好莱坞原则）；
         // 某个子 Agent 不支持的字段透传过去会被它忽略，不影响执行。
         List<ToolRegister.Parameters> extensionProperties = new ArrayList<>();
-        for (SubAgentToolHandler subAgent : subAgents) {
-            extensionProperties.addAll(subAgent.extensionProperties());
+        for (SubAgentComponent subAgent : subAgents) {
+            List<ToolRegister.Parameters> declared = subAgent.extensionProperties();
+            if (declared != null && !declared.isEmpty()) {
+                extensionProperties.addAll(declared);
+            }
         }
 
         List<ToolRegister.Parameters> parameters = new ArrayList<>(List.of(agentParam, targetParam));
@@ -86,7 +91,8 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
             parameters.add(new ToolRegister.Parameters()
                     .setParameterName(PARAM_EXTENSION)
                     .setType("object")
-                    .setDescription("透传给所选子 Agent 的扩展选项（可选）。各字段仅对声明它的子 Agent 生效。")
+                    .setDescription("透传给所选子 Agent 的扩展选项（可选）。每个字段只属于上方子 Agent 清单中"
+                            + "声明它的那个条目，其余子 Agent 会忽略。")
                     .setProperties(extensionProperties));
         }
 
@@ -118,7 +124,7 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
             throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
         }
 
-        ToolHandler subAgent = registry.get(arguments.getAgent());
+        SubAgentComponent subAgent = registry.get(arguments.getAgent());
         if (subAgent == null) {
             throw new ToolExecutor.ToolExecuteException("未知的子 Agent 类型: " + arguments.getAgent() + "，可选：" + String.join(", ", registry.keySet()));
         }
@@ -134,7 +140,21 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
             // 记下路由目标：执行完 ToolExecutor 会调用本类 writeFile 落盘多模态结果，
             // 届时需要按子 Agent 自己的实现来落盘
             routedSubAgent.set(subAgent);
-            return subAgent.action(subArgumentsJson, context);
+
+            SubAgentComponent.SubAgentArguments subAgentArguments;
+            try {
+                subAgentArguments = objectMapper.readValue(subArgumentsJson, SubAgentComponent.SubAgentArguments.class);
+                if (subAgentArguments == null) {
+                    throw new ToolExecutor.ToolExecuteException("参数为空");
+                }
+                if (!StringUtils.hasText(subAgentArguments.getTarget())) {
+                    throw new ToolExecutor.ToolExecuteException("参数 target 不能为空");
+                }
+            } catch (Exception e) {
+                throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
+            }
+            return subAgent.action(subAgentArguments, context);
+
         } catch (ToolExecutor.ToolExecuteException e) {
             routedSubAgent.remove();
             throw e;
@@ -152,7 +172,7 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
     @Override
     public void writeFile(List<MultimodalContent> contents, SessionFileManager sessionFileManager,
                           String sessionId) throws java.io.IOException {
-        ToolHandler subAgent = routedSubAgent.get();
+        SubAgentComponent subAgent = routedSubAgent.get();
         routedSubAgent.remove();
         if (subAgent instanceof MultimodalResultAble multimodalSubAgent) {
             multimodalSubAgent.writeFile(contents, sessionFileManager, sessionId);

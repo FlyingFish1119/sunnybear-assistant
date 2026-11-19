@@ -36,9 +36,10 @@ class BootSmokeTest {
 
     @Test
     void cloneAssistantIsRoutable() {
-        // getRegister() 返回 null 会让 AgentTool 构造时 NPE，容器根本起不来；
-        // 这里能拿到 bean 说明装配通过
-        assertNotNull(cloneAssistantTool.getRegister());
+        // 旧断言调用 cloneAssistantTool.getRegister()，改为 SubAgentComponent 架构后该方法已不存在
+        // （getRegister 属于 ToolHandler 接口，克隆体现在实现 SubAgentComponent）；
+        // bean 能注入本身即证明容器装配通过，路由与描述断言见下
+        assertNotNull(cloneAssistantTool);
         assertEquals(CloneAssistantTool.NAME, cloneAssistantTool.name());
 
         // 克隆体必须能从路由表里取到

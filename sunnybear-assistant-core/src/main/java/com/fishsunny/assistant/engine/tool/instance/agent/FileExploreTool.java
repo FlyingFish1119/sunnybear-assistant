@@ -17,33 +17,27 @@ import com.fishsunny.assistant.engine.tool.instance.view.ViewCaptionTool;
 import com.fishsunny.assistant.utils.EasyReActProcessor;
 import com.fishsunny.assistant.engine.protocol.standard.tools.register.StandardToolRegister;
 import com.fishsunny.assistant.engine.tool.ToolExecutor;
-import com.fishsunny.assistant.engine.tool.framework.SubAgentToolHandler;
+import com.fishsunny.assistant.engine.tool.framework.SubAgentComponent;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
-import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
-import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
-import com.fishsunny.assistant.engine.tool.instance.AgentToolKit;
 import com.fishsunny.assistant.engine.tool.instance.file.FileListTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileReadTool;
 import com.fishsunny.assistant.engine.tool.instance.file.FileSearchTool;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.settings.AISettings;
-import lombok.Data;
-import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.*;
 
 @Slf4j
-@ToolKitComponent(AgentToolKit.class)
+@Component
 @ConditionalOnExpression("${engine.tool.agent.enable:true} && ${engine.tool.agent.file-explore.enable:true}")
-public class FileExploreTool implements SubAgentToolHandler {
+public class FileExploreTool implements SubAgentComponent {
 
     public static final String NAME = "file_explore_tool";
 
@@ -55,56 +49,31 @@ public class FileExploreTool implements SubAgentToolHandler {
             ViewCaptionTool.NAME
     );
 
-    private final ToolRegister register;
-    private final ObjectMapper objectMapper;
     private final AISettings missionAISettings;
     private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
     private final SecurityService securityService;
 
-    public FileExploreTool(ObjectMapper objectMapper,
-                           @Qualifier(AISettings.MISSION) AISettings missionAISettings,
+    public FileExploreTool(@Qualifier(AISettings.MISSION) AISettings missionAISettings,
                            EasyReActProcessor easyReActProcessor,
                            SecurityService securityService,
                            @Lazy ToolExecutor toolExecutor) {
-        this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
         this.easyReActProcessor = easyReActProcessor;
         this.securityService = securityService;
         this.toolExecutor = toolExecutor;
+    }
 
-        register = new ToolRegister()
-                .setName(NAME)
-                .setDescription("""
-                        探索本地目录的子 Agent。接受一个目标目录，自动浏览目录结构、搜索文件内容、阅读关键文件，\
-                        最终返回一份结构化的探索报告。适合需要快速了解某个项目/目录结构或定位某段实现逻辑的场景。""")
-                .setRequired(List.of("target"));
-
-        ToolRegister.Parameters targetParam = new ToolRegister.Parameters(
-                "target", "string",
-                "要探索的目标目录路径（可顺带说明想弄清的问题），例如 /home/user/project，或“梳理 D:/proj 里订单模块的实现”");
-
-        register.setParameters(List.of(targetParam));
+    @Override
+    public String description() {
+        return """
+                探索本地目录的子 Agent。接受一个目标目录，自动浏览目录结构、搜索文件内容、阅读关键文件，\
+                最终返回一份结构化的探索报告。适合需要快速了解某个项目/目录结构或定位某段实现逻辑的场景。""";
     }
 
     @Override
     @ToolIncludeContext(key = {"chatSession", "session"}, type = {ChatSession.class, WebSocketSession.class})
-    public ToolExecutor.ToolExecuteResponse action(String argumentsJson, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
-        Arguments arguments;
-        try {
-            arguments = objectMapper.readValue(argumentsJson, Arguments.class);
-            if (arguments == null) {
-                throw new ToolExecutor.ToolExecuteException("参数为空");
-            }
-            if (!StringUtils.hasText(arguments.getTarget())) {
-                throw new ToolExecutor.ToolExecuteException("参数 target 不能为空，需指定要探索的目标目录");
-            }
-        } catch (ToolExecutor.ToolExecuteException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new ToolExecutor.ToolExecuteException("参数解析错误: " + e.getMessage());
-        }
-
+    public ToolExecutor.ToolExecuteResponse action(SubAgentComponent.SubAgentArguments arguments, Map<String, Object> context) throws ToolExecutor.ToolExecuteException {
         try {
             // ========== 确认机制（无审查/定时任务由 SecurityService 统一裁决） ==========
             ask(context, arguments.getTarget());
@@ -222,16 +191,5 @@ public class FileExploreTool implements SubAgentToolHandler {
     @Override
     public String name() {
         return NAME;
-    }
-
-    @Override
-    public ToolRegister getRegister() {
-        return register;
-    }
-
-    @Data
-    @Accessors(chain = true)
-    private static class Arguments {
-        private String target;
     }
 }

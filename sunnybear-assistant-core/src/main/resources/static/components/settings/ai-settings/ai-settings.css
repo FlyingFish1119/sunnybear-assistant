@@ -52,3 +52,112 @@
 .ai-param-with-marks {
     padding-bottom: 22px;
 }
+
+/* ============================================
+   执行体模型列表（clone_assistant_tool）
+   列表管理对话框里的提示、条目行与标签
+   ============================================ */
+
+.clone-models-tip {
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border: 1px dashed #dcdfe6;
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.clone-models-empty {
+    padding: 28px 0;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.clone-model-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid #ebeef5;
+    border-radius: 6px;
+}
+
+/* 内置场景条目：淡底色与追加条目区分，只读展示 */
+.clone-model-row-builtin {
+    background: #fafafa;
+}
+
+.clone-model-row + .clone-model-row {
+    margin-top: 8px;
+}
+
+.clone-model-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.clone-model-keyline {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.clone-model-key {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.clone-model-model {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-family: Consolas, Menlo, monospace;
+}
+
+.clone-model-desc {
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.clone-model-tags {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.clone-model-tag {
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid #d9ecff;
+    background: #ecf5ff;
+    color: #409eff;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+/* 内置场景条目标签：绿色系与蓝色功能标签区分 */
+.clone-model-tag-builtin {
+    border-color: #e1f3d8;
+    background: #f0f9eb;
+    color: #67c23a;
+}
+
+.clone-model-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.clone-model-actions .dialog-btn {
+    padding: 3px 10px;
+    font-size: 12px;
+}

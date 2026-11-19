@@ -143,6 +143,19 @@ const AiSettings = {
                 <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
             </div>
         </div>
+        <div class="settings-item" @click="openCloneModels">
+            <div class="settings-item-left">
+                <div class="settings-item-icon"><i data-lucide="boxes" style="width:16px;height:16px"></i></div>
+                <div class="settings-item-info">
+                    <span class="settings-item-label">执行体模型列表</span>
+                    <span class="settings-item-desc">{{ cloneModelsSummary }} · 执行型子 Agent 派活时按 key 选模型</span>
+                </div>
+            </div>
+            <div class="settings-item-right">
+                <span class="settings-item-value">{{ cloneModels.length }} 个</span>
+                <i data-lucide="chevron-right" class="settings-item-arrow" style="width:16px;height:16px"></i>
+            </div>
+        </div>
 
         <el-dialog v-model="dialogs.ai" title="" width="760px" class="settings-dialog" :close-on-click-modal="false" destroy-on-close>
             <template #header>
@@ -241,11 +254,107 @@ const AiSettings = {
                 </div>
             </template>
         </el-dialog>
+
+        <!-- 执行体模型列表：内置场景条目（只读）+ 用户追加条目（整表 CRUD），改动在本地完成，点「保存列表」一次性提交 -->
+        <el-dialog v-model="dialogs.cloneModels" title="" width="760px" class="settings-dialog" :close-on-click-modal="false">
+            <template #header>
+                <div class="dialog-header-wrap">
+                    <i data-lucide="boxes" style="width:20px;height:20px"></i>
+                    <span>执行体模型列表</span>
+                </div>
+            </template>
+            <div class="clone-models-tip">
+                clone_assistant_tool 派活时以 model 参数传 key 选模型。内置条目来自上方各场景模型，实时同步、只读展示；
+                新增同名 key 可覆盖内置（删除覆盖条目后内置自动恢复）；追加条目增删改后点「保存列表」生效，下一轮对话即可见。
+            </div>
+            <div v-if="!cloneModels.length" class="clone-models-empty">
+                还没有可用的执行体模型：先在上方为各场景配置模型（生成内置条目），或点右下角「新增模型」追加一条。
+            </div>
+            <div v-for="(m, i) in cloneModels" :key="i" class="clone-model-row" :class="{ 'clone-model-row-builtin': m.builtIn }">
+                <div class="clone-model-main">
+                    <div class="clone-model-keyline">
+                        <span class="clone-model-key">{{ m.key }}</span>
+                        <span v-if="m.builtIn" class="clone-model-tag clone-model-tag-builtin">内置</span>
+                        <span class="clone-model-model">{{ m.model }} @ {{ m.adapterName }}</span>
+                    </div>
+                    <div class="clone-model-desc">{{ m.desc || '（无描述）' }}</div>
+                </div>
+                <div class="clone-model-tags">
+                    <span v-if="m.thinking" class="clone-model-tag">思考</span>
+                    <span v-if="m.reasoningEffort" class="clone-model-tag">{{ m.reasoningEffort }}</span>
+                </div>
+                <div v-if="!m.builtIn" class="clone-model-actions">
+                    <button type="button" class="dialog-btn dialog-btn-cancel" @click="openCloneEdit(i)">编辑</button>
+                    <button type="button" class="dialog-btn dialog-btn-cancel" @click="removeCloneModel(i)">删除</button>
+                </div>
+            </div>
+            <template #footer>
+                <div class="dialog-footer">
+                    <button type="button" class="dialog-btn dialog-btn-cancel" @click="openCloneEdit(-1)">新增模型</button>
+                    <div style="flex:1"></div>
+                    <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.cloneModels = false">关闭</button>
+                    <button type="button" class="dialog-btn dialog-btn-save" @click="saveCloneModels" :disabled="saving.cloneModels">
+                        <span v-if="saving.cloneModels" class="btn-spinner"></span>
+                        <span>{{ saving.cloneModels ? '保存中...' : '保存列表' }}</span>
+                    </button>
+                </div>
+            </template>
+        </el-dialog>
+
+        <!-- 执行体模型：单条编辑（新增 / 修改共用） -->
+        <el-dialog v-model="dialogs.cloneEdit" title="" width="640px" class="settings-dialog" :close-on-click-modal="false" append-to-body>
+            <template #header>
+                <div class="dialog-header-wrap">
+                    <i data-lucide="cpu" style="width:20px;height:20px"></i>
+                    <span>{{ cloneEditIndex < 0 ? '新增执行体模型' : '编辑执行体模型 · ' + cloneForm.key }}</span>
+                </div>
+            </template>
+            <el-form :model="cloneForm" label-width="110px" label-position="left">
+                <el-form-item label="key">
+                    <el-input v-model="cloneForm.key" placeholder="工具调用时传入的模型标识，如 deepseek-code-fast"></el-input>
+                </el-form-item>
+                <el-form-item label="用途描述">
+                    <el-input v-model="cloneForm.desc" placeholder="一句话说明适合什么任务，会展示给 AI 供其选择"></el-input>
+                </el-form-item>
+                <el-form-item label="适配器">
+                    <el-select v-model="cloneForm.adapterName" placeholder="请选择适配器" style="width:100%" @change="onCloneAdapterChange">
+                        <el-option v-for="name in adapterList" :key="name" :label="name" :value="name"></el-option>
+                    </el-select>
+                </el-form-item>
+                <el-form-item label="模型">
+                    <el-select v-model="cloneForm.model" filterable allow-create default-first-option clearable
+                               :loading="cloneModelLoading" placeholder="选择或输入模型名称" style="width:100%">
+                        <el-option v-for="m in cloneModelOptions" :key="m.id" :label="m.id" :value="m.id"></el-option>
+                    </el-select>
+                    <div v-if="cloneModelHint" style="font-size:12px;color:#909399;line-height:1.6;margin-top:4px">{{ cloneModelHint }}</div>
+                </el-form-item>
+                <el-form-item label="思考模式">
+                    <el-switch v-model="cloneForm.thinking" active-text="开启" inactive-text="关闭"></el-switch>
+                </el-form-item>
+                <el-form-item label="推理深度">
+                    <el-select v-model="cloneForm.reasoningEffort" style="width:100%">
+                        <el-option label="未设置（API 默认）" value=""></el-option>
+                        <el-option label="low" value="low"></el-option>
+                        <el-option label="high" value="high"></el-option>
+                        <el-option label="max" value="max"></el-option>
+                    </el-select>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <div class="dialog-footer">
+                    <button type="button" class="dialog-btn dialog-btn-cancel" @click="dialogs.cloneEdit = false">取消</button>
+                    <button type="button" class="dialog-btn dialog-btn-save" @click="confirmCloneEdit">确定</button>
+                </div>
+            </template>
+        </el-dialog>
+
+        <!-- 通用确认弹窗：删除 / 覆盖内置等二次确认走这里（项目统一风格，替代 ElMessageBox） -->
+        <confirm-dialog ref="confirmDialog"></confirm-dialog>
     </div>`,
 
     data() {
         return {
-            dialogs: { ai: false },
+            dialogs: { ai: false, cloneModels: false, cloneEdit: false },
             // 当前 AI 对话框的类型 (chat/chat_pro/cub/operator/mission/task)
             aiDialogType: 'chat',
             showAiAdvanced: false,
@@ -255,7 +364,16 @@ const AiSettings = {
             // 当前适配器返回的可选模型列表（为空时仍可手动输入）
             modelList: [],
             modelLoading: false,
-            modelListHint: ''
+            modelListHint: '',
+            // 执行体模型列表（clone_assistant_tool 的 model key 表，独立于上面的场景模型）
+            cloneModels: [],
+            // 正在编辑的执行体模型下标，-1 = 新增
+            cloneEditIndex: -1,
+            cloneForm: { key: '', desc: '', adapterName: '', model: '', thinking: false, reasoningEffort: '' },
+            // 执行体模型编辑框的模型下拉状态（与 aiForm 的 modelList 互不相干）
+            cloneModelList: [],
+            cloneModelLoading: false,
+            cloneModelHint: ''
         };
     },
 
@@ -275,6 +393,22 @@ const AiSettings = {
         /** 高级参数是否已配置（任一非 null）；全 null 即「未配置」，打开对话框时默认收起 */
         hasAiAdvanced() {
             return Object.keys(AI_ADVANCED_DEFAULTS).some(key => this.aiForm[key] != null);
+        },
+
+        /** 执行体模型列表摘要（settings-item 副标题用）：总数带内置 / 追加拆分 */
+        cloneModelsSummary() {
+            if (!this.cloneModels.length) return '未配置';
+            const extras = this.cloneModels.filter(m => !m.builtIn).length;
+            return this.cloneModels.length + ' 个（内置 ' + (this.cloneModels.length - extras) + ' + 追加 ' + extras + '）：'
+                + this.cloneModels.map(m => m.key).join('、');
+        },
+
+        /** 执行体模型编辑框的模型下拉选项：远端列表 + 当前已配置的模型兜底 */
+        cloneModelOptions() {
+            const list = (this.cloneModelList || []).slice();
+            const current = (this.cloneForm.model || '').trim();
+            if (current && !list.some(m => m.id === current)) list.unshift({ id: current });
+            return list;
         }
     },
 
@@ -430,11 +564,167 @@ const AiSettings = {
         /** 是否存在厂商返回的模型详情（决定是否显示悬浮提示） */
         hasModelDetail(m) {
             return !!(m && ModelDetailUtils.has(m.details));
+        },
+
+        /* ---------- 执行体模型列表（clone_assistant_tool） ---------- */
+
+        openCloneModels() {
+            this.fetchCloneModels();
+            this.dialogs.cloneModels = true;
+            this.$nextTick(() => lucide.createIcons());
+        },
+
+        async fetchCloneModels() {
+            try {
+                const r = await API.get('settings/clone-models/get');
+                if (r.status === 200) {
+                    this.cloneModels = (r.data || []).map(m => ({
+                        key: m.key || '',
+                        desc: m.desc || '',
+                        adapterName: m.adapterName || '',
+                        model: m.model || '',
+                        thinking: !!m.thinking,
+                        reasoningEffort: m.reasoningEffort || null,
+                        builtIn: !!m.builtIn
+                    }));
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        },
+
+        /** 打开单条编辑框：index=-1 为新增，否则填入当前条 */
+        openCloneEdit(index) {
+            this.cloneEditIndex = index;
+            const m = index >= 0 ? this.cloneModels[index] : null;
+            this.cloneForm = {
+                key: m ? m.key : '',
+                desc: m ? m.desc : '',
+                adapterName: m ? m.adapterName : '',
+                model: m ? m.model : '',
+                thinking: m ? !!m.thinking : false,
+                reasoningEffort: m && m.reasoningEffort ? m.reasoningEffort : ''
+            };
+            // 模型下拉独立于主 AI 编辑框：进编辑框时按当前适配器拉一次
+            this.cloneModelList = [];
+            this.cloneModelHint = '';
+            if (this.cloneForm.adapterName) this.fetchCloneModelList();
+            this.dialogs.cloneEdit = true;
+            this.$nextTick(() => lucide.createIcons());
+        },
+
+        onCloneAdapterChange() {
+            // 模型与适配器绑定，切换后清空，等待新列表或手动输入
+            this.cloneForm.model = '';
+            this.fetchCloneModelList();
+        },
+
+        async fetchCloneModelList() {
+            const apiName = (this.cloneForm.adapterName || '').trim();
+            this.cloneModelList = [];
+            this.cloneModelHint = '';
+            if (!apiName) return;
+            this.cloneModelLoading = true;
+            try {
+                const r = await API.settings.adapters.models(apiName);
+                if (r.status === 200) {
+                    this.cloneModelList = r.data || [];
+                    if (!this.cloneModelList.length) {
+                        this.cloneModelHint = '该适配器未返回模型列表，可直接输入模型名称';
+                    }
+                } else {
+                    this.cloneModelHint = '获取模型列表失败，可直接输入模型名称';
+                }
+            } catch (e) {
+                console.error(e);
+                this.cloneModelHint = '获取模型列表失败，可直接输入模型名称';
+            } finally {
+                this.cloneModelLoading = false;
+            }
+        },
+
+        /** 校验通过后把编辑框内容写回本地列表（新增 push / 编辑 splice），不触发网络请求。
+         *  key 撞追加条目直接拦截；撞内置条目弹覆盖确认——确认后替换内置位置上的那条
+         *  （与后端合并语义一致：覆盖条目可编辑删除，删除保存后内置自动回来）。 */
+        async confirmCloneEdit() {
+            const key = (this.cloneForm.key || '').trim();
+            const adapter = (this.cloneForm.adapterName || '').trim();
+            const model = (this.cloneForm.model || '').trim();
+            if (!key) { ElementPlus.ElMessage.warning('key 不能为空'); return; }
+            if (!adapter) { ElementPlus.ElMessage.warning('适配器不能为空'); return; }
+            if (!model) { ElementPlus.ElMessage.warning('模型名称不能为空'); return; }
+            const clashIndex = this.cloneModels.findIndex((m, i) => i !== this.cloneEditIndex && m.key === key);
+            if (clashIndex >= 0) {
+                const clash = this.cloneModels[clashIndex];
+                if (!clash.builtIn) {
+                    ElementPlus.ElMessage.warning('key 已存在：' + key);
+                    return;
+                }
+                try {
+                    await this.$refs.confirmDialog.show({
+                        title: '覆盖内置条目',
+                        message: 'key「' + key + '」与内置场景条目同名，保存后将以这条覆盖内置配置；删除该条并保存后，内置配置会自动恢复。',
+                        confirmText: '覆盖',
+                        type: 'warning'
+                    });
+                } catch (e) {
+                    return;
+                }
+            }
+            const entry = {
+                key: key,
+                desc: (this.cloneForm.desc || '').trim(),
+                adapterName: adapter,
+                model: model,
+                thinking: !!this.cloneForm.thinking,
+                reasoningEffort: this.cloneForm.reasoningEffort || null,
+                builtIn: false
+            };
+            if (clashIndex >= 0) {
+                // 覆盖内置：若正在编辑的是旧条目（改 key 而来），先从原位置移除并校正目标索引
+                if (this.cloneEditIndex >= 0 && this.cloneEditIndex !== clashIndex) {
+                    this.cloneModels.splice(this.cloneEditIndex, 1);
+                    if (this.cloneEditIndex < clashIndex) clashIndex--;
+                }
+                // 替换内置位置上的条目，本地视图与后端合并结果保持一致
+                this.cloneModels.splice(clashIndex, 1, entry);
+            } else if (this.cloneEditIndex < 0) {
+                this.cloneModels.push(entry);
+            } else {
+                this.cloneModels.splice(this.cloneEditIndex, 1, entry);
+            }
+            this.dialogs.cloneEdit = false;
+        },
+
+        async removeCloneModel(index) {
+            const m = this.cloneModels[index];
+            if (!m || m.builtIn) return; // 内置条目不渲染删除按钮，此处双保险
+            try {
+                await this.$refs.confirmDialog.show({
+                    title: '删除执行体模型',
+                    message: '确定删除「' + m.key + '」？删除后需保存列表才生效。',
+                    confirmText: '删除',
+                    type: 'danger'
+                });
+            } catch (e) {
+                return;
+            }
+            this.cloneModels.splice(index, 1);
+            ElementPlus.ElMessage.success('已删除「' + m.key + '」，记得保存列表');
+        },
+
+        /** 整表提交追加条目（内置条目由场景设置实时注入，不提交不落盘）；
+         *  成功后 postSave 自动关列表框，这里再重拉一次拿后端合并归一化后的数据 */
+        async saveCloneModels() {
+            const extras = this.cloneModels.filter(m => !m.builtIn);
+            const ok = await this.postSave('settings/clone-models/save', extras, 'cloneModels');
+            if (ok) this.fetchCloneModels();
         }
     },
 
     mounted() {
         this.fetchAdapterList();
+        this.fetchCloneModels();
     },
 
     updated() {

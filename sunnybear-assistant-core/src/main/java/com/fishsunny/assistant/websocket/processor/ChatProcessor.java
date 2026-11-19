@@ -105,9 +105,10 @@ public class ChatProcessor {
             throw new UserException("用户消息角色无效: " + userMessage.getRole());
         }
 
-        // 注入工具：按 kit 排除用户关掉的工具集与声明不开放的工具集，再按名字排除子 Agent 本体
+        // 注入工具：按 kit 排除用户关掉的工具集与声明不开放的工具集
+        // （子 Agent 是独立组件不进工具表，按名排除集合永远为空）
         List<StandardToolRegister> toolRegisters = StandardToolRegister.buildToolRegisterExcluding(
-                toolExecutor, toolVisibilityPolicy.excludedKits(), toolVisibilityPolicy.excludedHandlers());
+                toolExecutor, toolVisibilityPolicy.excludedKits(), java.util.Set.of());
 
         ChatProvider.ToolProviderContext toolCtx = new ChatProvider.ToolProviderContext(chatSession, toolRegisters);
         toolRegisters = chatProvider.getToolProvider().apply(toolCtx);
