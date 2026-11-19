@@ -108,11 +108,11 @@ public class ExtensionScriptService {
         // 有限超时：边跑边落盘，超时就直接放手
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS"));
         String fileName = "script_" + timestamp + ".log";
-        // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层
-        String logRelPath = SessionFileManager.buildLogRelativePath(fileName);
+        // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层；路径约定由 OSToolKit 管理
+        String logRelPath = OSToolKit.buildLogRelativePath(fileName);
         Path logFile;
         try {
-            logFile = sessionFileManager.prepareSessionLogFile(sessionId, fileName);
+            logFile = sessionFileManager.prepareSessionFile(sessionId, logRelPath);
         } catch (IOException e) {
             deleteTempScript(prepared.tempFile());
             throw new ToolExecutor.ToolExecuteException("无法创建脚本输出目录: " + e.getMessage());
@@ -247,11 +247,11 @@ public class ExtensionScriptService {
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS"));
         String fileName = "script_" + timestamp + ".log";
-        // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层
-        String logRelPath = SessionFileManager.buildLogRelativePath(fileName);
+        // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层；路径约定由 OSToolKit 管理
+        String logRelPath = OSToolKit.buildLogRelativePath(fileName);
         Path logFile;
         try {
-            logFile = sessionFileManager.prepareSessionLogFile(sessionId, fileName);
+            logFile = sessionFileManager.prepareSessionFile(sessionId, logRelPath);
         } catch (IOException e) {
             throw new ToolExecutor.ToolExecuteException("无法创建后台输出目录: " + e.getMessage());
         }

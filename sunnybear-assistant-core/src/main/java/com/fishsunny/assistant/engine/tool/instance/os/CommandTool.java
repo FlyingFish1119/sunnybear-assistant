@@ -212,11 +212,11 @@ public class CommandTool implements ToolHandler {
             ChatSession chatSession = (ChatSession) context.get("chatSession");
             String sessionId = chatSession.getId();
             String fileName = "command_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS")) + ".log";
-            // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层
-            String logRelPath = SessionFileManager.buildLogRelativePath(fileName);
+            // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层；路径约定由 OSToolKit 管理
+            String logRelPath = OSToolKit.buildLogRelativePath(fileName);
             Path logFile;
             try {
-                logFile = sessionFileManager.prepareSessionLogFile(sessionId, fileName);
+                logFile = sessionFileManager.prepareSessionFile(sessionId, logRelPath);
             } catch (IOException e) {
                 throw new ToolExecutor.ToolExecuteException("无法创建命令输出目录: " + e.getMessage());
             }
@@ -542,11 +542,11 @@ public class CommandTool implements ToolHandler {
 
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS"));
         String fileName = "command_" + timestamp + ".log";
-        // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层
-        String logRelPath = SessionFileManager.buildLogRelativePath(fileName);
+        // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层；路径约定由 OSToolKit 管理
+        String logRelPath = OSToolKit.buildLogRelativePath(fileName);
         Path logFile;
         try {
-            logFile = sessionFileManager.prepareSessionLogFile(sessionId, fileName);
+            logFile = sessionFileManager.prepareSessionFile(sessionId, logRelPath);
         } catch (IOException e) {
             throw new ToolExecutor.ToolExecuteException("无法创建后台输出目录: " + e.getMessage());
         }

@@ -45,6 +45,20 @@ public class OSToolKit extends ToolKit {
         return "执行命令行与扩展脚本";
     }
 
+    /** 运行日志子目录名，相对会话文件目录（file/logs）——命令与扩展脚本的输出统一收在这里，不跟用户文件混在顶层 */
+    public static final String LOG_DIR = "logs";
+
+    /**
+     * 日志文件相对会话文件目录的路径（logs/文件名），落盘与对外引用共用同一拼法。
+     * <p>
+     * 日志落盘是本套工具的行为，位置约定归这里管；落盘走通用入口
+     * {@code sessionFileManager.prepareSessionFile(sessionId, 相对路径)}，
+     * SessionFileManager 只负责会话文件的通用读写，无需为日志提供特化方法。
+     */
+    public static String buildLogRelativePath(String fileName) {
+        return LOG_DIR + "/" + fileName;
+    }
+
     public static void writeLog(Path logFile, Process process) throws IOException, InterruptedException {
         try (InputStream inputStream = process.getInputStream();
              OutputStream outputStream = Files.newOutputStream(logFile,

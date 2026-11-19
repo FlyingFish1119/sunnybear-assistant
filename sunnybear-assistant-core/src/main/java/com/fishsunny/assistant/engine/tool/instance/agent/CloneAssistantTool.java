@@ -2,8 +2,9 @@ package com.fishsunny.assistant.engine.tool.instance.agent;
 
 /*
  * @Usage 执行型子 Agent（Mission/Cub 分工）—— 主 Agent 把活派进来，它去做具体的事。
- *        首次召唤时由 Cub AI 针对当前任务为它生成一份专注任务目标的系统提示词，常驻整个会话；
- *        之后它以调用方传入的 model key 从「执行体模型列表」（设置页 CRUD 管理）查得的模型干活，
+ *        首次召唤时由「执行体同级模型」（派活用哪档模型，写提示词就用哪档）针对当前任务
+ *        生成一份专注任务目标的系统提示词，常驻整个会话；之后它以调用方传入的 model key
+ *        从「执行体模型列表」（内置场景条目实时注入 + json 追加）查得的模型干活，
  *        在 ToolCallLoop 里自己调工具自己推进，跨轮共享一棵会话内的持久消息树，
  *        所以任务没一次干完时它能接着上次的进展继续。由 agent_tool 路由调用。
  *
@@ -30,7 +31,6 @@ import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.settings.CloneModelSettings;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
@@ -51,15 +51,17 @@ public class CloneAssistantTool implements SubAgentComponent {
 
     public static final String NAME = "clone_assistant_tool";
 
-    /** 消息树文件名，落在会话的 file 目录下 */
-    private static final String MESSAGE_TREE_FILE = "clone-assistant-message-tree.json";
+    /** 执行体专属子目录：会话 file 目录下，收拢消息树与专注提示词，不与用户文件混在根上（同命令日志收进 logs/ 的做法） */
+    private static final String CLONE_DIR = "clone-assistant";
 
-    /** Cub 生成的专注任务系统提示词文件名，与消息树同目录 */
-    private static final String MISSION_PROMPT_FILE = "clone-assistant-mission-prompt.txt";
+    /** 消息树文件，位于会话 file 目录的 clone-assistant/ 子目录下 */
+    private static final String MESSAGE_TREE_FILE = CLONE_DIR + "/message-tree.json";
+
+    /** 同级模型生成的专注任务系统提示词，与消息树同目录 */
+    private static final String MISSION_PROMPT_FILE = CLONE_DIR + "/mission-prompt.txt";
 
     private final ObjectMapper objectMapper;
     private final CloneModelSettings cloneModelSettings;
-    private final AISettings cubAISettings;
     private final ChatHttpHandler chatHttpHandler;
     private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
@@ -73,7 +75,6 @@ public class CloneAssistantTool implements SubAgentComponent {
                               SessionFileManager sessionFileManager,
                               ChatHttpHandler chatHttpHandler,
                               CloneModelSettings cloneModelSettings,
-                              @Qualifier(AISettings.CUB) AISettings cubAISettings,
                               ToolVisibilityPolicy toolVisibilityPolicy,
                               List<SubAgentComponent> subAgents
     ) {
@@ -91,7 +92,6 @@ public class CloneAssistantTool implements SubAgentComponent {
         this.easyReActProcessor = easyReActProcessor;
         this.sessionFileManager = sessionFileManager;
         this.cloneModelSettings = cloneModelSettings;
-        this.cubAISettings = cubAISettings;
         this.toolVisibilityPolicy = toolVisibilityPolicy;
     }
 
@@ -110,32 +110,9 @@ public class CloneAssistantTool implements SubAgentComponent {
                 clearSession(chatSession.getId());
             }
 
-            // 1. 首次召唤时由 Cub 生成本任务的专注执行系统提示词并落盘；之后直接复用
-            Path promptFile = sessionFileManager.prepareSessionFile(chatSession.getId(), MISSION_PROMPT_FILE);
-            String missionPrompt = readMissionPrompt(promptFile);
-            if (missionPrompt == null) {
-                missionPrompt = generateMissionPrompt(arguments.getTarget());
-                writeMissionPrompt(missionPrompt, promptFile);
-            }
-
-            // 2. 读树：首次召唤时文件还不存在，视为空树
-            Path treeFile = sessionFileManager.prepareSessionFile(chatSession.getId(), MESSAGE_TREE_FILE);
-            List<ChatMessage> tree = readMessageTree(treeFile);
-
-            // 3. 本轮任务追加进树，成为执行体看到的最后一条 user
-            tree.add(new ChatMessage().user(arguments.getTarget()));
-            int treeSize = tree.size();
-
-            // 4. 组装请求：专注提示词 + 整棵树。
-            //    不需要在此展开文件引用——ToolCallLoop 每轮 translate 前会统一展开一遍，
-            //    而树里的消息和 request 里的是同一批对象，展开结果会随第 6 步一起落盘。
-            List<ChatMessage> sendMessages = new ArrayList<>();
-            sendMessages.add(new ChatMessage().system(missionPrompt));
-            sendMessages.addAll(tree);
-
-            // 按传入的 model key 查「执行体模型列表」的合并视图：内置场景条目（chat / chat_pro /
-            // operator / mission / cub，实时跟随场景设置）+ json 追加条目（key 撞场景名时用户覆盖优先）。
-            // 适配器、模型与思考档位由查得的条目决定，key 不存在时明确报错并列出可用 key。
+            // 1. 按传入的 model key 查「执行体模型列表」的合并视图：内置场景条目（chat / chat_pro /
+            //    operator / mission / cub，实时跟随场景设置）+ json 追加条目（key 撞场景名时用户覆盖优先）。
+            //    查表提前到生成提示词之前——同级生成要用同一份模型设置，适配器、模型与思考档位由条目决定。
             CloneModelSettings.ModelEntry modelEntry = cloneModelSettings.findEntry(modelKey);
             if (modelEntry == null) {
                 if (cloneModelSettings.getMergedModels().isEmpty()) {
@@ -151,15 +128,41 @@ public class CloneAssistantTool implements SubAgentComponent {
                     .setStream(false)
                     .setThinking(Boolean.TRUE.equals(modelEntry.getThinking()))
                     .setReasoningEffort(modelEntry.getReasoningEffort());
+
+            // 2. 首次召唤时由「执行体同级模型」生成本任务的专注执行系统提示词并落盘；之后直接复用。
+            //    同级生成：派活用哪档模型，写提示词就用哪档——任务复杂时主 Agent 自然选高级模型，
+            //    提示词质量与任务档位自动对齐；简单任务轻量档自己写个简单壳子，成本与需求同频。
+            Path promptFile = sessionFileManager.prepareSessionFile(chatSession.getId(), MISSION_PROMPT_FILE);
+            String missionPrompt = readMissionPrompt(promptFile);
+            if (missionPrompt == null) {
+                missionPrompt = generateMissionPrompt(arguments.getTarget(), settings);
+                writeMissionPrompt(missionPrompt, promptFile);
+            }
+
+            // 3. 读树：首次召唤时文件还不存在，视为空树
+            Path treeFile = sessionFileManager.prepareSessionFile(chatSession.getId(), MESSAGE_TREE_FILE);
+            List<ChatMessage> tree = readMessageTree(treeFile);
+
+            // 4. 本轮任务追加进树，成为执行体看到的最后一条 user
+            tree.add(new ChatMessage().user(arguments.getTarget()));
+            int treeSize = tree.size();
+
+            // 5. 组装请求：专注提示词 + 整棵树。
+            //    不需要在此展开文件引用——ToolCallLoop 每轮 translate 前会统一展开一遍，
+            //    而树里的消息和 request 里的是同一批对象，展开结果会随第 7 步一起落盘。
+            List<ChatMessage> sendMessages = new ArrayList<>();
+            sendMessages.add(new ChatMessage().system(missionPrompt));
+            sendMessages.addAll(tree);
+
             ChatRequest request = new ChatRequest()
                     .loadSettings(settings)
                     .setMessages(sendMessages)
                     .setTools(buildToolRegisters());
 
-            // 5. 跑循环：执行体自己调工具、自己推敲，中间产生的 assistant / tool 消息由 ToolCallLoop 追加在 sendMessages 尾部
+            // 6. 跑循环：执行体自己调工具、自己推敲，中间产生的 assistant / tool 消息由 ToolCallLoop 追加在 sendMessages 尾部
             String finalText = easyReActProcessor.execute(settings, request, context);
 
-            // 6. 把本轮新增的消息（执行体的答复、它自己的工具调用与结果）接回树并落盘。
+            // 7. 把本轮新增的消息（执行体的答复、它自己的工具调用与结果）接回树并落盘。
             //    tree 与 sendMessages 里的消息是同一批对象，循环内每轮开头的展开都已在其中生效
             tree.addAll(sendMessages.subList(1 + treeSize, sendMessages.size()));
             writeMessageTree(tree, treeFile);
@@ -190,17 +193,21 @@ public class CloneAssistantTool implements SubAgentComponent {
     }
 
     /**
-     * 用 Cub 针对本次任务生成专注任务目标的执行系统提示词（常驻整个会话）。
+     * 用「执行体同级模型」针对本次任务生成专注任务目标的执行系统提示词（常驻整个会话）。
      * <p>
-     * Cub 的产出是一份角色人设——以"你是一个高级软件工程师…"开头的身份式提示词，
+     * 同级生成：settings 就是本次执行体干活用的那份模型设置——派活选了哪档模型，
+     * 提示词就由哪档写。任务复杂时主 Agent 自然选高级模型，提示词质量跟着升级；
+     * 简单任务轻量档自己写个简单壳子，成本与需求同频，也不存在弱模型给强模型定守则的倒挂。
+     * <p>
+     * 产出是一份角色人设——以"你是一个高级软件工程师…"开头的身份式提示词，
      * 由它去补齐任务所需的专业身份与工作守则；任务本身的执行指令由主 Agent 的 target 承担，
      * 两边职责分开，避免提示词和派下来的任务打架。
      * <p>
-     * Cub 调用走 translate 的新签名（TranslateData/TranslateHandler/TranslateOption），
+     * 调用走 translate 的新签名（TranslateData/TranslateHandler/TranslateOption），
      * 同步调用 + CompleteCallback 收内容，返回后即收完。
      * 生成失败不阻塞执行：回退到一份通用的身份式提示词，保证活还能干。
      */
-    private String generateMissionPrompt(String target) {
+    private String generateMissionPrompt(String target, AISettings settings) {
         String writerPrompt = """
                 你是一位系统提示词工程师，负责为一个执行型子 Agent 撰写角色设定（系统提示词）。
                 主 Agent 会把一项任务派给这个子 Agent 去执行，你要根据下面的任务描述，写出这份角色设定。
@@ -216,11 +223,11 @@ public class CloneAssistantTool implements SubAgentComponent {
                 %s
                 """.formatted(target);
 
-        ChatRequest request = new ChatRequest().quickBuild(writerPrompt, target, cubAISettings);
+        ChatRequest request = new ChatRequest().quickBuild(writerPrompt, target, settings);
         try {
             StringBuilder prompt = new StringBuilder();
             chatHttpHandler.translate(
-                    new ChatHttpHandler.TranslateData(UUID.randomUUID().toString(), cubAISettings.getAdapterName(), request),
+                    new ChatHttpHandler.TranslateData(UUID.randomUUID().toString(), settings.getAdapterName(), request),
                     new ChatHttpHandler.TranslateHandler(null, (trResult, lastRes) -> {
                         String content = trResult.content();
                         if (content != null) {
@@ -228,13 +235,13 @@ public class CloneAssistantTool implements SubAgentComponent {
                             prompt.append(content.trim());
                         }
                     }),
-                    new ChatHttpHandler.TranslateOption().setStream(cubAISettings.getStream()));
+                    new ChatHttpHandler.TranslateOption().setStream(settings.getStream()));
             if (prompt.isEmpty()) {
-                throw new IllegalStateException("Cub 返回了空内容");
+                throw new IllegalStateException("同级模型返回了空内容");
             }
             return prompt + APPENDIX_PROMPT;
         } catch (Exception e) {
-            log.warn("Cub 生成专注提示词失败，回退到最简执行提示词: {}", e.getMessage());
+            log.warn("同级模型生成专注提示词失败，回退到最简执行提示词: {}", e.getMessage());
             return "你是一个执行型子 Agent，替主 Agent 执行交派的任务。任务指令由主 Agent 随消息下达，照做即可。"
                     + APPENDIX_PROMPT;
         }
@@ -242,7 +249,7 @@ public class CloneAssistantTool implements SubAgentComponent {
 
     /**
      * 追加在提示词末尾的行为约束。短小、稳定、不随任务变——该由提示词管的规则放这里固化，
-     * 不指望 Cub 每次生成都记得。
+     * 不指望同级模型每次生成都记得。
      */
     private static final String APPENDIX_PROMPT = """
 
@@ -257,14 +264,12 @@ public class CloneAssistantTool implements SubAgentComponent {
     // ==================== 执行记录清理 ====================
 
     /**
-     * 清空该会话内执行体积攒的执行记录：消息树与专属执行方案。
-     * 文件不存在属正常路径，忽略；清理后由后续流程重新生成方案、从空树开始。
+     * 清空该会话内执行体积攒的执行记录：消息树与专注提示词。
+     * 文件不存在属正常路径，忽略；清理后由后续流程重新生成、从空树开始。
      */
     private void clearSession(String sessionId) throws Exception {
-        Path treeFile = sessionFileManager.prepareSessionFile(sessionId, MESSAGE_TREE_FILE);
-        Path promptFile = sessionFileManager.prepareSessionFile(sessionId, MISSION_PROMPT_FILE);
-        Files.deleteIfExists(treeFile);
-        Files.deleteIfExists(promptFile);
+        Files.deleteIfExists(sessionFileManager.prepareSessionFile(sessionId, MESSAGE_TREE_FILE));
+        Files.deleteIfExists(sessionFileManager.prepareSessionFile(sessionId, MISSION_PROMPT_FILE));
         log.info("执行型子 Agent 已清空执行记录: session={}", sessionId);
     }
 
