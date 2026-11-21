@@ -45,7 +45,6 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
 
     /** 子 Agent 路由表：key = 子 Agent 名称（name()），value = 子 Agent 组件 */
     private final Map<String, SubAgentComponent> registry;
-    private final ToolRegister register;
     private final ObjectMapper objectMapper;
 
     /**
@@ -63,7 +62,16 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
         for (SubAgentComponent subAgent : subAgents) {
             registry.put(subAgent.name(), subAgent);
         }
+    }
 
+    /**
+     * 现调现拼工具注册信息：描述文案（子 Agent 清单 + 各自申报的扩展参数）随 registry 与场景模型设置
+     * 动态生成，设置页热改挡位后下一轮对话即自动跟随，无需重启。
+     * <p>
+     * 不缓存：ToolRegister 及 Parameters 全部现场新建、无共享可变状态，每次调用独立且线程安全；
+     * registry 在构造完成后只读，可放心被并发请求共享。
+     */
+    private ToolRegister buildRegister() {
         ToolRegister.Parameters agentParam = new ToolRegister.Parameters()
                 .setParameterName(PARAM_AGENT)
                 .setType("string")
@@ -79,7 +87,7 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
         // AgentTool 仍然不认识任何具体字段，只负责拼装与透传（好莱坞原则）；
         // 某个子 Agent 不支持的字段透传过去会被它忽略，不影响执行。
         List<ToolRegister.Parameters> extensionProperties = new ArrayList<>();
-        for (SubAgentComponent subAgent : subAgents) {
+        for (SubAgentComponent subAgent : registry.values()) {
             List<ToolRegister.Parameters> declared = subAgent.extensionProperties();
             if (declared != null && !declared.isEmpty()) {
                 extensionProperties.addAll(declared);
@@ -96,7 +104,7 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
                     .setProperties(extensionProperties));
         }
 
-        this.register = new ToolRegister()
+        return new ToolRegister()
                 .setName(NAME)
                 .setDescription(AgentToolKit.getSubDescription(registry))
                 .setRequired(List.of(PARAM_AGENT, "target"))
@@ -188,7 +196,7 @@ public class AgentTool implements ToolHandler, MultimodalResultAble {
 
     @Override
     public ToolRegister getRegister() {
-        return register;
+        return buildRegister();
     }
 
     @Data

@@ -83,8 +83,8 @@ public class AgentToolKit extends ToolKit {
      * 按给定 registry 的视角裁剪工具表里 agent_tool 的可召唤说明：
      * 把它的 function 描述与 agent 参数描述换成 getSubDescription / getAgentParamDescription 的 registry 版本。
      * <p>
-     * 用途是给子 Agent 执行体裁剪工具表时防自召——AgentTool 那份说明是它构造时按全部子 Agent 拼的、
-     * 全局就一份，直接给执行体等于告诉它"你可以召唤你自己"。调用方传去掉自己之后的 registry，
+     * 用途是给子 Agent 执行体裁剪工具表时防自召——AgentTool 的 getRegister 现调现拼、按全部子 Agent
+     * 生成，直接给执行体等于告诉它"你可以召唤你自己"。调用方传去掉自己之后的 registry，
      * 子 Agent 互相召唤仍然允许（file_explore、net_explore 都该留着），只有自己不能套自己。
      * <p>
      * 改这份不会污染别人：工具表来自 buildToolRegisterExcluding，每次调用都现造一批新的
