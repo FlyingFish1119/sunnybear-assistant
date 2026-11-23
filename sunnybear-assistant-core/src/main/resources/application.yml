@@ -94,8 +94,12 @@ plug:
     tool:
       enable: true
   comfyui:
-    bridge:
-      command-timeout-s: 1800
+    device: your device name
+    base-url: http://127.0.0.1:8188
+    workflow-dir: your workflow directory
+    models-dir: your models directory
+    output-dir: your output directory
+    generate-timeout-s: 1800
     tool:
       enable: true
   world:

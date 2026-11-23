@@ -1,5 +1,6 @@
 package com.fishsunny.assistant.plug.comfyui.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fishsunny.assistant.engine.ContentType;
 import com.fishsunny.assistant.engine.protocol.project.ChatRequest;
@@ -11,9 +12,6 @@ import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.MultimodalResultAble;
 import com.fishsunny.assistant.engine.tool.framework.SubAgentComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
-import com.fishsunny.assistant.plug.comfyui.dto.HistoryEntry;
-import com.fishsunny.assistant.plug.comfyui.dto.ViewImageResult;
-import com.fishsunny.assistant.engine.tool.service.satellite.service.SatelliteBridgeService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import org.slf4j.Logger;
@@ -47,20 +45,17 @@ public class ComfyUISubAgentTool implements SubAgentComponent, MultimodalResultA
     private final AISettings missionAISettings;
     private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
-    private final SatelliteBridgeService bridgeService;
     private final SessionFileManager sessionFileManager;
 
     public ComfyUISubAgentTool(ObjectMapper objectMapper,
                                 @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                                 EasyReActProcessor easyReActProcessor,
                                 @Lazy ToolExecutor toolExecutor,
-                                SatelliteBridgeService bridgeService,
                                 SessionFileManager sessionFileManager) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;
         this.easyReActProcessor = easyReActProcessor;
         this.toolExecutor = toolExecutor;
-        this.bridgeService = bridgeService;
         this.sessionFileManager = sessionFileManager;
     }
 
@@ -75,21 +70,15 @@ public class ComfyUISubAgentTool implements SubAgentComponent, MultimodalResultA
     @Override
     public ToolExecutor.ToolExecuteResponse action(SubAgentComponent.SubAgentArguments arguments, Map<String, Object> context)
             throws ToolExecutor.ToolExecuteException {
-        // 获取 session ID
-        String sessionId = null;
-        if (context.get("chatSession") instanceof ChatSession cs) {
-            sessionId = cs.getId();
-        }
-
         try {
             // ========== 收集器 ==========
             List<String> generatedFiles = new ArrayList<>();
 
             EasyReActProcessor.ToolResultHook hook = (roundResults, aiText) -> {
                 for (EasyReActProcessor.RoundResult r : roundResults) {
-                    // 从 generate 结果中提取 output 文件名
+                    // 从 generate 结果中提取已拉回本机的图片引用
                     if (ComfyUIGenerateTool.NAME.equals(r.toolName())) {
-                        extractFilenames(r.result(), generatedFiles);
+                        extractFiles(r.result(), generatedFiles);
                     }
                 }
                 return true;
@@ -114,7 +103,7 @@ public class ComfyUISubAgentTool implements SubAgentComponent, MultimodalResultA
 
             // ========== 拉取图片并存到 session ==========
             boolean raw = resolveRaw(arguments.getExtension());
-            List<GeneratedImage> images = fetchImages(generatedFiles, sessionId, raw);
+            List<GeneratedImage> images = fetchImages(generatedFiles, raw);
 
             // ========== 组装返回 ==========
             return assembleResponse(finalReport, images, raw);
@@ -127,13 +116,18 @@ public class ComfyUISubAgentTool implements SubAgentComponent, MultimodalResultA
 
     // ==================== 图片处理 ====================
 
-    /** 从 generate 返回的 JSON 中提取 output 文件名 */
-    private void extractFilenames(String generateResult, List<String> out) {
+    /** 从 generate 返回的 JSON 中提取已拉回本机的文件引用 */
+    private void extractFiles(String generateResult, List<String> out) {
         try {
-            HistoryEntry entry = objectMapper.readValue(generateResult, HistoryEntry.class);
-            out.addAll(entry.collectFilenames());
+            JsonNode node = objectMapper.readTree(generateResult);
+            JsonNode files = node.get("files");
+            if (files != null && files.isArray()) {
+                for (JsonNode file : files) {
+                    out.add(file.asText());
+                }
+            }
         } catch (Exception e) {
-            log.warn("解析 generate 结果提取文件名失败: {}", e.getMessage());
+            log.warn("解析 generate 结果提取文件失败: {}", e.getMessage());
         }
     }
 
@@ -160,32 +154,33 @@ public class ComfyUISubAgentTool implements SubAgentComponent, MultimodalResultA
         }
     }
 
-    /** 从 ComfyUI 拉取生成图。raw=false 立即落盘记录引用；raw=true 保留 base64 供多模态返回 */
-    private List<GeneratedImage> fetchImages(List<String> filenames, String sessionId, boolean raw) {
+    /**
+     * generate 工具已把图片拉回会话目录，这里只按 files 引用整理：
+     * raw=false 直接用引用拼 markdown；raw=true 读字节转 base64，交给多模态返回。
+     */
+    private List<GeneratedImage> fetchImages(List<String> files, boolean raw) {
         List<GeneratedImage> images = new ArrayList<>();
-        if (filenames.isEmpty() || sessionId == null) return images;
+        if (files.isEmpty()) {
+            return images;
+        }
 
-        for (String fname : filenames) {
+        for (String file : files) {
             try {
-                String paramsJson = objectMapper.writeValueAsString(
-                        Map.of("filename", fname, "type", "output"));
-                String viewResult = bridgeService.sendCommand("view", paramsJson);
-                ViewImageResult vr = objectMapper.readValue(viewResult, ViewImageResult.class);
-
-                String base64 = vr.getBase64();
-                if (!StringUtils.hasText(base64)) continue;
-
+                String fileName = file.substring(file.lastIndexOf(':') + 1);
+                if (!StringUtils.hasText(fileName)) {
+                    continue;
+                }
                 if (raw) {
-                    // 只给出会话内文件名，落盘由 MultimodalResultAble 统一处理
-                    images.add(new GeneratedImage(fname, base64, null));
+                    byte[] bytes = sessionFileManager.readSessionFile(file);
+                    if (bytes == null || bytes.length == 0) {
+                        continue;
+                    }
+                    images.add(new GeneratedImage(fileName, Base64.getEncoder().encodeToString(bytes), null));
                 } else {
-                    byte[] bytes = Base64.getDecoder().decode(base64);
-                    String ref = sessionFileManager.writeSessionFile(sessionId, fname, bytes);
-                    images.add(new GeneratedImage(fname, null, ref));
-                    log.info("图片已保存: {}", ref);
+                    images.add(new GeneratedImage(fileName, null, file));
                 }
             } catch (Exception e) {
-                log.warn("拉取图片失败 [{}]: {}", fname, e.getMessage());
+                log.warn("读取生成图失败 [{}]: {}", file, e.getMessage());
             }
         }
         return images;
@@ -224,7 +219,7 @@ public class ComfyUISubAgentTool implements SubAgentComponent, MultimodalResultA
                 你是一个 ComfyUI 图像生成助手。接收生图需求，完成全流程。
 
                 ## 工具
-                - **comfyui_resources** — 查询可用模型、LoRA、VAE、采样器、调度器。**生图前必须先调用。**
+                - **comfyui_resources** — 查询可用模型清单、采样器、调度器。**生图前必须先调用。**
                 - **comfyui_workflow** — 管理工作流文件。支持 list（列出可用工作流）和 detail（获取工作流详情）。
                 - **comfyui_generate** — 提交 workflow JSON 执行生图，自动等待完成。
 
@@ -239,6 +234,9 @@ public class ComfyUISubAgentTool implements SubAgentComponent, MultimodalResultA
 
                 ## 输出格式
                 "✅ 生成成功 — 模型: xxx, 种子: 42"
+
+                ## 图片说明
+                生成图由工具自动回传到上一层对话，你自己看不到图片内容，也不需要额外输出 markdown 图片路径或文件链接，文字汇报即可。
 
                 ## 严禁
                 - 编造模型名称
