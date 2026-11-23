@@ -13,7 +13,7 @@ import com.fishsunny.assistant.engine.tool.framework.SubAgentComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.plug.comfyui.dto.HistoryEntry;
 import com.fishsunny.assistant.plug.comfyui.dto.ViewImageResult;
-import com.fishsunny.assistant.satellite.service.SatelliteBridgeService;
+import com.fishsunny.assistant.engine.tool.service.satellite.service.SatelliteBridgeService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import org.slf4j.Logger;

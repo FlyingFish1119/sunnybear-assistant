@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.satellite.service;
+package com.fishsunny.assistant.engine.tool.service.satellite.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -9,10 +9,9 @@ import com.fishsunny.assistant.engine.tool.instance.os.ExtensionScriptTool;
 import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
 import com.fishsunny.assistant.engine.tool.service.background.BridgeTaskChannel;
 import com.fishsunny.assistant.engine.tool.service.background.CommandTaskRegistry;
-import com.fishsunny.assistant.satellite.dto.ExecResult;
+import com.fishsunny.assistant.engine.tool.service.satellite.dto.ExecResult;
 import com.fishsunny.assistant.utils.SessionFileManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -62,10 +61,9 @@ import java.util.stream.Collectors;
  * <p>
  * 连接断开时，该连接上的所有在途命令立即以异常完成，不再空等命令超时。
  */
+@Slf4j
 @Component
 public class SatelliteBridgeService extends TextWebSocketHandler implements BridgeTaskChannel {
-
-    private static final Logger log = LoggerFactory.getLogger(SatelliteBridgeService.class);
 
     /** cancel_task 送达等待上限（秒）：取消是轻量命令，不该占用完整 commandTimeout */
     private static final int CANCEL_TIMEOUT_S = 10;

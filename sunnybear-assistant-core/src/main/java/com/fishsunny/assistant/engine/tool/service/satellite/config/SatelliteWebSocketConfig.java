@@ -1,6 +1,6 @@
-package com.fishsunny.assistant.satellite.config;
+package com.fishsunny.assistant.engine.tool.service.satellite.config;
 
-import com.fishsunny.assistant.satellite.service.SatelliteBridgeService;
+import com.fishsunny.assistant.engine.tool.service.satellite.service.SatelliteBridgeService;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;

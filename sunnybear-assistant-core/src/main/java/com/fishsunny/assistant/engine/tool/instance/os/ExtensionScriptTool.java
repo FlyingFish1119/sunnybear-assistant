@@ -21,7 +21,7 @@ import com.fishsunny.assistant.engine.tool.instance.os.executor.SatelliteScriptE
 import com.fishsunny.assistant.engine.tool.instance.os.executor.ScriptExecutor;
 import com.fishsunny.assistant.engine.tool.service.extension.ExtensionScriptMeta;
 import com.fishsunny.assistant.engine.tool.service.extension.ExtensionScriptService;
-import com.fishsunny.assistant.satellite.service.SatelliteBridgeService;
+import com.fishsunny.assistant.engine.tool.service.satellite.service.SatelliteBridgeService;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;

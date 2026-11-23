@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.satellite.config;
+package com.fishsunny.assistant.engine.tool.service.satellite.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;

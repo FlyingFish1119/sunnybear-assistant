@@ -4,7 +4,7 @@ import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
-import com.fishsunny.assistant.satellite.service.SatelliteBridgeService;
+import com.fishsunny.assistant.engine.tool.service.satellite.service.SatelliteBridgeService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 
 import java.util.List;

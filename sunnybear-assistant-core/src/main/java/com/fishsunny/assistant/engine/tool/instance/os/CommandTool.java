@@ -21,7 +21,7 @@ import com.fishsunny.assistant.engine.tool.instance.os.executor.LocalCommandExec
 import com.fishsunny.assistant.engine.tool.instance.os.executor.SatelliteCommandExecutor;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
-import com.fishsunny.assistant.satellite.service.SatelliteBridgeService;
+import com.fishsunny.assistant.engine.tool.service.satellite.service.SatelliteBridgeService;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;

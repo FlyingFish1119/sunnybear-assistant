@@ -1,4 +1,4 @@
-package com.fishsunny.assistant.satellite.dto;
+package com.fishsunny.assistant.engine.tool.service.satellite.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
