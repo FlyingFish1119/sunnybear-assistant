@@ -16,11 +16,12 @@ import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
-import com.fishsunny.assistant.engine.tool.service.background.BackgroundToolResponseBus;
-import com.fishsunny.assistant.engine.tool.service.background.CommandTaskRegistry;
+import com.fishsunny.assistant.engine.tool.instance.os.executor.CommandExecutor;
+import com.fishsunny.assistant.engine.tool.instance.os.executor.LocalCommandExecutor;
+import com.fishsunny.assistant.engine.tool.instance.os.executor.SatelliteCommandExecutor;
 import com.fishsunny.assistant.engine.tool.service.security.SecurityService;
 import com.fishsunny.assistant.engine.tool.service.security.ReviewResult;
-import com.fishsunny.assistant.utils.SessionFileManager;
+import com.fishsunny.assistant.satellite.service.SatelliteBridgeService;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -28,28 +29,21 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketSession;
 
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.*;
 
 /**
  * 命令行工具
  * 要求 dependency 参数传入一个 WebSocketSession 对象
+ * <p>
+ * 只负责安全闸门（黑白名单 / AI 审查 / 用户确认）与执行路由：
+ * 本机执行细节归 {@link LocalCommandExecutor}，卫星机执行细节归 {@link SatelliteCommandExecutor}。
+ * </p>
  */
 @ToolKitComponent(OSToolKit.class)
 @ConditionalOnExpression("${engine.tool.os.enable:true} && ${engine.tool.os.command.enable:true}")
 public class CommandTool implements ToolHandler {
-
-    private static final ExecutorService EXECUTOR_SERVICE = Executors.newVirtualThreadPerTaskExecutor();
 
     public static final String AUTO = "auto";
     public static final String ALWAYS_ASKED = "alwaysAsked";
@@ -58,6 +52,12 @@ public class CommandTool implements ToolHandler {
 
     public static final String NAME = "command_tool";
     public static final String SETTINGS = "command_tool_settings";
+
+    /** 默认命令执行超时时间（秒）：Settings 默认值与卫星机等待窗口兜底共用 */
+    public static final int DEFAULT_TIMEOUT_SECONDS = 10;
+
+    /** 默认最大输出大小限制（字节） */
+    private static final long DEFAULT_MAX_OUTPUT_SIZE = 32768L;
 
     /** auto 模式下的安全命令白名单（Windows），命中则跳过 AI 判断直接执行 */
     private static final List<String> DEFAULT_WHITE_LIST_WINDOWS = List.of(
@@ -94,6 +94,9 @@ public class CommandTool implements ToolHandler {
             "mount", "umount", "mkswap", "swapon"
     );
 
+    /** 当前操作系统是否为 Windows（splitCommands 判断 ; 是否为命令分隔符用） */
+    private static final boolean IS_WINDOWS = System.getProperty("os.name").toLowerCase().contains("win");
+
     /** 获取当前平台的默认白名单 */
     private static List<String> getDefaultWhiteList() {
         return IS_WINDOWS ? DEFAULT_WHITE_LIST_WINDOWS : DEFAULT_WHITE_LIST_LINUX;
@@ -104,62 +107,26 @@ public class CommandTool implements ToolHandler {
         return IS_WINDOWS ? DEFAULT_BLACK_LIST_WINDOWS : DEFAULT_BLACK_LIST_LINUX;
     }
 
-    /** 获取当前平台的 Shell 命令行前缀 */
-    private static String[] getShell() {
-        return IS_WINDOWS ? WINDOWS_SHELL : LINUX_SHELL;
-    }
-
-    /** 获取当前平台 Shell 名称（用于提示信息） */
-    private static String getShellName() {
-        return IS_WINDOWS ? "cmd.exe" : "bash";
-    }
-
-    /** 获取当前平台操作系统名称 */
-    private static String getOsName() {
-        return IS_WINDOWS ? "Windows" : "Linux";
-    }
-
-    /** 用户确认等待超时时间（毫秒） */
-    private static final int CONFIRM_TIMEOUT_MS = 30 * 1000;
-
-    /** 轮询用户确认状态的间隔（毫秒） */
-    private static final int POLL_INTERVAL_MS = 100;
-
-    /** 默认命令执行超时时间（秒） */
-    private static final int DEFAULT_TIMEOUT_SECONDS = 10;
-
-    /** 默认最大输出大小限制（字节） */
-    private static final long DEFAULT_MAX_OUTPUT_SIZE = 32768L;
-
-    /** 当前操作系统是否为 Windows */
-    private static final boolean IS_WINDOWS = System.getProperty("os.name").toLowerCase().contains("win");
-
-    /** Windows 命令行前缀 */
-    private static final String[] WINDOWS_SHELL = {"cmd.exe", "/c"};
-
-    /** Linux/Mac 命令行前缀 */
-    private static final String[] LINUX_SHELL = {"bash", "-c"};
-
     private final ObjectMapper objectMapper;
     private final Settings settings;
     private final SecurityService securityService;
-    private final SessionFileManager sessionFileManager;
-    private final BackgroundToolResponseBus backgroundToolResponseBus;
-    private final CommandTaskRegistry commandTaskRegistry;
+    private final SatelliteBridgeService satelliteBridgeService;
+    private final LocalCommandExecutor localCommandExecutor;
+    private final SatelliteCommandExecutor satelliteCommandExecutor;
 
     public CommandTool(ObjectMapper objectMapper,
                        @Qualifier(SETTINGS) Settings settings,
                        SecurityService securityService,
-                       SessionFileManager sessionFileManager,
-                       BackgroundToolResponseBus backgroundToolResponseBus,
-                       CommandTaskRegistry commandTaskRegistry
+                       SatelliteBridgeService satelliteBridgeService,
+                       LocalCommandExecutor localCommandExecutor,
+                       SatelliteCommandExecutor satelliteCommandExecutor
                        ) {
         this.objectMapper = objectMapper;
         this.settings = settings;
         this.securityService = securityService;
-        this.sessionFileManager = sessionFileManager;
-        this.backgroundToolResponseBus = backgroundToolResponseBus;
-        this.commandTaskRegistry = commandTaskRegistry;
+        this.satelliteBridgeService = satelliteBridgeService;
+        this.localCommandExecutor = localCommandExecutor;
+        this.satelliteCommandExecutor = satelliteCommandExecutor;
     }
 
     @Override
@@ -203,77 +170,27 @@ public class CommandTool implements ToolHandler {
                     throw new ToolExecutor.ToolExecuteException("Command 工具的模式设置错误[" + settings.getMode() +"]，导致该工具无法执行");
             }
 
-            // ======================== 后台执行模式 ========================
-            if (Boolean.TRUE.equals(arguments.getBackground())) {
-                return executeInBackground(arguments.getCommand(), context);
-            }
-
-            // ======================== 前台执行模式 ========================
+            // ======================== 执行分流 ========================
+            // 安全闸门（黑白名单 / AI 审查 / 用户确认）已按同一标准过完；
+            // 指定 device 时命令经卫星桥接在该机器上执行，本机路径不受影响
             ChatSession chatSession = (ChatSession) context.get("chatSession");
             String sessionId = chatSession.getId();
-            String fileName = "command_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS")) + ".log";
-            // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层；路径约定由 OSToolKit 管理
-            String logRelPath = OSToolKit.buildLogRelativePath(fileName);
-            Path logFile;
-            try {
-                logFile = sessionFileManager.prepareSessionFile(sessionId, logRelPath);
-            } catch (IOException e) {
-                throw new ToolExecutor.ToolExecuteException("无法创建命令输出目录: " + e.getMessage());
-            }
+            boolean background = Boolean.TRUE.equals(arguments.getBackground());
+            CommandExecutor executor = StringUtils.hasText(arguments.getDevice())
+                    ? satelliteCommandExecutor
+                    : localCommandExecutor;
+            String result = executor.execute(arguments.getCommand(), background, arguments.getDevice(), sessionId);
+            return new ToolExecutor.ToolExecuteResponse(name(), result);
 
-            String[] shell = getShell();
-            ProcessBuilder processBuilder = new ProcessBuilder(shell[0], shell[1], arguments.getCommand());
-            processBuilder.redirectErrorStream(true);
-            Process process = processBuilder.start();
-
-            // 输出一边进内存（封顶，避免长期跑的命令撑爆堆），一边实时落盘。
-            // 落盘使超时后可以直接把管道交给后台，不需要事后重建日志。
-            Future<OSToolKit.CapturedOutput> future = EXECUTOR_SERVICE.submit(
-                    () -> OSToolKit.readToFile(logFile, process, resolveMemoryCap()));
-
-            OSToolKit.CapturedOutput output;
-            try {
-                output = future.get(settings.getTimeout(), TimeUnit.SECONDS);
-            } catch (TimeoutException e) {
-                // 超时不杀进程：命令常常还在正常干活（编译、装依赖、跑服务），
-                // 杀掉既丢结果，又会让 AI 误判失败而重跑一遍，制造端口/文件锁冲突。
-                if (!future.isDone()) {
-                    String taskId = watchBackgroundFinish(future, process, sessionId, arguments.getCommand(), logFile, logRelPath);
-                    return new ToolExecutor.ToolExecuteResponse(name(),
-                            buildTimeoutToBackgroundMessage(settings.getTimeout(), logRelPath, taskId));
-                }
-                output = future.get();
-            }
-
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                String message = "命令执行失败，退出码：" + exitCode + "，输出：" + output.text();
-                if (output.truncated()) {
-                    message += "\n（输出过长已截断，完整输出见会话文件："
-                            + SessionFileManager.buildSessionMarker(logRelPath) + "）";
-                } else {
-                    discardQuietly(logFile);
-                }
-                throw new ToolExecutor.ToolExecuteException(message);
-            }
-
-            // 输出限制检查：超限不再报错中断，日志文件本来就有全量输出，
-            // 直接给标记由 AI 自行决定是否读取
-            Long maxSize = settings.getMaxOutputSize();
-            if (maxSize != null && maxSize > 0 && output.totalBytes() > maxSize) {
-                return oversizeResponse(logRelPath, output.totalBytes(), maxSize);
-            }
-
-            discardQuietly(logFile);
-            return new ToolExecutor.ToolExecuteResponse(name(), output.text());
-
+        } catch (ToolExecutor.ToolExecuteException e) {
+            throw e;
         } catch (Exception e) {
             throw new ToolExecutor.ToolExecuteException(e.getMessage());
         }
     }
 
     /**
-     * 按 shell 的元字符（&amp;&amp;, ||, &amp;, |, ;）拆分子命令。
+     * 按 shell 的元字符（&&, ||, &, |, ;）拆分子命令。
      * 仅当元字符位于双引号之外时才作为分隔符，避免误拆引号内的内容。
      * Linux 下额外支持 ; 作为命令分隔符。
      */
@@ -417,256 +334,6 @@ public class CommandTool implements ToolHandler {
         securityService.ask(NAME, message, null, context);
     }
 
-    /** 内存累积上限：等于输出上限，没配就退回默认值，超出部分只落盘不占堆 */
-    private long resolveMemoryCap() {
-        Long max = settings.getMaxOutputSize();
-        return max != null && max > 0 ? max : DEFAULT_MAX_OUTPUT_SIZE;
-    }
-
-    /**
-     * 前台超时后，在后台等命令真正跑完，把退出码与日志尾部投递回对话。
-     * <p>
-     * 只做「等结果 + 投递」，不去碰进程：不 destroy、不 cancel。
-     * 读取输出的任务跑完即代表 stdout 已关闭、进程即将或已经退出。
-     * </p>
-     * <p>
-     * 从超时那一刻起这条命令就算「后台任务」了，同步登记进 {@link CommandTaskRegistry}，
-     * 面板上立刻能看到进度、也能被手动结束。
-     * </p>
-     *
-     * @param future     读取输出的任务
-     * @param process    仍在运行的子进程
-     * @param sessionId  会话 id
-     * @param command    原始命令
-     * @param logFile    输出日志文件
-     * @param logRelPath 日志相对会话文件目录的路径（{@code logs/xxx.log}）
-     */
-    private String watchBackgroundFinish(Future<OSToolKit.CapturedOutput> future, Process process,
-                                       String sessionId, String command, Path logFile, String logRelPath) {
-        CommandTaskRegistry.RunningTask task = commandTaskRegistry.register(
-                sessionId, CommandTaskRegistry.TaskType.COMMAND, command, logRelPath, process);
-        // 异步收尾里要用 id 摘任务，先在此处（同步路径）取好，顺手回给模型拿去 wait
-        final String taskId = task == null ? null : task.getId();
-        EXECUTOR_SERVICE.submit(() -> {
-            Integer exitCode = null;
-            String failure = null;
-            try {
-                future.get();
-                exitCode = process.waitFor();
-            } catch (Exception e) {
-                failure = e.getMessage();
-            } finally {
-                // 被手动结束的任务已经提前摘过一次，这里再摘是幂等空操作
-                commandTaskRegistry.finish(taskId);
-            }
-            boolean killed = task != null && task.getKilled().get();
-            if (killed) {
-                OSToolKit.appendFooter(logFile, "命令已被用户手动结束");
-            } else if (failure != null) {
-                OSToolKit.appendFooter(logFile, "命令执行异常: " + failure);
-            } else {
-                OSToolKit.appendFooter(logFile, "命令执行完成，退出码: " + exitCode);
-            }
-            notifyBackgroundFinish(sessionId, command, logFile, logRelPath, exitCode, failure, killed);
-            return null;
-        });
-        return taskId;
-    }
-
-    /**
-     * 超时转后台时回给模型的说明。
-     * <p>
-     * 措辞重点是「命令仍在跑，别重跑」——超时报错最容易诱使模型把同一条命令再敲一遍，
-     * 于是端口被占、文件被锁、编译互相打架。这里把状态讲清楚，并把日志路径交出去。
-     * 同时把后台任务 id 交出去，模型可用 wait_flow_tool 的 eventId 等它结束。
-     * </p>
-     */
-    private String buildTimeoutToBackgroundMessage(long timeoutSeconds, String logRelPath, String taskId) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("命令执行时间已超过 ").append(timeoutSeconds).append(" 秒，进程没有被终止，已自动转入后台继续运行。\n")
-                .append("输出日志文件: ").append(SessionFileManager.buildSessionMarker(logRelPath)).append("\n");
-        if (StringUtils.hasText(taskId)) {
-            sb.append("后台任务 ID: ").append(taskId).append("\n")
-                    .append("> 可用 wait_flow_tool 的 eventId 填这个 ID 等待任务结束。\n");
-        }
-        sb.append("> 请勿重复执行这条命令。想看进度用 file_read_tool 读取该日志文件；"
-                + "命令结束后退出码与日志尾部会自动投递到本条对话。");
-        return sb.toString();
-    }
-
-    /**
-     * 输出超过限制时的提示：日志文件里本来就有全量输出，直接给模型侧标记，不再二次写文件。
-     *
-     * @param logRelPath 日志相对会话文件目录的路径（{@code logs/xxx.log}）
-     * @param outputSize 输出字节数
-     * @param limitSize  输出上限字节数
-     * @return 携带落盘标记的提示响应
-     */
-    private ToolExecutor.ToolExecuteResponse oversizeResponse(String logRelPath, long outputSize, long limitSize) {
-        String marker = SessionFileManager.buildSessionMarker(logRelPath);
-        String message = "命令输出过大（" + ToolKit.formatSize(outputSize) + "，超过上限 "
-                + ToolKit.formatSize(limitSize) + "），已保存到会话文件：" + marker
-                + "。如需查看完整输出，请用 file_read_tool 读取该文件。";
-        return new ToolExecutor.ToolExecuteResponse(name(), message);
-    }
-
-    /** 正常收尾时清掉临时日志文件；清不掉也无所谓，残留文件不影响任何逻辑 */
-    private void discardQuietly(Path logFile) {
-        try {
-            Files.deleteIfExists(logFile);
-        } catch (IOException ignored) {
-            // 忽略清理失败
-        }
-    }
-
-    /**
-     * 后台执行命令：将命令放入守护线程执行，输出以追加模式写入 session/file 目录。
-     * <p>
-     * 后台模式特点：
-     * <ul>
-     *   <li>无超时限制 —— 命令可以运行任意长时间</li>
-     *   <li>无输出大小限制 —— 输出直接写入文件，不经过内存缓存</li>
-     *   <li>输出实时写入 —— 使用流式读取，每读取到数据立即 flush 到文件</li>
-     *   <li>返回文件路径 —— AI 可通过 session_file_tool 或 file_read_tool 查看输出</li>
-     * </ul>
-     * </p>
-     *
-     * @param command 要执行的命令
-     * @param context 工具上下文（用于获取 sessionId）
-     * @return 包含日志文件路径的响应
-     */
-    private ToolExecutor.ToolExecuteResponse executeInBackground(String command, Map<String, Object> context) throws Exception {
-        // action 已声明 chatSession 依赖（@ToolIncludeContext），此处直接取用
-        ChatSession chatSession = (ChatSession) context.get("chatSession");
-        String sessionId = chatSession.getId();
-
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS"));
-        String fileName = "command_" + timestamp + ".log";
-        // 日志统一落在会话文件目录的 logs/ 下，不跟用户自己的文件混在顶层；路径约定由 OSToolKit 管理
-        String logRelPath = OSToolKit.buildLogRelativePath(fileName);
-        Path logFile;
-        try {
-            logFile = sessionFileManager.prepareSessionFile(sessionId, logRelPath);
-        } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("无法创建后台输出目录: " + e.getMessage());
-        }
-
-        String shellName = getShellName();
-        String osName = getOsName();
-
-        // 先写入文件头
-        try (BufferedWriter headerWriter = Files.newBufferedWriter(logFile, StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-            headerWriter.write("=== 后台命令执行日志 ===");
-            headerWriter.newLine();
-            headerWriter.write("启动时间: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-            headerWriter.newLine();
-            headerWriter.write("Shell: " + shellName + " (" + osName + ")");
-            headerWriter.newLine();
-            headerWriter.write("命令: " + command);
-            headerWriter.newLine();
-            headerWriter.write("日志文件: " + SessionFileManager.buildSessionMarker(logRelPath));
-            headerWriter.newLine();
-            headerWriter.write("=".repeat(60));
-            headerWriter.newLine();
-            headerWriter.newLine();
-            headerWriter.flush();
-        } catch (IOException e) {
-            throw new ToolExecutor.ToolExecuteException("无法写入后台日志文件 [" + SessionFileManager.buildSessionMarker(logRelPath) + "]: " + e.getMessage());
-        }
-
-
-        // 启动进程与登记都放在调用线程里同步完成：进程 start 是毫秒级、失败能当场报错，
-        // 更重要的是返回文案时这个 id 一定已经在登记表里 —— 模型紧接着用 wait_flow_tool 的
-        // eventId 等它，不会撞上「守护线程还没登记」而按「查不到即完成」被误判成已结束。
-        // 守护线程只负责流式写日志、等退出、收尾投递。
-        String[] shell = getShell();
-        ProcessBuilder processBuilder = new ProcessBuilder(shell[0], shell[1], command);
-        processBuilder.redirectErrorStream(true);
-        Process process;
-        try {
-            process = processBuilder.start();
-        } catch (Exception e) {
-            throw new ToolExecutor.ToolExecuteException("无法启动后台命令: " + e.getMessage());
-        }
-        CommandTaskRegistry.RunningTask task = commandTaskRegistry.register(
-                sessionId, CommandTaskRegistry.TaskType.COMMAND, command, logRelPath, process);
-        final String taskId = task == null ? null : task.getId();
-
-        Thread backgroundThread = new Thread(() -> {
-            Integer exitCode = null;
-            String failure = null;
-            try {
-                OSToolKit.writeLog(logFile, process);
-                exitCode = process.waitFor();
-            } catch (Exception e) {
-                failure = e.getMessage();
-            } finally {
-                // 被手动结束的任务已经提前摘过一次，这里再摘是幂等空操作
-                commandTaskRegistry.finish(taskId);
-            }
-
-            boolean killed = task != null && task.getKilled().get();
-            if (killed) {
-                OSToolKit.appendFooter(logFile, "命令已被用户手动结束");
-            } else if (failure != null) {
-                OSToolKit.appendFooter(logFile, "命令执行异常: " + failure);
-            } else {
-                OSToolKit.appendFooter(logFile, "命令执行完成，退出码: " + exitCode);
-            }
-            // 成功或异常都要收尾投递：等下一次「有消息落地」的时机挂进对话
-            notifyBackgroundFinish(sessionId, command, logFile, logRelPath, exitCode, failure, killed);
-        }, "command-bg-" + timestamp);
-
-        backgroundThread.setDaemon(true);
-        backgroundThread.start();
-
-        StringBuilder message = new StringBuilder("命令已在后台启动执行。\n");
-        if (StringUtils.hasText(taskId)) {
-            message.append("后台任务 ID: ").append(taskId).append("\n");
-        }
-        message.append("输出日志文件: ").append(SessionFileManager.buildSessionMarker(logRelPath)).append("\n")
-                .append("> 提示：使用 file_read_tool 读取日志文件内容查看命令输出。")
-                .append("命令执行完成后，日志末尾会写入退出码和结束时间。\n");
-        if (StringUtils.hasText(taskId)) {
-            message.append("> 可用 wait_flow_tool 的 eventId 填这个 ID 等待任务结束；\n");
-        }
-        message.append("> 命令执行完成后，结果会自动投递到本条对话，无需原地等待，可以先去处理别的事情。");
-
-        return new ToolExecutor.ToolExecuteResponse(name(), message.toString());
-    }
-
-    /**
-     * 后台命令收尾后投递结果到后台总线。
-     * <p>
-     * 投递内容 = 退出码/异常 + 命令原文 + 日志路径 + 日志尾部：总线会在下一次「有消息落地」的
-     * 时机把它作为追加文本块挂进对话，模型和用户不用再主动翻日志就知道后台跑完了。
-     *
-     * @param sessionId  启动后台任务时捕获的会话 id（异步线程里 context 早已出栈，只能在此前捕获）
-     * @param command    原始命令
-     * @param logFile    输出日志文件
-     * @param logRelPath 日志相对会话文件目录的路径（{@code logs/xxx.log}）
-     * @param exitCode   退出码；执行异常时为 null
-     * @param failure    异常信息；正常结束时为 null
-     * @param killed     是否由用户从面板手动结束
-     */
-    private void notifyBackgroundFinish(String sessionId, String command, Path logFile, String logRelPath,
-                                        Integer exitCode, String failure, boolean killed) {
-        StringBuilder text = new StringBuilder();
-        if (killed) {
-            // 手动结束和「自己失败」必须区分开：退出码 1 那种写法会让人以为是命令本身出了问题
-            text.append("命令已被用户手动结束");
-        } else if (failure != null) {
-            text.append("命令执行异常: ").append(failure);
-        } else {
-            text.append("命令执行完成，退出码: ").append(exitCode);
-        }
-        text.append("\n命令: ").append(command);
-        text.append("\n日志文件: ").append(SessionFileManager.buildSessionMarker(logRelPath));
-
-        backgroundToolResponseBus.post(sessionId, name(), text.toString());
-    }
-
     @Override
     public String name() {
         return NAME;
@@ -684,11 +351,15 @@ public class CommandTool implements ToolHandler {
         return new ToolRegister()
                 .setName(NAME)
                 .setDescription("在终端中执行命令。" + modeDesc + "命令超过超时时间会自动转入后台继续执行。"
-                        + "转入后台时会返回一个后台任务 ID，可用 wait_flow_tool 的 eventId 等它结束。" + buildLimitDescription())
+                        + "转入后台时会返回一个后台任务 ID，可用 wait_flow_tool 的 eventId 等它结束。" + buildLimitDescription()
+                        + " 指定 device 时命令在卫星机上以该机器的默认 shell（Windows cmd.exe /c，Linux bash -c）执行。")
                 .setRequired(List.of("command"))
                 .setParameters(List.of(
                         new ToolRegister.Parameters("command", "string", "你准备执行的命令"),
-                        new ToolRegister.Parameters("background", "boolean", "设为 true 后台执行（无超时限制），适合长时间任务。输出写入日志文件；返回后台任务 ID 可供 wait_flow_tool 的 eventId 等待。")
+                        new ToolRegister.Parameters("background", "boolean", "设为 true 后台执行（无超时限制），适合长时间任务。输出写入日志文件；返回后台任务 ID 可供 wait_flow_tool 的 eventId 等待。"),
+                        new ToolRegister.Parameters("device", "string",
+                                "在指定卫星机上执行，填卫星机 deviceId；缺省在本机执行。当前在线："
+                                        + satelliteBridgeService.onlineDevices())
                 ));
     }
 
@@ -708,6 +379,8 @@ public class CommandTool implements ToolHandler {
         private String command;
         /** 设为 true 时命令在后台执行：无超时限制、无输出大小限制，输出以追加模式写入 session/file 目录下的日志文件 */
         private Boolean background;
+        /** 卫星机 deviceId：非空时命令经桥接在该卫星机上执行 */
+        private String device;
     }
 
     @Data
@@ -746,4 +419,3 @@ public class CommandTool implements ToolHandler {
         }
     }
 }
-

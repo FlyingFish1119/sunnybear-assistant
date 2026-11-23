@@ -16,14 +16,18 @@ import com.fishsunny.assistant.engine.tool.framework.*;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolIncludeContext;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.instance.OSToolKit;
+import com.fishsunny.assistant.engine.tool.instance.os.executor.LocalScriptExecutor;
+import com.fishsunny.assistant.engine.tool.instance.os.executor.SatelliteScriptExecutor;
+import com.fishsunny.assistant.engine.tool.instance.os.executor.ScriptExecutor;
+import com.fishsunny.assistant.engine.tool.service.extension.ExtensionScriptMeta;
 import com.fishsunny.assistant.engine.tool.service.extension.ExtensionScriptService;
+import com.fishsunny.assistant.satellite.service.SatelliteBridgeService;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.util.StringUtils;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -33,6 +37,10 @@ import java.util.Map;
  * 脚本为 .yaml/.yml 格式，包含元数据（name、description、type、parameters、script），
  * 脚本体中可用 {{paramName}} 引用参数。
  * </p>
+ * <p>
+ * 只负责脚本查找与执行路由：本机执行细节归 {@link LocalScriptExecutor}，
+ * 卫星机执行细节归 {@link SatelliteScriptExecutor}。
+ * </p>
  */
 @ToolKitComponent(OSToolKit.class)
 @ConditionalOnExpression("${engine.tool.os.enable:true} && ${engine.tool.os.extension-script.enable:true}")
@@ -41,8 +49,8 @@ public class ExtensionScriptTool implements ToolHandler {
     public static final String NAME = "extension_script_tool";
     public static final String SETTINGS = "extension_script_tool_settings";
 
-    /** 默认脚本执行超时时间（秒） */
-    private static final long DEFAULT_TIMEOUT_SECONDS = 30;
+    /** 默认脚本执行超时时间（秒）：Settings 默认值与卫星机等待窗口兜底共用 */
+    public static final long DEFAULT_TIMEOUT_SECONDS = 30;
 
     /** 默认最大输出大小限制（字节） */
     private static final long DEFAULT_MAX_OUTPUT_SIZE = 65536L;
@@ -50,13 +58,22 @@ public class ExtensionScriptTool implements ToolHandler {
     private final ObjectMapper objectMapper;
     private final ExtensionScriptService extensionScriptService;
     private final Settings settings;
+    private final SatelliteBridgeService satelliteBridgeService;
+    private final LocalScriptExecutor localScriptExecutor;
+    private final SatelliteScriptExecutor satelliteScriptExecutor;
 
     public ExtensionScriptTool(ObjectMapper objectMapper,
                                ExtensionScriptService extensionScriptService,
-                               @Qualifier(SETTINGS) Settings settings) {
+                               @Qualifier(SETTINGS) Settings settings,
+                               SatelliteBridgeService satelliteBridgeService,
+                               LocalScriptExecutor localScriptExecutor,
+                               SatelliteScriptExecutor satelliteScriptExecutor) {
         this.objectMapper = objectMapper;
         this.extensionScriptService = extensionScriptService;
         this.settings = settings;
+        this.satelliteBridgeService = satelliteBridgeService;
+        this.localScriptExecutor = localScriptExecutor;
+        this.satelliteScriptExecutor = satelliteScriptExecutor;
     }
 
     @Override
@@ -68,34 +85,16 @@ public class ExtensionScriptTool implements ToolHandler {
                 throw new ToolExecutor.ToolExecuteException("参数 scriptName 不能为空");
             }
 
-            String result;
+            ExtensionScriptMeta meta = extensionScriptService.requireScript(arguments.getScriptName());
             Map<String, Object> params = arguments.getArguments() == null ? Map.of() : arguments.getArguments();
-            if (Boolean.TRUE.equals(arguments.getBackground())) {
-                ChatSession chatSession = (ChatSession) context.get("chatSession");
-                result = extensionScriptService.runScriptAsync(arguments.getScriptName(), params, chatSession.getId());
-            } else {
-                ChatSession chatSession = (ChatSession) context.get("chatSession");
-                Long maxSize = settings.getMaxOutputSize();
-                // 内存累积按最大输出限制封顶：超过的部分只落盘，不占堆
-                long memoryCap = maxSize != null && maxSize > 0 ? maxSize : DEFAULT_MAX_OUTPUT_SIZE;
-                result = extensionScriptService.runScript(arguments.getScriptName(), params,
-                        settings.getTimeout(), chatSession.getId(), memoryCap);
-            }
 
-            // 5. 输出大小限制：超限不再报错中断，把完整输出落盘到会话文件，只回沙箱标记
-            Long maxSize = settings.getMaxOutputSize();
-            if (maxSize != null && maxSize > 0) {
-                long outputSize = result.getBytes(StandardCharsets.UTF_8).length;
-                if (outputSize > maxSize) {
-                    ChatSession chatSession = (ChatSession) context.get("chatSession");
-                    String marker = extensionScriptService.saveOversizeOutput(chatSession.getId(), result);
-                    String message = "脚本输出过大（" + ToolKit.formatSize(outputSize) + "，超过最大限制 "
-                            + ToolKit.formatSize(maxSize) + "），已保存到会话文件：" + marker
-                            + "。如需查看完整输出，请用 file_read_tool 读取该文件。";
-                    return new ToolExecutor.ToolExecuteResponse(name(), message);
-                }
-            }
-
+            // ===== 执行分流：调用方指定 device 时经桥接在该卫星机上执行，本机路径不受影响 =====
+            ChatSession chatSession = (ChatSession) context.get("chatSession");
+            ScriptExecutor executor = StringUtils.hasText(arguments.getDevice())
+                    ? satelliteScriptExecutor
+                    : localScriptExecutor;
+            String result = executor.execute(meta, params,
+                    Boolean.TRUE.equals(arguments.getBackground()), arguments.getDevice(), chatSession.getId());
             return new ToolExecutor.ToolExecuteResponse(name(), result);
 
         } catch (Exception e) {
@@ -112,6 +111,7 @@ public class ExtensionScriptTool implements ToolHandler {
     public ToolRegister getRegister() {
         StringBuilder desc = new StringBuilder("执行扩展脚本。转入后台时会返回一个后台任务 ID，可用 wait_flow_tool 的 eventId 等它结束。");
         desc.append(extensionScriptService.buildScriptSection());
+        desc.append(" 指定 device 时脚本在该卫星机上按声明的脚本类型执行，缺省在本机执行。");
 
         // 输出限制
         Long maxSize = settings.getMaxOutputSize();
@@ -129,7 +129,10 @@ public class ExtensionScriptTool implements ToolHandler {
                                 "传递给脚本的参数，JSON 对象格式。键为参数名，值为参数值。"
                                 + "脚本中使用 {{参数名}} 引用这些值。如果脚本无需参数，可省略此字段。"),
                         new ToolRegister.Parameters("background", "boolean",
-                                "设为 true 后台执行（无超时限制），适合长时间任务。输出写入日志文件；返回后台任务 ID 可供 wait_flow_tool 的 eventId 等待。")
+                                "设为 true 后台执行（无超时限制），适合长时间任务。输出写入日志文件；返回后台任务 ID 可供 wait_flow_tool 的 eventId 等待。"),
+                        new ToolRegister.Parameters("device", "string",
+                                "在指定卫星机上执行，填卫星机 deviceId；缺省在本机执行。当前在线："
+                                        + satelliteBridgeService.onlineDevices())
                 ));
     }
 
@@ -138,6 +141,8 @@ public class ExtensionScriptTool implements ToolHandler {
         private Boolean background;
         private String scriptName;
         private Map<String, Object> arguments;
+        /** 卫星机 deviceId：非空时脚本经桥接在该卫星机上执行 */
+        private String device;
     }
 
     @Data
@@ -146,7 +151,7 @@ public class ExtensionScriptTool implements ToolHandler {
     public static class Settings {
         /** 脚本执行超时时间，单位秒 */
         private Long timeout;
-        /** 输出字节数超过此值则直接拒绝执行 */
+        /** 输出字节数上限（UTF-8 编码），超出部分落盘到会话文件 */
         private Long maxOutputSize;
 
         public Settings() {

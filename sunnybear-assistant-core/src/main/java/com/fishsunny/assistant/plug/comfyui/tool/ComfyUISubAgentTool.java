@@ -13,7 +13,7 @@ import com.fishsunny.assistant.engine.tool.framework.SubAgentComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
 import com.fishsunny.assistant.plug.comfyui.dto.HistoryEntry;
 import com.fishsunny.assistant.plug.comfyui.dto.ViewImageResult;
-import com.fishsunny.assistant.plug.comfyui.service.ComfyUIBridgeService;
+import com.fishsunny.assistant.satellite.service.SatelliteBridgeService;
 import com.fishsunny.assistant.settings.AISettings;
 import com.fishsunny.assistant.utils.SessionFileManager;
 import org.slf4j.Logger;
@@ -47,14 +47,14 @@ public class ComfyUISubAgentTool implements SubAgentComponent, MultimodalResultA
     private final AISettings missionAISettings;
     private final EasyReActProcessor easyReActProcessor;
     private final ToolExecutor toolExecutor;
-    private final ComfyUIBridgeService bridgeService;
+    private final SatelliteBridgeService bridgeService;
     private final SessionFileManager sessionFileManager;
 
     public ComfyUISubAgentTool(ObjectMapper objectMapper,
                                 @Qualifier(AISettings.MISSION) AISettings missionAISettings,
                                 EasyReActProcessor easyReActProcessor,
                                 @Lazy ToolExecutor toolExecutor,
-                                ComfyUIBridgeService bridgeService,
+                                SatelliteBridgeService bridgeService,
                                 SessionFileManager sessionFileManager) {
         this.objectMapper = objectMapper;
         this.missionAISettings = missionAISettings;

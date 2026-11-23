@@ -4,7 +4,7 @@ import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
-import com.fishsunny.assistant.plug.comfyui.service.ComfyUIBridgeService;
+import com.fishsunny.assistant.satellite.service.SatelliteBridgeService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 
 import java.util.List;
@@ -21,9 +21,9 @@ public class ComfyUIResourcesTool implements ToolHandler {
     public static final String NAME = "comfyui_resources";
 
     private final ToolRegister register;
-    private final ComfyUIBridgeService bridgeService;
+    private final SatelliteBridgeService bridgeService;
 
-    public ComfyUIResourcesTool(ComfyUIBridgeService bridgeService) {
+    public ComfyUIResourcesTool(SatelliteBridgeService bridgeService) {
         this.bridgeService = bridgeService;
 
         register = new ToolRegister()

@@ -5,7 +5,7 @@ import com.fishsunny.assistant.engine.tool.ToolExecutor;
 import com.fishsunny.assistant.engine.tool.framework.ToolHandler;
 import com.fishsunny.assistant.engine.tool.framework.annotation.ToolKitComponent;
 import com.fishsunny.assistant.engine.tool.framework.ToolRegister;
-import com.fishsunny.assistant.plug.comfyui.service.ComfyUIBridgeService;
+import com.fishsunny.assistant.satellite.service.SatelliteBridgeService;
 import lombok.Data;
 import lombok.experimental.Accessors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -32,9 +32,9 @@ public class ComfyUIWorkflowTool implements ToolHandler {
 
     private final ObjectMapper objectMapper;
     private final ToolRegister register;
-    private final ComfyUIBridgeService bridgeService;
+    private final SatelliteBridgeService bridgeService;
 
-    public ComfyUIWorkflowTool(ObjectMapper objectMapper, ComfyUIBridgeService bridgeService) {
+    public ComfyUIWorkflowTool(ObjectMapper objectMapper, SatelliteBridgeService bridgeService) {
         this.objectMapper = objectMapper;
         this.bridgeService = bridgeService;
 

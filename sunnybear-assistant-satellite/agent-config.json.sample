@@ -1,0 +1,6 @@
+{
+  "server": "ws://127.0.0.1:11451/satellite-bridge",
+  "name": "My Satellite Agent",
+  "username": "username",
+  "password": "password"
+}

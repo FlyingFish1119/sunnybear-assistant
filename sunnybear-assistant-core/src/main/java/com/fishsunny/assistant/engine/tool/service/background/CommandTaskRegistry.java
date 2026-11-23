@@ -22,6 +22,7 @@ package com.fishsunny.assistant.engine.tool.service.background;
 import com.fishsunny.assistant.utils.ProcessUtils;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -47,13 +48,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Component
 public class CommandTaskRegistry {
 
-    /** 任务来源：命令行走的是 COMMAND，扩展脚本走 SCRIPT，前端据此显示不同图标与文案 */
+    /** 任务来源：命令行走 COMMAND，扩展脚本走 SCRIPT，桥接到卫星机执行的走 BRIDGE_*；前端据此显示不同图标与文案 */
     public enum TaskType {
-        COMMAND, SCRIPT
+        COMMAND, SCRIPT, BRIDGE_COMMAND, BRIDGE_SCRIPT
     }
 
     /** 任务 ID -> 运行时信息 */
     private final Map<String, RunningTask> tasks = new ConcurrentHashMap<>();
+
+    /** 桥接任务的取消通道（卫星桥接服务实现）；经 ObjectProvider 注入避免与桥接服务构成构造环 */
+    private final ObjectProvider<BridgeTaskChannel> bridgeChannel;
+
+    public CommandTaskRegistry(ObjectProvider<BridgeTaskChannel> bridgeChannel) {
+        this.bridgeChannel = bridgeChannel;
+    }
 
     /**
      * 登记一个刚开始跑的后台任务。
@@ -73,6 +81,28 @@ public class CommandTaskRegistry {
         RunningTask task = new RunningTask(id, sessionId, type, title, logPath, process);
         tasks.put(id, task);
         log.info("后台任务已登记: id={}, type={}, sessionId={}", id, type, sessionId);
+        return task;
+    }
+
+    /**
+     * 登记一个桥接到卫星机执行的后台任务。
+     * <p>
+     * 与 {@link #register} 不同：没有本地进程可杀，结束操作改为下发 cancel_task。
+     * taskId 由调用方（桥接命令发起处）生成，同时用作卫星机上的任务标识与 task_done 事件的
+     * 匹配键 —— 因此登记 ID、wait_flow_tool 的 eventId、卫星机日志名三者天然一致。
+     *
+     * @param deviceId 目标卫星机（结束时按它路由 cancel_task）
+     * @param taskId   调用方生成的任务 ID
+     * @return 登记后的运行时信息；sessionId 或 taskId 为空时返回 null（没地方归属，不登记）
+     */
+    public RunningTask registerBridge(String sessionId, TaskType type, String title,
+                                      String logPath, String deviceId, String taskId) {
+        if (!StringUtils.hasText(sessionId) || !StringUtils.hasText(taskId)) {
+            return null;
+        }
+        RunningTask task = new RunningTask(taskId, sessionId, type, title, logPath, null, deviceId);
+        tasks.put(taskId, task);
+        log.info("后台任务已登记: id={}, type={}, deviceId={}, sessionId={}", taskId, type, deviceId, sessionId);
         return task;
     }
 
@@ -147,6 +177,15 @@ public class CommandTaskRegistry {
     }
 
     /**
+     * 按任务 ID 查看登记（不校验会话、不移除）。
+     * <p>
+     * 供 task_done 事件回投定位用：事件里只有 taskId，会话归属从登记记录里取。
+     */
+    public RunningTask peek(String taskId) {
+        return StringUtils.hasText(taskId) ? tasks.get(taskId) : null;
+    }
+
+    /**
      * 列出任务。sessionId 为空时返回全部（供排查用），一般前端都会带上当前会话。
      * <p>按启动时间升序，前端拿到的顺序与「谁先跑的」一致，不会因为 Map 无序而乱跳。
      */
@@ -158,28 +197,46 @@ public class CommandTaskRegistry {
     }
 
     /**
-     * 结束一个后台任务：杀整棵进程树并立即从表里摘掉（同时唤醒等待者）。
+     * 结束一个后台任务：本机类型（COMMAND / SCRIPT）杀整棵进程树并立即从表里摘掉
+     * （同时唤醒等待者）；桥接类型（BRIDGE_*）改下发 cancel_task，摘除与回投交给随后的
+     * task_done 事件 —— 卫星机收到取消会杀掉进程，完成事件回来时这里统一收尾。
      * <p>
-     * 先打 killed 标记再动手，收尾线程据此把日志 footer 和回投文案写成「已被用户手动结束」，
-     * 而不是一句含糊的「退出码 1」—— 那种文案会让人以为是命令自己失败的。
+     * 桥接类型先打 killed 标记再动手，task_done 处理据此把回投文案写成
+     * 「已被用户手动结束」而不是一句含糊的退出码。
      *
-     * @return true 表示确实杀掉了一个活着的进程；false 表示任务不存在、会话不符或进程已经退出
+     * @return true 表示确实结束了任务；false 表示任务不存在、会话不符或没能结束
      */
     public boolean kill(String sessionId, String taskId) {
         RunningTask task = get(sessionId, taskId);
         if (task == null) {
             return false;
         }
-        Process process = task.getProcess();
-        if (process == null || !process.isAlive()) {
-            signal(taskId);
-            return false;
+        switch (task.getType()) {
+            case BRIDGE_COMMAND, BRIDGE_SCRIPT -> {
+                // 卫星机任务：无本地进程可杀，改下发 cancel_task
+                task.getKilled().set(true);
+                BridgeTaskChannel channel = bridgeChannel.getIfAvailable();
+                boolean confirmed = channel != null && channel.dispatchCancel(task.getDeviceId(), taskId);
+                if (!confirmed) {
+                    // 送达失败或卫星端已无此任务：本地摘除防止登记悬死（task_done 不会再来了）
+                    signal(taskId);
+                }
+                return confirmed;
+            }
+            default -> {
+                // 本机任务：原有行为保持不变
+                Process process = task.getProcess();
+                if (process == null || !process.isAlive()) {
+                    signal(taskId);
+                    return false;
+                }
+                task.getKilled().set(true);
+                ProcessUtils.killTree(process);
+                signal(taskId);
+                log.info("后台任务已被手动结束: id={}, sessionId={}", taskId, sessionId);
+                return true;
+            }
         }
-        task.getKilled().set(true);
-        ProcessUtils.killTree(process);
-        signal(taskId);
-        log.info("后台任务已被手动结束: id={}, sessionId={}", taskId, sessionId);
-        return true;
     }
 
     /** 运行时任务信息 */
@@ -204,6 +261,9 @@ public class CommandTaskRegistry {
         /** 子进程，供结束操作杀树 */
         private final Process process;
 
+        /** 目标卫星机（仅 BRIDGE_* 类型有值；结束时按它路由 cancel_task） */
+        private final String deviceId;
+
         /** 启动时间（毫秒时间戳） */
         private final long startTime;
 
@@ -214,12 +274,18 @@ public class CommandTaskRegistry {
         private final CountDownLatch done = new CountDownLatch(1);
 
         RunningTask(String id, String sessionId, TaskType type, String title, String logPath, Process process) {
+            this(id, sessionId, type, title, logPath, process, null);
+        }
+
+        RunningTask(String id, String sessionId, TaskType type, String title, String logPath,
+                    Process process, String deviceId) {
             this.id = id;
             this.sessionId = sessionId;
             this.type = type;
             this.title = title;
             this.logPath = logPath;
             this.process = process;
+            this.deviceId = deviceId;
             this.startTime = System.currentTimeMillis();
         }
     }
