@@ -32,6 +32,8 @@ public class CommandResponse {
     public String output;
     /** 增量日志片段（task_log 用） */
     public String chunk;
+    /** 文件总字节数（file_done 用） */
+    public Long size;
 
     public static CommandResponse register(String deviceId, String deviceName) {
         CommandResponse r = new CommandResponse();
@@ -72,6 +74,36 @@ public class CommandResponse {
         r.deviceId = deviceId;
         r.taskId = taskId;
         r.exitCode = exitCode;
+        return r;
+    }
+
+    /** 文件分块事件：chunk 为 base64 编码的分块内容，服务端按 taskId 找到落盘任务顺序写入 */
+    public static CommandResponse fileChunk(String deviceId, String taskId, String base64) {
+        CommandResponse r = new CommandResponse();
+        r.type = "file_chunk";
+        r.deviceId = deviceId;
+        r.taskId = taskId;
+        r.chunk = base64;
+        return r;
+    }
+
+    /** 文件回传完成事件：size 为实际回传的总字节数 */
+    public static CommandResponse fileDone(String deviceId, String taskId, long size) {
+        CommandResponse r = new CommandResponse();
+        r.type = "file_done";
+        r.deviceId = deviceId;
+        r.taskId = taskId;
+        r.size = size;
+        return r;
+    }
+
+    /** 文件回传失败事件（含被服务端取消）：error 为失败原因，服务端据此删除半成品并收尾 */
+    public static CommandResponse fileError(String deviceId, String taskId, String error) {
+        CommandResponse r = new CommandResponse();
+        r.type = "file_error";
+        r.deviceId = deviceId;
+        r.taskId = taskId;
+        r.error = error;
         return r;
     }
 }

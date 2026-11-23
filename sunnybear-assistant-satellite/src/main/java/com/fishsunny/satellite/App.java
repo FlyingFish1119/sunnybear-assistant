@@ -1,6 +1,7 @@
 package com.fishsunny.satellite;
 
 import com.fishsunny.satellite.dispatch.CommandDispatcher;
+import com.fishsunny.satellite.engine.DownloadEngine;
 import com.fishsunny.satellite.engine.ExecEngine;
 import com.fishsunny.satellite.network.WebSocketClient;
 import org.slf4j.Logger;
@@ -69,10 +70,12 @@ public class App {
 
         // 构建组件
         ExecEngine engine = new ExecEngine(deviceId);
-        CommandDispatcher dispatcher = new CommandDispatcher(engine);
+        DownloadEngine downloadEngine = new DownloadEngine(deviceId);
+        CommandDispatcher dispatcher = new CommandDispatcher(engine, downloadEngine);
         WebSocketClient wsClient = new WebSocketClient(serverUrl, deviceId, deviceName,
                 username, password, dispatcher);
         engine.attach(wsClient);
+        downloadEngine.attach(wsClient);
 
         // 注册 shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {

@@ -194,6 +194,15 @@ public class WebSocketClient {
     // ==================== 事件推送 ====================
 
     /**
+     * WebSocket 待发送队列的字节数（OkHttp 近似值）。
+     * <p>文件回传按它做背压控制：读盘快过网络时先等一下，避免整份文件堆进发送队列。</p>
+     */
+    public long queueSize() {
+        WebSocket ws = this.webSocket;
+        return ws == null ? 0 : ws.queueSize();
+    }
+
+    /**
      * 发送独立事件消息（task_done 等）。与命令回执不同，事件不等待任何响应。
      *
      * @return 是否成功入队发送；连接未建立或已关闭返回 false

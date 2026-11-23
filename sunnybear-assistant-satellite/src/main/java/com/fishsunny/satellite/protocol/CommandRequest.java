@@ -28,5 +28,11 @@ public class CommandRequest {
         public String content;
         /** 等待窗口秒数：窗口内进程结束则同步回执，否则立即回执转后台；0 = 立即转后台 */
         public Integer waitTimeoutSec;
+
+        // ---- download ----
+        /** 要回传的远端文件绝对路径 */
+        public String remotePath;
+        /** 分块字节数（可选，默认 256KB，上限 4MB） */
+        public Integer chunkSize;
     }
 }

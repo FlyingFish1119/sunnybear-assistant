@@ -22,13 +22,17 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -36,6 +40,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -53,6 +58,11 @@ import java.util.stream.Collectors;
  *             追加写入该任务的会话日志文件；</li>
  *         <li>{"type":"task_done","deviceId","taskId","exitCode"}——后台任务结束的补报，
  *             向日志文件追加结束标记后摘登记并回投总线。</li>
+ *         <li>{"type":"file_chunk","deviceId","taskId","chunk"}——文件回传的数据帧（base64），
+ *             解码后顺序写入该下载任务的本机文件；</li>
+ *         <li>{"type":"file_done","deviceId","taskId","size"}——文件回传完成，核对字节数后收尾；</li>
+ *         <li>{"type":"file_error","deviceId","taskId","error"}——文件回传失败（含被取消），
+ *             删除本机半成品并唤醒等待方。</li>
  *       </ul>
  *       卫星端保证 exec 回执帧先于同一任务的任何 task_log / task_done 帧发出，因此回执帧
  *       在本线程完成日志文件初始化与登记之后，随后到达的增量与收尾帧按 peek(taskId) 顺序
@@ -68,6 +78,9 @@ public class SatelliteBridgeService extends TextWebSocketHandler implements Brid
     /** cancel_task 送达等待上限（秒）：取消是轻量命令，不该占用完整 commandTimeout */
     private static final int CANCEL_TIMEOUT_S = 10;
 
+    /** doSend 的超时语义：0 表示不限时（文件传输用，只在断线或出错时失败） */
+    private static final int NO_TIMEOUT = 0;
+
     private final ObjectMapper objectMapper;
     private final CommandTaskRegistry commandTaskRegistry;
     private final BackgroundToolResponseBus backgroundToolResponseBus;
@@ -78,6 +91,9 @@ public class SatelliteBridgeService extends TextWebSocketHandler implements Brid
 
     /** requestId → 等待响应的命令 */
     private final Map<String, PendingCommand> pendingRequests = new ConcurrentHashMap<>();
+
+    /** taskId → 正在接收的本机文件落盘任务（文件传输不走后台登记，收完即摘） */
+    private final Map<String, DownloadSink> downloads = new ConcurrentHashMap<>();
 
     /** 命令超时（秒），默认 1800（30 分钟），可在 application.yml 中配置 */
     @Value("${plug.satellite.bridge.command-timeout-s:1800}")
@@ -146,7 +162,9 @@ public class SatelliteBridgeService extends TextWebSocketHandler implements Brid
             synchronized (connection.session()) {
                 connection.session().sendMessage(new TextMessage(commandJson));
             }
-            return future.get(timeoutSec, TimeUnit.SECONDS);
+            return timeoutSec > 0
+                    ? future.get(timeoutSec, TimeUnit.SECONDS)
+                    : future.get();
         } catch (TimeoutException e) {
             pendingRequests.remove(requestId);
             throw new ToolExecutor.ToolExecuteException(
@@ -240,6 +258,139 @@ public class SatelliteBridgeService extends TextWebSocketHandler implements Brid
         }
     }
 
+    // ==================== 文件下载 ====================
+
+    /**
+     * 从卫星机把单个文件经桥接通道拉回本机，阻塞到传输完成。
+     * <p>
+     * 不设传输超时：只会在卫星机拒绝、传输出错或连接断开时失败。本机文件在命令发出前
+     * 就打开并登记进 {@link #downloads}，卫星端保证回执帧先于任何 file_chunk 帧，
+     * 因此接收线程按 taskId 必然命中，不存在丢帧的缝隙。
+     * </p>
+     *
+     * @param deviceId   目标卫星机
+     * @param remotePath 卫星机上的文件绝对路径
+     * @param savePath   本机保存路径（父目录须已存在）
+     */
+    public DownloadResult download(String deviceId, String remotePath, Path savePath)
+            throws ToolExecutor.ToolExecuteException {
+        Connection connection = devices.get(deviceId);
+        if (connection == null || !connection.session().isOpen()) {
+            throw new ToolExecutor.ToolExecuteException(
+                    "卫星机 [" + deviceId + "] 不在线。当前在线设备: " + onlineDevices());
+        }
+
+        String taskId = newTaskId();
+        FileChannel channel;
+        try {
+            channel = FileChannel.open(savePath, StandardOpenOption.CREATE,
+                    StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException e) {
+            throw new ToolExecutor.ToolExecuteException("无法创建本机目标文件: " + e.getMessage());
+        }
+
+        DownloadSink sink = new DownloadSink(taskId, connection, savePath, channel);
+        downloads.put(taskId, sink);
+
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("taskId", taskId);
+        params.put("remotePath", remotePath);
+
+        long startNanos = System.nanoTime();
+        try {
+            String paramsJson = objectMapper.writeValueAsString(params);
+            String resultJson = doSend(connection, "download", paramsJson, NO_TIMEOUT, null);
+
+            JsonNode meta = objectMapper.readTree(resultJson);
+            if (meta == null || meta.isNull()) {
+                throw new ToolExecutor.ToolExecuteException("卫星机回执为空");
+            }
+            if (meta.hasNonNull("error")) {
+                throw new ToolExecutor.ToolExecuteException("卫星机拒绝下载: " + meta.get("error").asText());
+            }
+            sink.expectedSize = meta.path("totalSize").asLong(-1);
+            sink.fileName = meta.path("fileName").asText(null);
+
+            // 之后由接收线程写文件，这里只等收尾信号
+            sink.done.get();
+        } catch (ToolExecutor.ToolExecuteException e) {
+            finishDownload(sink, e);
+            throw e;
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            finishDownload(sink, cause);
+            throw new ToolExecutor.ToolExecuteException("文件传输失败: " + cause.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            finishDownload(sink, e);
+            throw new ToolExecutor.ToolExecuteException("文件传输被中断");
+        } catch (Exception e) {
+            finishDownload(sink, e);
+            throw new ToolExecutor.ToolExecuteException("文件下载失败: " + e.getMessage());
+        }
+
+        long costMs = (System.nanoTime() - startNanos) / 1_000_000L;
+        return new DownloadResult(deviceId, remotePath, sink.fileName, savePath, sink.received, costMs);
+    }
+
+    /** 收尾一个下载任务（幂等）：摘登记、关通道、失败时删掉本机半成品、唤醒等待方 */
+    private void finishDownload(DownloadSink sink, Throwable error) {
+        downloads.remove(sink.taskId, sink);
+        sink.finish(error);
+    }
+
+    /** file_chunk 事件：一块 base64 数据，解码后顺序写入本机文件（接收线程单线程写，天然有序） */
+    private void handleFileChunk(Map<String, Object> msg) {
+        String taskId = (String) msg.get("taskId");
+        DownloadSink sink = taskId == null ? null : downloads.get(taskId);
+        if (sink == null) {
+            return;
+        }
+        String data = (String) msg.get("chunk");
+        if (data == null || data.isEmpty()) {
+            return;
+        }
+        try {
+            sink.write(Base64.getDecoder().decode(data));
+        } catch (Exception e) {
+            log.warn("文件分块写入失败: taskId={}, error={}", taskId, e.getMessage());
+            finishDownload(sink, new ToolExecutor.ToolExecuteException("写入本机文件失败: " + e.getMessage()));
+        }
+    }
+
+    /** file_done 事件：核对字节数后收尾，唤醒等待中的工具线程 */
+    private void handleFileDone(Map<String, Object> msg) {
+        String taskId = (String) msg.get("taskId");
+        DownloadSink sink = taskId == null ? null : downloads.get(taskId);
+        if (sink == null) {
+            return;
+        }
+        long size = msg.get("size") instanceof Number n ? n.longValue() : sink.received;
+        try {
+            sink.channel.force(false);
+        } catch (IOException ignored) {
+        }
+        if (sink.expectedSize >= 0 && size != sink.expectedSize) {
+            finishDownload(sink, new ToolExecutor.ToolExecuteException(
+                    "文件大小不一致：登记 " + sink.expectedSize + " 字节，实际收到 " + size + " 字节"));
+            return;
+        }
+        finishDownload(sink, null);
+        log.info("卫星机文件接收完成: deviceId={}, taskId={}, size={}B", msg.get("deviceId"), taskId, size);
+    }
+
+    /** file_error 事件：卫星机回报失败（含被取消），删掉本机半成品并唤醒等待方 */
+    private void handleFileError(Map<String, Object> msg) {
+        String taskId = (String) msg.get("taskId");
+        DownloadSink sink = taskId == null ? null : downloads.get(taskId);
+        if (sink == null) {
+            return;
+        }
+        String error = (String) msg.get("error");
+        finishDownload(sink, new ToolExecutor.ToolExecuteException(
+                error != null ? error : "卫星机回报文件传输失败"));
+    }
+
     // ==================== cancel_task 下发（BridgeTaskChannel） ====================
 
     @Override
@@ -286,6 +437,18 @@ public class SatelliteBridgeService extends TextWebSocketHandler implements Brid
             }
             if ("task_done".equals(type)) {
                 handleTaskDone(msg);
+                return;
+            }
+            if ("file_chunk".equals(type)) {
+                handleFileChunk(msg);
+                return;
+            }
+            if ("file_done".equals(type)) {
+                handleFileDone(msg);
+                return;
+            }
+            if ("file_error".equals(type)) {
+                handleFileError(msg);
                 return;
             }
 
@@ -494,7 +657,20 @@ public class SatelliteBridgeService extends TextWebSocketHandler implements Brid
                 failed++;
             }
         }
-        log.info("卫星机已断开: deviceId={}, 在途命令失败 {} 条, status={}", deviceId, failed, status);
+        // 该连接上未传完的文件同样立即失败，并删掉本机半成品
+        int failedDownloads = 0;
+        for (Iterator<Map.Entry<String, DownloadSink>> it = downloads.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<String, DownloadSink> entry = it.next();
+            if (entry.getValue().connection.session() == session) {
+                it.remove();
+                entry.getValue().finish(new ToolExecutor.ToolExecuteException(
+                        (deviceId != null ? "卫星机 [" + deviceId + "] 连接已断开" : "卫星机连接已断开")
+                                + "，文件传输未完成"));
+                failedDownloads++;
+            }
+        }
+        log.info("卫星机已断开: deviceId={}, 在途命令失败 {} 条, 未传完文件 {} 个, status={}",
+                deviceId, failed, failedDownloads, status);
     }
 
     @Override
@@ -508,6 +684,68 @@ public class SatelliteBridgeService extends TextWebSocketHandler implements Brid
 
     /** 一台在线卫星机的当前连接 */
     private record Connection(String deviceId, String deviceName, WebSocketSession session) {
+    }
+
+    /** 一次文件下载的结果 */
+    public record DownloadResult(String deviceId, String remotePath, String fileName,
+                                 Path savePath, long size, long costMs) {
+    }
+
+    /**
+     * 一个正在接收的本机落盘任务。写入与关闭都只发生在 WebSocket 接收线程，
+     * 工具线程只等待 {@link #done}，因此不需要额外同步。
+     */
+    private static final class DownloadSink {
+
+        private final String taskId;
+        private final Connection connection;
+        private final Path file;
+        private final FileChannel channel;
+        private final CompletableFuture<Void> done = new CompletableFuture<>();
+        private final AtomicBoolean closed = new AtomicBoolean();
+
+        /** 卫星端回执里登记的总字节数（-1 表示未知） */
+        private long expectedSize = -1;
+        /** 卫星端回执里的文件名（仅用于展示） */
+        private String fileName;
+        /** 已落盘字节数 */
+        private long received;
+
+        private DownloadSink(String taskId, Connection connection, Path file, FileChannel channel) {
+            this.taskId = taskId;
+            this.connection = connection;
+            this.file = file;
+            this.channel = channel;
+        }
+
+        /** 追加一块数据（接收线程唯一写者） */
+        private void write(byte[] bytes) throws IOException {
+            ByteBuffer buffer = ByteBuffer.wrap(bytes);
+            while (buffer.hasRemaining()) {
+                channel.write(buffer);
+            }
+            received += bytes.length;
+        }
+
+        /** 收尾（幂等）：关通道、失败时删掉半成品、唤醒等待方 */
+        private void finish(Throwable error) {
+            if (!closed.compareAndSet(false, true)) {
+                return;
+            }
+            try {
+                channel.close();
+            } catch (IOException ignored) {
+            }
+            if (error != null) {
+                try {
+                    Files.deleteIfExists(file);
+                } catch (IOException ignored) {
+                }
+                done.completeExceptionally(error);
+            } else {
+                done.complete(null);
+            }
+        }
     }
 
     /** 一条在途命令：等待回执的 future + 所属连接（连接断开时按连接成批失败）+ exec 命令的收尾上下文（非 exec 命令为 null） */
