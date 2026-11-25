@@ -29,7 +29,7 @@ public class CharacterDbManager {
     private final Map<String, HikariDataSource> dataSources = new ConcurrentHashMap<>();
     private final String basePath;
 
-    public CharacterDbManager(@Value("${assistant.file.base-path:data/}") String basePath) {
+    public CharacterDbManager(@Value("${plug.file-path:data/plugins/}") String basePath) {
         this.basePath = basePath + "characters/";
     }
 
