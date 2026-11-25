@@ -1,0 +1,154 @@
+name: vn-cutout
+description: 给图片去背景，输出透明 PNG，质量优先。适合视觉小说立绘、CG、道具素材。默认 withoutBG 开放权重引擎（实测对兽人毛发、毛边最细腻，单张约 30-60 秒）；只想快跑可填 engine=rembg。
+type: python
+parameters:
+  - name: input
+    type: string
+    description: 输入图片的绝对路径，或一个目录（批量处理该目录下的 png/jpg/jpeg/webp/bmp）。路径不要以反斜杠结尾
+    required: true
+  - name: output
+    type: string
+    description: 输出路径。处理单张可省略（默认同目录加 _cutout 后缀）；处理目录可省略（默认写到该目录下的 cutout/ 子目录）。路径不要以反斜杠结尾
+    required: false
+  - name: engine
+    type: string
+    description: 抠图引擎，默认 withoutbg（质量最好，慢）；填 rembg 走 rembg 那套（快）
+    required: false
+  - name: model
+    type: string
+    description: 仅 engine=rembg 时有效。默认 birefnet-general（质量好）；isnet-anime 最快（约 1 秒）；bria-rmbg 质量接近 birefnet-general
+    required: false
+  - name: matting
+    type: string
+    description: 仅 engine=rembg 时有效。填 0 关闭 alpha matting。默认开启（1），毛边和半透明处更细腻，但慢一倍左右
+    required: false
+  - name: clean
+    type: string
+    description: 填 0 关闭孤立杂点清理。默认开启（1），自动抹掉面积占比小于万分之五的零散碎块
+    required: false
+script: |
+  import os
+  import sys
+  import time
+  from pathlib import Path
+
+  # 模型一律放 E 盘，不往 C 盘用户目录里堆（系统里已设过变量就用系统的）
+  os.environ.setdefault("U2NET_HOME", r"E:\models\u2net")
+  os.environ.setdefault("HF_HOME", r"E:\models\huggingface")
+
+  try:
+      sys.stdout.reconfigure(encoding="utf-8")
+  except Exception:
+      pass
+
+  inp = r"""{{input}}""".strip()
+  out = r"""{{output}}""".strip()
+  engine = (r"""{{engine}}""".strip() or "withoutbg").lower()
+  model = r"""{{model}}""".strip() or "birefnet-general"
+  matting_raw = r"""{{matting}}""".strip()
+  clean_raw = r"""{{clean}}""".strip()
+  matting = matting_raw not in ("0", "false", "False", "no")
+  clean = clean_raw not in ("0", "false", "False", "no")
+
+  IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+  src = Path(inp)
+  if not src.exists():
+      print("[失败] 路径不存在：" + str(src))
+      sys.exit(1)
+
+  jobs = []
+  if src.is_dir():
+      out_dir = Path(out) if out else src / "cutout"
+      out_dir.mkdir(parents=True, exist_ok=True)
+      for p in sorted(src.iterdir()):
+          if p.is_file() and p.suffix.lower() in IMG_EXT:
+              jobs.append((p, out_dir / (p.stem + ".png")))
+  else:
+      dst = Path(out) if out else src.with_name(src.stem + "_cutout.png")
+      if dst.suffix.lower() != ".png":
+          dst = dst.with_suffix(".png")
+      dst.parent.mkdir(parents=True, exist_ok=True)
+      jobs.append((src, dst))
+
+  if not jobs:
+      print("[失败] 没有找到可处理的图片：" + str(src))
+      sys.exit(1)
+
+  # 防止输出路径和原图撞在一起把素材覆盖掉
+  safe_jobs = []
+  for p, dst in jobs:
+      try:
+          if dst.resolve() == p.resolve():
+              dst = p.with_name(p.stem + "_cutout.png")
+      except Exception:
+          pass
+      safe_jobs.append((p, dst))
+  jobs = safe_jobs
+
+  def clean_specks(image):
+      """抹掉零散碎块：面积小于整体万分之五、且小于 64 像素的连通域直接清空。"""
+      try:
+          import numpy as np
+          from scipy import ndimage
+      except Exception:
+          return image
+      from PIL import Image
+      arr = np.array(image)
+      alpha = arr[:, :, 3]
+      mask = alpha > 8
+      total = int(mask.sum())
+      if total == 0:
+          return image
+      labels, count = ndimage.label(mask)
+      if count <= 1:
+          return image
+      sizes = ndimage.sum(mask, labels, range(1, count + 1))
+      limit = max(total * 0.0005, 64)
+      keep = np.zeros(count + 1, dtype=bool)
+      keep[1:] = sizes >= limit
+      arr[:, :, 3] = np.where(keep[labels], alpha, 0)
+      return Image.fromarray(arr)
+
+  from PIL import Image
+
+  t0 = time.time()
+  try:
+      if engine == "rembg":
+          from rembg import remove as rembg_remove
+          from rembg import new_session
+          print("引擎：rembg / " + model + "（模型放 E:\\models\\u2net；首次加载要二十来秒）")
+          session = new_session(model)
+          print("模型就绪，%.1f 秒" % (time.time() - t0))
+
+          def cut(image):
+              return rembg_remove(image, session=session, alpha_matting=matting)
+      else:
+          from withoutbg import OpenWeightsModel
+          print("引擎：withoutBG 开放权重（权重放 E:\\models\\huggingface；第一张会边下边算，慢一些）")
+          ow_model = OpenWeightsModel()
+
+          def cut(image):
+              return ow_model.remove_background(image)
+  except Exception as e:
+      print("[失败] 引擎初始化失败：" + str(e))
+      sys.exit(1)
+
+  done = 0
+  failed = 0
+  for idx, (p, dst) in enumerate(jobs, 1):
+      t = time.time()
+      try:
+          with Image.open(p) as im:
+              result = cut(im.convert("RGBA"))
+          if clean:
+              result = clean_specks(result)
+          result.save(dst, "PNG")
+          done += 1
+          print("[%d/%d] %s -> %s（%.1f 秒）" % (idx, len(jobs), p.name, dst.name, time.time() - t))
+      except Exception as e:
+          failed += 1
+          print("[%d/%d] 失败：%s（%s）" % (idx, len(jobs), p.name, str(e)))
+
+  print("完成：成功 %d 张，失败 %d 张，总用时 %.1f 秒" % (done, failed, time.time() - t0))
+  if failed:
+      sys.exit(2)

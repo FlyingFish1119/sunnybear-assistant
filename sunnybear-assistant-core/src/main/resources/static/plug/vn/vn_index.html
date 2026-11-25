@@ -1,0 +1,1731 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>视觉小说 — SunnyBear 助手</title>
+    <link rel="icon" type="image/png" href="../../icon/icon.png">
+    <meta name="theme-color" content="#FFA07A">
+    <script src="../../utils/theme-color.js"></script>
+    <link rel="stylesheet" href="../../lib/element-plus.css">
+    <script src="../../lib/vue.global.prod.js"></script>
+    <script src="../../lib/element-plus.full.min.js"></script>
+    <script src="../../components/toast/toast.js"></script>
+    <script src="../../lib/lucide.min.js"></script>
+    <script src="../../utils/lucide-safe.js"></script>
+    <script src="../../api.js"></script>
+    <script src="vn-api.js"></script>
+    <script src="../../components/confirm-dialog/confirm-dialog.js"></script>
+    <link rel="stylesheet" href="../../components/confirm-dialog/confirm-dialog.css"/>
+    <link rel="stylesheet" href="../../css/scrollbar.css"/>
+    <style>
+        :root {
+            --main-color: lightsalmon;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            min-height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+            "Microsoft YaHei", Helvetica, Arial, sans-serif;
+            background: #f5f6f8;
+            color: #303133;
+        }
+
+        #app {
+            min-height: 100vh;
+        }
+
+        /* ==================== 书架视图 ==================== */
+        .vn-topbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 16px 32px;
+            background: #fff;
+            border-bottom: 1px solid #ebeef5;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .vn-topbar-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            height: 36px;
+            padding: 0 13px;
+            border-radius: 10px;
+            border: 1px solid #e4e7ed;
+            background: #fff;
+            color: #606266;
+            font-size: 13px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all .15s ease;
+        }
+
+        .vn-topbar-btn:hover {
+            border-color: var(--main-color, lightsalmon);
+            color: var(--main-color, lightsalmon);
+            background: color-mix(in srgb, var(--main-color, lightsalmon) 7%, #fff);
+        }
+
+        .vn-topbar-btn svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .vn-topbar-btn.right {
+            margin-left: auto;
+        }
+
+        .vn-heading {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            margin-left: 6px;
+        }
+
+        .vn-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: var(--main-color, lightsalmon);
+            color: #fff;
+        }
+
+        .vn-logo svg {
+            width: 19px;
+            height: 19px;
+        }
+
+        .vn-title {
+            font-size: 16.5px;
+            font-weight: 600;
+        }
+
+        .vn-shelf-body {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 28px 32px 60px;
+        }
+
+        .vn-empty-box {
+            max-width: 480px;
+            margin: 64px auto;
+            padding: 40px 28px;
+            text-align: center;
+            background: #fff;
+            border: 1px solid #ebeef5;
+            border-radius: 18px;
+            color: #909399;
+        }
+
+        .vn-empty-box svg {
+            width: 42px;
+            height: 42px;
+            color: var(--main-color, lightsalmon);
+            margin-bottom: 10px;
+        }
+
+        .vn-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 22px;
+        }
+
+        .vn-card {
+            background: #fff;
+            border: 1px solid #ebeef5;
+            border-radius: 16px;
+            overflow: hidden;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+        }
+
+        .vn-card:hover {
+            transform: translateY(-4px);
+            border-color: color-mix(in srgb, var(--main-color, lightsalmon) 55%, #ebeef5);
+            box-shadow: 0 14px 32px rgba(20, 20, 35, .08);
+        }
+
+        .vn-card-cover {
+            position: relative;
+            aspect-ratio: 16 / 10;
+            background: #1f2229;
+            overflow: hidden;
+        }
+
+        .vn-card-cover img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: transform .35s ease;
+        }
+
+        .vn-card:hover .vn-card-cover img {
+            transform: scale(1.04);
+        }
+
+        .vn-cover-fallback {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 18px;
+            text-align: center;
+            color: #fff;
+            background: linear-gradient(135deg,
+                color-mix(in srgb, var(--main-color, lightsalmon) 72%, #1d1e2c),
+                #1e2230 85%);
+        }
+
+        .vn-cover-fallback svg {
+            width: 28px;
+            height: 28px;
+            opacity: .85;
+        }
+
+        .vn-cover-fallback span {
+            font-size: 15px;
+            font-weight: 600;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .vn-card-body {
+            padding: 15px 18px 18px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .vn-card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #303133;
+        }
+
+        .vn-card-desc {
+            font-size: 13px;
+            color: #909399;
+            line-height: 1.6;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* ==================== 作品入口弹窗 ==================== */
+        .vn-entry-desc {
+            font-size: 13.5px;
+            color: #606266;
+            line-height: 1.7;
+            margin-bottom: 18px;
+        }
+
+        .vn-btn-start {
+            width: 100%;
+            height: 44px;
+            border: none;
+            border-radius: 12px;
+            background: var(--main-color, lightsalmon);
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: filter .15s ease;
+        }
+
+        .vn-btn-start:hover {
+            filter: brightness(1.05);
+        }
+
+        .vn-btn-start:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+        }
+
+        .vn-btn-start svg {
+            width: 17px;
+            height: 17px;
+        }
+
+        .vn-section-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #606266;
+            margin: 22px 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .vn-save-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+
+        .vn-save-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 11px 14px;
+            border-radius: 11px;
+            border: 1px solid #ebeef5;
+            background: #fafbfc;
+            transition: border-color .15s ease, background .15s ease;
+        }
+
+        .vn-save-item:hover {
+            border-color: var(--main-color, lightsalmon);
+            background: #fff;
+        }
+
+        .vn-save-info {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .vn-save-name {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #303133;
+        }
+
+        .vn-save-sub {
+            font-size: 12px;
+            color: #909399;
+            margin-top: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .vn-save-btns {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .vn-small-btn {
+            padding: 5px 12px;
+            border-radius: 8px;
+            border: 1px solid #dcdfe6;
+            background: #fff;
+            color: #606266;
+            font-size: 12.5px;
+            cursor: pointer;
+            transition: all .15s ease;
+        }
+
+        .vn-small-btn:hover {
+            border-color: var(--main-color, lightsalmon);
+            color: var(--main-color, lightsalmon);
+        }
+
+        .vn-small-btn.danger:hover {
+            border-color: #f56c6c;
+            color: #f56c6c;
+        }
+
+        .vn-entry-foot {
+            margin-top: 22px;
+            padding-top: 14px;
+            border-top: 1px solid #f0f2f5;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .vn-link-danger {
+            border: none;
+            background: transparent;
+            color: #a8abb2;
+            font-size: 12.5px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .vn-link-danger:hover {
+            color: #f56c6c;
+        }
+
+        .vn-link-danger svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* ==================== 全屏剧场视图 ==================== */
+        .vn-player {
+            position: fixed;
+            inset: 0;
+            background: #0b0c10;
+            color: #fff;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .vn-bg-layer, .vn-cg-layer, .vn-char-layer {
+            position: absolute;
+            inset: 0;
+        }
+
+        .vn-bg-layer {
+            z-index: 1;
+        }
+
+        .vn-bg-img, .vn-cg-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .vn-bg-fallback, .vn-cg-fallback {
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 50% 35%, #232738 0%, #10121a 75%);
+        }
+
+        .vn-cg-layer {
+            z-index: 15;
+            background: #0b0c10;
+        }
+
+        .vn-char-layer {
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .vn-char {
+            position: absolute;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            transform-origin: bottom center;
+            transition: all .35s ease;
+            filter: brightness(1);
+        }
+
+        .vn-char.speaking {
+            filter: brightness(1.04) drop-shadow(0 0 22px rgba(255, 220, 190, .2));
+        }
+
+        .vn-char.dim {
+            filter: brightness(.62);
+        }
+
+        .vn-char-img {
+            height: 78vh;
+            max-height: 920px;
+            width: auto;
+            max-width: 45vw;
+            object-fit: contain;
+            object-position: bottom center;
+            display: block;
+            filter: drop-shadow(0 12px 30px rgba(0, 0, 0, .55));
+        }
+
+        .vn-char-placeholder {
+            width: 190px;
+            height: 54vh;
+            max-height: 600px;
+            border-radius: 20px 20px 0 0;
+            border: 1px solid rgba(255, 255, 255, .16);
+            border-bottom: none;
+            background: linear-gradient(180deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .02));
+            backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 12px 20px;
+        }
+
+        .vn-char-placeholder-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, .85);
+            background: rgba(0, 0, 0, .35);
+            padding: 4px 12px;
+            border-radius: 999px;
+        }
+
+        .vn-char-placeholder-file {
+            font-size: 11px;
+            color: rgba(255, 255, 255, .45);
+            word-break: break-all;
+            text-align: center;
+        }
+
+        /* ==================== 对话框 ==================== */
+        .vn-click-layer {
+            position: absolute;
+            inset: 0;
+            z-index: 18;
+            cursor: pointer;
+        }
+
+        .vn-dialogue-shell {
+            position: absolute;
+            left: 50%;
+            bottom: 26px;
+            transform: translateX(-50%);
+            width: min(1040px, calc(100% - 48px));
+            z-index: 29;
+            pointer-events: none;
+        }
+
+        .vn-dialogue {
+            position: relative;
+            width: 100%;
+            padding: 18px 26px 14px;
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, .16);
+            background: rgba(14, 15, 22, .72);
+            backdrop-filter: blur(18px);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, .5);
+            cursor: pointer;
+            pointer-events: auto;
+            transition: opacity .25s ease;
+        }
+
+        /* 对话框右上角外侧的常驻功能条：平时几乎隐形，指过去才浮出来 */
+        .vn-tools {
+            position: absolute;
+            right: 2px;
+            bottom: calc(100% + 8px);
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            transition: opacity .25s ease;
+        }
+
+        .vn-tool-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            height: 27px;
+            padding: 0 9px;
+            border: none;
+            border-radius: 7px;
+            background: rgba(10, 11, 16, .22);
+            color: rgba(255, 255, 255, .62);
+            font-size: 11.5px;
+            letter-spacing: .04em;
+            cursor: pointer;
+            pointer-events: auto;
+            text-shadow: 0 1px 6px rgba(0, 0, 0, .55);
+            transition: color .16s ease, background .16s ease;
+        }
+
+        .vn-tool-btn:hover {
+            color: rgba(255, 255, 255, .96);
+            background: rgba(10, 11, 16, .46);
+        }
+
+        .vn-tool-btn svg {
+            width: 13px;
+            height: 13px;
+        }
+
+        .vn-dialogue-speaker {
+            display: inline-block;
+            margin-bottom: 8px;
+            padding: 4px 14px;
+            border-radius: 999px;
+            background: var(--main-color, lightsalmon);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: .02em;
+        }
+
+        .vn-dialogue-text {
+            font-size: 16.5px;
+            line-height: 1.9;
+            color: #f4f5f8;
+            min-height: 64px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            text-shadow: 0 1px 8px rgba(0, 0, 0, .45);
+        }
+
+        .vn-dialogue.is-narrator .vn-dialogue-text {
+            color: rgba(240, 242, 248, .88);
+            font-style: italic;
+        }
+
+        .vn-dialogue-footer {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            height: 18px;
+        }
+
+        .vn-next-indicator {
+            font-size: 12px;
+            color: var(--main-color, lightsalmon);
+            animation: vn-bounce 1.1s ease-in-out infinite;
+        }
+
+        @keyframes vn-bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(3px); }
+        }
+
+        /* ==================== 玩家选项层 ==================== */
+        .vn-choice-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 26;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 80px 24px 180px;
+            background: rgba(6, 7, 12, .38);
+            backdrop-filter: blur(2px);
+        }
+
+        .vn-choice-box {
+            width: min(580px, 100%);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .vn-choice-prompt {
+            text-align: center;
+            font-size: 14px;
+            color: rgba(255, 255, 255, .82);
+            margin-bottom: 4px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, .7);
+        }
+
+        .vn-choice-item {
+            width: 100%;
+            padding: 15px 22px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, .22);
+            background: rgba(18, 20, 28, .82);
+            backdrop-filter: blur(16px);
+            color: #fff;
+            font-size: 15px;
+            line-height: 1.5;
+            text-align: center;
+            cursor: pointer;
+            transition: all .18s ease;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, .35);
+        }
+
+        .vn-choice-item:hover {
+            background: color-mix(in srgb, var(--main-color, lightsalmon) 28%, rgba(22, 24, 34, .92));
+            border-color: var(--main-color, lightsalmon);
+            transform: translateY(-2px);
+        }
+
+        /* ==================== 自然断点（待续写） ==================== */
+        .vn-break-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 28;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: rgba(8, 9, 14, .72);
+            backdrop-filter: blur(6px);
+        }
+
+        .vn-break-box {
+            width: min(500px, 100%);
+            padding: 28px 28px 24px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, .16);
+            background: rgba(20, 22, 30, .92);
+            text-align: center;
+            box-shadow: 0 28px 70px rgba(0, 0, 0, .65);
+        }
+
+        .vn-break-title {
+            font-size: 17px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .vn-break-desc {
+            font-size: 13px;
+            color: rgba(255, 255, 255, .62);
+            line-height: 1.75;
+            margin: 10px 0 22px;
+        }
+
+        .vn-break-btns {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .vn-break-btn {
+            padding: 10px 16px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, .18);
+            background: rgba(255, 255, 255, .08);
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all .15s ease;
+        }
+
+        .vn-break-btn:hover {
+            background: rgba(255, 255, 255, .18);
+        }
+
+        .vn-break-btn.primary {
+            background: var(--main-color, lightsalmon);
+            border-color: var(--main-color, lightsalmon);
+            font-weight: 600;
+        }
+
+        .vn-break-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* ==================== 右上角菜单与侧边栏 ==================== */
+        .vn-menu-btn {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            z-index: 31;
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            border-radius: 50%;
+            background: rgba(10, 11, 16, .28);
+            color: rgba(255, 255, 255, .72);
+            cursor: pointer;
+            backdrop-filter: blur(6px);
+            transition: color .18s ease, background .18s ease;
+        }
+
+        .vn-menu-btn:hover {
+            color: rgba(255, 255, 255, .96);
+            background: rgba(10, 11, 16, .5);
+        }
+
+        .vn-menu-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .vn-menu-mask {
+            position: absolute;
+            inset: 0;
+            z-index: 40;
+            display: flex;
+            justify-content: flex-end;
+            background: rgba(4, 5, 9, .42);
+            backdrop-filter: blur(2px);
+        }
+
+        .vn-menu-panel {
+            width: min(300px, 78vw);
+            height: 100%;
+            padding: 30px 22px 26px;
+            display: flex;
+            flex-direction: column;
+            background: rgba(12, 13, 19, .92);
+            backdrop-filter: blur(22px);
+            border-left: 1px solid rgba(255, 255, 255, .08);
+        }
+
+        .vn-menu-book {
+            font-size: 17px;
+            font-weight: 600;
+            line-height: 1.45;
+            color: #fff;
+        }
+
+        .vn-menu-chapter {
+            margin-top: 7px;
+            font-size: 12.5px;
+            letter-spacing: .04em;
+            color: rgba(255, 255, 255, .5);
+        }
+
+        .vn-menu-exit {
+            margin-top: auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 13px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, .1);
+            background: rgba(255, 255, 255, .04);
+            color: rgba(255, 255, 255, .86);
+            font-size: 14px;
+            cursor: pointer;
+            transition: background .16s ease, border-color .16s ease;
+        }
+
+        .vn-menu-exit:hover {
+            background: rgba(255, 255, 255, .1);
+            border-color: rgba(255, 255, 255, .24);
+        }
+
+        .vn-menu-exit svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .vn-menu-enter-active,
+        .vn-menu-leave-active {
+            transition: opacity .25s ease;
+        }
+
+        .vn-menu-enter-from,
+        .vn-menu-leave-to {
+            opacity: 0;
+        }
+
+        .vn-menu-enter-active .vn-menu-panel,
+        .vn-menu-leave-active .vn-menu-panel {
+            transition: transform .28s cubic-bezier(.22, .61, .36, 1);
+        }
+
+        .vn-menu-enter-from .vn-menu-panel,
+        .vn-menu-leave-to .vn-menu-panel {
+            transform: translateX(100%);
+        }
+
+        /* ==================== 剧情记忆提示（左上角一行小字）与章节转场 ==================== */
+        .vn-toast-stack {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            z-index: 38;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
+            pointer-events: none;
+        }
+
+        /* 一条从左往右渐隐的字幕带 */
+        .vn-story-toast {
+            max-width: min(560px, 56vw);
+            padding: 7px 38px 7px 14px;
+            background: linear-gradient(90deg,
+                rgba(6, 7, 12, .82) 0%,
+                rgba(6, 7, 12, .62) 62%,
+                rgba(6, 7, 12, 0) 100%);
+            font-size: 14px;
+            font-weight: 400;
+            line-height: 1.55;
+            letter-spacing: .03em;
+            color: #fff;
+            text-shadow: 0 1px 8px rgba(0, 0, 0, .9);
+        }
+
+        .vn-toast-enter-active,
+        .vn-toast-leave-active {
+            transition: opacity .45s ease;
+        }
+
+        .vn-toast-enter-from,
+        .vn-toast-leave-to {
+            opacity: 0;
+        }
+
+        .vn-chapter-curtain {
+            position: absolute;
+            inset: 0;
+            z-index: 32;
+            background: #08090d;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .vn-chapter-curtain-title {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: .06em;
+        }
+
+        .vn-chapter-curtain-sub {
+            font-size: 13.5px;
+            color: rgba(255, 255, 255, .6);
+        }
+
+        /* ==================== 回顾（Backlog）与存档弹窗 ==================== */
+        .vn-backlog-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .vn-backlog-row {
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #ebeef5;
+        }
+
+        .vn-backlog-speaker {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--main-color, lightsalmon);
+            margin-bottom: 3px;
+        }
+
+        .vn-backlog-speaker.is-choice {
+            color: #909399;
+        }
+
+        .vn-backlog-line {
+            font-size: 13.5px;
+            color: #303133;
+            line-height: 1.7;
+        }
+
+        .vn-slot-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+
+    <!-- ==================== 视图 A：书架 ==================== -->
+    <div v-if="view === 'shelf'">
+        <div class="vn-topbar">
+            <a class="vn-topbar-btn" href="../../router.html">
+                <i data-lucide="arrow-left"></i><span>返回导航</span>
+            </a>
+            <a class="vn-topbar-btn" href="../../index.html">
+                <i data-lucide="message-circle"></i><span>返回主对话</span>
+            </a>
+            <div class="vn-heading">
+                <div class="vn-logo"><i data-lucide="book-open"></i></div>
+                <div class="vn-title">视觉小说</div>
+            </div>
+            <button class="vn-topbar-btn right" @click="loadNovels">
+                <i data-lucide="refresh-cw"></i><span>刷新</span>
+            </button>
+        </div>
+
+        <div class="vn-shelf-body" v-loading="loading">
+            <div v-if="!loading && novels.length === 0" class="vn-empty-box">
+                <i data-lucide="book-open"></i>
+                <div style="font-size:15px;font-weight:600;color:#303133;margin-bottom:6px">书架上还没有作品</div>
+                <div style="font-size:13px;line-height:1.7">可以回主对话写一部新的视觉小说，写好后点击右上角「刷新」即可开始游玩。</div>
+            </div>
+
+            <div v-else class="vn-grid">
+                <div class="vn-card" v-for="n in novels" :key="n.title" @click="openNovelEntry(n)">
+                    <div class="vn-card-cover">
+                        <img v-if="coverUrl(n) && !imgFailed[coverUrl(n)]"
+                             :src="coverUrl(n)" :alt="n.title" @error="markImgFailed(coverUrl(n))">
+                        <div v-else class="vn-cover-fallback">
+                            <i data-lucide="book-open"></i>
+                            <span>{{ n.title }}</span>
+                        </div>
+                    </div>
+                    <div class="vn-card-body">
+                        <div class="vn-card-title">{{ n.title }}</div>
+                        <div class="vn-card-desc">{{ n.desc || '点击进入故事' }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 视图 B：全屏剧场 ==================== -->
+    <div v-else class="vn-player">
+
+        <!-- 1. 背景层 -->
+        <div class="vn-bg-layer">
+            <img v-if="bgUrl && !imgFailed[bgUrl]" :src="bgUrl" class="vn-bg-img" @error="markImgFailed(bgUrl)" alt="">
+            <div v-else class="vn-bg-fallback"></div>
+        </div>
+
+        <!-- 2. 立绘层 -->
+        <div v-if="!cgUrl" class="vn-char-layer">
+            <div v-for="(c, idx) in stageCharacters"
+                 :key="(c.id || idx) + '_' + (c.sprite || '')"
+                 class="vn-char"
+                 :class="{ speaking: isSpeaking(c), dim: isDimmed(c) }"
+                 :style="charStyle(c)">
+                <img v-if="spriteUrl(c) && !imgFailed[spriteUrl(c)]"
+                     :src="spriteUrl(c)" class="vn-char-img" @error="markImgFailed(spriteUrl(c))" :alt="c.id">
+                <div v-else class="vn-char-placeholder">
+                    <div class="vn-char-placeholder-name">{{ c.id }}</div>
+                    <div class="vn-char-placeholder-file">{{ c.sprite }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. CG 层 -->
+        <div v-if="cgUrl" class="vn-cg-layer">
+            <img v-if="!imgFailed[cgUrl]" :src="cgUrl" class="vn-cg-img" @error="markImgFailed(cgUrl)" alt="">
+            <div v-else class="vn-cg-fallback"></div>
+        </div>
+
+        <!-- 点击画面推进台词 -->
+        <div v-if="!breakpoint && !isChoiceNode" class="vn-click-layer" @click="advance"></div>
+
+        <!-- 5. 底部对话框：功能条常驻在对话框右上角外侧 -->
+        <div class="vn-dialogue-shell">
+            <div v-if="dialogues.length && !breakpoint"
+                 class="vn-dialogue"
+                 :class="{ 'is-narrator': isNarrator }"
+                 @click.stop="advance">
+                <div v-if="!isNarrator && currentDialogue" class="vn-dialogue-speaker">
+                    {{ currentDialogue.name || currentDialogue.id }}
+                </div>
+                <div class="vn-dialogue-text">{{ typedText }}</div>
+                <div class="vn-dialogue-footer">
+                    <span v-show="!typing" class="vn-next-indicator">▼</span>
+                </div>
+            </div>
+
+            <div class="vn-tools">
+                <button class="vn-tool-btn" @click.stop="backlogVisible = true" title="回顾读过的台词">
+                    <i data-lucide="scroll-text"></i><span>回顾</span>
+                </button>
+                <button class="vn-tool-btn" @click.stop="openSaveModal" title="存档 / 读档">
+                    <i data-lucide="bookmark"></i><span>存 / 读档</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 6. 选项面板（仅展示当前已达成条件的选项，绝不剧透未解锁分支） -->
+        <div v-if="isChoiceNode && !breakpoint" class="vn-choice-overlay">
+            <div class="vn-choice-box">
+                <div v-if="currentNode.prompt" class="vn-choice-prompt">{{ currentNode.prompt }}</div>
+                <button v-for="(opt, idx) in availableOptions"
+                        :key="idx"
+                        class="vn-choice-item"
+                        @click.stop="selectOption(opt)">
+                    {{ opt.text }}
+                </button>
+            </div>
+        </div>
+
+        <!-- 7. 自然断点（待续写） -->
+        <div v-if="breakpoint" class="vn-break-overlay">
+            <div class="vn-break-box">
+                <div class="vn-break-title">✨ 故事暂告一段落</div>
+                <div class="vn-break-desc">
+                    当前路线已抵达最新进度（待续写节点：<code>{{ breakpoint.targetChapter ? breakpoint.targetChapter + ' / ' : '' }}{{ breakpoint.targetNodeId }}</code>）。<br>
+                    可以保存当前进度，顺着这条路线继续往下写。
+                </div>
+                <div class="vn-break-btns">
+                    <button class="vn-break-btn primary" @click.stop="quickSaveBreakpoint">
+                        <i data-lucide="bookmark"></i><span>保存当前进度</span>
+                    </button>
+                    <button class="vn-break-btn" @click.stop="copyPromptForAI">
+                        <i data-lucide="copy"></i><span>复制续写指令</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 8. 章节过场黑幕 -->
+        <div v-if="curtain.visible" class="vn-chapter-curtain">
+            <div class="vn-chapter-curtain-title">{{ curtain.title }}</div>
+            <div v-if="curtain.toast" class="vn-chapter-curtain-sub">{{ curtain.toast }}</div>
+        </div>
+
+        <!-- 9. 剧情记忆提示：左上角一行字幕带，淡入、停留、淡出 -->
+        <div class="vn-toast-stack">
+            <transition-group name="vn-toast">
+                <div class="vn-story-toast" v-for="t in toasts" :key="t.id">{{ t.text }}</div>
+            </transition-group>
+        </div>
+
+        <!-- 10. 右上角菜单：点开从右侧滑出 -->
+        <button class="vn-menu-btn" @click.stop="openMenu" title="菜单">
+            <i data-lucide="menu"></i>
+        </button>
+
+        <transition name="vn-menu">
+            <div v-if="menuVisible" class="vn-menu-mask" @click.self="menuVisible = false">
+                <aside class="vn-menu-panel">
+                    <div class="vn-menu-book">{{ playerTitle }}</div>
+                    <div class="vn-menu-chapter">{{ formatChapterTitle(currentChapter) }}</div>
+                    <button class="vn-menu-exit" @click="menuExit">
+                        <i data-lucide="log-out"></i><span>退出</span>
+                    </button>
+                </aside>
+            </div>
+        </transition>
+    </div>
+
+    <!-- ==================== 作品入口弹窗（只含：开始新游戏 + 读取存档） ==================== -->
+    <el-dialog v-model="entryVisible" :title="selectedNovel ? selectedNovel.title : ''" width="460px">
+        <div v-if="selectedNovel">
+            <div class="vn-entry-desc">{{ selectedNovel.desc || '准备好进入这段故事了吗？' }}</div>
+
+            <button class="vn-btn-start" @click="startNewGame" :disabled="!selectedDetail || !selectedDetail.chapters.length">
+                <i data-lucide="play"></i><span>开始新游戏</span>
+            </button>
+
+            <div class="vn-section-label">
+                <span>读取存档</span>
+            </div>
+
+            <div v-if="!selectedDetail || selectedDetail.saves.length === 0"
+                 style="text-align:center;padding:22px 0;color:#a8abb2;font-size:13px">
+                暂无存档记录
+            </div>
+            <div v-else class="vn-save-list">
+                <div class="vn-save-item" v-for="s in selectedDetail.saves" :key="s.name">
+                    <div class="vn-save-info">
+                        <div class="vn-save-name">{{ s.name }}</div>
+                        <div class="vn-save-sub">{{ formatChapterTitle(s.currentChapter) }}</div>
+                    </div>
+                    <div class="vn-save-btns">
+                        <button class="vn-small-btn" @click="continueFromSave(s)">读取</button>
+                        <button class="vn-small-btn danger" @click="removeSaveOnShelf(s)">删除</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="vn-entry-foot">
+                <button class="vn-link-danger" @click="deleteCurrentNovel">
+                    <i data-lucide="trash-2"></i><span>删除这部作品</span>
+                </button>
+            </div>
+        </div>
+    </el-dialog>
+
+    <!-- ==================== 剧场内：历史台词回顾 ==================== -->
+    <el-drawer v-model="backlogVisible" title="对话回顾" size="380px">
+        <div v-if="backlog.length === 0" style="text-align:center;padding:40px 0;color:#a8abb2;font-size:13px">
+            还没有经过的对话
+        </div>
+        <div v-else class="vn-backlog-list">
+            <div class="vn-backlog-row" v-for="(item, idx) in backlog" :key="idx">
+                <div class="vn-backlog-speaker" :class="{ 'is-choice': item.isChoice }">
+                    {{ item.isChoice ? '【做出的选择】' : (item.name || '旁白') }}
+                </div>
+                <div class="vn-backlog-line">{{ item.text }}</div>
+            </div>
+        </div>
+    </el-drawer>
+
+    <!-- ==================== 剧场内：存档与读档 ==================== -->
+    <el-dialog v-model="saveModalVisible" title="存档 / 读档" width="440px">
+        <div class="vn-slot-bar">
+            <el-input v-model="saveSlotName" placeholder="输入存档名称，如 save1"></el-input>
+            <el-button type="primary" :color="mainColor" @click="saveCurrentProgress" style="color:#fff">保存当前进度</el-button>
+        </div>
+
+        <div class="vn-section-label"><span>已有存档</span></div>
+        <div v-if="playerSaves.length === 0" style="text-align:center;padding:20px 0;color:#a8abb2;font-size:13px">
+            暂无存档
+        </div>
+        <div v-else class="vn-save-list">
+            <div class="vn-save-item" v-for="s in playerSaves" :key="s.name">
+                <div class="vn-save-info">
+                    <div class="vn-save-name">{{ s.name }}</div>
+                    <div class="vn-save-sub">{{ formatChapterTitle(s.currentChapter) }}</div>
+                </div>
+                <div class="vn-save-btns">
+                    <button class="vn-small-btn" @click="saveSlotName = s.name; saveCurrentProgress()">覆盖</button>
+                    <button class="vn-small-btn" @click="loadSaveInGame(s)">读取</button>
+                    <button class="vn-small-btn danger" @click="removeSaveInGame(s)">删除</button>
+                </div>
+            </div>
+        </div>
+    </el-dialog>
+
+    <confirm-dialog ref="confirmDialog"></confirm-dialog>
+</div>
+
+<script>
+    const app = Vue.createApp({
+        data() {
+            return {
+                mainColor: (window.ThemeColorCache && window.ThemeColorCache.get()) || 'lightsalmon',
+                view: 'shelf',
+                loading: false,
+                novels: [],
+                imgFailed: {},
+
+                /* 作品入口弹窗 */
+                entryVisible: false,
+                selectedNovel: null,
+                selectedDetail: null,
+
+                /* 播放器核心状态 */
+                playerTitle: '',
+                currentChapter: '',
+                currentNodeId: '',
+                currentNode: null,
+                nodes: {},
+                eventMap: {},
+                backlog: [],
+
+                /* 舞台画面缓存（跨 choice/branch 保持画面） */
+                lastBackground: '',
+                lastCharacters: [],
+                lastCG: '',
+
+                /* 台词打字机 */
+                dialogueIndex: 0,
+                typedText: '',
+                typing: false,
+                typeTimer: null,
+
+                /* 界面与转场 */
+                menuVisible: false,
+                breakpoint: null,
+                curtain: { visible: false, title: '', toast: '' },
+                toasts: [],
+                toastSeq: 0,
+
+                /* 抽屉与存档弹窗 */
+                backlogVisible: false,
+                saveModalVisible: false,
+                saveSlotName: 'save1',
+                playerSaves: []
+            };
+        },
+
+        computed: {
+            bgUrl() {
+                return this.lastBackground ? API.vn.assetUrl(this.playerTitle, this.lastBackground) : '';
+            },
+            cgUrl() {
+                return this.lastCG ? API.vn.assetUrl(this.playerTitle, this.lastCG) : '';
+            },
+            dialogues() {
+                if (!this.currentNode) return [];
+                if (this.currentNode.type !== 'normal' && this.currentNode.type !== 'cg') return [];
+                return this.currentNode.dialogues || [];
+            },
+            currentDialogue() {
+                return this.dialogues[this.dialogueIndex] || null;
+            },
+            isNarrator() {
+                const d = this.currentDialogue;
+                return !!d && d.id === 'narrator' && (!d.name || d.name === '旁白');
+            },
+            isChoiceNode() {
+                return !!this.currentNode && this.currentNode.type === 'choice';
+            },
+            stageCharacters() {
+                if (!this.currentNode || this.currentNode.type === 'cg') return [];
+                return this.lastCharacters || [];
+            },
+            /** 只返回满足因果条件的选项，未达成的选项直接隐藏不剧透 */
+            availableOptions() {
+                if (!this.isChoiceNode) return [];
+                return (this.currentNode.options || []).filter(opt => {
+                    const req = opt.requiredEvents || [];
+                    if (req.length === 0) return true;
+                    const matched = req.filter(k => Object.prototype.hasOwnProperty.call(this.eventMap, k)).length;
+                    const need = (opt.minMatch && opt.minMatch > 0) ? opt.minMatch : req.length;
+                    return matched >= need;
+                });
+            }
+        },
+
+        watch: {
+            mainColor: {
+                immediate: true,
+                handler(val) {
+                    document.documentElement.style.setProperty('--main-color', val);
+                    document.documentElement.style.setProperty('--el-color-primary', val);
+                }
+            }
+        },
+
+        methods: {
+            refreshIcons() {
+                this.$nextTick(() => {
+                    if (window.lucide) lucide.createIcons();
+                });
+            },
+            coverUrl(novel) {
+                return (novel && novel.coverImg) ? API.vn.assetUrl(novel.title, novel.coverImg) : '';
+            },
+            spriteUrl(char) {
+                return (char && char.sprite) ? API.vn.assetUrl(this.playerTitle, char.sprite) : '';
+            },
+            markImgFailed(url) {
+                if (url) this.imgFailed[url] = true;
+            },
+            formatChapterTitle(chapterId) {
+                if (!chapterId) return '';
+                const idx = chapterId.indexOf('-');
+                return idx > 0 ? chapterId.substring(idx + 1) : chapterId;
+            },
+
+            /* ==================== 书架与作品入口 ==================== */
+            async loadNovels() {
+                this.loading = true;
+                try {
+                    const res = await API.vn.list();
+                    if (res && res.status === 200) {
+                        this.novels = res.data || [];
+                    }
+                } finally {
+                    this.loading = false;
+                    this.refreshIcons();
+                }
+            },
+            async openNovelEntry(novel) {
+                this.selectedNovel = novel;
+                this.selectedDetail = null;
+                this.entryVisible = true;
+                const res = await API.vn.get(novel.title);
+                if (res && res.status === 200) {
+                    this.selectedDetail = res.data;
+                }
+                this.refreshIcons();
+            },
+            async startNewGame() {
+                if (!this.selectedDetail || !this.selectedDetail.chapters.length) return;
+                const firstChapter = this.selectedDetail.chapters[0].chapterId;
+                const startNode = (this.selectedDetail.data && this.selectedDetail.data.startNodeId) || 'node_1';
+                this.entryVisible = false;
+                await this.enterStage(this.selectedNovel.title, firstChapter, startNode, {});
+            },
+            async continueFromSave(save) {
+                if (!save || !save.currentChapter) return;
+                this.entryVisible = false;
+                await this.enterStage(
+                    this.selectedNovel.title,
+                    save.currentChapter,
+                    save.currentNodeId || 'node_1',
+                    Object.assign({}, save.eventMap || {})
+                );
+            },
+            async removeSaveOnShelf(save) {
+                const res = await API.vn.deleteSave(this.selectedNovel.title, save.name);
+                if (res && res.status === 200) {
+                    ElementPlus.ElMessage.success('存档已删除');
+                    const detailRes = await API.vn.get(this.selectedNovel.title);
+                    if (detailRes && detailRes.status === 200) this.selectedDetail = detailRes.data;
+                }
+            },
+            deleteCurrentNovel() {
+                if (!this.selectedNovel) return;
+                const title = this.selectedNovel.title;
+                this.$refs.confirmDialog.show({
+                    title: '删除作品',
+                    message: '确定要永久删除《' + title + '》及其所有章节与存档吗？',
+                    confirmText: '确认删除',
+                    cancelText: '取消',
+                    type: 'danger'
+                }).then(async () => {
+                    const res = await API.vn.deleteNovel(title);
+                    if (res && res.status === 200) {
+                        ElementPlus.ElMessage.success('已删除《' + title + '》');
+                        this.entryVisible = false;
+                        await this.loadNovels();
+                    }
+                }).catch(() => {});
+            },
+
+            /* ==================== 播放器演出引擎 ==================== */
+            async enterStage(title, chapterId, nodeId, eventMap) {
+                this.clearTyping();
+                this.playerTitle = title;
+                this.currentChapter = chapterId;
+                this.currentNodeId = nodeId;
+                this.eventMap = Object.assign({}, eventMap || {});
+                this.backlog = [];
+                this.lastBackground = '';
+                this.lastCharacters = [];
+                this.lastCG = '';
+                this.breakpoint = null;
+                this.imgFailed = {};
+                this.view = 'player';
+
+                const ok = await this.fetchChapterNodes(chapterId);
+                if (!ok) {
+                    this.breakpoint = {
+                        fromChapter: chapterId,
+                        fromNodeId: '',
+                        targetChapter: chapterId,
+                        targetNodeId: nodeId
+                    };
+                    this.refreshIcons();
+                    return;
+                }
+                await this.goToNode(nodeId, 0);
+            },
+
+            async fetchChapterNodes(chapterId) {
+                const res = await API.vn.getChapterNodes(this.playerTitle, chapterId);
+                if (res && res.status === 200 && res.data) {
+                    this.nodes = res.data;
+                    return true;
+                }
+                return false;
+            },
+
+            async goToNode(targetNodeId, depth = 0) {
+                this.clearTyping();
+                if (depth > 20) {
+                    ElementPlus.ElMessage.error('检测到分支循环跳转超过 20 层，已停止');
+                    return;
+                }
+                if (!targetNodeId || !this.nodes[targetNodeId]) {
+                    this.breakpoint = {
+                        fromChapter: this.currentChapter,
+                        fromNodeId: this.currentNodeId,
+                        targetChapter: '',
+                        targetNodeId: targetNodeId || '（未指定下一节点）'
+                    };
+                    this.refreshIcons();
+                    return;
+                }
+
+                this.breakpoint = null;
+                this.currentNodeId = targetNodeId;
+                const node = this.nodes[targetNodeId];
+                this.currentNode = node;
+
+                if (node.type === 'normal') {
+                    this.lastCG = '';
+                    if (node.background) this.lastBackground = node.background;
+                    this.lastCharacters = Array.isArray(node.characters) ? node.characters : [];
+                    this.dialogueIndex = 0;
+                    this.startCurrentDialogue();
+                } else if (node.type === 'cg') {
+                    if (node.img) this.lastCG = node.img;
+                    this.dialogueIndex = 0;
+                    this.startCurrentDialogue();
+                } else if (node.type === 'choice') {
+                    this.refreshIcons();
+                } else if (node.type === 'branch') {
+                    await this.evaluateBranchNode(node, depth);
+                } else if (node.type === 'chapter') {
+                    await this.evaluateChapterNode(node, depth);
+                }
+                this.refreshIcons();
+            },
+
+            startCurrentDialogue() {
+                if (!this.dialogues.length) return;
+                const d = this.dialogues[this.dialogueIndex];
+                if (!d) return;
+                this.backlog.push({
+                    name: (d.id === 'narrator' && (!d.name || d.name === '旁白')) ? '旁白' : (d.name || d.id),
+                    text: d.text || '',
+                    isChoice: false
+                });
+                this.typeLine(d.text || '');
+            },
+
+            typeLine(fullText) {
+                this.clearTyping();
+                this.typedText = '';
+                if (!fullText) {
+                    this.typing = false;
+                    return;
+                }
+                this.typing = true;
+                let i = 0;
+                this.typeTimer = setInterval(() => {
+                    i++;
+                    this.typedText = fullText.slice(0, i);
+                    if (i >= fullText.length) {
+                        this.clearTyping();
+                        this.typing = false;
+                    }
+                }, 24);
+            },
+
+            clearTyping() {
+                if (this.typeTimer) {
+                    clearInterval(this.typeTimer);
+                    this.typeTimer = null;
+                }
+            },
+
+            advance() {
+                if (!this.currentNode || this.breakpoint || this.isChoiceNode) return;
+                if (this.typing && this.currentDialogue) {
+                    this.clearTyping();
+                    this.typing = false;
+                    this.typedText = this.currentDialogue.text || '';
+                    return;
+                }
+                if (this.dialogueIndex + 1 < this.dialogues.length) {
+                    this.dialogueIndex++;
+                    this.startCurrentDialogue();
+                    return;
+                }
+                this.goToNode(this.currentNode.nextNodeId, 0);
+            },
+
+            selectOption(opt) {
+                this.backlog.push({
+                    name: '选择',
+                    text: opt.text,
+                    isChoice: true
+                });
+                if (Array.isArray(opt.remember)) {
+                    opt.remember.forEach(item => {
+                        if (item && item.key) {
+                            this.eventMap[item.key] = item.desc || item.key;
+                            if (item.toast) this.showStoryToast(item.toast);
+                        }
+                    });
+                }
+                this.goToNode(opt.targetNodeId, 0);
+            },
+
+            async evaluateBranchNode(node, depth) {
+                const list = Array.isArray(node.branches) ? node.branches.slice() : [];
+                list.sort((a, b) => {
+                    const pa = (a && a.priority != null) ? a.priority : 999999;
+                    const pb = (b && b.priority != null) ? b.priority : 999999;
+                    return pa - pb;
+                });
+                for (const br of list) {
+                    if (!br) continue;
+                    const req = br.requiredEvents || [];
+                    const matched = req.filter(k => Object.prototype.hasOwnProperty.call(this.eventMap, k)).length;
+                    const need = (br.minMatch && br.minMatch > 0) ? br.minMatch : req.length;
+                    if (req.length === 0 || matched >= need) {
+                        if (br.toast) this.showStoryToast(br.toast);
+                        await this.goToNode(br.targetNodeId, depth + 1);
+                        return;
+                    }
+                }
+                await this.goToNode(node.defaultTargetNodeId, depth + 1);
+            },
+
+            async evaluateChapterNode(node, depth) {
+                const targetChapter = node.targetChapter;
+                const targetNodeId = node.targetNodeId || 'node_1';
+                const prevChapter = this.currentChapter;
+                const prevNodeId = this.currentNodeId;
+
+                this.curtain = {
+                    visible: true,
+                    title: this.formatChapterTitle(targetChapter),
+                    toast: node.toast || ''
+                };
+                await new Promise(r => setTimeout(r, 1100));
+                this.curtain.visible = false;
+
+                const ok = await this.fetchChapterNodes(targetChapter);
+                if (!ok || !this.nodes[targetNodeId]) {
+                    this.breakpoint = {
+                        fromChapter: prevChapter,
+                        fromNodeId: prevNodeId,
+                        targetChapter: targetChapter,
+                        targetNodeId: targetNodeId
+                    };
+                    this.refreshIcons();
+                    return;
+                }
+                this.currentChapter = targetChapter;
+                await this.goToNode(targetNodeId, depth + 1);
+            },
+
+            showStoryToast(text) {
+                if (!text) return;
+                const id = ++this.toastSeq;
+                this.toasts.push({ id, text });
+                setTimeout(() => {
+                    this.toasts = this.toasts.filter(t => t.id !== id);
+                }, 3200);
+            },
+
+            /* ==================== 立绘样式计算 ==================== */
+            charStyle(c) {
+                const pos = (c && c.position != null) ? c.position : 50;
+                const scale = (c && c.scale != null) ? c.scale : 1;
+                const z = (c && c.z != null) ? c.z : 1;
+                const flip = (c && c.flipX) ? ' scaleX(-1)' : '';
+                return {
+                    left: pos + '%',
+                    zIndex: z,
+                    transform: 'translateX(-50%) scale(' + scale + ')' + flip
+                };
+            },
+            isSpeaking(c) {
+                const d = this.currentDialogue;
+                return !!d && d.id !== 'narrator' && c && c.id === d.id;
+            },
+            isDimmed(c) {
+                const d = this.currentDialogue;
+                if (!d || d.id === 'narrator') return false;
+                return c && c.id !== d.id;
+            },
+
+            /* ==================== 存档与断点操作 ==================== */
+            async openSaveModal() {
+                this.saveModalVisible = true;
+                const res = await API.vn.listSaves(this.playerTitle);
+                if (res && res.status === 200) {
+                    this.playerSaves = res.data || [];
+                }
+                this.refreshIcons();
+            },
+            async saveCurrentProgress() {
+                const name = (this.saveSlotName || 'save1').trim();
+                const payload = {
+                    currentChapter: this.currentChapter,
+                    currentNodeId: this.currentNodeId,
+                    eventMap: this.eventMap
+                };
+                const res = await API.vn.writeSave(this.playerTitle, name, payload);
+                if (res && res.status === 200) {
+                    ElementPlus.ElMessage.success('已保存至存档「' + name + '」');
+                    const listRes = await API.vn.listSaves(this.playerTitle);
+                    if (listRes && listRes.status === 200) this.playerSaves = listRes.data || [];
+                }
+            },
+            async loadSaveInGame(s) {
+                this.saveModalVisible = false;
+                await this.enterStage(this.playerTitle, s.currentChapter, s.currentNodeId, s.eventMap || {});
+            },
+            async removeSaveInGame(s) {
+                const res = await API.vn.deleteSave(this.playerTitle, s.name);
+                if (res && res.status === 200) {
+                    const listRes = await API.vn.listSaves(this.playerTitle);
+                    if (listRes && listRes.status === 200) this.playerSaves = listRes.data || [];
+                }
+            },
+            async quickSaveBreakpoint() {
+                const payload = {
+                    currentChapter: this.currentChapter,
+                    currentNodeId: this.currentNodeId,
+                    eventMap: this.eventMap
+                };
+                const res = await API.vn.writeSave(this.playerTitle, 'autosave', payload);
+                if (res && res.status === 200) {
+                    ElementPlus.ElMessage.success('已保存当前断点进度至 autosave');
+                }
+            },
+            async copyPromptForAI() {
+                if (!this.breakpoint) return;
+                const events = Object.entries(this.eventMap).map(([k, v]) => k + '(' + v + ')').join('、') || '无';
+                const targetDesc = this.breakpoint.targetChapter
+                    ? '章节「' + this.breakpoint.targetChapter + '」的起始节点「' + this.breakpoint.targetNodeId + '」'
+                    : '章节「' + this.currentChapter + '」的断点节点「' + this.breakpoint.targetNodeId + '」';
+                const text = '请帮我续写视觉小说《' + this.playerTitle + '》，从' + targetDesc
+                    + '开始往后写（上一节点是 ' + (this.breakpoint.fromNodeId || this.currentNodeId)
+                    + '）。当前路线已触发的事件记忆有：' + events + '。';
+                try {
+                    await navigator.clipboard.writeText(text);
+                    ElementPlus.ElMessage.success('已复制续写指令，回主对话粘贴即可');
+                } catch (e) {
+                    ElementPlus.ElMessage.info(text);
+                }
+            },
+            openMenu() {
+                this.menuVisible = true;
+                this.refreshIcons();
+            },
+            menuExit() {
+                this.menuVisible = false;
+                this.confirmExit();
+            },
+            confirmExit() {
+                this.$refs.confirmDialog.show({
+                    title: '返回书架',
+                    message: '确定要离开《' + this.playerTitle + '》吗？还没存档的进度会丢失。',
+                    confirmText: '返回书架',
+                    cancelText: '继续游玩',
+                    type: 'warning'
+                }).then(() => {
+                    this.exitToShelf();
+                }).catch(() => {});
+            },
+            exitToShelf() {
+                this.clearTyping();
+                this.view = 'shelf';
+                this.loadNovels();
+            },
+            onKeydown(e) {
+                if (this.view !== 'player') return;
+                if (this.menuVisible) {
+                    if (e.key === 'Escape') this.menuVisible = false;
+                    return;
+                }
+                if (this.backlogVisible || this.saveModalVisible) return;
+                if (e.key === ' ' || e.key === 'Enter') {
+                    if (!this.breakpoint && !this.isChoiceNode) {
+                        e.preventDefault();
+                        this.advance();
+                    }
+                }
+            }
+        },
+
+        async mounted() {
+            this.refreshIcons();
+            await this.loadNovels();
+            API.settings.user.get().then(res => {
+                if (res && res.status === 200 && res.data && res.data.mainColor) {
+                    this.mainColor = res.data.mainColor;
+                    if (window.ThemeColorCache) window.ThemeColorCache.set(res.data.mainColor);
+                }
+            }).catch(() => {});
+            document.addEventListener('keydown', this.onKeydown);
+        },
+
+        beforeUnmount() {
+            this.clearTyping();
+            document.removeEventListener('keydown', this.onKeydown);
+        }
+    });
+
+    app.use(ElementPlus);
+    app.component('ConfirmDialog', ConfirmDialog);
+    app.mount('#app');
+</script>
+</body>
+</html>
